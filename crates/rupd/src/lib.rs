@@ -17,6 +17,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
+/// How many list-and-kill rounds shutdown makes before it gives up on a stream of new Terminals.
+const STOP_ROUNDS: usize = 5;
+
 pub struct Daemon {
     modules: HashMap<&'static str, Arc<dyn Module>>,
     bus: Bus,
@@ -98,9 +101,23 @@ impl Daemon {
         }
     }
 
-    /// Stop every running Terminal's program, Agents' included, and return once all are stopped.
-    /// A program that ignores SIGHUP is killed by the Terminal module's own escalation.
+    /// Stop every running Terminal's program, Agents' included, and return once none is running.
+    /// A program that ignores SIGHUP is killed by the Terminal module's own escalation. A
+    /// Terminal spawned while this runs is caught by the next round, up to [`STOP_ROUNDS`]; past
+    /// that the caller gets an error rather than a loop that never ends.
     pub async fn stop_terminals(&self) -> Result<(), RpcError> {
+        for _ in 0..STOP_ROUNDS {
+            if self.stop_running_terminals().await? == 0 {
+                return Ok(());
+            }
+        }
+        Err(RpcError::internal(format!(
+            "terminals were still being spawned after {STOP_ROUNDS} rounds of stopping"
+        )))
+    }
+
+    /// One round: kill every Terminal listed as running, concurrently. Returns how many it found.
+    async fn stop_running_terminals(&self) -> Result<usize, RpcError> {
         let terminals = self
             .modules
             .get("terminal")
@@ -120,6 +137,7 @@ impl Daemon {
                     .await
             });
         }
+        let found = set.len();
         while let Some(joined) = set.join_next().await {
             // A program that ended on its own between the list and the kill is already stopped.
             match joined.map_err(RpcError::internal)? {
@@ -127,7 +145,7 @@ impl Daemon {
                 _ => {}
             }
         }
-        Ok(())
+        Ok(found)
     }
 }
 

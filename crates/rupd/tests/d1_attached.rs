@@ -17,8 +17,8 @@ const EXIT_BOUND: Duration = Duration::from_secs(15);
 struct Running {
     daemon: Child,
     stdin: Option<ChildStdin>,
-    /// Held open: a closed stderr would make the Daemon's own logging fail.
-    _stderr: BufReader<ChildStderr>,
+    /// Held open unless a test drops it: the App's death closes stderr together with stdin.
+    stderr: Option<BufReader<ChildStderr>>,
     socket: std::path::PathBuf,
     _dir: tempfile::TempDir,
 }
@@ -45,9 +45,28 @@ fn start(extra_args: &[&str], stdin: impl FnOnce(&mut Command)) -> Running {
     Running {
         stdin: daemon.stdin.take(),
         daemon,
-        _stderr: stderr,
+        stderr: Some(stderr),
         socket,
         _dir: dir,
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.daemon.kill();
+        let _ = self.daemon.wait();
+    }
+}
+
+/// Kills the program on drop, so a failing test leaks no `sleep`.
+struct Program(u32);
+
+impl Drop for Program {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .args(["-9", &self.0.to_string()])
+            .stderr(Stdio::null())
+            .status();
     }
 }
 
@@ -76,7 +95,7 @@ fn is_alive(pid: u32) -> bool {
 }
 
 /// Start a program that ignores SIGHUP, so only a SIGKILL ends it; return its pid.
-async fn spawn_stubborn_program(client: &mut rpc::Client, cwd: &Path) -> u32 {
+async fn spawn_stubborn_program(client: &mut rpc::Client, cwd: &Path) -> Program {
     client.request("events.subscribe", ()).await.unwrap();
     let params = SpawnParams {
         cwd: cwd.to_string_lossy().into_owned(),
@@ -104,7 +123,7 @@ async fn spawn_stubborn_program(client: &mut rpc::Client, cwd: &Path) -> u32 {
                     .find_map(|line| line.trim().strip_prefix("pid="))
                     .and_then(|pid| pid.parse().ok())
                 {
-                    return pid;
+                    return Program(pid);
                 }
             }
         }
@@ -117,16 +136,18 @@ async fn spawn_stubborn_program(client: &mut rpc::Client, cwd: &Path) -> u32 {
 async fn d1_attached_daemon_exits_when_stdin_closes_and_its_programs_are_gone() {
     let mut running = start(&["--attached"], piped);
     let mut client = rpc::Client::connect(&running.socket).await.unwrap();
-    let pid = spawn_stubborn_program(&mut client, running._dir.path()).await;
-    assert!(is_alive(pid));
+    let program = spawn_stubborn_program(&mut client, running._dir.path()).await;
+    assert!(is_alive(program.0));
 
+    // The App's death closes both pipes at once.
     drop(running.stdin.take());
+    drop(running.stderr.take());
 
     assert!(
         wait_for_exit(&mut running.daemon),
         "the Daemon did not exit"
     );
-    assert!(!is_alive(pid), "the program outlived the Daemon");
+    assert!(!is_alive(program.0), "the program outlived the Daemon");
 }
 
 #[tokio::test]
@@ -151,6 +172,4 @@ async fn d1_without_attached_a_closed_stdin_changes_nothing() {
     let pong = client.request("daemon.ping", ()).await.unwrap();
 
     assert_eq!(pong["pong"], true);
-    running.daemon.kill().unwrap();
-    running.daemon.wait().unwrap();
 }

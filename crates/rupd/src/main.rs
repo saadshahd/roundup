@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -28,15 +28,16 @@ async fn main() -> io::Result<()> {
     if !attached {
         return rupd::serve(listener, daemon).await;
     }
-    // The App holds our stdin open; its exit, even a crash, closes it. Nothing is read from it.
+    // The App holds our stdin open; its exit, even a crash, closes it. Its bytes are drained and
+    // discarded; only end of file matters.
     let stdin_closed =
         tokio::task::spawn_blocking(|| io::copy(&mut io::stdin().lock(), &mut io::sink()));
-    tokio::select! {
+    let ended = tokio::select! {
         served = rupd::serve(listener, Arc::clone(&daemon)) => served,
-        closed = stdin_closed => {
-            closed.map_err(io::Error::other)??;
-            eprintln!("rupd: stdin closed, stopping");
-            daemon.stop_terminals().await.map_err(io::Error::other)
-        }
-    }
+        closed = stdin_closed => closed.map_err(io::Error::other)?.map(drop),
+    };
+    // An App that crashed has closed stderr too; a failed log write must not skip the stop.
+    let _ = writeln!(io::stderr(), "rupd: stopping");
+    let stopped = daemon.stop_terminals().await.map_err(io::Error::other);
+    ended.and(stopped)
 }
