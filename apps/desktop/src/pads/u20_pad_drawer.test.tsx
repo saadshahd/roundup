@@ -9,6 +9,7 @@ import {
   YOU,
 } from "./padsFixture";
 import type { Pad } from "@contracts/pad/Pad";
+import styles from "../styles.css?inline";
 
 afterEach(cleanup);
 
@@ -164,14 +165,31 @@ describe("u20 open and edit", () => {
     await waitFor(() => expect(append.value).toBe(""));
   });
 
-  it("u20_the_export_word_and_the_close_word_are_distinct_targets", async () => {
+  it("u20_the_export_word_sits_in_a_row_below_the_pinned_close_word", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
     await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
+    const close = screen.getByText("close");
+    const exportWord = screen.getByText("export .md");
+    const row = exportWord.closest("p");
 
-    expect([
-      screen.getByText("close").matches(".drawer .word"),
-      screen.getByText("export .md").matches(".drawer .word"),
-    ]).toEqual([true, false]);
+    if (!row) throw new Error("export .md has no row");
+
+
+    const layout = [
+      getComputedStyle(close).position,
+      getComputedStyle(close).top,
+      getComputedStyle(close).right,
+      getComputedStyle(exportWord).position,
+      getComputedStyle(row).display,
+      row.previousElementSibling?.tagName,
+      getComputedStyle(row).textAlign,
+    ];
+
+    sheet.remove();
+
+    expect(layout).toEqual(["absolute", "8px", "16px", "static", "block", "P", "right"]);
   });
 
   it("u20_pad_changed_for_the_open_pad_calls_only_pad_list_and_refreshes_its_text", async () => {
@@ -243,18 +261,39 @@ describe("u20 open and edit", () => {
   it("u20_a_write_reply_never_overwrites_text_typed_after_a_quick_refocus", async () => {
     const { app } = await openShelf([padOf("release-checklist", YOU, "old")]);
     const reply = deferred<Pad>();
-    app.handlers["pad.write"] = () => reply.promise;
+    const writes: string[] = [];
+    app.handlers["pad.write"] = ({ text }) => {
+      writes.push(text);
+
+      return writes.length === 1 ? reply.promise : padOf("release-checklist", YOU, text);
+    };
+
     const field = await openPad("release-checklist");
     edit(field, "new");
 
-    fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "newer" } });
     reply.resolve(padOf("release-checklist", YOU, "new"));
     await reply.promise;
-    await Promise.resolve();
-    await Promise.resolve();
+    fireEvent.blur(field);
 
-    expect(field.value).toBe("newer");
+    await waitFor(() => expect(writes).toEqual(["new", "newer"]));
+  });
+
+  it("u20_a_pad_handed_over_while_the_cursor_is_in_the_text_saves_what_is_typed", async () => {
+    const { app, state } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
+    const field = await openPad("auth-notes");
+    fireEvent.focus(field);
+    state.pads = [padOf("auth-notes", YOU, "v1")];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    await waitFor(() => expect(field.readOnly).toBe(false));
+
+    fireEvent.input(field, { target: { value: "typed" } });
+    fireEvent.blur(field);
+
+    await waitFor(() => expect(state.pads[0]?.text).toBe("typed"));
+    expect(app.calls.filter((call) => call.method === "pad.write")).toEqual([
+      { method: "pad.write", params: { name: "auth-notes", text: "typed" } },
+    ]);
   });
 
   it("u20_a_change_skipped_while_editing_is_caught_up_after_the_write_settles", async () => {

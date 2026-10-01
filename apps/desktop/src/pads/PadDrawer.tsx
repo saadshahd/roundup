@@ -91,7 +91,7 @@ const PadBody = (props: {
     setEditing(false);
     await write(typed);
 
-    if (missedWhileEditing) {
+    if (missedWhileEditing && !editing()) {
       missedWhileEditing = false;
       setShown(pad().text);
     }
@@ -99,13 +99,13 @@ const PadBody = (props: {
 
   return (
     <>
-      <p style={{ display: "flex", "justify-content": "space-between" }}>
-        <span>
-          {ownerMark(pad().owner)} {name}{" "}
-          <span class="light">
-            owned by {connected.rail.nameOf(pad().owner)}
-          </span>
+      <p style={{ "padding-right": "6ch" }}>
+        {ownerMark(pad().owner)} {name}{" "}
+        <span class="light">
+          owned by {connected.rail.nameOf(pad().owner)}
         </span>
+      </p>
+      <p style={{ "text-align": "right" }}>
         <button
           type="button"
           class="light"
@@ -130,7 +130,7 @@ const PadBody = (props: {
         }}
         readOnly={!ownedByUser()}
         value={shown()}
-        onFocus={() => setEditing(ownedByUser())}
+        onInput={() => setEditing(ownedByUser())}
         onBlur={(blurred) => void leaveField(blurred.currentTarget.value)}
       />
       <Show when={!ownedByUser()}>
