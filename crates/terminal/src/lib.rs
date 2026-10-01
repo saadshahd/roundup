@@ -1,8 +1,8 @@
 //! Terminals: plain shell processes behind a PTY. Owner: terminal Builder.
 //!
 //! Rust callers (the agents module) use [`Terminals`] directly, with no socket: [`Terminals::spawn`]
-//! returns the new Terminal's id together with a [`broadcast::Receiver`] of its events, subscribed
-//! before the program starts so no output is missed.
+//! returns the new Terminal's id together with a [`broadcast::Receiver`] of its events. The receiver
+//! exists before the reader thread reads any output, so none is missed.
 
 use std::collections::BTreeMap;
 use std::io::Read;

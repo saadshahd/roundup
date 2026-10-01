@@ -4,7 +4,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{decode, sh, until_exit};
+use common::{PATIENCE, decode, sh, until_exit};
 use contracts::terminal::{SpawnParams, TerminalId, TerminalInfo};
 use contracts::{Actor, EventData};
 use provenance::Touches;
@@ -34,7 +34,7 @@ async fn x1_output_reaches_a_subscribed_client() {
     let id = serde_json::from_value::<TerminalId>(spawned).unwrap().id;
     let mut printed = String::new();
     while !printed.contains("hi") {
-        let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv())
+        let event = tokio::time::timeout(PATIENCE, events.recv())
             .await
             .expect("output in time")
             .unwrap();

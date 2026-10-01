@@ -10,7 +10,7 @@ use contracts::EventData;
 use contracts::terminal::SpawnParams;
 use tokio::sync::broadcast::Receiver;
 
-const PATIENCE: Duration = Duration::from_secs(10);
+pub const PATIENCE: Duration = Duration::from_secs(10);
 
 pub fn sh(cwd: &Path, script: &str) -> SpawnParams {
     SpawnParams {
