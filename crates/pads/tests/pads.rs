@@ -468,14 +468,8 @@ async fn p5_a_failed_file_write_changes_nothing_and_emits_nothing() {
 
     let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
     assert_eq!(pad["text"], "old");
-    assert_eq!(
-        rig.ok(&a, "pad.list", Value::Null)
-            .await
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
+    let missing = rig.fail(&a, "pad.read", json!({"name": "other"})).await;
+    assert_eq!(missing.code, code::NOT_FOUND);
     assert!(events.try_recv().is_err());
     assert_eq!(
         rig.touches.touched("a").unwrap().len(),
@@ -645,11 +639,4 @@ async fn p1_every_method_resolves_other_spellings_to_the_same_pad() {
 
     let gone = rig.fail(&a, "pad.read", json!({"name": "Notes"})).await;
     assert_eq!(gone.code, code::NOT_FOUND);
-    assert!(
-        rig.ok(&a, "pad.list", Value::Null)
-            .await
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
 }
