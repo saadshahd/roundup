@@ -92,12 +92,13 @@ impl Todos {
 
     fn delete(&self, ctx: &Ctx, p: TodoId) -> Result<Value, RpcError> {
         let store = self.store()?;
-        let was_blocked = store.blocked_ids()?;
+        let mut was_blocked = store.blocked_ids()?;
         store.delete(p.id)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
-        ctx.emit(EventData::TodoDeleted(p.clone()));
+        was_blocked.remove(&p.id);
+        ctx.emit(EventData::TodoDeleted(p));
         emit_unblocked(ctx, &was_blocked, &store.blocked_ids()?);
-        reply(&p)
+        Ok(Value::Null)
     }
 
     fn store(&self) -> Result<std::sync::MutexGuard<'_, Store>, RpcError> {
@@ -176,17 +177,18 @@ mod tests {
             self.todos.call(&self.ctx, method, params).await
         }
 
+        /// `"<name> <id>"` for each event, oldest first.
         fn events(&mut self) -> Vec<String> {
-            let mut names = Vec::new();
+            let mut seen = Vec::new();
             while let Ok(event) = self.events.try_recv() {
-                names.push(
-                    serde_json::to_value(&event.data).unwrap()["name"]
-                        .as_str()
-                        .unwrap()
-                        .to_owned(),
-                );
+                let event = serde_json::to_value(&event.data).unwrap();
+                seen.push(format!(
+                    "{} {}",
+                    event["name"].as_str().unwrap(),
+                    event["data"]["id"]
+                ));
             }
-            names
+            seen
         }
 
         fn touches(&self, id: u32) -> Vec<(Verb, String)> {
@@ -212,7 +214,7 @@ mod tests {
             h.call("todo.create", json!({"title": "b"})).await.unwrap()["id"],
             2
         );
-        assert_eq!(h.events(), ["todo.created", "todo.created"]);
+        assert_eq!(h.events(), ["todo.created 1", "todo.created 2"]);
         assert_eq!(h.touches(1), [(Verb::Wrote, "you".to_owned())]);
     }
 
@@ -287,7 +289,7 @@ mod tests {
             (todo["title"].as_str(), todo["body"].as_str()),
             (Some("x"), Some("keep"))
         );
-        assert_eq!(h.events(), ["todo.updated"]);
+        assert_eq!(h.events(), ["todo.updated 1"]);
         assert_eq!(
             h.touches(1),
             [
@@ -311,13 +313,13 @@ mod tests {
         assert_eq!(two["blocked"], true);
         h.events();
         h.call("todo.complete", json!({"id": 1})).await.unwrap();
-        assert_eq!(h.events(), ["todo.updated", "todo.unblocked"]);
+        assert_eq!(h.events(), ["todo.updated 1", "todo.unblocked 2"]);
         assert_eq!(
             h.call("todo.get", json!({"id": 2})).await.unwrap()["blocked"],
             false
         );
         h.call("todo.complete", json!({"id": 1})).await.unwrap();
-        assert_eq!(h.events(), ["todo.updated"]);
+        assert_eq!(h.events(), ["todo.updated 1"]);
     }
 
     #[tokio::test]
@@ -383,7 +385,7 @@ mod tests {
             .unwrap();
         h.events();
         h.call("todo.delete", json!({"id": 1})).await.unwrap();
-        assert_eq!(h.events(), ["todo.deleted", "todo.unblocked"]);
+        assert_eq!(h.events(), ["todo.deleted 1", "todo.unblocked 2"]);
         let two = h.call("todo.get", json!({"id": 2})).await.unwrap();
         assert_eq!(
             (two["blockers"].clone(), two["blocked"].clone()),
@@ -396,5 +398,19 @@ mod tests {
                 .code,
             code::NOT_FOUND
         );
+    }
+
+    #[tokio::test]
+    async fn t6_deleting_a_blocked_todo_announces_only_its_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path());
+        h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        h.call("todo.create", json!({"title": "b", "blockers": [1]}))
+            .await
+            .unwrap();
+        h.events();
+        let reply = h.call("todo.delete", json!({"id": 2})).await.unwrap();
+        assert_eq!(reply, Value::Null);
+        assert_eq!(h.events(), ["todo.deleted 2"]);
     }
 }
