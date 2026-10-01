@@ -17,6 +17,8 @@ roundup is a Claude Code workbench: Terminals, Agents (Claude Code only), Todos,
 
 Principle: every feature is a typed RPC method plus an event. The UI has zero privileged access. Client crates talk to `rupd` only through `contracts/`.
 
+The App is a Rust crate under `crates/`, not under `apps/`. A Cargo workspace member glob that matches nothing is an error, so `apps/*/src-tauri` would force a root `Cargo.toml` edit into the first UI PR. This layout keeps each PR to one module and lets the App and the webview be built in parallel. They meet at the App seam in `scenarios/app.md`.
+
 ## Layout
 
 | Path | Owner module | Contents |
@@ -29,7 +31,8 @@ Principle: every feature is a typed RPC method plus an event. The UI has zero pr
 | `crates/todos` | todos | SQLite (WAL), blocker graph |
 | `crates/pads` | pads | Pads as `.md` files, SQLite index |
 | `crates/rupd` | core | Daemon: socket, Provenance log, bus, MCP |
-| `apps/desktop` | ui | Tauri 2 + Solid + xterm.js |
+| `crates/desktop` | ui | The App: the Tauri 2 shell that starts `rupd` for one Project and passes calls and events to the webview (`scenarios/app.md`) |
+| `apps/desktop` | ui | The webview: Solid + xterm.js, a client of `rupd` through the App |
 | `ext/` | ext | Extension host, SDK, example |
 
 ## Agent adapter contract
