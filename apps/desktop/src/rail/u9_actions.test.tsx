@@ -196,6 +196,7 @@ describe("u9 actions", () => {
     mounted.app.handlers["rail.createGroup"] = () => {
       throw new RpcError(-32000, "boom");
     };
+
     fireEvent.click(screen.getByText("+ group"));
     await screen.findByText("✕ boom");
 
@@ -209,7 +210,9 @@ describe("u9 actions", () => {
     mounted.app.handlers["rail.createGroup"] = () => {
       throw new RpcError(-32000, "boom");
     };
+
     mounted.app.handlers["rail.promote"] = () => metaAgent("g", "idle", "i");
+
     fireEvent.click(screen.getByText("+ group"));
     await screen.findByText("✕ boom");
     fireEvent.mouseEnter(rowOf("g"));
@@ -224,6 +227,7 @@ describe("u9 actions", () => {
     mounted.app.handlers["rail.createGroup"] = () => {
       throw new RpcError(-32000, "boom");
     };
+
     fireEvent.click(screen.getByText("+ group"));
     await screen.findByText("✕ boom");
 
@@ -254,6 +258,7 @@ describe("u9 actions", () => {
   it("u9_a_double_click_on_plus_agent_spawns_one_agent", async () => {
     const mounted = await mountRail([]);
     let finish: (node: RailNode) => void = () => {};
+
     mounted.app.handlers["agent.spawn"] = () => new Promise<RailNode>((done) => (finish = done));
     const button = screen.getByText("+ agent");
 
@@ -261,7 +266,7 @@ describe("u9 actions", () => {
     fireEvent.click(button);
     finish(SPAWNED);
 
-    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(button).toHaveProperty("disabled", false));
     expect(callsTo(mounted.app, "agent.spawn")).toHaveLength(1);
   });
 });
