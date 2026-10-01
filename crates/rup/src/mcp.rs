@@ -30,7 +30,7 @@ struct Offered {
 #[derive(Debug)]
 enum Gone {
     Unreachable(String),
-    /// The request may or may not have been applied.
+    /// The method was sent and got no answer, so it may or may not have been applied.
     Silent,
 }
 
@@ -123,7 +123,12 @@ impl Shim {
         };
         tokio::time::timeout(CALL_TIMEOUT, handshake)
             .await
-            .map_err(|_| Gone::Silent)?
+            .map_err(|_| {
+                Gone::Unreachable(format!(
+                    "no answer from the Daemon at {socket} within {}s",
+                    CALL_TIMEOUT.as_secs()
+                ))
+            })?
     }
 
     async fn call(

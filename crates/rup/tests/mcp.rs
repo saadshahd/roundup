@@ -1,16 +1,17 @@
 use std::path::Path;
-use std::process::Stdio;
+use std::process::{Output, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
 use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, pad, todo};
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, CallToolResult};
+use rmcp::model::{CallToolRequestParams, CallToolResult, ProtocolVersion};
 use rmcp::service::{RoleClient, RunningService};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::process::Child;
+use tokio::sync::mpsc;
 
 const BOUND: Duration = Duration::from_secs(20);
 
@@ -19,15 +20,20 @@ struct Shim {
     child: Child,
 }
 
-async fn spawn_shim(socket: &Path, agent: &str) -> Shim {
-    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_rup"))
+fn start_rup_mcp(socket: &Path, agent: &str) -> Child {
+    tokio::process::Command::new(env!("CARGO_BIN_EXE_rup"))
         .args(["mcp", agent])
         .env("RUPD_SOCKET", socket)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .unwrap();
+        .unwrap()
+}
+
+async fn spawn_shim(socket: &Path, agent: &str) -> Shim {
+    let mut child = start_rup_mcp(socket, agent);
     let transport = (child.stdout.take().unwrap(), child.stdin.take().unwrap());
     let client = tokio::time::timeout(BOUND, ().serve(transport))
         .await
@@ -91,6 +97,58 @@ async fn client_as(socket: &Path, actor: Actor) -> rpc::Client {
         .await
         .unwrap();
     client
+}
+
+async fn write_line(to: &mut (impl AsyncWrite + Unpin), message: &Value) {
+    to.write_all(format!("{message}\n").as_bytes())
+        .await
+        .unwrap();
+}
+
+/// A stand-in Daemon that answers `null` to the `answered` methods and never to any other.
+/// It holds every connection open: a close would fail the shim's request at once instead of leaving it unanswered.
+fn fake_daemon(socket: &Path, answered: &'static [&'static str]) -> mpsc::UnboundedReceiver<Value> {
+    let listener = UnixListener::bind(socket).unwrap();
+    let (seen, requests) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    let reply = answered
+                        .iter()
+                        .any(|method| request["method"] == *method)
+                        .then(|| json!({ "jsonrpc": "2.0", "id": request["id"], "result": null }));
+                    let _ = seen.send(request);
+                    if let Some(reply) = reply {
+                        write_line(&mut write, &reply).await;
+                    }
+                }
+            });
+        }
+    });
+    requests
+}
+
+/// `rup mcp a1` with no MCP client: its stdin is closed at once.
+async fn run_without_client(socket: &Path) -> Output {
+    let mut child = start_rup_mcp(socket, "a1");
+    drop(child.stdin.take());
+    tokio::time::timeout(BOUND, child.wait_with_output())
+        .await
+        .expect("rup mcp exited")
+        .unwrap()
+}
+
+fn assert_exit_1_with_one_line_naming(output: &Output, socket: &Path) {
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(stderr.lines().count(), 1, "{stderr}");
+    assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
 }
 
 const M1_METHODS: [&str; 13] = [
@@ -194,43 +252,22 @@ async fn m1_input_schemas_are_the_contract_schemas() {
 
 #[tokio::test]
 async fn m1_list_tools_send_null_params_to_the_daemon() {
-    let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("fake.sock");
-    let listener = UnixListener::bind(&socket).unwrap();
-    let seen = tokio::spawn(async move {
-        let mut seen = Vec::new();
-        for _ in 0..2 {
-            let (stream, _) = listener.accept().await.unwrap();
-            let (read, mut write) = stream.into_split();
-            let mut lines = BufReader::new(read).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let request: Value = serde_json::from_str(&line).unwrap();
-                let result = if request["method"] == "todo.list" {
-                    json!([])
-                } else {
-                    Value::Null
-                };
-                let reply = json!({ "jsonrpc": "2.0", "id": request["id"], "result": result });
-                write
-                    .write_all(format!("{reply}\n").as_bytes())
-                    .await
-                    .unwrap();
-                seen.push(request);
-                if seen.last().unwrap()["method"] == "todo.list" {
-                    return seen;
-                }
+    for (tool, method) in [("todo_list", "todo.list"), ("pad_list", "pad.list")] {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("fake.sock");
+        let mut requests = fake_daemon(&socket, &["daemon.identify", "todo.list", "pad.list"]);
+        let shim = spawn_shim(&socket, "a1").await;
+
+        shim.call(tool, json!({})).await;
+
+        let sent = loop {
+            let request = requests.recv().await.unwrap();
+            if request["method"] == method {
+                break request;
             }
-        }
-        seen
-    });
-    let shim = spawn_shim(&socket, "a1").await;
-
-    shim.call("todo_list", json!({})).await;
-
-    let seen = seen.await.unwrap();
-    let list = seen.last().unwrap();
-    assert_eq!(list["method"], "todo.list");
-    assert_eq!(list["params"], Value::Null);
+        };
+        assert_eq!(sent["params"], Value::Null, "{tool}");
+    }
 }
 
 #[tokio::test]
@@ -293,22 +330,107 @@ async fn m3_no_daemon_exits_nonzero_with_one_line_naming_the_socket() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("absent.sock");
 
-    let output = tokio::time::timeout(
-        BOUND,
-        tokio::process::Command::new(env!("CARGO_BIN_EXE_rup"))
-            .args(["mcp", "a1"])
-            .env("RUPD_SOCKET", &socket)
-            .stdin(Stdio::null())
-            .output(),
-    )
-    .await
-    .expect("rup mcp exited")
-    .unwrap();
+    let output = run_without_client(&socket).await;
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert_eq!(stderr.lines().count(), 1);
-    assert!(stderr.contains(socket.to_str().unwrap()));
+    assert_exit_1_with_one_line_naming(&output, &socket);
+}
+
+#[tokio::test]
+async fn m3_a_daemon_that_never_answers_exits_nonzero_with_one_line_naming_the_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("mute.sock");
+    let _requests = fake_daemon(&socket, &[]);
+
+    let output = run_without_client(&socket).await;
+
+    assert_exit_1_with_one_line_naming(&output, &socket);
+}
+
+#[tokio::test]
+async fn m3_a_call_the_daemon_never_answers_exits_1_saying_it_may_have_been_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let _requests = fake_daemon(&socket, &["daemon.identify"]);
+    let mut shim = spawn_shim(&socket, "a1").await;
+    let peer = shim.client.peer().clone();
+
+    tokio::spawn(async move {
+        peer.call_tool_once(CallToolRequestParams::new("todo_list"))
+            .await
+    });
+
+    let status = tokio::time::timeout(BOUND, shim.child.wait())
+        .await
+        .expect("the shim exited")
+        .unwrap();
+    assert_eq!(status.code(), Some(1));
+    let mut stderr = String::new();
+    shim.child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .await
+        .unwrap();
+    assert!(stderr.contains("may have been applied"), "{stderr}");
+}
+
+#[tokio::test]
+async fn m3_stdout_carries_only_protocol_messages_up_to_the_exit() {
+    let project = start_daemon();
+    let mut child = start_rup_mcp(&project.socket, "a1");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    for message in [
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": ProtocolVersion::LATEST_WITH_INITIALIZE.as_str(),
+            "capabilities": {},
+            "clientInfo": { "name": "test", "version": "0" },
+        }}),
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": "todo_create", "arguments": { "title": "x" } } }),
+    ] {
+        write_line(&mut stdin, &message).await;
+    }
+    let mut lines = Vec::new();
+    loop {
+        let line = tokio::time::timeout(BOUND, stdout.next_line())
+            .await
+            .expect("the shim answered todo_create")
+            .unwrap()
+            .expect("stdout is open until the shim answers todo_create");
+        let answers_create = serde_json::from_str::<Value>(&line).is_ok_and(|m| m["id"] == 2);
+        lines.push(line);
+        if answers_create {
+            break;
+        }
+    }
+    project.daemon.abort();
+    let _ = project.daemon.await;
+
+    write_line(
+        &mut stdin,
+        &json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "todo_list" } }),
+    )
+    .await;
+
+    while let Some(line) = tokio::time::timeout(BOUND, stdout.next_line())
+        .await
+        .expect("the shim closed stdout")
+        .unwrap()
+    {
+        lines.push(line);
+    }
+    let status = tokio::time::timeout(BOUND, child.wait())
+        .await
+        .expect("the shim exited")
+        .unwrap();
+    assert_eq!(status.code(), Some(1));
+    for line in &lines {
+        let message: Value = serde_json::from_str(line).unwrap_or_else(|_| panic!("{line}"));
+        assert_eq!(message["jsonrpc"], "2.0", "{line}");
+    }
 }
 
 #[tokio::test]
