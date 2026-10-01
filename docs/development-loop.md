@@ -23,11 +23,12 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 
 | Role | Does | Never |
 |---|---|---|
-| Architect | Owns `contracts/`, `CONTEXT.md`, ADRs. Approves contract changes. | Writes feature code. |
+| Architect | Owns `contracts/`, `CONTEXT.md`, ADRs. Approves contract changes. Turns recurring failures into new rules (see Loop on the loop). | Writes feature code. |
 | Builder | Failing test first, then code, in one worktree, one module. Opens a small PR. | Reviews its own PR. |
-| Reviewer | Reads diff + linked scenario + `AGENTS.md`, nothing else. Approves or lists defects. | Sees the Builder's rationale or chat. |
-| QA/Driver | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
-| Design critic | Scores each screenshot against `docs/wireframes.md`'s checklist. Files Todos. | Edits code. |
+| Reviewer | Reads the diff, the linked scenario and `AGENTS.md`, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
+| Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
+| QA | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
+| Design critic | Scores each screenshot against the checklist in its prompt (from `docs/wireframes.md`). Files Todos. | Edits code. |
 | Slop sweeper | Deletes dead code and duplication (rule 2). | Adds features. |
 | Triage | Tags each failure with a class and files a Todo; assigns reverts of red main. | Fixes forward. |
 
@@ -36,19 +37,19 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | # | Step | Actor | Where | Observer |
 |---|---|---|---|---|
 | 1 | Pick the next scenario | Driver | laptop | the scenario file exists |
-| 2 | Write the failing test, then the code | Builder | local worktree, or a boxd VM when unattended (`loop/boxd.sh build`) | the new test fails first, then `just check` passes |
-| 3 | Open a small PR with commit trailers `Author-Agent: <id>` | Builder | laptop | `loop/rules.sh size` (rule 3) and `trailers` (rule 1) |
+| 2 | Write the failing test, then the code | Builder | local worktree, or a boxd VM when unattended (`loop/boxd.sh build`) | `just check` passes. That the test failed first is not machine-checked (gap) |
+| 3 | Open a small PR with commit trailers `Author-Agent: <id>` | Builder | laptop | `loop/rules.sh size` (rule 3) |
 | 4 | CI | GitHub | macOS runner | `check` job (`just check`: fmt, clippy, nextest, machete, oxlint + anti-slop, tsc, fallow) |
-| 5 | Review | Reviewer, a different id | laptop | an empty commit with trailer `Reviewed-by-Agent: <id>`, checked by `loop/rules.sh trailers` |
+| 5 | Review | Reviewer, a different id | laptop | an empty commit carrying only `Reviewed-by-Agent: <id>`; `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities) |
 | 6 | Merge when rule 1 holds | Driver | laptop | all checks green |
-| 7 | UX observers: screenshots, snapshot diff, critic score | QA/Driver, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
+| 7 | UX observers: screenshots, snapshot diff, critic score | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
 | 8 | Red main | Triage | laptop | `gh run list` shows failure; revert, never fix forward |
 
 ## Rules and what enforces them today
 
 | Rule | Enforced by | Gap |
 |---|---|---|
-| 1 Done | `check` green (CI); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml`; anti-slop via `pnpm lint` | e2e scenarios do not exist yet |
+| 1 Done | `check` green (CI); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml` (not a required check, so it does not yet block a merge); anti-slop via `pnpm lint` | e2e scenarios do not exist yet |
 | 2 Slop | `pnpm lint` (anti-slop), `pnpm slop` (fallow), `cargo machete crates`, clippy | "public function with no test or caller" and "comment restates the line below" have no machine check beyond anti-slop's own rules |
 | 3 Small PR | `loop/rules.sh size` | "generated files" means `*.lock`, `pnpm-lock.yaml`, `*/generated/*`; extend as generators appear |
 | 4 Contract change | none | needs CODEOWNERS plus a required review. That is a GitHub setting; ask the user first |
@@ -74,4 +75,4 @@ Optional, never required to merge. Use it for unattended Builders (the VM is the
 
 ## Loop on the loop
 
-Triage tags each failure with a class (contract-drift, flaky-test, vocab, perf, slop-rule, ux-checklist). When one class recurs 3 times in a cycle, a Rules agent studies the cases, writes the rule as a yes/no question or a machine check, and lands it as a contract-change PR. A rule with no recurrence for 3 cycles is deleted. Each human-gate report lists what changed and why.
+Triage tags each failure with a class (contract-drift, flaky-test, vocab, perf, slop-rule, ux-checklist). When one class recurs 3 times in a cycle, the Architect studies the cases, writes the rule as a yes/no question or a machine check, and lands it as a contract-change PR. A rule with no recurrence for 3 cycles is deleted. Each human-gate report lists what changed and why.
