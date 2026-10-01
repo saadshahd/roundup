@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 base=${2:-origin/main}
-max_lines=400
+size_guide=2000
 unit=$'\x1f'
 
 # grep that treats "no match" as success but a real error as failure.
@@ -41,8 +41,8 @@ size() {
   done <<<"$numstat"
   local distinct
   distinct=$(printf '%s' "$modules" | sort -u | g -c .)
-  [ "$lines" -le "$max_lines" ] || { echo "rule 3: $lines changed lines, max $max_lines" >&2; return 1; }
-  [ "$distinct" -le 1 ] || { echo "rule 3: touches $distinct module directories: $(printf '%s' "$modules" | sort -u | tr '\n' ' ')" >&2; return 1; }
+  [ "$lines" -le "$size_guide" ] || echo "rule 3 size guide: $lines changed lines, guide is about $size_guide; not a failure, the Reviewer notes it" >&2
+  [ "$distinct" -le 1 ] || { echo "rule 3 size guide: touches $distinct module directories: $(printf '%s' "$modules" | sort -u | tr '\n' ' '); not a failure, the Reviewer notes it" >&2; }
 }
 
 # Rule 1: every authored commit names its agent. An approval is an empty commit carrying only

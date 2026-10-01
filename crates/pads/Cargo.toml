@@ -8,6 +8,7 @@ version.workspace = true
 async-trait.workspace = true
 caseless = "0.2"
 contracts = { path = "../contracts" }
+libc = "0.2"
 rpc = { path = "../rpc" }
 serde_json.workspace = true
 tempfile.workspace = true

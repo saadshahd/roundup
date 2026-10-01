@@ -9,6 +9,7 @@ use std::io::{Read, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::Duration;
 
@@ -33,6 +34,10 @@ const TITLE_COLS: u16 = 80;
 /// How often the reader thread checks whether a program that closed its PTY has ended.
 const REAP_POLL: Duration = Duration::from_millis(5);
 const READ_CHUNK: usize = 8192;
+/// Writes a Terminal accepts ahead of its program reading them. Past this, `write` is `CONFLICT`:
+/// a program that never reads would otherwise hold a thread per write until the blocking pool is
+/// exhausted and `kill` cannot run.
+const WRITE_BACKLOG: usize = 16;
 
 /// A freshly spawned Terminal: its id and every event it emits, from the first byte of output.
 pub struct Spawned {
@@ -48,7 +53,7 @@ type Program = Arc<Mutex<Box<dyn Child + Send + Sync>>>;
 /// What it takes to drive a running program. Dropped from the Terminal's entry once it is reaped.
 struct Handle {
     master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    input: SyncSender<Vec<u8>>,
     program: Program,
 }
 
@@ -114,7 +119,8 @@ impl Terminals {
     }
 
     /// Start `params.command` (or the login shell) in a new PTY.
-    /// A missing cwd or an empty command is the caller's error; a failure to start is the Daemon's.
+    /// A missing cwd, an empty command, or a program that cannot be found or run is the caller's error;
+    /// any other failure to start is the Daemon's.
     pub async fn spawn(&self, params: SpawnParams) -> Result<Spawned, RpcError> {
         check_program(&params)?;
         // portable-pty silently falls back to $HOME when the cwd is unusable; refuse instead.
@@ -132,8 +138,8 @@ impl Terminals {
         for (name, value) in &params.env {
             command.env(name, value);
         }
-        // The reader thread starts before the program and receives the child over a channel, so
-        // no later failure can leave a program that nobody waits for.
+        // The reader and input threads start before the program (the reader receives the child over a
+        // channel), so no later failure can leave a program that nobody waits for.
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
         let writer = pair.master.take_writer().map_err(RpcError::internal)?;
         let number = self.next.fetch_add(1, Ordering::Relaxed);
@@ -148,15 +154,25 @@ impl Terminals {
                 }
             })
             .map_err(RpcError::internal)?;
+        let (input, queued) = mpsc::sync_channel(WRITE_BACKLOG);
+        std::thread::Builder::new()
+            .name(format!("terminal-{number}-input"))
+            .spawn(move || type_queued(number, queued, writer))
+            .map_err(RpcError::internal)?;
+        let argv0 = params
+            .command
+            .as_deref()
+            .and_then(<[String]>::first)
+            .map(String::as_str);
         let program: Program = Arc::new(Mutex::new(
             pair.slave
                 .spawn_command(command)
-                .map_err(RpcError::internal)?,
+                .map_err(|err| spawn_error(argv0, &err))?,
         ));
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
         let handle = Handle {
-            writer: Mutex::new(writer),
+            input,
             program: Arc::clone(&program),
             master: Mutex::new(pair.master),
         };
@@ -185,18 +201,19 @@ impl Terminals {
         })
     }
 
-    /// Type `bytes` into a running Terminal. `NOT_FOUND` if it is unknown or has exited.
+    /// Queue `bytes` to be typed into a running Terminal and return without waiting for the program to
+    /// read them. `NOT_FOUND` if it is unknown or has exited; `CONFLICT` if the program has left
+    /// [`WRITE_BACKLOG`] writes unread.
     pub async fn write(&self, id: &str, bytes: &[u8]) -> Result<(), RpcError> {
-        let handle = self.running(id)?;
-        let bytes = bytes.to_vec();
-        // A program that stops reading may fill the PTY buffer and block the write.
-        tokio::task::spawn_blocking(move || {
-            let mut writer = handle.writer.lock().expect("terminal writer lock");
-            writer.write_all(&bytes).and_then(|()| writer.flush())
-        })
-        .await
-        .map_err(RpcError::internal)?
-        .map_err(RpcError::internal)
+        match self.running(id)?.input.try_send(bytes.to_vec()) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Full(_)) => Err(RpcError::conflict(format!(
+                "terminal {id} is not reading its input"
+            ))),
+            Err(TrySendError::Disconnected(_)) => Err(RpcError::internal(format!(
+                "terminal {id} can no longer take input"
+            ))),
+        }
     }
 
     /// Tell a running Terminal its window is now `cols` x `rows`. `NOT_FOUND` as for [`Terminals::write`].
@@ -216,19 +233,24 @@ impl Terminals {
         tokio::task::spawn_blocking(move || {
             let mut program = handle.program.lock().expect("terminal program lock");
             match program.try_wait() {
-                Ok(None) => program.kill().map_err(RpcError::internal),
-                Ok(Some(_)) => Err(RpcError::not_found("running terminal")),
-                Err(err) => Err(RpcError::internal(err)),
+                Ok(None) => program.kill().map_err(RpcError::internal)?,
+                Ok(Some(_)) => return Err(RpcError::not_found("running terminal")),
+                Err(err) => return Err(RpcError::internal(err)),
             }
+            drop(program);
+            // portable-pty returns right after SIGKILL; a second kill must already see the program gone.
+            reap(&handle.program).map(drop).map_err(RpcError::internal)
         })
         .await
         .map_err(RpcError::internal)?
     }
 
     fn running(&self, id: &str) -> Result<Arc<Handle>, RpcError> {
-        id.parse::<u64>()
-            .ok()
-            .and_then(|number| self.shared.table().get(&number)?.handle.clone())
+        let number = parse_terminal_number(id)?;
+        self.shared
+            .table()
+            .get(&number)
+            .and_then(|entry| entry.handle.clone())
             .ok_or_else(|| RpcError::not_found(format!("running terminal {id}")))
     }
 
@@ -239,14 +261,12 @@ impl Terminals {
     /// it never slows the PTY reader. For output from the first byte and a guaranteed exit event,
     /// use [`Spawned::events`] instead.
     pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<EventData>, RpcError> {
-        id.parse::<u64>()
-            .ok()
-            .and_then(|number| {
-                let table = self.shared.table();
-                let entry = table.get(&number)?;
-                entry.handle.as_ref()?;
-                Some(entry.events.subscribe())
-            })
+        let number = parse_terminal_number(id)?;
+        let table = self.shared.table();
+        table
+            .get(&number)
+            .filter(|entry| entry.handle.is_some())
+            .map(|entry| entry.events.subscribe())
             .ok_or_else(|| RpcError::not_found(format!("terminal {id}")))
     }
 
@@ -267,6 +287,26 @@ struct Titles(Vec<String>);
 impl vt100::Callbacks for Titles {
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
         self.0.push(String::from_utf8_lossy(title).into_owned());
+    }
+
+    /// vt100 splits an OSC on every `;` and only reports a title that is a single piece, so a
+    /// title containing `;` arrives here and would otherwise be dropped.
+    fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
+        if let [b"0" | b"2", pieces @ ..] = params {
+            self.0
+                .push(String::from_utf8_lossy(&pieces.join(&b';')).into_owned());
+        }
+    }
+}
+
+/// Feed queued writes to the PTY. It blocks on a program that does not read, which is why it has a
+/// thread of its own instead of one from the pool `kill` also needs.
+fn type_queued(number: u64, queued: mpsc::Receiver<Vec<u8>>, mut writer: Box<dyn Write + Send>) {
+    for bytes in queued {
+        if let Err(err) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
+            eprintln!("terminal {number}: input stopped: {err}");
+            return;
+        }
     }
 }
 
@@ -352,6 +392,26 @@ fn check_program(params: &SpawnParams) -> Result<(), RpcError> {
         return Err(invalid("env names must be non-empty and contain no '='"));
     }
     Ok(())
+}
+
+/// The number a Terminal id names. Only the form `spawn` hands out is an id: `+5`, `05` and `nope`
+/// are malformed, never a second spelling of an existing Terminal.
+fn parse_terminal_number(id: &str) -> Result<u64, RpcError> {
+    id.parse::<u64>()
+        .ok()
+        .filter(|number| number.to_string() == id)
+        .ok_or_else(|| invalid(format!("not a terminal id: {id:?}")))
+}
+
+/// portable-pty reports an argv[0] it cannot find or run as text that can quote the Daemon's `PATH`;
+/// that is the caller's error and must not leak `PATH`. Any other failure to start is the Daemon's.
+fn spawn_error(program: Option<&str>, err: &impl std::fmt::Display) -> RpcError {
+    match program {
+        Some(program) if err.to_string().starts_with("Unable to spawn ") => {
+            invalid(format!("cannot run {program}"))
+        }
+        _ => RpcError::internal(err),
+    }
 }
 
 fn window(cols: u16, rows: u16) -> Result<PtySize, RpcError> {
