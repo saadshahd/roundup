@@ -1,5 +1,3 @@
-//! Helpers shared by the scenario tests.
-
 use std::path::Path;
 use std::sync::Arc;
 
@@ -19,14 +17,6 @@ pub struct Fixture {
     pub agents: Agents,
 }
 
-pub fn ctx(bus: &Bus) -> Ctx {
-    Ctx {
-        actor: Actor::user(),
-        bus: bus.clone(),
-        touches: Arc::new(Touches::in_memory().unwrap()),
-    }
-}
-
 pub fn open_in(dir: &Path, bus: &Bus) -> Agents {
     let terminals = Arc::new(Terminals::open(dir, bus.clone()).unwrap());
     Agents::open(dir, bus.clone(), terminals).unwrap()
@@ -34,8 +24,10 @@ pub fn open_in(dir: &Path, bus: &Bus) -> Agents {
 
 impl Fixture {
     pub fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let bus = Bus::new();
+        Self::over(tempfile::tempdir().unwrap(), Bus::new())
+    }
+
+    fn over(dir: tempfile::TempDir, bus: Bus) -> Self {
         let events = bus.subscribe();
         let agents = open_in(dir.path(), &bus);
         Self {
@@ -46,24 +38,21 @@ impl Fixture {
         }
     }
 
-    /// The same directory, opened again as after a Daemon restart (new Terminals, none running).
     pub fn reopen(self) -> Self {
         let Self {
             dir, bus, agents, ..
         } = self;
         drop(agents);
-        let events = bus.subscribe();
-        let agents = open_in(dir.path(), &bus);
-        Self {
-            dir,
-            bus,
-            events,
-            agents,
-        }
+        Self::over(dir, bus)
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
-        self.agents.call(&ctx(&self.bus), method, params).await
+        let ctx = Ctx {
+            actor: Actor::user(),
+            bus: self.bus.clone(),
+            touches: Arc::new(Touches::in_memory().unwrap()),
+        };
+        self.agents.call(&ctx, method, params).await
     }
 
     pub async fn group(&self, name: &str, parent: Option<&str>) -> String {
