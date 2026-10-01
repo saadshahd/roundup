@@ -16,6 +16,7 @@ tokio.workspace = true
 
 [dev-dependencies]
 provenance = { path = "../provenance" }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

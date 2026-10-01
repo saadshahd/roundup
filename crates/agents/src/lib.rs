@@ -17,6 +17,7 @@ use serde_json::Value;
 use terminal::Terminals;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::time::{Instant, sleep_until};
 
 pub mod claude_code;
 mod rail;
@@ -53,9 +54,14 @@ struct Shared {
     runs: Mutex<HashMap<String, Option<Run>>>,
     bus: Bus,
     terminals: Arc<Terminals>,
+    /// Milliseconds since the Unix epoch. Adapters stamp Statuses with it and the watchers time
+    /// Ticks by it, so the two never disagree about when a hold ends.
+    clock: Clock,
     /// Since when an Agent without a Terminal has been `done`.
     opened: i64,
 }
+
+type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
 impl Shared {
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
@@ -85,9 +91,15 @@ impl Shared {
     }
 
     /// Fold `observation` into Agent `id`'s Status. A change is announced as `agent.status`, and
-    /// the first idle types the prompt the Agent was spawned with.
-    fn observe(&self, actor: Actor, id: &str, observation: Observation) -> Result<(), RpcError> {
-        let (changed, prompt) = {
+    /// the first idle types the prompt the Agent was spawned with. Returns when, on `clock`, the
+    /// adapter wants its next `Observation::Tick`.
+    fn observe(
+        &self,
+        actor: Actor,
+        id: &str,
+        observation: Observation,
+    ) -> Result<Option<i64>, RpcError> {
+        let (changed, prompt, tick_at) = {
             let mut runs = self.runs();
             let run = runs
                 .get_mut(id)
@@ -101,6 +113,7 @@ impl Shared {
             (
                 changed,
                 prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
+                run.adapter.tick_at(),
             )
         };
         if let Some(status) = changed {
@@ -117,7 +130,7 @@ impl Shared {
                 prompt,
             ));
         }
-        Ok(())
+        Ok(tick_at)
     }
 }
 
@@ -147,45 +160,32 @@ async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: Str
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
 const REGISTERED: &str = "a watched Agent is registered";
 
-/// Feed one Terminal's title changes and its exit to the Agent behind it.
-async fn watch(
-    shared: Arc<Shared>,
-    id: String,
-    terminal_id: String,
-    mut events: Receiver<EventData>,
-) {
-    let daemon = Actor::daemon;
+/// Feed one Terminal's titles and its exit to the Agent behind it, and a Tick at the time its
+/// adapter asks for one. Only a held star asks, so the watcher of an idle Agent never wakes.
+async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>) {
+    let mut tick: Option<Instant> = None;
     loop {
-        match events.recv().await {
-            Ok(EventData::TerminalTitle(title)) => {
-                shared
-                    .observe(daemon(), &id, Observation::Title(title.title))
-                    .expect(REGISTERED);
-            }
-            Ok(EventData::TerminalExited(exited)) => {
-                shared
-                    .observe(daemon(), &id, Observation::Exit { code: exited.code })
-                    .expect(REGISTERED);
-                return;
-            }
-            Ok(_) => {}
-            // Output can outrun this task and drop the exit event with it; the table still knows.
-            Err(RecvError::Lagged(_)) => {
-                let gone = shared
-                    .terminals
-                    .list()
-                    .into_iter()
-                    .find(|t| t.id == terminal_id && !t.running);
-                if let Some(gone) = gone {
-                    let exit = Observation::Exit {
-                        code: gone.exit_code,
-                    };
-                    shared.observe(daemon(), &id, exit).expect(REGISTERED);
-                    return;
-                }
-            }
-            Err(RecvError::Closed) => return,
+        let observation = tokio::select! {
+            event = events.recv() => match event {
+                Ok(EventData::TerminalTitle(title)) => Observation::Title(title.title),
+                Ok(EventData::TerminalExited(exited)) => Observation::Exit { code: exited.code },
+                // A lag loses the oldest events, never the exit: it is the last one sent.
+                Ok(_) | Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => return,
+            },
+            () = sleep_until(tick.unwrap_or_else(Instant::now)), if tick.is_some() => Observation::Tick,
+        };
+        let exited = matches!(observation, Observation::Exit { .. });
+        let tick_at = shared
+            .observe(Actor::daemon(), &id, observation)
+            .expect(REGISTERED);
+        if exited {
+            return;
         }
+        tick = tick_at.map(|at| {
+            let wait = u64::try_from(at - (shared.clock)()).unwrap_or(0);
+            Instant::now() + Duration::from_millis(wait)
+        });
     }
 }
 
@@ -214,6 +214,7 @@ impl Agents {
                 runs: Mutex::new(HashMap::new()),
                 bus,
                 terminals,
+                clock: Arc::new(now_ms),
                 opened: now_ms(),
             }),
             dir: dir.to_owned(),
@@ -322,8 +323,9 @@ impl Agents {
                 return Err(err);
             }
         };
+        let clock = Arc::clone(&self.shared.clock);
         let run = Run {
-            adapter: ClaudeCode::starting(now_ms),
+            adapter: ClaudeCode::starting(move || clock()),
             prompt,
             terminal_id: spawned.id.clone(),
         };
@@ -331,7 +333,6 @@ impl Agents {
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
-            spawned.id.clone(),
             spawned.events,
         ));
         Ok(spawned.id)
@@ -433,5 +434,143 @@ impl Module for Agents {
             }
             _ => Err(RpcError::method_not_found(method)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use contracts::terminal::{ExitedEvent, TitleEvent};
+    use contracts::{Actor, Event, EventData, Kind};
+    use rpc::Bus;
+    use serde_json::json;
+    use terminal::Terminals;
+    use tokio::sync::broadcast;
+    use tokio::task::JoinHandle;
+    use tokio::time::Instant;
+
+    use super::claude_code::{ClaudeCode, STAR_HOLD};
+    use super::{Clock, Observation, Run, Shared, rail, watch};
+
+    const PATIENCE: Duration = Duration::from_secs(60);
+    const HOLD: Duration = Duration::from_millis(STAR_HOLD as u64);
+
+    /// Agent `1`, watched over a stand-in for its Terminal's events, on tokio's clock, which these
+    /// tests pause.
+    struct Watched {
+        _dir: tempfile::TempDir,
+        shared: Arc<Shared>,
+        terminal: broadcast::Sender<EventData>,
+        events: broadcast::Receiver<Event>,
+        watcher: JoinHandle<()>,
+    }
+
+    impl Watched {
+        fn start() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let bus = Bus::new();
+            let begun = Instant::now();
+            let clock: Clock = Arc::new(move || begun.elapsed().as_millis() as i64);
+            let adapter_clock = Arc::clone(&clock);
+            let shared = Arc::new(Shared {
+                rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+                runs: Mutex::new(HashMap::new()),
+                bus: bus.clone(),
+                terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
+                clock,
+                opened: 0,
+            });
+            let run = Run {
+                adapter: ClaudeCode::starting(move || adapter_clock()),
+                prompt: None,
+                terminal_id: "1".into(),
+            };
+            shared.runs().insert("1".into(), Some(run));
+            let (terminal, terminal_events) = broadcast::channel(16);
+            let events = bus.subscribe();
+            let watcher = tokio::spawn(watch(Arc::clone(&shared), "1".into(), terminal_events));
+            Self {
+                _dir: dir,
+                shared,
+                terminal,
+                events,
+                watcher,
+            }
+        }
+
+        fn signal(&self, event: &str) {
+            let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
+            self.shared
+                .observe(Actor::daemon(), "1", Observation::Signal(payload))
+                .unwrap();
+        }
+
+        fn send(&self, data: EventData) {
+            self.terminal.send(data).unwrap();
+        }
+
+        fn star(&self) {
+            self.send(EventData::TerminalTitle(TitleEvent {
+                id: "1".into(),
+                title: "\u{2733} Claude Code".into(),
+            }));
+        }
+
+        /// The Kind of the next `agent.status`.
+        async fn next_kind(&mut self) -> Kind {
+            loop {
+                let event = tokio::time::timeout(PATIENCE, self.events.recv())
+                    .await
+                    .expect("an agent.status in time")
+                    .unwrap();
+                if let EventData::AgentStatus(status) = event.data {
+                    return status.status.kind;
+                }
+            }
+        }
+
+        /// Whether an `agent.status` is waiting.
+        fn has_news(&mut self) -> bool {
+            std::iter::from_fn(|| self.events.try_recv().ok())
+                .any(|event| matches!(event.data, EventData::AgentStatus(_)))
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a2_a_held_star_reads_idle_when_star_hold_has_passed_and_not_before() {
+        let mut w = Watched::start();
+        w.signal("PreToolUse");
+        assert_eq!(w.next_kind().await, Kind::Working);
+        let star = Instant::now();
+
+        w.star();
+
+        // An observation window: no Status may change while the star is held.
+        tokio::time::sleep(HOLD - Duration::from_millis(1)).await;
+        assert!(!w.has_news());
+        assert_eq!(w.next_kind().await, Kind::Idle);
+        assert_eq!(star.elapsed().as_millis(), HOLD.as_millis());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a2_an_exit_ends_the_watch_without_waiting_out_a_held_star() {
+        let w = Watched::start();
+        w.signal("PreToolUse");
+        w.star();
+        let star = Instant::now();
+
+        w.send(EventData::TerminalExited(ExitedEvent {
+            id: "1".into(),
+            code: Some(0),
+        }));
+
+        tokio::time::timeout(PATIENCE, w.watcher)
+            .await
+            .expect("the watch ends")
+            .unwrap();
+        assert!(star.elapsed() < HOLD);
     }
 }
