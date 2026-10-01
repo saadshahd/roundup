@@ -2,7 +2,7 @@
 
 This is the queue until roundup can hold its own Todos (`docs/development-loop.md`). One line per item: scenario ids, module, owned files and the observer that says the item is done (`AGENTS.md` rule 1). An item without scenario ids and an observer is not ready and is not dispatched. Scenarios with the same PR key ship as one PR in one worktree. Line counts are estimates, sized to the guide of about 2000 lines (#39).
 
-Status of the MVP slice as of this file: everything below under "Merged" is on main. The agents stack is the critical path.
+Status as of this file: the MVP slice is merged except the MVP gate, which QA and the Driver run in parallel with UX work; see "Open" for what is left.
 
 ## Merged
 
@@ -22,44 +22,44 @@ Status of the MVP slice as of this file: everything below under "Merged" is on m
 | #53 | `ui-terminal` | U11–U14 |
 | #56 | X8 fix: the slow-subscriber test streams 2 MB | X8 |
 | #36, #40 | pads-4, terminal-6 | P5, P8, P9, X9, X10 |
+| #54, #55 | `agents-stack`, `agents-mvp` | A1–A12 |
+| #57 | `ui-drag` | U22 |
+| #58, #72 | swarm board and UX scenarios; id reservations | docs |
+| #59, #66, #71, #73 | boxd: review, check and bake, `BOXD_MAX_VMS`, swarm, status, kill | L1–L15 |
+| #60, #61 | `ux-layout`, `ux-daemon` | U23–U25 |
+| #62 | `chrome-harness` | U26 |
+| #63, #64 | `ux-drawer`, `ux-pads` | U27–U29 |
+| #65 | `app-dev`, the window loads the webview | S4 |
+| #68 | perf: `just perf` and budgets | R1–R7 |
+| #70 | `daemon-e2e` | D2–D4 |
+| #74 | `u30-chip`, jump to what needs you | U30 (was V1) |
+| #75 | `ux-spawn`, spawn shortcuts and pinned actions | U32 |
 
 ## Open
 
-Every row points at a PR number; `gh pr list` is the truth when this file and it disagree.
+Every row points at a PR number where one exists; `gh pr list` is the truth when this file and it disagree.
 
 | PR | Item | Scenarios | Module | Observer | State |
 |---|---|---|---|---|---|
-| #54 | `agents-stack` | A1–A8 | `crates/agents`, `crates/rup` | `just check` green; `a1_`…`a8_` tests pass | open, mergeable; fixes pushed, reviews in flight. Supersedes #17–#37 (still open, to be closed) |
-| #55 | `agents-mvp` | A9–A12 | `crates/agents` | `just check` green; `a9_`…`a12_` tests pass | approved; stacked on #54, merges after it |
-| #57 | `ui-drag` (stretch) | U22 | `apps/desktop` (`src/rail/drag*`) | `u22_` tests pass | open |
-| #58 | swarm board and UX scenarios | none (docs) | `.work`, `scenarios` | reviewer approval; `loop/rules.sh vocab` | open, this PR |
-| #59 | boxd `review` subcommand | L-series (`loop.md`) | `loop/` | `just check`; the `l<n>_` tests it names | open |
-| none yet | `daemon-e2e` | D2–D4 | `crates/rup` (`tests/e2e*`) | `d2_`…`d4_` pass; D4 prints the measured MB | in flight; needs #55 merged to run |
-| none yet | `app-dev` | S1 (the `just app` dev window) | `crates/desktop` / `justfile` | `just app <project>` opens a working window | in flight (builder-app-dev), no PR open |
-| #60 | `ux-layout` | U23–U24 | `apps/desktop` | `u23_`, `u24_` tests pass | open |
-| #61 | `ux-daemon` | U25 | `apps/desktop` | `u25_` test passes | open |
-| #62 | `chrome-harness` | U26 | `apps/desktop` | `u26_` test passes; QA can drive the real App on a fake Daemon in Chrome | open |
-| none yet | `ux-drawer` | U27–U28 | `apps/desktop` | `u27_`, `u28_` tests pass | in flight (builder-ux-drawer), no PR open; ids reserved |
-| none yet | `ux-pads` | U29 | `apps/desktop` | `u29_` test passes | in flight (builder-ux-pads), no PR open; ids reserved |
-| none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | after #54, #55 and `daemon-e2e` (`ui-drag` excluded) |
-
-Critical path: #54 → #55 → `daemon-e2e` → MVP gate.
+| #67 | boxd.md corrections | docs | `docs` | reviewer approval | open |
+| none yet | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight (builder-ux-drawer) |
+| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | Claimed-by: boxd-agents 2026-10-01 |
+| none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
 ## UX enhancements (`scenarios/ux.md`)
 
-Start after the MVP gate unless the Architect says otherwise; ordered by expected value. Observer for every row: `just check` green, the `v<n>_` tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. Every row is a candidate: the Architect confirms it before it is dispatched. V6 also edits U14 in the `ux-empty` PR, with the test `u14_with_nothing_selected_the_pane_is_empty` and the code, so main never disagrees with its scenarios.
+Candidates left after U30 (V1), U32 and U33 (V3), U31 (part of V2) and U27–U28 (most of V9) moved into `scenarios/ui.md`. Ordered by expected value. Observer for every row: `just check` green, the tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. A row moves into `ui.md` under a reserved `U` id when it is dispatched.
 
-| Order | PR key | Scenarios | Module | Owns | Est. lines | Merge after | Extra observer |
-|---|---|---|---|---|---|---|---|
-| 1 | `ux-jump` | V1 | `apps/desktop` | `src/rail/jump*` | 300–500 | MVP gate | QA screenshots `artifacts/ux/V1/` with ten Agents, before and after a jump |
-| 2 | `ux-keys` | V2, V9 | `apps/desktop` | `src/keys/**`, plus one line in `src/App.tsx` that mounts it | 600–900 | MVP gate | QA drives the Rail and a Drawer by keyboard only |
-| 3 | `ux-spawn` | V3 | `apps/desktop` | `src/rail/spawn*` | 300–500 | `ux-keys` (it uses the focus model) | none |
-| 4 | `ux-reopen-app` | V4 (App half) | `crates/desktop` | `crates/desktop/**`, `scenarios/app.md` S1 | 200–400 | MVP gate | a Rust test named `s1_…` for a second `open_project` after exit |
-| 5 | `ux-reopen-ui` | V4 (webview half) | `apps/desktop` | `src/app/reopen*` | 200–400 | `ux-reopen-app` | QA kills the Daemon and reopens |
-| 6 | `ux-scrollback` | V5 | `apps/desktop` | `src/terminal/scroll*`, `src/terminal/emulator.ts` | 400–600 | MVP gate | QA RSS with ten Terminals printing 100 000 lines each |
-| 7 | `ux-empty` | V6 | `apps/desktop` | one small file per region: `src/rail/empty*`, `src/todos/empty*`, `src/pads/empty*`, `src/terminal/empty*` (four directories, one module) | 200–400 | MVP gate | QA screenshots `artifacts/ux/V6/` of a fresh Project |
-| 8 | `ux-todos` | V7 | `apps/desktop` | `src/todos/**` | 300–500 | MVP gate | none |
-| 9 | `ux-pads` | V8 | `apps/desktop` | `src/pads/**` | 300–500 | MVP gate | none |
+| Order | PR key | Scenarios | Module | Owns | Merge after | Extra observer |
+|---|---|---|---|---|---|---|
+| 1 | `ux-keys` | V2 rest (Left and Right fold, F2, ⌘1 and ⌘2) | `apps/desktop` | `src/keys/**`, one line in `src/App.tsx` | U31 | QA drives the Rail by keyboard only |
+| 2 | `ux-reopen-app` | V4 (App half) | `crates/desktop` | `crates/desktop/**`, `scenarios/app.md` S1 | none | a Rust `s1_` test for a second `open_project` after exit |
+| 3 | `ux-reopen-ui` | V4 (webview half) | `apps/desktop` | `src/app/reopen*` | `ux-reopen-app` | QA kills the Daemon and reopens |
+| 4 | `ux-scrollback` | V5 | `apps/desktop` | `src/terminal/scroll*`, `src/terminal/emulator.ts` | none | QA RSS with ten Terminals printing 100 000 lines each |
+| 5 | `ux-empty` | V6 (amends U14, with its test and code) | `apps/desktop` | one small file per region, four directories | none | QA screenshots of a fresh Project |
+| 6 | `ux-todos` | V7 | `apps/desktop` | `src/todos/**` | none | none |
+| 7 | `ux-pads-safe` | V8 | `apps/desktop` | `src/pads/**` | none | none |
+| 8 | V9 leftovers | V9 minus U27–U28 | `apps/desktop` | `src/drawer/**` | reconcile with U27–U28 first | none |
 
 A shared webview file (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.tsx`, `package.json`, `pnpm-lock.yaml`) is edited only as the scenario's row says. Any other change to one stops the Builder and is reported to the Architect.
 
@@ -68,7 +68,7 @@ A shared webview file (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App
 - motion.md rows other than the Drawer slide and drag;
 - Terminals named from their first command;
 - Screen 11's recent folders and its `claude` version / not-found line;
-- the `● 1 below` line (V1 covers jumping, not the pinned line), provenance letters, the Todo `on` field and the Pad storage switch;
+- the `● 1 below` line (U30 covers jumping, not the pinned line), provenance letters, the Todo `on` field and the Pad storage switch;
 - Inbox, Messages, Routes, Extensions and history;
 - packaging (a signed `.app`).
 
@@ -77,7 +77,7 @@ A shared webview file (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App
 Agents coordinate only through this repo: this file, `scenarios/`, PRs and their commit trailers. The WIP limit, the `Claimed-by:` line and the one-day claim expiry are queue policy added by the Architect, not `AGENTS.md` rules; change them here.
 
 - **Claiming.** An item is claimed by a `Claimed-by: <agent-id> <date>` line under its row. Only the Architect pushes it to main (`AGENTS.md`: nobody else pushes there). A Builder requests a claim by being named in a dispatch; a Builder never claims by editing this file in its own PR, and does not start an item that has no claim. A claim with no branch or PR after a day is released by the Architect.
-- **WIP limit.** At most 6 Builders work at once, counting every open PR that is not waiting on review. The Architect dispatches no seventh. `boxd` VMs are a further limit of 4 (`AGENTS.md`).
+- **WIP limit.** At most 6 Builders work at once, counting every open PR that is not waiting on review. The Architect dispatches no seventh. `boxd` VMs are a further limit, `BOXD_MAX_VMS`, default 12 (`AGENTS.md`).
 - **One id per author, a different id per reviewer.** Every authored commit carries `Author-Agent: <id>`. The Reviewer's approval is an empty commit that carries only `Reviewed-by-Agent: <id>`, and its id differs from every `Author-Agent` in the PR. It is the newest commit: anything pushed after it needs a new approval. `loop/rules.sh trailers` reads `git log --no-merges`, so it does not see a merge of main made after the approval; the Merger checks that by hand (`git log --first-parent` shows no merge above the approval). A merge of main that touches only a lockfile gets a fresh empty `Reviewed-by-Agent` commit and no more. A Reviewer is never given the Builder's rationale (rule 5).
 - **How the Merger gates.** The Merger merges a PR only when rule 1 holds, all at once: CI `check` green; the scenario ids named in the PR have passing tests, in e2e where the scenario is end to end, and the item's named observer passes as well, never instead; an approval from a different id; `loop/rules.sh trailers`, `size origin/main` and `vocab` clean; zero anti-slop findings. PRs merge in the order of their "merge after" column, and a stacked PR merges after the PR it stacks on. If main is red, the Merger stops and reverts; it never fixes forward (rule in `AGENTS.md`).
 - **Stale branches.** A Builder whose branch is behind main merges `origin/main` into its branch (the repo's practice, for example on `builder/mcp`), runs `just check`, pushes, and asks for a new approval. A stacked branch merges its base's head first, then main. It never rebases a branch with an approval or a review in flight.
@@ -91,8 +91,12 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U26 | #62 `chrome-harness` (renumbered from U23) |
   | U27–U28 | `ux-drawer` (focus on close, Esc, the Drawer edge) |
   | U29 | `ux-pads` (the Pad row) |
-  | U30–U33 | the next UX items, unassigned: V1 jump to what needs you, Rail by keyboard, spawn shortcuts (reserved for the Architect's dispatch) |
+  | U30 | #74, jump to what needs you (merged) |
+  | U31 | Rail keyboard, builder-ux-drawer |
+  | U32 | #75, spawn shortcuts (merged) |
+  | U33 | spawn with a prompt, boxd-agents |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
+  | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
 
   Every Builder has ids now; the Architect reserves more on request. V1–V9 in `scenarios/ux.md` are the Architect's candidates and are not reserved to any Builder; `ux-drawer` overlaps V9, so whichever lands second drops the overlap.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.

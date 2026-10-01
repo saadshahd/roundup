@@ -1,12 +1,10 @@
 # UX enhancements
 
-Candidate scenarios for someone running ten Agents from one window, after the MVP's U1 to U21 are on main. They sit in `apps/desktop` (V4 also in `crates/desktop`) and build on `ui.md`; everything here uses CONTEXT.md terms and only methods and events in `contracts/generated/`. No scenario here changes `contracts/`. Ids are `V1` to `V9`, in expected-value order: the first ones decide whether ten Agents are usable at all, the last ones polish what already works.
+Candidate scenarios for someone running ten Agents from one window, after the MVP's U1 to U21 are on main. They sit in `apps/desktop` (V4 also in `crates/desktop`) and build on `ui.md`; everything here uses CONTEXT.md terms and only methods and events in `contracts/generated/`. No scenario here changes `contracts/`. Ids are `V1` to `V9`, in expected-value order; a candidate that is dispatched moves into `ui.md` under a `U` id and leaves this file (V1 is U30, V3 is U32 and U33, and `↑`, `↓`, a focus ring and `Enter` from V2 are U31): the first ones decide whether ten Agents are usable at all, the last ones polish what already works.
 
 Tests run in Vitest with jsdom against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), as in `ui.md`; the clock and the terminal emulator are injected. A scenario that changes what the window looks like also says what QA captures, to `artifacts/ux/<id>/<step>.png`, in the Chrome run against a fake Daemon (`docs/development-loop.md`, step 7). Chords are written `⌘<key>`; a ⌘ chord is handled by the webview and never reaches a Terminal. Every on-screen string quoted is a proposal for the Design critic to score, not a wireframe fact.
 
-## V1 to V3: moving between ten Agents
-
-**V1 jump to what needs you.** Given a Rail of ten Agents scrolled so that some rows are off screen, when the user presses `⌘J`, then selection moves to the most urgent Agent or Meta-agent: Kind `error` before `needs-you`, and within a Kind the one whose Status `since` is oldest. Its row scrolls into view and its Terminal shows. Pressing `⌘J` again selects the next in that order and wraps after the last. When no Agent has Kind `needs-you` or `error`, nothing changes. The Rail never reorders (wireframes decision 3). The Agents `⌘J` visits are exactly the ones U10 counts in the Dock badge. Terminals never count, as in U10. QA captures the Rail with ten Agents before and after a jump.
+## V2: moving between ten Agents
 
 **V2 Rail by keyboard.** Given an open Project, focus is in exactly one place: the Rail, the pane, or an open Drawer. `⌘1` puts it in the Rail, `⌘2` in the pane. With focus in the Rail:
 - `↑` and `↓` select the previous and next visible row, and stop at the ends;
@@ -15,8 +13,6 @@ Tests run in Vitest with jsdom against the fake App seam (`apps/desktop/src/test
 - `F2` edits the selected name in place, as double-click does in U9.
 
 Nothing in the Rail takes keystrokes while focus is in the pane, so typing `j` into a Terminal never moves the selection. Selecting a row by keyboard shows its Terminal exactly as clicking does, and calls no method of its own.
-
-**V3 quick spawn.** Given an open Project, when the user presses `⌘N`, then an inline prompt field opens at the top of the Rail, focused. Enter calls `agent.spawn {cwd: <Project path>, prompt: <text>, parent}` with U9's parent rule; an empty field calls it with `prompt: null`. The new row becomes selected, and focus goes to the pane so the user can type straight away. Esc closes the field and calls nothing. `⌘T` does the same for `rail.spawnTerminal` with no field. A failed call shows U9's `✕ <message>` line and leaves the field's text in place. V3 reuses U9's call and its error line; it adds only the chord and the field.
 
 ## V4: when the Daemon is gone
 
