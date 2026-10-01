@@ -48,3 +48,12 @@ export const mountTodos = async (initial: Todo[], reducedMotion = true) => {
 
 export const callsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
   app.calls.filter((call) => call.method === method);
+
+/** The Shelf's row for the Todo of this id, found by the `data-id` the row carries. */
+export const rowOf = (id: number): HTMLElement => {
+  const found = document.querySelector<HTMLElement>(`[data-id="${id}"]`);
+
+  if (!found) throw new Error(`no row for #${id}`);
+
+  return found;
+};
