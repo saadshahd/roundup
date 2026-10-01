@@ -21,3 +21,9 @@
 **L10 input.** Given a name outside `^[a-z0-9][a-z0-9-]*$`, a prompt file starting with `-`, or a ref starting with `-`, when `build` or `review` runs, then it exits 2 before creating a VM or a file.
 
 **L11 reboot.** Given a VM created from the snapshot, then it is rebooted and answers `exec` before any agent or check runs on it.
+
+**L12 swarm.** Given N prompt files, when `loop/boxd.sh swarm <build|review> <prompt-file>...` runs, then every prompt file is validated before any VM is made, each agent gets its own isolated VM named `ru-builder-<n>` or `ru-reviewer-<n>`, no more than `BOXD_MAX_VMS` VMs exist at once, one `ok` or `failed rc=<n> (see <log>)` line is printed per VM, and it exits 1 if any failed. On SIGINT or SIGTERM it removes its VMs, stops its agents and exits 130.
+
+**L13 status.** Given `ru-` VMs, when `loop/boxd.sh status` runs, then it prints one line per VM with `agent-running`, `idle` or `unreachable`.
+
+**L14 kill.** Given `loop/boxd.sh kill <name>`, then `ru-<name>` is removed; given `kill all`, then every VM named exactly `ru-builder-<n>` or `ru-reviewer-<n>` (what `swarm` creates, including another swarm's) is removed and no other. A failed removal prints `FAILED <vm>` and exits 1.
