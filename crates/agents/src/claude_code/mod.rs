@@ -36,6 +36,24 @@ impl ClaudeCode {
         Some(next)
     }
 
+    /// Claude Code spins ◐/◑ while it works and shows ✳ whenever it is not. A spinner therefore
+    /// always means working. A star only says "not working", so it ends working (the Esc
+    /// interrupt fires no hook) but leaves needs-you alone: a dialog shows the same star.
+    /// The star lands about 50 ms before PermissionRequest, so needs-you may pass through idle.
+    fn retitle(&mut self, title: &str) -> Option<Status> {
+        match title.chars().next()? {
+            '◐' | '◑' => self.settle(Kind::Working, "working".into()),
+            '✳' if self
+                .status
+                .as_ref()
+                .is_some_and(|s| s.kind == Kind::Working) =>
+            {
+                self.settle(Kind::Idle, "idle".into())
+            }
+            _ => None,
+        }
+    }
+
     fn exit(&mut self, code: Option<i32>) -> Option<Status> {
         self.exited = true;
         match code {
@@ -51,11 +69,12 @@ impl AgentAdapter for ClaudeCode {
     fn observe(&mut self, observation: Observation) -> Option<Status> {
         match observation {
             Observation::Exit { code } => self.exit(code),
-            Observation::Signal(_) if self.exited => None,
+            Observation::Signal(_) | Observation::Title(_) if self.exited => None,
             Observation::Signal(payload) => {
                 let (kind, label) = hook_status(&payload)?;
                 self.settle(kind, label)
             }
+            Observation::Title(title) => self.retitle(&title),
         }
     }
 }

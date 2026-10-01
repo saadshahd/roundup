@@ -14,6 +14,8 @@ pub mod claude_code;
 pub enum Observation {
     /// A structured event the Agent's own tooling pushed; for Claude Code, a hook payload.
     Signal(Value),
+    /// The window title the Agent's program set.
+    Title(String),
     /// The Agent's program ended. `None` when it was killed by a signal.
     Exit { code: Option<i32> },
 }
