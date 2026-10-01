@@ -1,6 +1,6 @@
 //! X1 output, X3 exit, X7 cwd and env.
 
-use crate::common::{ctx, decode, open, sh, until_exit};
+use crate::common::{PATIENCE, ctx, decode, open, sh, until_exit};
 use contracts::EventData;
 use contracts::terminal::{SpawnParams, TerminalId, TerminalInfo};
 use rpc::Module;
@@ -19,7 +19,7 @@ async fn x1_output_reaches_a_subscribed_client() {
     let id = serde_json::from_value::<TerminalId>(spawned).unwrap().id;
     let mut printed = String::new();
     while !printed.contains("hi") {
-        let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv())
+        let event = tokio::time::timeout(PATIENCE, events.recv())
             .await
             .expect("output in time")
             .unwrap();
@@ -94,4 +94,23 @@ async fn x7_a_missing_cwd_is_the_callers_error() {
     let params = sh(&dir.path().join("absent"), "true");
     let err = terminals.spawn(params).await.err().expect("spawn fails");
     assert_eq!(err.code, rpc::code::INVALID_PARAMS);
+}
+
+#[tokio::test]
+async fn x7_an_argv_or_env_the_os_cannot_take_is_the_callers_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mutations: [fn(&mut SpawnParams); 5] = [
+        |p| p.command = Some(vec![String::new()]),
+        |p| p.command = Some(vec!["/bin/sh".into(), "a\0b".into()]),
+        |p| _ = p.env.insert("A\0B".into(), "v".into()),
+        |p| _ = p.env.insert("A=B".into(), "v".into()),
+        |p| _ = p.env.insert("A".into(), "v\0".into()),
+    ];
+    for mutate in mutations {
+        let mut params = sh(dir.path(), "true");
+        mutate(&mut params);
+        let err = terminals.spawn(params).await.err().expect("spawn fails");
+        assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{}", err.message);
+    }
 }

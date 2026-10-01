@@ -1,6 +1,6 @@
 //! X4 title.
 
-use crate::common::{open, sh};
+use crate::common::{PATIENCE, open, sh};
 use contracts::EventData;
 use contracts::terminal::SpawnParams;
 
@@ -17,13 +17,17 @@ async fn titles_of(
     let (terminals, _) = open(&dir);
     let mut spawned = terminals.spawn(params).await.unwrap();
     let mut titles = Vec::new();
-    loop {
-        match spawned.events.recv().await.unwrap() {
-            EventData::TerminalTitle(title) => titles.push(title.title),
-            EventData::TerminalExited(_) => break,
-            _ => {}
+    tokio::time::timeout(PATIENCE, async {
+        loop {
+            match spawned.events.recv().await.unwrap() {
+                EventData::TerminalTitle(title) => titles.push(title.title),
+                EventData::TerminalExited(_) => break,
+                _ => {}
+            }
         }
-    }
+    })
+    .await
+    .expect("the program exits in time");
     let listed = terminals.list().into_iter().map(|t| t.title).collect();
     (titles, listed)
 }
