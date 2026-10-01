@@ -104,6 +104,20 @@ async fn a7_a_promote_whose_agent_cannot_start_leaves_the_group_plain() {
 }
 
 #[tokio::test]
+async fn a7_a_promote_whose_claude_is_missing_leaves_no_settings_file() {
+    let f = Fixture::running("sleep 30");
+    let team = f.group("team", None).await;
+    std::fs::remove_file(f.dir.path().join("fake-claude")).unwrap();
+
+    assert!(f.promote(&team).await.is_err());
+
+    let left: Vec<_> = std::fs::read_dir(f.dir.path().join("agents"))
+        .map(|entries| entries.map(|e| e.unwrap().file_name()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "left behind: {left:?}");
+}
+
+#[tokio::test]
 async fn a7_only_a_plain_group_can_be_promoted() {
     let f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
@@ -279,4 +293,30 @@ async fn a8_a_meta_agent_keeps_its_flag_across_reopening_and_comes_back_done() {
     assert!(meta.meta);
     assert_eq!(meta.terminal_id, None);
     assert_eq!(meta.status.as_ref().map(|s| s.kind), Some(Kind::Done));
+}
+
+#[tokio::test]
+async fn a7_stopping_an_agent_an_earlier_daemon_ran_leaves_it_done() {
+    let f = Fixture::running("sleep 30");
+    let agent = f.spawn(None, None).await.unwrap();
+    let f = f.reopen();
+
+    f.stop(&agent.id).await.unwrap();
+
+    assert_eq!(status_of(&f.tree().await, &agent.id).kind, Kind::Done);
+}
+
+#[tokio::test]
+async fn a7_stopping_a_meta_agent_an_earlier_daemon_ran_lifts_its_children() {
+    let f = Fixture::running("sleep 30");
+    let (team, _) = team(&f).await;
+    f.promote(&team).await.unwrap();
+    let f = f.reopen();
+
+    f.stop(&team).await.unwrap();
+
+    assert_eq!(
+        names(&f.tree().await, None),
+        ["before:0", "agent:1", "agent:2", "team:3", "after:4"]
+    );
 }

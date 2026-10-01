@@ -47,7 +47,10 @@ pub trait AgentAdapter {
 /// State the Terminal watchers and the RPC calls share.
 struct Shared {
     rail: Mutex<rail::Rail>,
-    runs: Mutex<HashMap<String, Run>>,
+    /// `None` while the Agent's Terminal is starting. A node is marked, and unmarked on failure,
+    /// in the same Rail critical section that creates or reserves it, so `agent.stop` never finds
+    /// a starting node unmarked.
+    runs: Mutex<HashMap<String, Option<Run>>>,
     bus: Bus,
     terminals: Arc<Terminals>,
     /// Since when an Agent without a Terminal has been `done`.
@@ -59,7 +62,7 @@ impl Shared {
         self.rail.lock().expect("rail lock")
     }
 
-    fn runs(&self) -> MutexGuard<'_, HashMap<String, Run>> {
+    fn runs(&self) -> MutexGuard<'_, HashMap<String, Option<Run>>> {
         self.runs.lock().expect("runs lock")
     }
 
@@ -70,6 +73,7 @@ impl Shared {
             let live = self
                 .runs()
                 .get(&node.id)
+                .and_then(Option::as_ref)
                 .and_then(|run| run.adapter.status().cloned());
             node.status = Some(live.unwrap_or_else(|| Status {
                 kind: Kind::Done,
@@ -87,6 +91,7 @@ impl Shared {
             let mut runs = self.runs();
             let run = runs
                 .get_mut(id)
+                .and_then(Option::as_mut)
                 .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
             let changed = run.adapter.observe(observation);
             let idle = changed
@@ -222,18 +227,21 @@ impl Agents {
         let name = cwd
             .file_name()
             .map_or_else(|| "claude".into(), |n| n.to_string_lossy().into_owned());
-        let node =
-            self.shared
-                .rail()
-                .insert(NodeKind::Agent, &name, params.parent.as_deref(), None)?;
+        let node = {
+            let mut rail = self.shared.rail();
+            let node = rail.insert(NodeKind::Agent, &name, params.parent.as_deref(), None)?;
+            self.shared.runs().insert(node.id.clone(), None);
+            node
+        };
         let terminal_id = match self.run_agent(&node.id, cwd, params.prompt).await {
             Ok(terminal_id) => terminal_id,
             Err(err) => {
-                self.roll_back(&node.id);
+                let mut rail = self.shared.rail();
+                self.shared.runs().remove(&node.id);
+                report_undo("remove the Agent from the Rail", rail.remove(&node.id));
                 return Err(err);
             }
         };
-        self.shared.rail().attach_terminal(&node.id, &terminal_id)?;
         ctx.emit(EventData::RailChanged);
         Ok(self.shared.present(RailNode {
             terminal_id: Some(terminal_id),
@@ -241,37 +249,18 @@ impl Agents {
         }))
     }
 
-    /// Undo a spawn that never started. The spawn's own error is the one worth returning, so a
-    /// failed undo is reported here and not instead of it.
-    fn roll_back(&self, id: &str) {
-        if let Err(err) = self.shared.rail().remove(id) {
-            eprintln!(
-                "agents: could not remove Agent {id} from the Rail: {}",
-                err.message
-            );
-        }
-        if let Err(err) = Launcher::discard(&self.dir, id) {
-            eprintln!("agents: could not delete Agent {id}'s settings file: {err}");
-        }
-    }
-
     /// Make a Group a Meta-agent: start a live Agent that sits at it, in the Project's folder.
     async fn promote(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
-        self.shared.rail().reserve_meta(id)?;
+        {
+            let mut rail = self.shared.rail();
+            rail.reserve_meta(id)?;
+            self.shared.runs().insert(id.to_owned(), None);
+        }
         let project = self.dir.parent().unwrap_or(&self.dir);
-        let terminal_id = match self.run_agent(id, project, None).await {
-            Ok(terminal_id) => terminal_id,
-            Err(err) => {
-                self.shared.rail().release_meta(id)?;
-                return Err(err);
-            }
-        };
-        let attached = self.shared.rail().attach_terminal(id, &terminal_id);
-        if let Err(err) = attached {
+        if let Err(err) = self.run_agent(id, project, None).await {
+            let mut rail = self.shared.rail();
             self.shared.runs().remove(id);
-            // Already gone is as good as killed.
-            let _ = self.shared.terminals.kill(&terminal_id).await;
-            self.shared.rail().release_meta(id)?;
+            report_undo("give the Group back its plain state", rail.release_meta(id));
             return Err(err);
         }
         ctx.emit(EventData::RailChanged);
@@ -281,17 +270,21 @@ impl Agents {
     /// Stop an Agent's program; it stays in the Rail as `done`. A Meta-agent's children move up
     /// to where it was and keep running.
     async fn stop(&self, ctx: &Ctx, id: &str) -> Result<(), RpcError> {
-        let node = self.shared.rail().node(id)?;
+        let (node, run) = {
+            let rail = self.shared.rail();
+            let node = rail.node(id)?;
+            let run = self
+                .shared
+                .runs()
+                .get(id)
+                .map(|run| run.as_ref().map(|run| run.terminal_id.clone()));
+            (node, run)
+        };
         if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
             return Err(RpcError::conflict(format!("{id} is not an Agent")));
         }
-        let terminal_id = self
-            .shared
-            .runs()
-            .get(id)
-            .map(|run| run.terminal_id.clone());
-        match terminal_id {
-            Some(terminal_id) => {
+        match run {
+            Some(Some(terminal_id)) => {
                 self.shared
                     .observe(ctx.actor.clone(), id, Observation::Stopped)?;
                 match self.shared.terminals.kill(&terminal_id).await {
@@ -300,9 +293,9 @@ impl Agents {
                     _ => {}
                 }
             }
-            // A Terminal recorded but no Run: the Daemon restarted, nothing is left to stop.
-            None if node.terminal_id.is_some() => {}
-            None => return Err(RpcError::conflict(format!("{id} is still starting"))),
+            Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
+            // An earlier Daemon ran it; its Terminal ended with that Daemon.
+            None => {}
         }
         if node.kind == NodeKind::Group && self.shared.rail().lift_children(id)? {
             ctx.emit(EventData::RailChanged);
@@ -310,13 +303,41 @@ impl Agents {
         Ok(())
     }
 
-    /// Start Claude Code for node `id` in a Terminal and watch it; returns the Terminal's id.
+    /// Start Claude Code for node `id`, marked as starting, in a Terminal recorded in the Rail,
+    /// then register and watch it; returns the Terminal's id. A failure leaves no settings file
+    /// and no Terminal, and the caller unmarks `id`.
     async fn run_agent(
         &self,
         id: &str,
         cwd: &Path,
         prompt: Option<String>,
     ) -> Result<String, RpcError> {
+        let spawned = match self.start(id, cwd).await {
+            Ok(spawned) => spawned,
+            Err(err) => {
+                report_undo(
+                    "delete the Agent's settings file",
+                    Launcher::discard(&self.dir, id),
+                );
+                return Err(err);
+            }
+        };
+        let run = Run {
+            adapter: ClaudeCode::starting(now_ms),
+            prompt,
+            terminal_id: spawned.id.clone(),
+        };
+        self.shared.runs().insert(id.to_owned(), Some(run));
+        tokio::spawn(watch(
+            Arc::clone(&self.shared),
+            id.to_owned(),
+            spawned.id.clone(),
+            spawned.events,
+        ));
+        Ok(spawned.id)
+    }
+
+    async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {
         let argv = self.launcher.prepare(&self.dir, id, cwd)?;
         let spawned = self
             .shared
@@ -329,19 +350,23 @@ impl Agents {
                 rows: 24,
             })
             .await?;
-        let run = Run {
-            adapter: ClaudeCode::starting(now_ms),
-            prompt,
-            terminal_id: spawned.id.clone(),
-        };
-        self.shared.runs().insert(id.to_owned(), run);
-        tokio::spawn(watch(
-            Arc::clone(&self.shared),
-            id.to_owned(),
-            spawned.id.clone(),
-            spawned.events,
-        ));
-        Ok(spawned.id)
+        let attached = self.shared.rail().attach_terminal(id, &spawned.id);
+        if let Err(err) = attached {
+            report_undo(
+                "kill the Agent's Terminal",
+                self.shared.terminals.kill(&spawned.id).await,
+            );
+            return Err(err);
+        }
+        Ok(spawned)
+    }
+}
+
+/// The error that made a caller undo its work is the one it returns, so a failed undo is only
+/// reported.
+fn report_undo<E: std::fmt::Display>(what: &str, undone: Result<(), E>) {
+    if let Err(err) = undone {
+        eprintln!("agents: could not {what}: {err}");
     }
 }
 

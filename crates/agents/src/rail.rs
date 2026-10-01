@@ -330,7 +330,12 @@ mod tests {
         drop(rail);
 
         let reopened = Rail::open(&dir.path().join("agents.db")).unwrap();
-        let ids: Vec<_> = reopened.tree().unwrap().into_iter().map(|n| n.terminal_id).collect();
+        let ids: Vec<_> = reopened
+            .tree()
+            .unwrap()
+            .into_iter()
+            .map(|n| n.terminal_id)
+            .collect();
         assert_eq!(ids, [None, None]);
     }
 

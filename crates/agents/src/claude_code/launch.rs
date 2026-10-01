@@ -66,9 +66,6 @@ impl Launcher {
         Ok(Self::new(bin, claude_json, rup))
     }
 
-    /// Write Agent `id`'s settings under `dir` (the Project's `.roundup/`), trust `cwd`, and return
-    /// the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
-    /// is the user's, and this is the only grant roundup makes in it.
     /// Delete what `prepare` wrote for Agent `id`, for an Agent that never started.
     pub fn discard(dir: &Path, id: &str) -> std::io::Result<()> {
         match std::fs::remove_file(settings_path(dir, id)) {
@@ -77,6 +74,9 @@ impl Launcher {
         }
     }
 
+    /// Write Agent `id`'s settings under `dir` (the Project's `.roundup/`), trust `cwd`, and return
+    /// the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
+    /// is the user's, and this is the only grant roundup makes in it.
     pub fn prepare(&self, dir: &Path, id: &str, cwd: &Path) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
         let cwd = cwd
