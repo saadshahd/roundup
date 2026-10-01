@@ -25,10 +25,15 @@ describe("u21 export", () => {
     app.handlers["pad.export"] = () => null;
 
     await clickExport();
-    await waitFor(() => expect(app.calls.some((call) => call.method === "pad.export")).toBe(true));
+    await waitFor(() =>
+      expect(app.calls.some((call) => call.method === "pad.export")).toBe(true),
+    );
 
     expect(app.calls.filter((call) => call.method === "pad.export")).toEqual([
-      { method: "pad.export", params: { name: "auth-notes", path: "/Users/me/auth-notes.md" } },
+      {
+        method: "pad.export",
+        params: { name: "auth-notes", path: "/Users/me/auth-notes.md" },
+      },
     ]);
   });
 
@@ -39,7 +44,10 @@ describe("u21 export", () => {
     await clickExport();
     await waitFor(() => expect(app.chooser.suggestedNames).toHaveLength(1));
 
-    expect([app.chooser.suggestedNames, calls().includes("pad.export")]).toEqual([["auth-notes.md"], false]);
+    expect([
+      app.chooser.suggestedNames,
+      calls().includes("pad.export"),
+    ]).toEqual([["auth-notes.md"], false]);
   });
 
   it("u21_an_export_error_shows_the_message_in_the_drawer", async () => {
@@ -53,6 +61,9 @@ describe("u21 export", () => {
 
     const line = await screen.findByText(/does not exist/);
 
-    expect([line.textContent, screen.getByLabelText("drawer").contains(line)]).toEqual(["✕ directory /gone does not exist", true]);
+    expect([
+      line.textContent,
+      screen.getByLabelText("drawer").contains(line),
+    ]).toEqual(["✕ directory /gone does not exist", true]);
   });
 });

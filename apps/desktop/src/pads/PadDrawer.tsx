@@ -1,4 +1,5 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import type { Accessor } from "solid-js";
 import type { Pad } from "@contracts/pad/Pad";
 import { ItemDrawer } from "../drawer/ItemDrawer";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -6,15 +7,18 @@ import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
 import { ownerMark } from "./owner";
 
-const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void }) => {
+const PadBody = (props: {
+  initial: Pad;
+  pads: Accessor<readonly Pad[]>;
+  onLateFailure: (message: string) => void;
+}) => {
   const connected = useConnectedProject();
   const name = props.initial.name;
   const [pad, setPad] = createSignal(props.initial);
   const [shown, setShown] = createSignal(props.initial.text);
   const [editing, setEditing] = createSignal(false);
   const actionFailure = createFailure();
-  const refreshFailure = createFailure();
-  let newestRefresh = 0;
+  const [deleted, setDeleted] = createSignal(false);
   let missedWhileEditing = false;
   let closed = false;
 
@@ -26,20 +30,23 @@ const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void
     else setShown(next.text);
   };
 
-  const refresh = () =>
-    refreshFailure.run(async () => {
-      newestRefresh += 1;
+  const sameContent = (left: Pad, right: Pad) =>
+    left.text === right.text &&
+    left.owner.kind === right.owner.kind &&
+    left.owner.id === right.owner.id;
 
-      const mine = newestRefresh;
-      const current = (await connected.app.rpc("pad.list", null)).find((listed) => listed.name === name);
+  createEffect(
+    on(
+      props.pads,
+      (listed) => {
+        const current = listed.find((entry) => entry.name === name);
 
-      if (current && mine === newestRefresh) adopt(current);
-    });
+        setDeleted(current === undefined);
 
-  onCleanup(
-    connected.events.subscribe((event) => {
-      if (event.name === "pad.changed" && event.data.name === name) void refresh();
-    }),
+        if (current && !sameContent(current, pad())) adopt(current);
+      },
+      { defer: true },
+    ),
   );
 
   onCleanup(() => {
@@ -62,7 +69,8 @@ const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void
 
   const write = (text: string) =>
     act(async () => {
-      if (text !== pad().text) adopt(await connected.app.rpc("pad.write", { name, text }));
+      if (text !== shown())
+        adopt(await connected.app.rpc("pad.write", { name, text }));
     });
 
   const append = (text: string) =>
@@ -85,14 +93,19 @@ const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void
 
     if (missedWhileEditing) {
       missedWhileEditing = false;
-      await refresh();
+      setShown(pad().text);
     }
   };
 
   return (
     <>
-      <p>
-        {ownerMark(pad().owner)} {name} <span class="light">owned by {connected.rail.nameOf(pad().owner)}</span>{" "}
+      <p style={{ display: "flex", "justify-content": "space-between" }}>
+        <span>
+          {ownerMark(pad().owner)} {name}{" "}
+          <span class="light">
+            owned by {connected.rail.nameOf(pad().owner)}
+          </span>
+        </span>
         <button
           type="button"
           class="light"
@@ -102,11 +115,19 @@ const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void
           export .md
         </button>
       </p>
-      <Show when={actionFailure.message()}>{(message) => <ErrorLine message={message()} />}</Show>
-      <Show when={refreshFailure.message()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <Show when={actionFailure.message()}>
+        {(message) => <ErrorLine message={message()} />}
+      </Show>
+      <Show when={deleted()}>
+        <ErrorLine message={`pad ${name} was deleted`} />
+      </Show>
       <textarea
         aria-label="text"
-        style={{ "font-family": "var(--mono)", width: "100%", "min-height": "16em" }}
+        style={{
+          "font-family": "var(--mono)",
+          width: "100%",
+          "min-height": "16em",
+        }}
         readOnly={!ownedByUser()}
         value={shown()}
         onFocus={() => setEditing(ownedByUser())}
@@ -121,8 +142,10 @@ const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void
 
             if (key.key !== "Enter" || field.value === "") return;
 
-            void append(field.value).then(() => {
-              if (actionFailure.message() === null) field.value = "";
+            const text = field.value;
+            field.value = "";
+            void append(text).then(() => {
+              if (actionFailure.message() !== null) field.value = text;
             });
           }}
         />
@@ -132,12 +155,25 @@ const PadBody = (props: { initial: Pad; onLateFailure: (message: string) => void
 };
 
 /** Body of a Pad's Drawer: the Pad is read once, as the user's Touch, after the history that last-touch line shows. */
-export const PadDrawer = (props: { name: string; onLateFailure: (message: string) => void }) => {
+export const PadDrawer = (props: {
+  name: string;
+  pads: Accessor<readonly Pad[]>;
+  onLateFailure: (message: string) => void;
+}) => {
   const connected = useConnectedProject();
 
   return (
-    <ItemDrawer item={`pad:${props.name}`} read={() => connected.app.rpc("pad.read", { name: props.name })}>
-      {(pad) => <PadBody initial={pad} onLateFailure={props.onLateFailure} />}
+    <ItemDrawer
+      item={`pad:${props.name}`}
+      read={() => connected.app.rpc("pad.read", { name: props.name })}
+    >
+      {(pad) => (
+        <PadBody
+          initial={pad}
+          pads={props.pads}
+          onLateFailure={props.onLateFailure}
+        />
+      )}
     </ItemDrawer>
   );
 };
