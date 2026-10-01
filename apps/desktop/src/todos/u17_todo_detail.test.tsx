@@ -27,6 +27,12 @@ describe("u17 Todo detail", () => {
     expect(drawer().textContent).toContain("⏸ #5  session store");
   });
 
+  it("u17_the_title_row_keeps_a_space_between_the_glyph_and_the_id", async () => {
+    await openDrawerOf(/#5/);
+
+    expect(within(drawer()).getByText((_, element) => element?.tagName === "SPAN" && element.textContent === " #5  ")).toBeTruthy();
+  });
+
   it("u17_waits_on_lists_each_blocker_with_its_own_glyph", async () => {
     await openDrawerOf(/#5/);
 
@@ -79,10 +85,11 @@ describe("u17 Todo detail", () => {
   });
 
   it("u17_a_background_refresh_never_calls_todo_get_again", async () => {
-    const { app } = await openDrawerOf(/#5/);
+    const { app, store } = await openDrawerOf(/#5/);
+    store.todos = shelf().map((each) => (each.id === 5 ? { ...each, title: "renamed" } : each));
 
     app.emit(todoEvent("todo.updated", blocked()));
-    await waitFor(() => expect(callsTo(app, "todo.list")).toHaveLength(2));
+    await within(drawer()).findByText("renamed");
 
     expect(callsTo(app, "todo.get")).toHaveLength(1);
   });
@@ -252,5 +259,21 @@ describe("u17 Todo detail", () => {
     const last = await within(drawer()).findByText(/^last/);
 
     expect(last.compareDocumentPosition(within(drawer()).getByText("complete")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("u17_two_quick_blocker_picks_both_land_the_second_built_on_the_first", async () => {
+    const { app } = await openDrawerOf(/#5/);
+    app.handlers["todo.setBlockers"] = async ({ blockers }) => ({ ...blocked(), blockers });
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
+
+    await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
+    expect(callsTo(app, "todo.setBlockers").map((call) => call.params)).toEqual([
+      { id: 5, blockers: [4, 7] },
+      { id: 5, blockers: [4, 7, 10] },
+    ]);
   });
 });

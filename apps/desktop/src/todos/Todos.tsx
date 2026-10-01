@@ -54,7 +54,7 @@ export const Todos = () => {
     <section aria-label="todos">
       <p>
         todos{" "}
-        <button type="button" class="word" onClick={() => setField({ kind: "typing" })}>
+        <button type="button" class="word" onClick={() => setField((current) => (current.kind === "typing" ? current : { kind: "typing" }))}>
           +
         </button>
       </p>

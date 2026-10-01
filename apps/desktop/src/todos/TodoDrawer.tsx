@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -32,6 +32,27 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
 
   const todo = () => props.todos.byId().get(props.id);
 
+  // Picks run one after another, each from the list the previous one answered: the list state only catches up when the Event arrives.
+  const [answered, setAnswered] = createSignal<Todo | null>(null);
+  let picks: Promise<unknown> = Promise.resolve();
+
+  createEffect(() => {
+    todo();
+    setAnswered(null);
+  });
+
+  const addBlocker = (blocker: number) => {
+    picks = picks.then(() =>
+      attempt(async () => {
+        const base = answered() ?? todo();
+
+        if (!base) return;
+
+        setAnswered(await app.rpc("todo.setBlockers", { id: props.id, blockers: [...base.blockers, blocker] }));
+      }),
+    );
+  };
+
   return (
     <>
       <ItemDrawer item={`todo:${props.id}`} read={() => app.rpc("todo.get", { id: props.id })}>
@@ -40,7 +61,8 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
             {(current) => (
               <>
                 <div style={{ display: "flex", "white-space": "pre" }}>
-                  <KindGlyph kind={kindOf(current())} /> <span>{`#${props.id}  `}</span>
+                  <KindGlyph kind={kindOf(current())} />
+                  <span>{` #${props.id}  `}</span>
                   <EditableText
                     name="title"
                     multiline={false}
@@ -65,9 +87,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                       <RowButton
                         onClick={() => {
                           setOffering(false);
-                          void attempt(() =>
-                            app.rpc("todo.setBlockers", { id: props.id, blockers: [...current().blockers, other.id] }),
-                          );
+                          addBlocker(other.id);
                         }}
                       >
                         <KindGlyph kind={kindOf(other)} /> {`#${other.id}  ${other.title}`}

@@ -31,15 +31,12 @@ export const todoEvent = (name: "todo.created" | "todo.updated", data: Todo): Da
 export const mountTodos = async (initial: Todo[]) => {
   const app = createFakeApp();
   const store = { todos: initial };
-  app.handlers["rail.tree"] = () => [];
-  app.handlers["terminal.list"] = () => [];
-  app.handlers["provenance.history"] = () => [];
   app.handlers["todo.list"] = () => store.todos;
   app.handlers["todo.get"] = ({ id }) => store.todos.find((candidate) => candidate.id === id) ?? todo(id);
 
   const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
 
-  render(() => (
+  const { unmount } = render(() => (
     <ConnectedProjectContext.Provider value={connected}>
       <Layout
         header="roundup"
@@ -51,7 +48,7 @@ export const mountTodos = async (initial: Todo[]) => {
     </ConnectedProjectContext.Provider>
   ));
 
-  return { app, store, connected };
+  return { app, store, connected, unmount };
 };
 
 export const callsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>

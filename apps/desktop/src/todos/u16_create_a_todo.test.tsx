@@ -31,6 +31,15 @@ describe("u16 create a Todo", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
 
+  it("u16_clicking_plus_while_typing_keeps_the_typed_text", async () => {
+    await mountTodos([]);
+    type(await openField(), "half a thought");
+
+    fireEvent.click(screen.getByText("+"));
+
+    expect(screen.getByRole("textbox", { name: "new todo title" })).toHaveProperty("value", "half a thought");
+  });
+
   it("u16_enter_calls_todo_create_with_the_title_and_closes_the_field", async () => {
     const { app } = await mountTodos([]);
     app.handlers["todo.create"] = ({ title }) => todo(1, { title });

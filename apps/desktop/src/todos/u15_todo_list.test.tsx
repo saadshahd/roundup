@@ -92,10 +92,12 @@ describe("u15 Todo list", () => {
   });
 
   it("u15_the_list_never_calls_todo_get", async () => {
-    const { app } = await mountTodos([todo(1)]);
+    const { app, store } = await mountTodos([todo(1)]);
     await screen.findByText(/todo 1/);
+    store.todos = [todo(1, { title: "changed" })];
+
     app.emit(todoEvent("todo.updated", todo(1)));
-    await waitFor(() => expect(callsTo(app, "todo.list")).toHaveLength(2));
+    await screen.findByText(/changed/);
 
     expect(callsTo(app, "todo.get")).toEqual([]);
   });
@@ -170,5 +172,23 @@ describe("u15 Todo list", () => {
     await screen.findByRole("button", { name: /#120 todo 120/ });
 
     expect(reads).toBeLessThan(count * 10);
+  });
+
+  it("u15_a_row_wraps_under_its_id_not_under_its_glyph", async () => {
+    await mountTodos([todo(3)]);
+
+    const row = await screen.findByRole("button", { name: /#3/ });
+
+    expect([row.style.paddingLeft, row.style.textIndent]).toEqual(["2ch", "-2ch"]);
+  });
+
+  it("u15_a_list_that_is_gone_stops_listening_to_events", async () => {
+    const { app, unmount } = await mountTodos([todo(1)]);
+    await screen.findByText(/todo 1/);
+    unmount();
+
+    app.emit(todoEvent("todo.updated", todo(1)));
+
+    expect(callsTo(app, "todo.list")).toHaveLength(1);
   });
 });
