@@ -234,9 +234,10 @@ impl Terminals {
 
     /// Every event this Terminal emits from now on, in order. `NOT_FOUND` if it is unknown or has
     /// exited, as for [`Terminals::write`]: an exited Terminal has no more events, so a receiver
-    /// would never yield or close. Subscribe through [`Spawned::events`] to be sure to see the exit.
-    /// A subscriber that falls more than 1024 events behind gets `RecvError::Lagged` and then the
-    /// newest events; it never slows the PTY reader. Use [`Spawned::events`] to see output from the start.
+    /// would never yield or close.
+    /// A subscriber that falls too far behind gets `RecvError::Lagged` and then the newest events;
+    /// it never slows the PTY reader. For output from the first byte and a guaranteed exit event,
+    /// use [`Spawned::events`] instead.
     pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<EventData>, RpcError> {
         id.parse::<u64>()
             .ok()
