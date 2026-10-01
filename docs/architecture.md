@@ -62,4 +62,4 @@ Cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle Agents < 150 MB ex
 
 ## Boundaries
 
-Local only. macOS-only pieces (Tauri window, PTY behaviour, perf numbers) verify on macOS. Linux CI parity for core crates may run in cloud VMs.
+Local only. The MVP targets macOS, so builds, tests and perf numbers run locally and on GitHub macOS runners.
