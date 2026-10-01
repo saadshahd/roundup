@@ -340,7 +340,16 @@ impl Agents {
     }
 
     async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {
-        let argv = self.launcher.prepare(&self.dir, id, cwd)?;
+        // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
+        let (launcher, dir, node, folder) = (
+            self.launcher.clone(),
+            self.dir.clone(),
+            id.to_owned(),
+            cwd.to_owned(),
+        );
+        let argv = tokio::task::spawn_blocking(move || launcher.prepare(&dir, &node, &folder))
+            .await
+            .map_err(RpcError::internal)??;
         let spawned = self
             .shared
             .terminals

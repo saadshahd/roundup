@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use agents::claude_code::Launcher;
 use rpc::code;
@@ -22,6 +23,13 @@ const EVENTS: [&str; 9] = [
 
 fn read(path: &Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// `path` with `suffix` appended to its last component.
+fn beside(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    name.into()
 }
 
 /// A Project folder `<root>/proj` with its `.roundup` directory, and a `rup` to point hooks at.
@@ -73,7 +81,7 @@ fn a4_the_argv_runs_claude_with_a_per_agent_settings_file() {
     let argv = s.prepare("7").unwrap();
     assert_eq!(argv[..2], ["fake-claude", "--settings"]);
     assert_eq!(argv.len(), 3);
-    assert!(Path::new(&argv[2]).starts_with(&s.dir));
+    assert!(Path::new(&argv[2]).starts_with(s.dir.canonicalize().unwrap()));
     assert_ne!(argv[2], s.prepare("8").unwrap()[2]);
 }
 
@@ -82,7 +90,7 @@ fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
     let s = setup();
     let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
     assert!(s.rup.is_absolute() && s.rup.exists());
-    let command = format!("'{}' signal 7", s.rup.display());
+    let command = format!("'{}' signal '7'", s.rup.display());
     let entry = json!([{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]);
     let expected: serde_json::Map<String, Value> = EVENTS
         .iter()
@@ -127,6 +135,18 @@ fn a4_a_missing_config_is_created_with_the_trust() {
     let real = s.real(&s.cwd);
     assert_eq!(
         read(&s.claude_json)["projects"][&real]["hasTrustDialogAccepted"],
+        true
+    );
+}
+
+#[test]
+fn a4_a_config_folder_that_does_not_exist_yet_is_created() {
+    let s = setup();
+    let config = s.root.path().join("config dir").join(".claude.json");
+    let launcher = Launcher::new("fake-claude", config.clone(), s.rup.clone());
+    launcher.prepare(&s.dir, "1", &s.cwd).unwrap();
+    assert_eq!(
+        read(&config)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
         true
     );
 }
@@ -193,7 +213,7 @@ fn a4_concurrent_spawns_each_get_their_cwd_trusted() {
                 gate.wait();
                 for (n, cwd) in mine.iter().enumerate() {
                     launcher
-                        .prepare(&dir, &format!("{spawner}-{n}"), cwd)
+                        .prepare(&dir, &(spawner * 10 + n).to_string(), cwd)
                         .unwrap();
                 }
             })
@@ -229,6 +249,134 @@ fn a4_an_unreadable_config_fails_loudly_and_is_left_as_it_was() {
     assert_eq!(
         std::fs::read_to_string(&s.claude_json).unwrap(),
         "{ not json"
+    );
+}
+
+#[test]
+fn a4_a_cwd_that_is_a_file_is_the_callers_error() {
+    let s = setup();
+    let file = s.cwd.join("notes.txt");
+    std::fs::write(&file, "").unwrap();
+    let err = s.launcher().prepare(&s.dir, "1", &file).unwrap_err();
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(!s.claude_json.exists());
+}
+
+#[test]
+fn a4_a_relative_project_dir_still_gives_claude_an_absolute_settings_path() {
+    let here = std::env::current_dir().unwrap();
+    let root = tempfile::tempdir_in(&here).unwrap();
+    let dir = root.path().join("proj").join(".roundup");
+    let cwd = root.path().join("proj");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rup = root.path().join("rup");
+    std::fs::write(&rup, "").unwrap();
+    let launcher = Launcher::new("fake-claude", root.path().join("claude.json"), rup);
+
+    let argv = launcher
+        .prepare(dir.strip_prefix(&here).unwrap(), "1", &cwd)
+        .unwrap();
+
+    assert!(Path::new(&argv[2]).is_absolute(), "{}", argv[2]);
+}
+
+#[test]
+fn a4_an_agent_id_that_is_not_a_node_id_is_refused_before_anything_is_written() {
+    let s = setup();
+    for id in ["1;touch pwned", "../1", "01", "+1", ""] {
+        let err = s.prepare(id).unwrap_err();
+        assert_eq!(err.code, code::INVALID_PARAMS, "{id:?}");
+    }
+    assert!(!s.dir.join("agents").exists());
+    assert!(!s.claude_json.exists());
+}
+
+#[test]
+fn a4_discarding_an_id_that_is_not_a_node_id_deletes_nothing() {
+    let s = setup();
+    s.prepare("1").unwrap();
+    let outside = s.dir.join("x.settings.json");
+    std::fs::write(&outside, "").unwrap();
+    Launcher::discard(&s.dir, "../x").unwrap();
+    assert!(outside.exists());
+}
+
+#[test]
+fn a4_a_symlinked_config_whose_target_is_missing_stays_a_link() {
+    let s = setup();
+    std::os::unix::fs::symlink("dotfiles/claude.json", &s.claude_json).unwrap();
+    s.prepare("1").unwrap();
+    assert!(
+        s.claude_json
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    let target = s.root.path().join("dotfiles").join("claude.json");
+    assert_eq!(
+        read(&target)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
+        true
+    );
+}
+
+#[test]
+fn a4_a_leftover_at_the_old_fixed_temp_path_does_not_stop_trust() {
+    let s = setup();
+    std::fs::create_dir(beside(&s.claude_json, ".roundup-tmp")).unwrap();
+    s.prepare("1").unwrap();
+    assert_eq!(
+        read(&s.claude_json)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
+        true
+    );
+}
+
+/// Claude Code 2.1.286 saves its config holding the directory `<config>.lock` and re-reads the
+/// config under it; a trust written meanwhile would be lost to that save.
+#[test]
+fn a4_trust_waits_while_claude_holds_its_config_lock() {
+    let s = setup();
+    std::fs::write(&s.claude_json, "{}").unwrap();
+    let lock = beside(&s.claude_json, ".lock");
+    std::fs::create_dir(&lock).unwrap();
+    let mut saving = read(&s.claude_json);
+    let trusting = {
+        let (launcher, dir, cwd) = (s.launcher(), s.dir.clone(), s.cwd.clone());
+        std::thread::spawn(move || launcher.prepare(&dir, "1", &cwd))
+    };
+
+    // An observation window: while the lock is held, trust must not write.
+    std::thread::sleep(Duration::from_millis(300));
+    saving["theme"] = "dark".into();
+    std::fs::write(&s.claude_json, saving.to_string()).unwrap();
+    std::fs::remove_dir(&lock).unwrap();
+
+    trusting.join().unwrap().unwrap();
+    let config = read(&s.claude_json);
+    assert_eq!(config["theme"], "dark");
+    assert_eq!(
+        config["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
+        true
+    );
+}
+
+#[test]
+fn a4_a_config_lock_its_holder_left_behind_is_broken_once_stale() {
+    let s = setup();
+    let lock = beside(&s.claude_json, ".lock");
+    std::fs::create_dir(&lock).unwrap();
+    let minute_ago = SystemTime::now() - Duration::from_secs(60);
+    std::fs::File::open(&lock)
+        .unwrap()
+        .set_modified(minute_ago)
+        .unwrap();
+
+    s.prepare("1").unwrap();
+
+    assert!(!lock.exists());
+    assert_eq!(
+        read(&s.claude_json)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
+        true
     );
 }
 

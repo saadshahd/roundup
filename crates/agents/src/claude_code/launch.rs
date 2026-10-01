@@ -4,7 +4,7 @@
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use rpc::{OpenError, RpcError, code};
 use serde_json::{Map, Value, json};
@@ -23,8 +23,9 @@ const STATE_EVENTS: [&str; 9] = [
     "SessionEnd",
 ];
 
-/// Claude's config is one file shared by every Agent and by Claude itself; edits to it take turns.
-static CONFIG_EDIT: Mutex<()> = Mutex::new(());
+/// A config lock this old was left by a holder that died: Claude Code keeps `proper-lockfile`'s
+/// 10 s default, and a live holder refreshes the lock's mtime every 5 s.
+const STALE: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Launcher {
@@ -68,6 +69,10 @@ impl Launcher {
 
     /// Delete what `prepare` wrote for Agent `id`, for an Agent that never started.
     pub fn discard(dir: &Path, id: &str) -> std::io::Result<()> {
+        // `prepare` writes nothing for an id that is not a node id.
+        let Some(id) = parse_id(id) else {
+            return Ok(());
+        };
         match std::fs::remove_file(settings_path(dir, id)) {
             Err(err) if err.kind() != ErrorKind::NotFound => Err(err),
             _ => Ok(()),
@@ -79,16 +84,21 @@ impl Launcher {
     /// is the user's, and this is the only grant roundup makes in it.
     pub fn prepare(&self, dir: &Path, id: &str, cwd: &Path) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
+        let id = parse_id(id).ok_or_else(|| invalid(format!("{id:?} is not a node id")))?;
         let cwd = cwd
             .canonicalize()
             .map_err(|err| invalid(format!("cwd {} is unusable: {err}", cwd.display())))?;
-        let project = dir
-            .parent()
-            .and_then(|parent| parent.canonicalize().ok())
-            .ok_or_else(|| {
-                RpcError::internal(format!("{} has no project folder", dir.display()))
-            })?;
-        if !cwd.starts_with(&project) {
+        if !cwd.is_dir() {
+            return Err(invalid(format!("cwd {} is not a folder", cwd.display())));
+        }
+        // Claude reads the settings path from its own cwd, so it must be absolute.
+        let dir = dir
+            .canonicalize()
+            .map_err(|err| RpcError::internal(format!("{}: {err}", dir.display())))?;
+        let project = dir.parent().ok_or_else(|| {
+            RpcError::internal(format!("{} has no project folder", dir.display()))
+        })?;
+        if !cwd.starts_with(project) {
             return Err(invalid(format!(
                 "cwd {} is outside the project folder {}",
                 cwd.display(),
@@ -101,7 +111,7 @@ impl Launcher {
                 self.rup.display()
             )));
         }
-        let settings = settings_path(dir, id);
+        let settings = settings_path(&dir, id);
         write_atomically(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
         Ok(vec![
@@ -115,7 +125,7 @@ impl Launcher {
     /// read as a JSON object is an error, never overwritten. Trust is never withdrawn: an Agent
     /// ending says nothing about the folder, and the user may have trusted it before roundup did.
     fn trust(&self, cwd: &Path) -> Result<(), RpcError> {
-        let _editing = CONFIG_EDIT.lock().unwrap_or_else(PoisonError::into_inner);
+        let _lock = ConfigLock::take(&self.claude_json).map_err(RpcError::internal)?;
         let mut config = match std::fs::read_to_string(&self.claude_json) {
             Ok(text) => serde_json::from_str(&text).map_err(|err| self.unreadable(err))?,
             Err(err) if err.kind() == ErrorKind::NotFound => json!({}),
@@ -133,8 +143,12 @@ impl Launcher {
         write_atomically(&self.claude_json, &config).map_err(RpcError::internal)
     }
 
-    fn settings_json(&self, id: &str) -> Value {
-        let command = format!("{} signal {id}", shell_quote(&self.rup.to_string_lossy()));
+    fn settings_json(&self, id: u64) -> Value {
+        let command = format!(
+            "{} signal {}",
+            shell_quote(&self.rup.to_string_lossy()),
+            shell_quote(&id.to_string())
+        );
         let hook = json!([{ "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }]);
         let hooks: Map<String, Value> = STATE_EVENTS
             .iter()
@@ -152,6 +166,77 @@ fn object(value: &mut Value) -> Result<&mut Map<String, Value>, &'static str> {
     value.as_object_mut().ok_or("expected a JSON object")
 }
 
+/// An Agent id becomes a file name and a shell word, so only a node id in its one form (decimal,
+/// no sign, no leading zero) is accepted; `;` or `../` never reach a shell or a path.
+fn parse_id(id: &str) -> Option<u64> {
+    id.parse()
+        .ok()
+        .filter(|number: &u64| number.to_string() == id)
+}
+
+/// The directory lock Claude Code 2.1.286 holds while it saves its config (`<config>.lock`, as
+/// npm's `proper-lockfile` makes it); Claude re-reads the config under it. Released on drop.
+struct ConfigLock {
+    path: PathBuf,
+}
+
+impl ConfigLock {
+    /// Wait for the lock, breaking it once stale. An error once it has been held past `STALE`
+    /// and then some, which no live holder does.
+    fn take(config: &Path) -> std::io::Result<Self> {
+        let mut path = config.as_os_str().to_owned();
+        path.push(".lock");
+        let path = PathBuf::from(path);
+        let located = |err: std::io::Error| {
+            std::io::Error::new(err.kind(), format!("{}: {err}", path.display()))
+        };
+        if let Some(folder) = path.parent() {
+            std::fs::create_dir_all(folder).map_err(located)?;
+        }
+        let deadline = Instant::now() + STALE + Duration::from_secs(1);
+        let mut pause = Duration::from_millis(5);
+        loop {
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Ok(Self { path }),
+                Err(err) if err.kind() != ErrorKind::AlreadyExists => return Err(located(err)),
+                Err(_) if is_stale(&path) => match std::fs::remove_dir(&path) {
+                    Err(err) if err.kind() != ErrorKind::NotFound => return Err(located(err)),
+                    _ => continue,
+                },
+                Err(_) if Instant::now() >= deadline => {
+                    return Err(std::io::Error::other(format!(
+                        "{} is still held after {} s",
+                        path.display(),
+                        STALE.as_secs() + 1
+                    )));
+                }
+                Err(_) => {}
+            }
+            std::thread::sleep(pause);
+            pause = (pause * 2).min(Duration::from_millis(200));
+        }
+    }
+}
+
+impl Drop for ConfigLock {
+    fn drop(&mut self) {
+        if let Err(err) = std::fs::remove_dir(&self.path) {
+            eprintln!(
+                "agents: could not release {}: {err}; it goes stale in {} s",
+                self.path.display(),
+                STALE.as_secs()
+            );
+        }
+    }
+}
+
+/// A lock whose mtime is in the future (as `proper-lockfile` sets it) is not stale.
+fn is_stale(lock: &Path) -> bool {
+    std::fs::metadata(lock)
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|modified| modified.elapsed().is_ok_and(|age| age > STALE))
+}
+
 /// One word for a shell, whatever the path holds.
 fn shell_quote(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
@@ -161,11 +246,7 @@ fn shell_quote(word: &str) -> String {
 /// and two writers never share a temp file. A symlink is written through and stays a symlink; the
 /// old permissions are kept (the config holds credentials).
 fn write_atomically(path: &Path, value: &Value) -> std::io::Result<()> {
-    let target = match path.canonicalize() {
-        Ok(target) => target,
-        Err(err) if err.kind() == ErrorKind::NotFound => path.to_owned(),
-        Err(err) => return Err(err),
-    };
+    let target = landing(path)?;
     let parent = target.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent)?;
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
@@ -178,6 +259,23 @@ fn write_atomically(path: &Path, value: &Value) -> std::io::Result<()> {
     Ok(())
 }
 
-fn settings_path(dir: &Path, id: &str) -> PathBuf {
+/// The file a write to `path` replaces: through any symlinks, to a target that may not exist yet,
+/// so a dangling link stays a link.
+fn landing(path: &Path) -> std::io::Result<PathBuf> {
+    match path.canonicalize() {
+        Err(err) if err.kind() == ErrorKind::NotFound => match std::fs::read_link(path) {
+            // A relative target is relative to the link's own folder.
+            Ok(next) => landing(&path.parent().unwrap_or(Path::new("")).join(next)),
+            // Not a link, or nothing there at all: the write creates `path` itself.
+            Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::InvalidInput) => {
+                Ok(path.to_owned())
+            }
+            Err(err) => Err(err),
+        },
+        found => found,
+    }
+}
+
+fn settings_path(dir: &Path, id: u64) -> PathBuf {
     dir.join("agents").join(format!("{id}.settings.json"))
 }
