@@ -44,7 +44,7 @@ enum Observation { Output(Bytes), Signal(Json), Exit { code: Option<i32> } }
 enum AdapterKind { NeedsYou, Error, Working, Idle, Done } // never Blocked
 ```
 
-`blocked` is computed by `rupd` from Todo blockers and Routes. Signal for Claude Code = hook payloads (spike: `spikes/hooks-state/REPORT.md`); screen scraping is a fallback behind the same trait.
+`blocked` is computed by `rupd` from Todo blockers and Routes. Signal for Claude Code = hook payloads, merged with the terminal title and exit status because some transitions fire no hook (ADR 0006, `spikes/hooks-state/REPORT.md`). Screen scraping is a last fallback behind the same trait.
 
 ## Data
 
