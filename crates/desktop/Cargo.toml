@@ -9,6 +9,10 @@ build = "build.rs"
 name = "roundup"
 path = "src/main.rs"
 
+[features]
+# Makes a release build load the files embedded from frontendDist instead of the dev server.
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 contracts = { path = "../contracts" }
 rpc = { path = "../rpc" }

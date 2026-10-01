@@ -17,7 +17,7 @@ use tauri::{AppHandle, Builder, Manager, RunEvent, Runtime, State};
 pub fn build<R: Runtime>(
     builder: Builder<R>,
     config: Config,
-    folder: Option<PathBuf>,
+    project_dir: Option<PathBuf>,
 ) -> Builder<R> {
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -29,9 +29,9 @@ pub fn build<R: Runtime>(
             subscribe
         ])
         .setup(move |app| {
-            if let Some(folder) = folder {
+            if let Some(project_dir) = project_dir {
                 let state = app.state::<AppState>();
-                tauri::async_runtime::block_on(state.open_project(app.handle(), &folder))?;
+                tauri::async_runtime::block_on(state.open_project(app.handle(), &project_dir))?;
             }
             Ok(())
         })
@@ -45,11 +45,11 @@ pub fn handle_run_event<R: Runtime>(app: &AppHandle<R>, event: &RunEvent) {
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
-    let folder = std::env::args_os()
+    let project_dir = std::env::args_os()
         .nth(1)
         .map(std::path::absolute)
         .transpose()?;
-    build(tauri::Builder::default(), config, folder)
+    build(tauri::Builder::default(), config, project_dir)
         .build(tauri::generate_context!())?
         .run(|app, event| handle_run_event(app, &event));
     Ok(())
