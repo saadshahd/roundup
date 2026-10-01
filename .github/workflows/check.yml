@@ -26,14 +26,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: taiki-e/install-action@just
       - run: pnpm install --frozen-lockfile
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo nextest run
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm slop
-      - run: cargo machete crates
+      - run: just check
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"
