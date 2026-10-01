@@ -4,6 +4,7 @@ use std::path::Path;
 
 use contracts::{Actor, pad::Pad};
 use rusqlite::{Connection, OptionalExtension, params};
+use unicode_normalization::UnicodeNormalization;
 
 pub struct Store {
     db: Connection,
@@ -81,9 +82,10 @@ impl Store {
     }
 }
 
-/// Names are unique ignoring case: the macOS file system would map two spellings to one file.
+/// Names are unique ignoring case and Unicode normalization: APFS treats both kinds of pair as one file.
 fn key(name: &str) -> String {
-    name.to_lowercase()
+    let decomposed: String = name.nfd().collect();
+    caseless::default_case_fold_str(&decomposed).nfc().collect()
 }
 
 fn owner_json(owner: &Actor) -> String {
