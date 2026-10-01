@@ -86,13 +86,13 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
 
   | Ids | Holder |
   |---|---|
-  | U23–U24 | #60 |
-  | U25 | #61 |
-  | U26 | #62 (harness; renumbered from U23) |
+  | U23–U24 | #60 `ux-layout` |
+  | U25 | #61 `ux-daemon` |
+  | U26 | #62 `chrome-harness` (renumbered from U23) |
   | U27–U28 | `ux-drawer` (focus on close, Esc, the Drawer edge) |
   | U29 | `ux-pads` (the Pad row) |
 
-  `ux-daemon` and `ux-layout` have no ids yet; the Architect reserves them on request. V1–V9 in `scenarios/ux.md` are the Architect's candidates and are not reserved to any Builder; `ux-drawer` overlaps V9, so whichever lands second drops the overlap.
+  Every Builder has ids now; the Architect reserves more on request. V1–V9 in `scenarios/ux.md` are the Architect's candidates and are not reserved to any Builder; `ux-drawer` overlaps V9, so whichever lands second drops the overlap.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
 - **Stop conditions.** If `loop/out/PAUSED` exists, a limit was hit: stop and tell the user. A defect that needs a change in `contracts/`, `CONTEXT.md` or the App seam stops the Builder and goes to the Architect.
 
