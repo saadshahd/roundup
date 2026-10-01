@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
@@ -370,15 +371,39 @@ fn s4_just_app_refuses_to_start_when_something_already_answers_on_the_dev_port()
             });
         });
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let out = Command::new("just")
-        .args(["app", "."])
+    let project = TempDir::new().unwrap();
+    let mut just = Command::new("just")
+        .arg("app")
+        .arg(project.path())
         .current_dir(root)
-        .output()
+        .process_group(0)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .unwrap();
 
-    assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("already answers on :5173"));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(status) = just.try_wait().unwrap() {
+            break Some(status);
+        }
+        if Instant::now() > deadline {
+            // Without the guard the recipe goes on to open a real window; take its whole group down.
+            let _ = Command::new("kill")
+                .arg("--")
+                .arg(format!("-{}", just.id()))
+                .status();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let mut stderr = String::new();
+    std::io::Read::read_to_string(&mut just.stderr.take().unwrap(), &mut stderr).unwrap();
+
+    assert!(
+        status.is_some_and(|status| !status.success()),
+        "just app did not refuse within 10 s"
+    );
+    assert!(stderr.contains("already answers on :5173"));
 }
 
 #[test]
