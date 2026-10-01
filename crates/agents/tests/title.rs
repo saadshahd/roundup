@@ -7,16 +7,16 @@ use contracts::Kind;
 use serde_json::{Value, json};
 
 const RUN1: (&str, &str) = (
-    include_str!("../../../../spikes/hooks-state/log.run1.jsonl"),
-    include_str!("../../../../spikes/hooks-state/screen.jsonl"),
+    include_str!("../../../spikes/hooks-state/log.run1.jsonl"),
+    include_str!("../../../spikes/hooks-state/screen.jsonl"),
 );
 const RUN2: (&str, &str) = (
-    include_str!("../../../../spikes/hooks-state/log.run2.jsonl"),
-    include_str!("../../../../spikes/hooks-state/screen2.jsonl"),
+    include_str!("../../../spikes/hooks-state/log.run2.jsonl"),
+    include_str!("../../../spikes/hooks-state/screen2.jsonl"),
 );
 const RUN3: (&str, &str) = (
-    include_str!("../../../../spikes/hooks-state/log.run3.jsonl"),
-    include_str!("../../../../spikes/hooks-state/screen3.jsonl"),
+    include_str!("../../../spikes/hooks-state/log.run3.jsonl"),
+    include_str!("../../../spikes/hooks-state/screen3.jsonl"),
 );
 
 fn adapter() -> ClaudeCode {
