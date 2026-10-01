@@ -10,8 +10,8 @@ This is the queue until roundup can hold its own Todos (`docs/development-loop.m
 
 | PR | Module | Scenarios | Owns | Est. lines | Merge after | Start |
 |---|---|---|---|---|---|---|
-| `contract-spawn-terminal` | `crates/contracts` | serves A10, U9 | `agent.rs`, `methods.rs` | ~40 | none | now (architect-1 authors; a different id approves, rule 4) |
-| `contract-schemas` | `crates/contracts` | serves M1 | `Cargo.toml`, `todo.rs`, `pad.rs`, `common.rs` | ~40 | none | now (same) |
+| `contract-spawn-terminal` (#43) | `crates/contracts` | serves A10, U9 | `agent.rs`, `methods.rs` | ~40 | none | now (architect-1 authors; a different id approves, rule 4) |
+| `contract-schemas` (#44) | `crates/contracts` | serves M1 | `Cargo.toml`, `todo.rs`, `pad.rs`, `common.rs` | ~40 | none | now (same) |
 | `workspace` | root | W1 | `package.json`, `justfile`, `.fallowrc.json` | ~40 | none | now |
 | `daemon-attached` | `crates/rupd` | D1 | `crates/rupd/**` | ~200 | none | now |
 | `app` | `crates/desktop` | S1–S3 | `crates/desktop/**` (new crate; `crates/*` already globs it) | 1000–1400 | none | now |
@@ -71,7 +71,7 @@ Shared webview files (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.
 
 ## In flight elsewhere (reviewed by others; listed for the dependencies above)
 
-- #17–#37: the agents stack (A1–A8). `agents-mvp` stacks on its top, `builder/agents-11`. Open defect: the stack persists `terminal_id`, but Terminal ids restart with every Daemon run, so a reopened Rail can point at a new, unrelated Terminal. A12 specifies the fix if the stack does not take it.
+- #17–#37: the agents stack (A1–A8). `agents-mvp` stacks on its top, `builder/agents-11`. Open defect (reported on #28): the stack persists `terminal_id`, but Terminal ids restart with every Daemon run, so a reopened Rail can point at a new, unrelated Terminal. A12 specifies the fix if the stack does not take it.
 - #36 pads-4 (P5, P8, P9). #40 terminal-6 (X9, X10). #39 makes PR size a guide.
 
 ## Parallelism
