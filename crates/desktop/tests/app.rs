@@ -269,7 +269,7 @@ fn s1_a_second_open_project_is_conflict() {
 }
 
 #[test]
-fn s1_started_as_roundup_folder_opens_that_folder() {
+fn s1_started_as_roundup_project_opens_that_project() {
     let fx = Fixture::new(SERVE_AND_WAIT);
     fx.serve_real_daemon();
 
@@ -285,7 +285,7 @@ fn s1_started_as_roundup_folder_opens_that_folder() {
 }
 
 #[test]
-fn s1_the_webview_is_granted_dialog_open_and_save_and_the_dock_badge_and_nothing_else() {
+fn s1_the_webview_is_granted_dialogs_the_dock_badge_and_hearing_events_and_nothing_else() {
     let capabilities = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
     let granted: BTreeSet<String> = std::fs::read_dir(capabilities)
         .unwrap()
@@ -305,6 +305,8 @@ fn s1_the_webview_is_granted_dialog_open_and_save_and_the_dock_badge_and_nothing
         "dialog:allow-open",
         "dialog:allow-save",
         "core:window:allow-set-badge-count",
+        "core:event:allow-listen",
+        "core:event:allow-unlisten",
     ]
     .map(String::from)
     .into();
