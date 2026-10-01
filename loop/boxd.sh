@@ -177,9 +177,8 @@ swarm() {
   mkdir -p "$OUT/runs"
   # Refuse every bad prompt file before the first VM exists.
   for prompt in "$@"; do validate_args "$prefix-1" "$prompt"; done
-  # Children ignore SIGINT and only act on SIGTERM after their foreground `boxd exec` returns, so
-  # remove their VMs here: that ends the exec and stops the quota burn at once.
-  trap 'stop_swarm "${pids[@]+"${pids[@]}"}" -- "${names[@]+"${names[@]}"}"' INT TERM
+  # Background children ignore SIGINT, so TERM them; each one's exit trap then removes the VM it created and nothing else.
+  trap 'stop_swarm "${pids[@]+"${pids[@]}"}"' INT TERM
   for prompt in "$@"; do
     n=$((n + 1))
     while [ "$(running_children ${pids[@]+"${pids[@]}"})" -ge "$MAX_VMS" ]; do sleep 1; done
@@ -198,16 +197,12 @@ swarm() {
   exit "$failed"
 }
 
-# stop_swarm <pid>... -- <name>...: TERM the children, remove their VMs, wait for them.
+# stop_swarm <pid>...: TERM the children and wait until their exit traps have removed their VMs.
 stop_swarm() {
-  local pids=() name
-  while [ "$1" != -- ]; do pids+=("$1"); shift; done
-  shift
   trap '' INT TERM
-  for name in "$@"; do boxd machine remove "ru-$name" -y </dev/null >/dev/null 2>&1 || true; done
-  kill "${pids[@]}" 2>/dev/null || true
-  wait "${pids[@]}" 2>/dev/null || true
-  echo "boxd.sh: swarm interrupted; removed its VMs" >&2
+  kill "$@" 2>/dev/null || true
+  wait "$@" 2>/dev/null || true
+  echo "boxd.sh: swarm interrupted; its agents are stopped and their VMs removed" >&2
   exit 130
 }
 
