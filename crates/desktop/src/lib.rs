@@ -2,7 +2,7 @@
 
 mod config;
 mod daemon;
-mod shell;
+mod state;
 
 use std::path::{Path, PathBuf};
 
@@ -10,7 +10,7 @@ pub use config::{CALL_BOUND, Config, READY_BOUND};
 use contracts::Event;
 use rpc::RpcError;
 use serde_json::Value;
-pub use shell::{Project, Shell};
+pub use state::{AppState, Project};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Builder, Manager, RunEvent, Runtime, State};
 
@@ -21,7 +21,7 @@ pub fn build<R: Runtime>(
 ) -> Builder<R> {
     builder
         .plugin(tauri_plugin_dialog::init())
-        .manage(Shell::new(config))
+        .manage(AppState::new(config))
         .invoke_handler(tauri::generate_handler![
             project,
             open_project,
@@ -30,8 +30,8 @@ pub fn build<R: Runtime>(
         ])
         .setup(move |app| {
             if let Some(folder) = folder {
-                let shell = app.state::<Shell>();
-                tauri::async_runtime::block_on(shell.open_project(app.handle(), &folder))?;
+                let state = app.state::<AppState>();
+                tauri::async_runtime::block_on(state.open_project(app.handle(), &folder))?;
             }
             Ok(())
         })
@@ -39,7 +39,7 @@ pub fn build<R: Runtime>(
 
 pub fn handle_run_event<R: Runtime>(app: &AppHandle<R>, event: &RunEvent) {
     if matches!(event, RunEvent::Exit) {
-        app.state::<Shell>().close();
+        app.state::<AppState>().close();
     }
 }
 
@@ -56,25 +56,25 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tauri::command]
-fn project(shell: State<'_, Shell>) -> Option<Project> {
-    shell.project()
+fn project(state: State<'_, AppState>) -> Option<Project> {
+    state.project()
 }
 
 #[tauri::command]
 async fn open_project<R: Runtime>(
     app: AppHandle<R>,
-    shell: State<'_, Shell>,
+    state: State<'_, AppState>,
     path: String,
 ) -> Result<Project, RpcError> {
-    shell.open_project(&app, Path::new(&path)).await
+    state.open_project(&app, Path::new(&path)).await
 }
 
 #[tauri::command]
-async fn rpc(shell: State<'_, Shell>, method: String, params: Value) -> Result<Value, RpcError> {
-    shell.rpc(&method, params).await
+async fn rpc(state: State<'_, AppState>, method: String, params: Value) -> Result<Value, RpcError> {
+    state.rpc(&method, params).await
 }
 
 #[tauri::command]
-async fn subscribe(shell: State<'_, Shell>, channel: Channel<Event>) -> Result<(), RpcError> {
-    shell.subscribe(channel).await
+async fn subscribe(state: State<'_, AppState>, channel: Channel<Event>) -> Result<(), RpcError> {
+    state.subscribe(channel).await
 }

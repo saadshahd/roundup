@@ -1,4 +1,4 @@
-//! Scenarios S1 to S3 (`scenarios/app.md`). A fake `rupd` is a shell script; the real Daemon runs
+//! Scenarios S1 to S3 (`scenarios/app.md`). A fake `rupd` is a state script; the real Daemon runs
 //! in-process on a socket the script links to the one the App chose.
 
 use std::collections::BTreeSet;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use desktop::{Config, Shell, build, handle_run_event};
+use desktop::{AppState, Config, build, handle_run_event};
 use rpc::code;
 use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody};
@@ -64,9 +64,16 @@ impl Fixture {
         }
     }
 
-    /// Lets a fake `rupd` that is blocked on `read go < '{dir}/go'` continue.
+    /// Lets a fake `rupd` that is blocked on `read go < '{dir}/go'` continue. Opening a fifo for
+    /// writing blocks until a reader opens it, so a fake that died first would hang the test.
     fn release(&self) {
-        std::fs::write(self.dir.path().join("go"), "go\n").unwrap();
+        let go = self.dir.path().join("go");
+        let (done, written) = mpsc::channel();
+        std::thread::spawn(move || done.send(std::fs::write(go, "go\n")));
+        written
+            .recv_timeout(WAIT)
+            .expect("the fake rupd never read from go")
+            .unwrap();
     }
 
     fn real_daemon_socket(&self) -> PathBuf {
@@ -365,7 +372,7 @@ fn s2_events_the_daemon_emits_arrive_on_the_channel_in_order() {
             .unwrap();
         Ok(())
     });
-    tauri::async_runtime::block_on(app.state::<Shell>().subscribe(channel)).unwrap();
+    tauri::async_runtime::block_on(app.state::<AppState>().subscribe(channel)).unwrap();
 
     for title in ["first", "second", "third"] {
         invoke(
@@ -396,7 +403,7 @@ fn s2_before_a_project_is_open_rpc_and_subscribe_fail_at_once_with_conflict() {
         "rpc",
         json!({ "method": "daemon.ping", "params": null }),
     );
-    let subscribe = tauri::async_runtime::block_on(app.state::<Shell>().subscribe(Channel::<
+    let subscribe = tauri::async_runtime::block_on(app.state::<AppState>().subscribe(Channel::<
         contracts::Event,
     >::new(
         |_| Ok(())

@@ -40,12 +40,12 @@ enum Phase {
 }
 
 /// Which Project is open and the Daemon serving it; the only state the App holds.
-pub struct Shell {
+pub struct AppState {
     config: Config,
     phase: Mutex<Phase>,
 }
 
-impl Shell {
+impl AppState {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -152,7 +152,7 @@ impl Shell {
         });
         let app = app.clone();
         daemon::watch_exit(started.child, move |code| {
-            if app.state::<Shell>().mark_exited()
+            if app.state::<AppState>().mark_exited()
                 && let Err(err) = app.emit("daemon-exited", DaemonExited { code })
             {
                 eprintln!("desktop: could not tell the webview the Daemon exited: {err}");
