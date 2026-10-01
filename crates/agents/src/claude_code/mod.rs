@@ -17,9 +17,18 @@ pub use launch::Launcher;
 /// `idle` of an Esc during an auto-allowed tool.
 pub const STAR_HOLD: i64 = 200;
 
+/// How the program's life ended, if it has.
+#[derive(Clone, Copy, PartialEq)]
+enum Ending {
+    Running,
+    Exited,
+    /// Roundup killed it on purpose, so the exit that follows is not an error.
+    Stopped,
+}
+
 pub struct ClaudeCode {
     status: Option<Status>,
-    exited: bool,
+    ending: Ending,
     /// The latest recognised Signal was `PreToolUse`: a dialog may be about to open.
     after_pre_tool_use: bool,
     /// When a star after `PreToolUse` was first seen and not yet resolved.
@@ -32,7 +41,7 @@ impl ClaudeCode {
     pub fn new(clock: impl Fn() -> i64 + Send + 'static) -> Self {
         Self {
             status: None,
-            exited: false,
+            ending: Ending::Running,
             after_pre_tool_use: false,
             star_held_since: None,
             clock: Box::new(clock),
@@ -112,8 +121,11 @@ impl ClaudeCode {
     }
 
     fn exit(&mut self, code: Option<i32>) -> Option<Status> {
-        self.exited = true;
         self.star_held_since = None;
+        if self.ending == Ending::Stopped {
+            return None;
+        }
+        self.ending = Ending::Exited;
         match code {
             Some(0) if self.status.as_ref().is_some_and(|s| s.kind == Kind::Done) => None,
             Some(0) => self.settle(Kind::Done, "exited 0".into()),
@@ -127,7 +139,15 @@ impl AgentAdapter for ClaudeCode {
     fn observe(&mut self, observation: Observation) -> Option<Status> {
         match observation {
             Observation::Exit { code } => self.exit(code),
-            Observation::Signal(_) | Observation::Title(_) | Observation::Tick if self.exited => {
+            Observation::Stopped if self.ending != Ending::Running => None,
+            Observation::Stopped => {
+                self.ending = Ending::Stopped;
+                self.star_held_since = None;
+                self.settle(Kind::Done, "stopped".into())
+            }
+            Observation::Signal(_) | Observation::Title(_) | Observation::Tick
+                if self.ending != Ending::Running =>
+            {
                 None
             }
             Observation::Tick => self.tick(),

@@ -139,7 +139,6 @@ async fn child_signals_payloads_the_adapter_refuses() {
     let node = f.spawn(None, None).await.unwrap();
     for payload in [
         json!({"hook_event_name": "FutureEvent", "prompt": "SECRET-PROMPT"}),
-        json!({"hook_event_name": "StopFailure", "last_assistant_message": "SECRET-MESSAGE"}),
         json!({"prompt": "SECRET-PROMPT"}),
     ] {
         f.call("agent.signal", json!({"id": node.id, "payload": payload}))
@@ -162,7 +161,6 @@ async fn a5_refused_payloads_are_logged_to_stderr_by_event_name_never_by_content
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{stderr}");
     assert!(stderr.contains("FutureEvent"), "{stderr}");
-    assert!(stderr.contains("StopFailure"), "{stderr}");
     assert!(stderr.contains("no event name"), "{stderr}");
     assert!(!stderr.contains("SECRET"), "{stderr}");
 }

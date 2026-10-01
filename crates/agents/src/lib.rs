@@ -7,12 +7,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SignalParams, SpawnParams,
-    StatusEvent,
+    CreateGroupParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
+    SpawnParams, StatusEvent,
 };
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
-use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
+use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use terminal::Terminals;
 use tokio::sync::broadcast::Receiver;
@@ -31,6 +31,8 @@ pub enum Observation {
     Title(String),
     /// The clock reached the time the adapter asked for (see `ClaudeCode::tick_at`).
     Tick,
+    /// Roundup stopped the Agent's program on purpose.
+    Stopped,
     /// The Agent's program ended. `None` when it was killed by a signal.
     Exit { code: Option<i32> },
 }
@@ -224,29 +226,17 @@ impl Agents {
             self.shared
                 .rail()
                 .insert(NodeKind::Agent, &name, params.parent.as_deref(), None)?;
-        let spawned = match self.start(&node.id, cwd).await {
-            Ok(spawned) => spawned,
+        let terminal_id = match self.run_agent(&node.id, cwd, params.prompt).await {
+            Ok(terminal_id) => terminal_id,
             Err(err) => {
                 self.roll_back(&node.id);
                 return Err(err);
             }
         };
-        let run = Run {
-            adapter: ClaudeCode::starting(now_ms),
-            prompt: params.prompt,
-            terminal_id: spawned.id.clone(),
-        };
-        self.shared.runs().insert(node.id.clone(), run);
-        self.shared.rail().attach_terminal(&node.id, &spawned.id)?;
-        tokio::spawn(watch(
-            Arc::clone(&self.shared),
-            node.id.clone(),
-            spawned.id.clone(),
-            spawned.events,
-        ));
+        self.shared.rail().attach_terminal(&node.id, &terminal_id)?;
         ctx.emit(EventData::RailChanged);
         Ok(self.shared.present(RailNode {
-            terminal_id: Some(spawned.id),
+            terminal_id: Some(terminal_id),
             ..node
         }))
     }
@@ -265,9 +255,71 @@ impl Agents {
         }
     }
 
-    async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {
+    /// Make a Group a Meta-agent: start a live Agent that sits at it, in the Project's folder.
+    async fn promote(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
+        self.shared.rail().reserve_meta(id)?;
+        let project = self.dir.parent().unwrap_or(&self.dir);
+        let terminal_id = match self.run_agent(id, project, None).await {
+            Ok(terminal_id) => terminal_id,
+            Err(err) => {
+                self.shared.rail().release_meta(id)?;
+                return Err(err);
+            }
+        };
+        let attached = self.shared.rail().attach_terminal(id, &terminal_id);
+        if let Err(err) = attached {
+            self.shared.runs().remove(id);
+            // Already gone is as good as killed.
+            let _ = self.shared.terminals.kill(&terminal_id).await;
+            self.shared.rail().release_meta(id)?;
+            return Err(err);
+        }
+        ctx.emit(EventData::RailChanged);
+        Ok(self.shared.present(self.shared.rail().node(id)?))
+    }
+
+    /// Stop an Agent's program; it stays in the Rail as `done`. A Meta-agent's children move up
+    /// to where it was and keep running.
+    async fn stop(&self, ctx: &Ctx, id: &str) -> Result<(), RpcError> {
+        let node = self.shared.rail().node(id)?;
+        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
+            return Err(RpcError::conflict(format!("{id} is not an Agent")));
+        }
+        let terminal_id = self
+            .shared
+            .runs()
+            .get(id)
+            .map(|run| run.terminal_id.clone());
+        match terminal_id {
+            Some(terminal_id) => {
+                self.shared
+                    .observe(ctx.actor.clone(), id, Observation::Stopped)?;
+                match self.shared.terminals.kill(&terminal_id).await {
+                    Err(err) if err.code != code::NOT_FOUND => return Err(err),
+                    // It exited on its own first.
+                    _ => {}
+                }
+            }
+            // A Terminal recorded but no Run: the Daemon restarted, nothing is left to stop.
+            None if node.terminal_id.is_some() => {}
+            None => return Err(RpcError::conflict(format!("{id} is still starting"))),
+        }
+        if node.kind == NodeKind::Group && self.shared.rail().lift_children(id)? {
+            ctx.emit(EventData::RailChanged);
+        }
+        Ok(())
+    }
+
+    /// Start Claude Code for node `id` in a Terminal and watch it; returns the Terminal's id.
+    async fn run_agent(
+        &self,
+        id: &str,
+        cwd: &Path,
+        prompt: Option<String>,
+    ) -> Result<String, RpcError> {
         let argv = self.launcher.prepare(&self.dir, id, cwd)?;
-        self.shared
+        let spawned = self
+            .shared
             .terminals
             .spawn(TerminalSpawn {
                 cwd: cwd.to_string_lossy().into_owned(),
@@ -276,7 +328,20 @@ impl Agents {
                 cols: 80,
                 rows: 24,
             })
-            .await
+            .await?;
+        let run = Run {
+            adapter: ClaudeCode::starting(now_ms),
+            prompt,
+            terminal_id: spawned.id.clone(),
+        };
+        self.shared.runs().insert(id.to_owned(), run);
+        tokio::spawn(watch(
+            Arc::clone(&self.shared),
+            id.to_owned(),
+            spawned.id.clone(),
+            spawned.events,
+        ));
+        Ok(spawned.id)
     }
 }
 
@@ -298,6 +363,15 @@ impl Module for Agents {
         let shared = &self.shared;
         match method {
             "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
+            "agent.stop" => {
+                let NodeId { id } = params(value)?;
+                self.stop(ctx, &id).await?;
+                reply(&())
+            }
+            "rail.promote" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.promote(ctx, &id).await?)
+            }
             "agent.signal" => {
                 let SignalParams { id, payload } = params(value)?;
                 shared.observe(ctx.actor.clone(), &id, Observation::Signal(payload))?;

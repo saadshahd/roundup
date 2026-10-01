@@ -107,6 +107,47 @@ impl Rail {
         tx.commit().map_err(sql)
     }
 
+    /// Mark plain Group `id` as a Meta-agent before its Agent starts, so a second promote of the
+    /// same Group finds it taken. `CONFLICT` if it is not a plain Group.
+    pub fn reserve_meta(&mut self, id: &str) -> Result<(), RpcError> {
+        // SQLite would match "01" to node 1; only the exact id names a node.
+        let node = self.node(id)?;
+        if node.kind != NodeKind::Group || node.meta {
+            return Err(RpcError::conflict(format!("{id} is not a plain Group")));
+        }
+        self.db
+            .execute("UPDATE nodes SET meta = 1 WHERE id = ?", params![node.id])
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    /// Give back a reservation whose Agent never started.
+    pub fn release_meta(&mut self, id: &str) -> Result<(), RpcError> {
+        self.db
+            .execute("UPDATE nodes SET meta = 0 WHERE id = ?", params![id])
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    /// Move the children of `id` up into its parent, in order, where `id` stood; `id` follows them.
+    /// Whether any child moved.
+    pub fn lift_children(&mut self, id: &str) -> Result<bool, RpcError> {
+        let tx = self.db.transaction().map_err(sql)?;
+        let nodes = load(&tx)?;
+        let parent = find(&nodes, id)?.parent.as_deref();
+        let mut ids = siblings(&nodes, parent);
+        let at = ids
+            .iter()
+            .position(|sibling| sibling == id)
+            .unwrap_or(ids.len());
+        let children = siblings(&nodes, Some(id));
+        let moved = !children.is_empty();
+        ids.splice(at..at, children);
+        place(&tx, parent, &ids)?;
+        tx.commit().map_err(sql)?;
+        Ok(moved)
+    }
+
     /// Record which Terminal runs the Agent `id`.
     pub fn attach_terminal(&mut self, id: &str, terminal_id: &str) -> Result<(), RpcError> {
         let changed = self
@@ -135,7 +176,7 @@ impl Rail {
         tx.commit().map_err(sql)
     }
 
-    fn node(&self, id: &str) -> Result<RailNode, RpcError> {
+    pub fn node(&self, id: &str) -> Result<RailNode, RpcError> {
         find(&load(&self.db)?, id).cloned()
     }
 }
