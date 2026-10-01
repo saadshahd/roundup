@@ -5,6 +5,8 @@ import type { Events } from "../app/events";
 import type { AppSeam, Project } from "../app/seam";
 import { createDrawer } from "../drawer/drawer";
 import type { DrawerState } from "../drawer/drawer";
+import { createOutputFeed } from "./output";
+import type { OutputFeed } from "./output";
 import { createRailState } from "./rail";
 import type { RailState } from "./rail";
 
@@ -14,6 +16,8 @@ export type ConnectedProject = {
   app: AppSeam;
   events: Events;
   rail: RailState;
+  /** `terminal.output` from the first subscription on, so nothing is lost before the Pane mounts. */
+  output: OutputFeed;
   drawer: DrawerState;
   reducedMotion: Accessor<boolean>;
   /** Milliseconds since the epoch, refreshed on a coarse tick; for elapsed times. */
@@ -27,11 +31,12 @@ export const connectProject = async (
   now: Accessor<number>,
 ): Promise<ConnectedProject> => {
   const events = await connectEvents(app);
+  const output = createOutputFeed(events);
   const rail = createRailState(app, events);
 
   await rail.settled();
 
-  return { project, app, events, rail, drawer: createDrawer(), reducedMotion, now };
+  return { project, app, events, rail, output, drawer: createDrawer(), reducedMotion, now };
 };
 
 export const ConnectedProjectContext = createContext<ConnectedProject>();
