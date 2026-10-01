@@ -2,13 +2,30 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use contracts::EventData;
 use contracts::terminal::SpawnParams;
+use contracts::{Actor, EventData};
+use provenance::Touches;
+use rpc::{Bus, Ctx};
+use terminal::Terminals;
 use tokio::sync::broadcast::Receiver;
+
+pub fn open(dir: &tempfile::TempDir) -> (Terminals, Bus) {
+    let bus = Bus::new();
+    (Terminals::open(dir.path(), bus.clone()).unwrap(), bus)
+}
+
+pub fn ctx(dir: &tempfile::TempDir, bus: &Bus) -> Ctx {
+    Ctx {
+        actor: Actor::user(),
+        bus: bus.clone(),
+        touches: Arc::new(Touches::open(&dir.path().join("provenance.db")).unwrap()),
+    }
+}
 
 pub const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -40,4 +57,18 @@ pub async fn until_exit(events: &mut Receiver<EventData>) -> (String, Option<i32
     })
     .await
     .expect("the program exits in time")
+}
+
+/// Wait until the program's output so far contains `needle`.
+pub async fn until_printed(events: &mut Receiver<EventData>, needle: &str) {
+    let mut printed = String::new();
+    tokio::time::timeout(PATIENCE, async {
+        while !printed.contains(needle) {
+            if let EventData::TerminalOutput(out) = events.recv().await.expect("events stay open") {
+                printed.push_str(&decode(&out.data));
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{needle:?} was not printed in time"));
 }

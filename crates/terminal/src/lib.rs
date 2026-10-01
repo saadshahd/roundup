@@ -5,23 +5,28 @@
 //! exists before the reader thread reads any output, so none is missed.
 
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use contracts::terminal::{ExitedEvent, OutputEvent, SpawnParams, TerminalId, TerminalInfo};
+use contracts::terminal::{
+    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, WriteParams,
+};
 use contracts::{Actor, EventData};
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use tokio::sync::broadcast;
 
 /// Events a slow subscriber may fall behind by before it is told it lagged (it never blocks the reader).
 const EVENT_BACKLOG: usize = 1024;
+/// How often the reader thread checks whether a program that closed its PTY has ended.
+const REAP_POLL: Duration = Duration::from_millis(5);
 const READ_CHUNK: usize = 8192;
 
 /// A freshly spawned Terminal: its id and every event it emits, from the first byte of output.
@@ -30,9 +35,22 @@ pub struct Spawned {
     pub events: broadcast::Receiver<EventData>,
 }
 
+/// The program, shared by whoever reaps it and whoever stops it.
+/// Invariant: only code holding this lock reaps or signals, and signals only when `try_wait` under
+/// that lock has just said the program is still running. A reaped pid is never signalled.
+type Program = Arc<Mutex<Box<dyn Child + Send + Sync>>>;
+
+/// What it takes to drive a running program. Dropped from the Terminal's entry once it is reaped.
+struct Handle {
+    master: Mutex<Box<dyn MasterPty + Send>>,
+    writer: Mutex<Box<dyn Write + Send>>,
+    program: Program,
+}
+
 struct Entry {
     info: TerminalInfo,
     events: broadcast::Sender<EventData>,
+    handle: Option<Arc<Handle>>,
 }
 
 /// State shared with each Terminal's reader thread.
@@ -58,6 +76,7 @@ impl Shared {
         let id = number.to_string();
         if let Some(entry) = self.table().get_mut(&number) {
             entry.info.running = false;
+            entry.handle = None;
             entry.info.exit_code = code;
         }
         self.publish(number, EventData::TerminalExited(ExitedEvent { id, code }));
@@ -110,6 +129,7 @@ impl Terminals {
         // The reader thread starts before the program and receives the child over a channel, so
         // no later failure can leave a program that nobody waits for.
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
+        let writer = pair.master.take_writer().map_err(RpcError::internal)?;
         let number = self.next.fetch_add(1, Ordering::Relaxed);
         let (arrival, child_arrives) = mpsc::channel();
         let shared = Arc::clone(&self.shared);
@@ -117,17 +137,23 @@ impl Terminals {
             .name(format!("terminal-{number}"))
             .spawn(move || {
                 // No child means the program never started: nothing to report.
-                if let Ok(child) = child_arrives.recv() {
-                    pump(&shared, number, reader, child, pair.master);
+                if let Ok(program) = child_arrives.recv() {
+                    pump(&shared, number, reader, &program);
                 }
             })
             .map_err(RpcError::internal)?;
-        let child = pair
-            .slave
-            .spawn_command(command)
-            .map_err(RpcError::internal)?;
+        let program: Program = Arc::new(Mutex::new(
+            pair.slave
+                .spawn_command(command)
+                .map_err(RpcError::internal)?,
+        ));
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
+        let handle = Handle {
+            writer: Mutex::new(writer),
+            program: Arc::clone(&program),
+            master: Mutex::new(pair.master),
+        };
 
         let (sender, events) = broadcast::channel(EVENT_BACKLOG);
         self.shared.table().insert(
@@ -141,15 +167,68 @@ impl Terminals {
                     exit_code: None,
                 },
                 events: sender,
+                handle: Some(Arc::new(handle)),
             },
         );
         arrival
-            .send(child)
+            .send(program)
             .expect("the reader thread waits for its child");
         Ok(Spawned {
             id: number.to_string(),
             events,
         })
+    }
+
+    /// Type `bytes` into a running Terminal. `NOT_FOUND` if it is unknown or has exited.
+    pub async fn write(&self, id: &str, bytes: &[u8]) -> Result<(), RpcError> {
+        let handle = self.running(id)?;
+        let bytes = bytes.to_vec();
+        // A program that stops reading may fill the PTY buffer and block the write.
+        tokio::task::spawn_blocking(move || {
+            let mut writer = handle.writer.lock().expect("terminal writer lock");
+            writer.write_all(&bytes).and_then(|()| writer.flush())
+        })
+        .await
+        .map_err(RpcError::internal)?
+        .map_err(RpcError::internal)
+    }
+
+    /// Tell a running Terminal its window is now `cols` x `rows`. `NOT_FOUND` as for [`Terminals::write`].
+    pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), RpcError> {
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let handle = self.running(id)?;
+        let master = handle.master.lock().expect("terminal master lock");
+        master.resize(size).map_err(RpcError::internal)
+    }
+
+    /// Stop a running Terminal's program (SIGHUP, then SIGKILL if it lingers) and return once it is
+    /// stopped. It stays listed as exited once `terminal.exited` is emitted. `NOT_FOUND` as for
+    /// [`Terminals::write`], including a program that ended just before this call.
+    pub async fn kill(&self, id: &str) -> Result<(), RpcError> {
+        let handle = self.running(id)?;
+        // portable-pty's `Child::kill` waits out the SIGHUP grace period, so keep it off the runtime.
+        tokio::task::spawn_blocking(move || {
+            let mut program = handle.program.lock().expect("terminal program lock");
+            match program.try_wait() {
+                Ok(None) => program.kill().map_err(RpcError::internal),
+                Ok(Some(_)) => Err(RpcError::not_found("running terminal")),
+                Err(err) => Err(RpcError::internal(err)),
+            }
+        })
+        .await
+        .map_err(RpcError::internal)?
+    }
+
+    fn running(&self, id: &str) -> Result<Arc<Handle>, RpcError> {
+        id.parse::<u64>()
+            .ok()
+            .and_then(|number| self.shared.table().get(&number)?.handle.clone())
+            .ok_or_else(|| RpcError::not_found(format!("running terminal {id}")))
     }
 
     /// Every Terminal, running or exited, oldest first.
@@ -162,15 +241,19 @@ impl Terminals {
     }
 }
 
+/// Wait for the program to end without holding the lock while it runs, so `kill` can take it.
+fn reap(program: &Program) -> std::io::Result<portable_pty::ExitStatus> {
+    loop {
+        let status = program.lock().expect("terminal program lock").try_wait()?;
+        match status {
+            Some(status) => return Ok(status),
+            None => std::thread::sleep(REAP_POLL),
+        }
+    }
+}
+
 /// Read until the program closes the PTY, publishing each chunk, then report how it ended.
-/// Owns `master` so the PTY outlives the program's last write.
-fn pump(
-    shared: &Shared,
-    number: u64,
-    mut reader: Box<dyn Read + Send>,
-    mut child: Box<dyn portable_pty::Child + Send + Sync>,
-    master: Box<dyn portable_pty::MasterPty + Send>,
-) {
+fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program: &Program) {
     let id = number.to_string();
     let mut chunk = [0u8; READ_CHUNK];
     // Linux reports the closed PTY as an error, macOS as end of file: both mean "no more output".
@@ -187,7 +270,7 @@ fn pump(
             }),
         );
     }
-    let code = match child.wait() {
+    let code = match reap(program) {
         Ok(status) if status.signal().is_some() => None,
         Ok(status) => Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX)),
         Err(err) => {
@@ -196,7 +279,6 @@ fn pump(
             Some(-1)
         }
     };
-    drop(master);
     shared.finish(number, code);
 }
 
@@ -215,6 +297,21 @@ impl Module for Terminals {
             "terminal.spawn" => {
                 let spawned = self.spawn(params(value)?).await?;
                 reply(&TerminalId { id: spawned.id })
+            }
+            "terminal.write" => {
+                let WriteParams { id, data } = params(value)?;
+                let bytes = STANDARD
+                    .decode(data)
+                    .map_err(|err| invalid(format!("data is not base64: {err}")))?;
+                self.write(&id, &bytes).await.and(reply(&()))
+            }
+            "terminal.resize" => {
+                let ResizeParams { id, cols, rows } = params(value)?;
+                self.resize(&id, cols, rows).await.and(reply(&()))
+            }
+            "terminal.kill" => {
+                let TerminalId { id } = params(value)?;
+                self.kill(&id).await.and(reply(&()))
             }
             "terminal.list" => reply(&self.list()),
             _ => Err(RpcError::method_not_found(method)),

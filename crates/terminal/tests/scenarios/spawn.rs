@@ -1,31 +1,16 @@
 //! X1 output, X3 exit, X7 cwd and env.
 
-mod common;
-
-use std::sync::Arc;
-
-use common::{PATIENCE, decode, sh, until_exit};
+use crate::common::{PATIENCE, ctx, decode, open, sh, until_exit};
+use contracts::EventData;
 use contracts::terminal::{SpawnParams, TerminalId, TerminalInfo};
-use contracts::{Actor, EventData};
-use provenance::Touches;
-use rpc::{Bus, Ctx, Module};
-use terminal::Terminals;
-
-fn open(dir: &tempfile::TempDir) -> (Terminals, Bus) {
-    let bus = Bus::new();
-    (Terminals::open(dir.path(), bus.clone()).unwrap(), bus)
-}
+use rpc::Module;
 
 #[tokio::test]
 async fn x1_output_reaches_a_subscribed_client() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, bus) = open(&dir);
     let mut events = bus.subscribe();
-    let ctx = Ctx {
-        actor: Actor::user(),
-        bus: bus.clone(),
-        touches: Arc::new(Touches::open(&dir.path().join("provenance.db")).unwrap()),
-    };
+    let ctx = ctx(&dir, &bus);
     let params = serde_json::to_value(sh(dir.path(), "echo hi")).unwrap();
     let spawned = terminals
         .call(&ctx, "terminal.spawn", params)
@@ -62,11 +47,7 @@ async fn x3_exit_code_is_reported_and_listed() {
 async fn x3_terminal_list_over_rpc_shows_the_exit_code() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, bus) = open(&dir);
-    let ctx = Ctx {
-        actor: Actor::user(),
-        bus,
-        touches: Arc::new(Touches::open(&dir.path().join("provenance.db")).unwrap()),
-    };
+    let ctx = ctx(&dir, &bus);
     let mut spawned = terminals.spawn(sh(dir.path(), "exit 3")).await.unwrap();
     until_exit(&mut spawned.events).await;
     let listed = terminals
