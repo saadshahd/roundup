@@ -6,13 +6,14 @@ use contracts::Event;
 use rpc::{Client, RpcError, code};
 use serde::Serialize;
 use serde_json::Value;
+use tauri::async_runtime::JoinHandle;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::process::ChildStdin;
 use tokio::time::timeout;
 
 use crate::config::Config;
-use crate::daemon;
+use crate::daemon::{self, OwnedSocket};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Project {
@@ -30,6 +31,17 @@ struct Open {
     client: Arc<Client>,
     /// Closing it is how the Daemon learns the App is gone (D1).
     _stdin: ChildStdin,
+    _socket: OwnedSocket,
+    /// One at a time: a reloaded webview subscribes again and must not receive every Event twice.
+    subscription: Option<JoinHandle<()>>,
+}
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        if let Some(subscription) = self.subscription.take() {
+            subscription.abort();
+        }
+    }
 }
 
 enum Phase {
@@ -92,14 +104,25 @@ impl AppState {
             events.request("events.subscribe", Value::Null),
         )
         .await?;
-        tauri::async_runtime::spawn(async move {
+        let pump = tauri::async_runtime::spawn(async move {
             while let Some(event) = events.next_event().await {
                 if channel.send(event).is_err() {
                     return;
                 }
             }
         });
-        Ok(())
+        match &mut *self.phase() {
+            Phase::Open(open) => {
+                if let Some(previous) = open.subscription.replace(pump) {
+                    previous.abort();
+                }
+                Ok(())
+            }
+            Phase::Closed | Phase::Opening | Phase::Exited(_) => {
+                pump.abort();
+                Err(RpcError::internal("the Daemon went away while subscribing"))
+            }
+        }
     }
 
     /// Closes the Daemon's stdin; a Daemon started with `--attached` then stops its Agents and Terminals and exits.
@@ -138,10 +161,7 @@ impl AppState {
             ));
         }
         let project = Project {
-            name: path.file_name().map_or_else(
-                || path.display().to_string(),
-                |name| name.to_string_lossy().into_owned(),
-            ),
+            name: named_after(path),
             path: path.display().to_string(),
         };
         let started = daemon::start(&self.config, path).await?;
@@ -149,6 +169,8 @@ impl AppState {
             project: project.clone(),
             client: Arc::new(started.client),
             _stdin: started.stdin,
+            _socket: started.socket,
+            subscription: None,
         });
         let app = app.clone();
         daemon::watch_exit(started.child, move |code| {
@@ -191,4 +213,13 @@ impl AppState {
             ))
         })?
     }
+}
+
+/// Resolves `.` and `..` first: the last component of `/a/b/..` is not the Project's name.
+fn named_after(path: &Path) -> String {
+    let reached = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    reached.file_name().map_or_else(
+        || reached.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }

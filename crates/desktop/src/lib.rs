@@ -14,10 +14,13 @@ pub use state::{AppState, Project};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Builder, Manager, RunEvent, Runtime, State};
 
+/// `exit` ends the App with a code; `run` passes `AppHandle::exit`. It is a parameter because the
+/// mock runtime cannot exit and a test must see that a refused start asks for it.
 pub fn build<R: Runtime>(
     builder: Builder<R>,
     config: Config,
     project_dir: Option<PathBuf>,
+    exit: impl Fn(&AppHandle<R>, i32) + Send + 'static,
 ) -> Builder<R> {
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -31,10 +34,26 @@ pub fn build<R: Runtime>(
         .setup(move |app| {
             if let Some(project_dir) = project_dir {
                 let state = app.state::<AppState>();
-                tauri::async_runtime::block_on(state.open_project(app.handle(), &project_dir))?;
+                if let Err(err) =
+                    tauri::async_runtime::block_on(state.open_project(app.handle(), &project_dir))
+                {
+                    // An Err from setup makes Tauri panic (SIGABRT); a refused start is not a bug.
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string(&err).expect("RpcError is plain data")
+                    );
+                    exit(app.handle(), 1);
+                }
             }
             Ok(())
         })
+}
+
+/// The Tauri context built from `tauri.conf.json` and `capabilities/`; tests build it on the mock
+/// runtime to check what the webview is allowed to call. Defined once because embedding it twice
+/// in one test binary is a duplicate-symbol linker warning.
+pub fn context<R: Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
 }
 
 pub fn handle_run_event<R: Runtime>(app: &AppHandle<R>, event: &RunEvent) {
@@ -49,9 +68,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .map(std::path::absolute)
         .transpose()?;
-    build(tauri::Builder::default(), config, project_dir)
-        .build(tauri::generate_context!())?
-        .run(|app, event| handle_run_event(app, &event));
+    build(
+        tauri::Builder::default(),
+        config,
+        project_dir,
+        |app, code| app.exit(code),
+    )
+    .build(context())?
+    .run(|app, event| handle_run_event(app, &event));
     Ok(())
 }
 

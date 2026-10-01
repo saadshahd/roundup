@@ -1,15 +1,13 @@
 //! Scenarios S1 to S3 (`scenarios/app.md`). A fake `rupd` is a state script; the real Daemon runs
 //! in-process on a socket the script links to the one the App chose.
 
-use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use desktop::{AppState, Config, build, handle_run_event};
@@ -95,7 +93,7 @@ impl Fixture {
 }
 
 fn app(config: Config, folder: Option<PathBuf>) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
-    let app = build(mock_builder(), config, folder)
+    let app = build(mock_builder(), config, folder, |app, code| app.exit(code))
         .build(mock_context(noop_assets()))
         .unwrap();
     let webview = WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
@@ -105,8 +103,8 @@ fn app(config: Config, folder: Option<PathBuf>) -> (App<MockRuntime>, WebviewWin
 }
 
 fn real_context_app(config: Config) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
-    let app = build(mock_builder(), config, None)
-        .build(tauri::generate_context!())
+    let app = build(mock_builder(), config, None, |app, code| app.exit(code))
+        .build(desktop::context())
         .unwrap();
     let webview = WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
         .build()
@@ -563,23 +561,22 @@ fn s1_the_webview_may_listen_for_daemon_exited_through_the_real_capabilities() {
 #[test]
 fn s1_a_failed_roundup_project_start_exits_non_zero_without_panicking() {
     let fx = Fixture::new("echo 'cannot open the database' >&2\nexit 3");
-    let (mut app, _webview) = app(fx.config.clone(), Some(fx.project.clone()));
-    let exit_codes = Rc::new(RefCell::new(Vec::new()));
-    let seen = Rc::clone(&exit_codes);
+    let exits = Arc::new(Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&exits);
+    let mut app = build(
+        mock_builder(),
+        fx.config.clone(),
+        Some(fx.project.clone()),
+        move |_, code| recorded.lock().unwrap().push(code),
+    )
+    .build(mock_context(noop_assets()))
+    .unwrap();
 
-    let start = Instant::now();
-    while exit_codes.borrow().is_empty() {
-        assert!(start.elapsed() < WAIT, "no exit request within {WAIT:?}");
-        let seen = Rc::clone(&seen);
-        #[allow(deprecated)]
-        app.run_iteration(move |_, event| {
-            if let RunEvent::ExitRequested { code, .. } = event {
-                seen.borrow_mut().push(code);
-            }
-        });
-    }
+    // Tauri runs the setup hook, where the project is opened, when the event loop starts.
+    #[allow(deprecated)]
+    app.run_iteration(|_, _| {});
 
-    assert_eq!(*exit_codes.borrow(), [Some(1)]);
+    assert_eq!(*exits.lock().unwrap(), [1]);
 }
 
 #[test]

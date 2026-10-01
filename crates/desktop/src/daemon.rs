@@ -1,7 +1,7 @@
 //! Starting `rupd` for one Project and learning when it is ready or gone.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -24,6 +24,21 @@ pub struct Started {
     /// Held and never written: its closing is how the Daemon learns the App is gone (D1).
     pub stdin: ChildStdin,
     pub child: Child,
+    pub socket: OwnedSocket,
+}
+
+/// The socket file this App's Daemon creates; removed when the App is done with the Daemon, so a
+/// crashed Daemon's leftover path never makes the next run's bind fail.
+pub struct OwnedSocket(PathBuf);
+
+impl Drop for OwnedSocket {
+    fn drop(&mut self) {
+        match std::fs::remove_file(&self.0) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => eprintln!("desktop: could not remove {}: {err}", self.0.display()),
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -58,6 +73,7 @@ pub async fn start(config: &Config, project: &Path) -> Result<Started, RpcError>
         })?;
     let stdin = child.stdin.take().expect("stdin was requested piped");
     let stderr = child.stderr.take().expect("stderr was requested piped");
+    let socket = OwnedSocket(config.socket.clone());
     let tail = StderrTail::default();
     let drain = tauri::async_runtime::spawn(drain(stderr, tail.clone()));
 
@@ -67,7 +83,7 @@ pub async fn start(config: &Config, project: &Path) -> Result<Started, RpcError>
             Err(err) => format!("could not be waited on: {err}"),
         },
         ready = timeout(config.ready_bound, ping_until_answered(&config.socket)) => match ready {
-            Ok(client) => return Ok(Started { client, stdin, child }),
+            Ok(client) => return Ok(Started { client, stdin, child, socket }),
             Err(_) => format!("did not answer daemon.ping within {:?}", config.ready_bound),
         },
     };
@@ -114,9 +130,21 @@ async fn ping_until_answered(socket: &Path) -> Client {
 }
 
 async fn drain(stderr: ChildStderr, tail: StderrTail) {
-    let mut lines = BufReader::new(stderr).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        eprintln!("rupd: {line}");
-        tail.push(line);
+    let mut reader = BufReader::new(stderr);
+    let mut bytes = Vec::new();
+    loop {
+        bytes.clear();
+        match reader.read_until(b'\n', &mut bytes).await {
+            Ok(0) => return,
+            Ok(_) => {
+                let line = String::from_utf8_lossy(&bytes).trim_end().to_owned();
+                eprintln!("{line}");
+                tail.push(line);
+            }
+            Err(err) => {
+                eprintln!("desktop: stopped reading the Daemon's stderr: {err}");
+                return;
+            }
+        }
     }
 }
