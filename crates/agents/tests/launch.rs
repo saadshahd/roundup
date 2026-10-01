@@ -63,7 +63,12 @@ fn setup() -> Setup {
 
 impl Setup {
     fn launcher(&self) -> Launcher {
-        Launcher::new("fake-claude", self.claude_json.clone(), self.rup.clone())
+        Launcher::new(
+            "fake-claude",
+            self.claude_json.clone(),
+            self.rup.clone(),
+            None,
+        )
     }
 
     fn prepare(&self, id: &str) -> Result<Vec<String>, rpc::RpcError> {
@@ -206,7 +211,7 @@ fn a4_a_missing_config_is_created_with_the_trust() {
 fn a4_a_config_folder_that_does_not_exist_yet_is_created() {
     let s = setup();
     let config = s.root.path().join("config dir").join(".claude.json");
-    let launcher = Launcher::new("fake-claude", config.clone(), s.rup.clone());
+    let launcher = Launcher::new("fake-claude", config.clone(), s.rup.clone(), None);
     launcher.prepare(&s.dir, "1", &s.cwd).unwrap();
     assert_eq!(
         read(&config)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
@@ -334,7 +339,7 @@ fn a4_a_relative_project_dir_still_gives_claude_an_absolute_settings_path() {
     std::fs::create_dir_all(&dir).unwrap();
     let rup = root.path().join("rup");
     std::fs::write(&rup, "").unwrap();
-    let launcher = Launcher::new("fake-claude", root.path().join("claude.json"), rup);
+    let launcher = Launcher::new("fake-claude", root.path().join("claude.json"), rup, None);
 
     let argv = launcher
         .prepare(dir.strip_prefix(&here).unwrap(), "1", &cwd)
@@ -472,14 +477,24 @@ fn a4_the_binary_and_config_location_come_from_the_environment() {
     .unwrap();
     assert_eq!(
         launcher,
-        Launcher::new("/x/fake", "/h/.claude.json".into(), "/e/rup".into())
+        Launcher::new(
+            "/x/fake",
+            "/h/.claude.json".into(),
+            "/e/rup".into(),
+            Some("/h".into())
+        )
     );
 
     let launcher =
         Launcher::from_vars(vars(&[("CLAUDE_CONFIG_DIR", "/c"), ("HOME", "/h")]), exe).unwrap();
     assert_eq!(
         launcher,
-        Launcher::new("claude", "/c/.claude.json".into(), "/e/rup".into())
+        Launcher::new(
+            "claude",
+            "/c/.claude.json".into(),
+            "/e/rup".into(),
+            Some("/h".into())
+        )
     );
 
     assert!(Launcher::from_vars(vars(&[]), exe).is_err());
@@ -493,10 +508,94 @@ fn a4_rup_is_the_one_beside_the_running_daemon_unless_the_environment_says_other
         Launcher::from_vars(vars(&[("HOME", "/h"), ("ROUNDUP_RUP_BIN", "/r/rup")]), exe).unwrap();
     assert_eq!(
         beside,
-        Launcher::new("claude", "/h/.claude.json".into(), "/e/rup".into())
+        Launcher::new(
+            "claude",
+            "/h/.claude.json".into(),
+            "/e/rup".into(),
+            Some("/h".into())
+        )
     );
     assert_eq!(
         named,
-        Launcher::new("claude", "/h/.claude.json".into(), "/r/rup".into())
+        Launcher::new(
+            "claude",
+            "/h/.claude.json".into(),
+            "/r/rup".into(),
+            Some("/h".into())
+        )
     );
+}
+
+#[test]
+fn a4_an_empty_variable_counts_as_unset() {
+    let exe = Path::new("/e/rupd");
+    let launcher = Launcher::from_vars(
+        vars(&[
+            ("CLAUDE_CONFIG_DIR", ""),
+            ("HOME", "/h"),
+            ("ROUNDUP_RUP_BIN", ""),
+        ]),
+        exe,
+    )
+    .unwrap();
+    assert_eq!(
+        launcher,
+        Launcher::new(
+            "claude",
+            "/h/.claude.json".into(),
+            "/e/rup".into(),
+            Some("/h".into())
+        )
+    );
+    assert!(Launcher::from_vars(vars(&[("HOME", "")]), exe).is_err());
+}
+
+#[test]
+fn a4_a_cwd_that_is_not_in_nfc_is_trusted_under_its_nfc_name() {
+    let s = setup();
+    let decomposed = s.cwd.parent().unwrap().join("cafe\u{301}");
+    std::fs::create_dir(&decomposed).unwrap();
+
+    s.launcher().prepare(&s.dir, "1", &decomposed).unwrap();
+
+    let config = read(&s.claude_json);
+    let keys: Vec<_> = config["projects"].as_object().unwrap().keys().collect();
+    assert_eq!(keys.len(), 1);
+    assert!(keys[0].ends_with("caf\u{e9}"), "{}", keys[0]);
+}
+
+#[test]
+fn a4_the_home_folder_is_refused_and_never_trusted() {
+    let s = setup();
+    let project = s.dir.parent().unwrap();
+    let launcher = Launcher::new(
+        "fake-claude",
+        s.claude_json.clone(),
+        s.rup.clone(),
+        Some(project.to_owned()),
+    );
+
+    let err = launcher.prepare(&s.dir, "1", project).unwrap_err();
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(!s.claude_json.exists());
+    assert!(!s.dir.join("agents").exists());
+    launcher.prepare(&s.dir, "1", &s.cwd).unwrap();
+}
+
+#[test]
+fn a4_a_symlink_planted_where_the_settings_go_is_replaced_not_written_through() {
+    let s = setup();
+    let victim = s.root.path().join("zshrc");
+    std::fs::write(&victim, "export KEEP=1\n").unwrap();
+    let agents = s.dir.join("agents");
+    std::fs::create_dir(&agents).unwrap();
+    let planted = agents.join("1.settings.json");
+    std::os::unix::fs::symlink(&victim, &planted).unwrap();
+
+    s.prepare("1").unwrap();
+
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "export KEEP=1\n");
+    assert!(!planted.symlink_metadata().unwrap().file_type().is_symlink());
+    assert!(read(&planted)["hooks"]["Stop"].is_array());
 }

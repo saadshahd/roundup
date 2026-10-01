@@ -1,0 +1,41 @@
+/* Keep "styles.css" in the name: vite.config.ts loads only CSS files matching it, and u14 reads these rules. */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pane-header,
+.pane-failure {
+  flex: none;
+  height: 1.5em;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.pane-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.pane-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-header .word {
+  flex: none;
+  margin-left: 1ch;
+}
+
+.pane-failure p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-screen {
+  flex: 1;
+  min-height: 0;
+}

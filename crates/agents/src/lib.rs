@@ -50,10 +50,9 @@ pub trait AgentAdapter {
 /// State the Terminal watchers and the RPC calls share.
 struct Shared {
     rail: Mutex<rail::Rail>,
-    /// `None` while the Agent's Terminal is starting. A node is marked, and unmarked on failure,
-    /// in the same Rail critical section that creates or reserves it, so `agent.stop` never finds
-    /// a starting node unmarked.
-    runs: Mutex<HashMap<String, Option<Run>>>,
+    /// A node is marked `Starting`, and unmarked on failure, in the same Rail critical section
+    /// that creates or reserves it, so `agent.stop` never finds a starting node unmarked.
+    runs: Mutex<HashMap<String, Slot>>,
     bus: Bus,
     terminals: Arc<Terminals>,
     /// Milliseconds since the Unix epoch. Adapters stamp Statuses with it and the watchers time
@@ -70,19 +69,29 @@ impl Shared {
         self.rail.lock().expect("rail lock")
     }
 
-    fn runs(&self) -> MutexGuard<'_, HashMap<String, Option<Run>>> {
+    fn runs(&self) -> MutexGuard<'_, HashMap<String, Slot>> {
         self.runs.lock().expect("runs lock")
     }
 
-    /// An Agent, or a Meta-agent, has a Status: its live one, else `done` because no Terminal
-    /// outlives the Daemon. Every node that leaves the module passes through here.
+    fn mark_starting(&self, id: &str) {
+        let since = (self.clock)();
+        self.runs().insert(id.to_owned(), Slot::Starting { since });
+    }
+
+    /// An Agent, or a Meta-agent, has a Status: its live one; `working` while it starts; else
+    /// `done`, because the Daemon that ran it is gone and its Terminal with it. Every node that
+    /// leaves the module passes through here.
     fn present(&self, mut node: RailNode) -> RailNode {
         if node.kind == NodeKind::Agent || node.meta {
-            let live = self
-                .runs()
-                .get(&node.id)
-                .and_then(Option::as_ref)
-                .and_then(|run| run.adapter.status().cloned());
+            let live = match self.runs().get(&node.id) {
+                Some(Slot::Running(run)) => run.adapter.status().cloned(),
+                Some(Slot::Starting { since }) => Some(Status {
+                    kind: Kind::Working,
+                    label: "starting".into(),
+                    since: *since,
+                }),
+                None => None,
+            };
             node.status = Some(live.unwrap_or_else(|| Status {
                 kind: Kind::Done,
                 label: "terminal gone".into(),
@@ -113,7 +122,7 @@ impl Shared {
             let mut runs = self.runs();
             let run = runs
                 .get_mut(id)
-                .and_then(Option::as_mut)
+                .and_then(Slot::run_mut)
                 .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
             let changed = run.adapter.observe(observation);
             let idle = changed
@@ -150,6 +159,24 @@ impl Shared {
             ));
         }
         Ok(tick_at)
+    }
+}
+
+/// A node's place in `Shared::runs`.
+enum Slot {
+    /// Its Terminal is starting; `since` is when, on `clock`, it was marked.
+    Starting {
+        since: i64,
+    },
+    Running(Run),
+}
+
+impl Slot {
+    fn run_mut(&mut self) -> Option<&mut Run> {
+        match self {
+            Self::Running(run) => Some(run),
+            Self::Starting { .. } => None,
+        }
     }
 }
 
@@ -255,7 +282,7 @@ impl Agents {
                 params.parent.as_deref(),
                 None,
             )?;
-            self.shared.runs().insert(node.id.clone(), None);
+            self.shared.mark_starting(&node.id);
             node
         };
         let terminal_id = match self.run_agent(&node.id, cwd, params.prompt).await {
@@ -311,7 +338,7 @@ impl Agents {
         {
             let mut rail = self.shared.rail();
             rail.reserve_meta(id)?;
-            self.shared.runs().insert(id.to_owned(), None);
+            self.shared.mark_starting(id);
         }
         let project = self.dir.parent().unwrap_or(&self.dir);
         if let Err(err) = self.run_agent(id, project, None).await {
@@ -324,17 +351,17 @@ impl Agents {
         Ok(self.shared.present(self.shared.rail().node(id)?))
     }
 
-    /// Stop an Agent's program; it stays in the Rail as `done`. A Meta-agent's children move up
-    /// to where it was and keep running.
+    /// Stop an Agent's program; it stays in the Rail as `done`, unless its program had already
+    /// ended: then it keeps the Status that ending gave it. A Meta-agent's children move up to
+    /// where it was and keep running.
     async fn stop(&self, ctx: &Ctx, id: &str) -> Result<(), RpcError> {
         let (node, run) = {
             let rail = self.shared.rail();
             let node = rail.node(id)?;
-            let run = self
-                .shared
-                .runs()
-                .get(id)
-                .map(|run| run.as_ref().map(|run| run.terminal_id.clone()));
+            let run = self.shared.runs().get(id).map(|slot| match slot {
+                Slot::Running(run) => Some(run.terminal_id.clone()),
+                Slot::Starting { .. } => None,
+            });
             (node, run)
         };
         if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
@@ -386,7 +413,7 @@ impl Agents {
             named: false,
             terminal_id: spawned.id.clone(),
         };
-        self.shared.runs().insert(id.to_owned(), Some(run));
+        self.shared.runs().insert(id.to_owned(), Slot::Running(run));
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
@@ -512,7 +539,7 @@ impl Module for Agents {
                 let node = {
                     let mut rail = shared.rail();
                     let node = rail.rename(&id, &name)?;
-                    if let Some(Some(run)) = shared.runs().get_mut(&id) {
+                    if let Some(run) = shared.runs().get_mut(&id).and_then(Slot::run_mut) {
                         run.named = true;
                     }
                     node
@@ -547,11 +574,12 @@ mod tests {
     use tokio::task::JoinHandle;
     use tokio::time::Instant;
 
-    use super::claude_code::{ClaudeCode, STAR_HOLD};
-    use super::{Clock, Observation, Run, Shared, rail, shell_name, watch};
+    use super::claude_code::ClaudeCode;
+    use super::{Clock, Observation, Run, Shared, Slot, rail, shell_name, watch};
 
     const PATIENCE: Duration = Duration::from_secs(60);
-    const HOLD: Duration = Duration::from_millis(STAR_HOLD as u64);
+    /// Spelled out, not `STAR_HOLD`, so a changed hold fails these tests.
+    const HOLD: Duration = Duration::from_millis(200);
 
     /// Agent `1`, watched over a stand-in for its Terminal's events, on tokio's clock, which these
     /// tests pause.
@@ -584,7 +612,7 @@ mod tests {
                 named: false,
                 terminal_id: "1".into(),
             };
-            shared.runs().insert("1".into(), Some(run));
+            shared.runs().insert("1".into(), Slot::Running(run));
             let (terminal, terminal_events) = broadcast::channel(16);
             let events = bus.subscribe();
             let watcher = tokio::spawn(watch(Arc::clone(&shared), "1".into(), terminal_events));

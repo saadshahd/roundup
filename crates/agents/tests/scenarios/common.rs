@@ -38,7 +38,7 @@ pub fn open_in(dir: &Path, bus: &Bus, bin: &str) -> (Agents, Arc<Terminals>) {
     let terminals = Arc::new(Terminals::open(dir, bus.clone()).unwrap());
     let rup = dir.join("rup");
     std::fs::write(&rup, "").unwrap();
-    let launcher = Launcher::new(bin, dir.join("claude.json"), rup);
+    let launcher = Launcher::new(bin, dir.join("claude.json"), rup, None);
     let agents = Agents::open_with(dir, bus.clone(), Arc::clone(&terminals), launcher).unwrap();
     (agents, terminals)
 }

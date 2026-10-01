@@ -5,10 +5,12 @@
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use rpc::{OpenError, RpcError, code};
 use serde_json::{Map, Value, json};
+use unicode_normalization::UnicodeNormalization;
 
 /// The hook events that carry state. Notification and SubagentStop are left out on purpose: the
 /// first arrives about 6 s late, the second fires spuriously (ADR 0006).
@@ -28,6 +30,10 @@ const STATE_EVENTS: [&str; 9] = [
 /// 10 s default, and a live holder refreshes the lock's mtime every 5 s.
 const STALE: Duration = Duration::from_secs(10);
 
+/// One thread at a time takes Claude's config lock: two that both found it stale would each
+/// break it, and the second break would remove the lock the first had just taken.
+static TRUSTING: Mutex<()> = Mutex::new(());
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Launcher {
     bin: String,
@@ -35,14 +41,23 @@ pub struct Launcher {
     claude_json: PathBuf,
     /// The `rup` the hooks run, by absolute path: a hook's PATH is not ours to trust.
     rup: PathBuf,
+    /// The user's home folder, never trusted: Claude never saves trust for it, and a saved one
+    /// would trust every non-git folder below it.
+    home: Option<PathBuf>,
 }
 
 impl Launcher {
-    pub fn new(bin: impl Into<String>, claude_json: PathBuf, rup: PathBuf) -> Self {
+    pub fn new(
+        bin: impl Into<String>,
+        claude_json: PathBuf,
+        rup: PathBuf,
+        home: Option<PathBuf>,
+    ) -> Self {
         Self {
             bin: bin.into(),
             claude_json,
             rup,
+            home,
         }
     }
 
@@ -52,20 +67,22 @@ impl Launcher {
 
     /// `ROUNDUP_CLAUDE_BIN` names the program (default `claude`); `CLAUDE_CONFIG_DIR`, else `HOME`,
     /// says where its config lives; `ROUNDUP_RUP_BIN`, else the `rup` beside `exe` (the running
-    /// Daemon), is what the hooks run.
+    /// Daemon), is what the hooks run. A variable set to nothing counts as unset.
     pub fn from_vars(
         var: impl Fn(&str) -> Option<OsString>,
         exe: &Path,
     ) -> Result<Self, OpenError> {
+        let var = |name: &str| var(name).filter(|value| !value.is_empty());
         let bin = var("ROUNDUP_CLAUDE_BIN")
             .map_or_else(|| "claude".into(), |bin| bin.to_string_lossy().into_owned());
-        let claude_json = match (var("CLAUDE_CONFIG_DIR"), var("HOME")) {
+        let home = var("HOME").map(PathBuf::from);
+        let claude_json = match (var("CLAUDE_CONFIG_DIR"), &home) {
             (Some(dir), _) => PathBuf::from(dir).join(".claude.json"),
-            (None, Some(home)) => PathBuf::from(home).join(".claude.json"),
+            (None, Some(home)) => home.join(".claude.json"),
             (None, None) => return Err("neither CLAUDE_CONFIG_DIR nor HOME is set".into()),
         };
         let rup = var("ROUNDUP_RUP_BIN").map_or_else(|| exe.with_file_name("rup"), PathBuf::from);
-        Ok(Self::new(bin, claude_json, rup))
+        Ok(Self::new(bin, claude_json, rup, home))
     }
 
     /// Delete what `prepare` wrote for Agent `id`, for an Agent that never started.
@@ -95,6 +112,16 @@ impl Launcher {
         if !cwd.is_dir() {
             return Err(invalid(format!("cwd {} is not a folder", cwd.display())));
         }
+        if self
+            .home
+            .as_ref()
+            .is_some_and(|home| home.canonicalize().is_ok_and(|home| home == cwd))
+        {
+            return Err(invalid(format!(
+                "cwd {} is the home folder, which is never trusted",
+                cwd.display()
+            )));
+        }
         // Claude reads the settings path from its own cwd, so it must be absolute.
         let dir = dir
             .canonicalize()
@@ -117,8 +144,8 @@ impl Launcher {
         }
         let settings = settings_path(&dir, id);
         let mcp_config = mcp_config_path(&dir, id);
-        write_atomically(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
-        write_atomically(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
+        replace_file(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
+        replace_file(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
         // No `--strict-mcp-config`: the Agent keeps the user's own servers.
         Ok(vec![
@@ -130,10 +157,11 @@ impl Launcher {
         ])
     }
 
-    /// Set `hasTrustDialogAccepted` for `cwd`, keeping every other key. A config that cannot be
+    /// Set `hasTrustDialogAccepted` for `cwd`, under its NFC form (the key Claude Code looks up), keeping every other key. A config that cannot be
     /// read as a JSON object is an error, never overwritten. Trust is never withdrawn: an Agent
     /// ending says nothing about the folder, and the user may have trusted it before roundup did.
     fn trust(&self, cwd: &Path) -> Result<(), RpcError> {
+        let _serial = TRUSTING.lock().unwrap_or_else(PoisonError::into_inner);
         let _lock = ConfigLock::take(&self.claude_json).map_err(RpcError::internal)?;
         let mut config = match std::fs::read_to_string(&self.claude_json) {
             Ok(text) => serde_json::from_str(&text).map_err(|err| self.unreadable(err))?,
@@ -144,12 +172,16 @@ impl Launcher {
             .and_then(|root| object(root.entry("projects").or_insert_with(|| json!({}))))
             .map_err(|err| self.unreadable(err))?;
         let project = projects
-            .entry(cwd.to_string_lossy().into_owned())
+            .entry(cwd.to_string_lossy().nfc().collect::<String>())
             .or_insert_with(|| json!({}));
         object(project)
             .map_err(|err| self.unreadable(err))?
             .insert("hasTrustDialogAccepted".into(), true.into());
-        write_atomically(&self.claude_json, &config).map_err(RpcError::internal)
+        replace_file(
+            &landing(&self.claude_json).map_err(RpcError::internal)?,
+            &config,
+        )
+        .map_err(RpcError::internal)
     }
 
     fn settings_json(&self, id: u64) -> Value {
@@ -261,25 +293,27 @@ fn shell_quote(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 
-/// Write to a fresh file beside `path`, then rename it over, so a reader never sees half a file
-/// and two writers never share a temp file. A symlink is written through and stays a symlink; the
-/// old permissions are kept (the config holds credentials).
-fn write_atomically(path: &Path, value: &Value) -> std::io::Result<()> {
-    let target = landing(path)?;
-    let parent = target.parent().unwrap_or(Path::new("."));
+/// Write to a fresh file beside `path`, then rename it over `path` itself, so a reader never sees
+/// half a file and two writers never share a temp file. A symlink at `path` is replaced, never
+/// written through: the files in the Project are not ours to trust. The old permissions are kept
+/// (the config holds credentials).
+fn replace_file(path: &Path, value: &Value) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent)?;
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     staged.write_all(&serde_json::to_vec_pretty(value)?)?;
     staged.as_file().sync_all()?;
-    if let Ok(existing) = std::fs::metadata(&target) {
+    if let Ok(existing) = std::fs::symlink_metadata(path)
+        && existing.is_file()
+    {
         staged.as_file().set_permissions(existing.permissions())?;
     }
-    staged.persist(&target).map_err(|err| err.error)?;
+    staged.persist(path).map_err(|err| err.error)?;
     Ok(())
 }
 
-/// The file a write to `path` replaces: through any symlinks, to a target that may not exist yet,
-/// so a dangling link stays a link.
+/// The file Claude's config at `path` really is: through any symlinks (a dotfiles manager's), to
+/// a target that may not exist yet, so a dangling link stays a link.
 fn landing(path: &Path) -> std::io::Result<PathBuf> {
     match path.canonicalize() {
         Err(err) if err.kind() == ErrorKind::NotFound => match std::fs::read_link(path) {
