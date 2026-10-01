@@ -5,7 +5,7 @@ use contracts::agent::{NodeKind, RailNode};
 use rpc::code;
 use serde_json::{Value, json};
 
-use crate::common::{Fixture, status_of};
+use crate::common::{Fixture, status_of, until_file};
 
 impl Fixture {
     async fn promote(&self, id: &str) -> Result<RailNode, rpc::RpcError> {
@@ -85,8 +85,7 @@ async fn a7_two_concurrent_promotes_start_one_agent_and_one_loses() {
     assert_eq!(codes.len(), 2);
     assert!(codes[0].is_ok());
     assert_eq!(codes[1].as_ref().unwrap_err(), &code::CONFLICT);
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let starts = std::fs::read_to_string(f.dir.path().join("starts")).unwrap();
+    let starts = until_file(&f.dir.path().join("starts")).await;
     assert_eq!(starts.lines().count(), 1);
 }
 
@@ -171,6 +170,93 @@ async fn a7_a_stopped_agent_is_done_not_an_error() {
     // The kill's exit must not turn it into an error afterwards.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     assert_eq!(status_of(&f.tree().await, &agent.id).kind, Kind::Done);
+}
+
+/// Hold every start of an Agent at its first read of Claude's config, until the returned path
+/// is written to.
+fn hold_starts(f: &Fixture) -> std::path::PathBuf {
+    let config = f.dir.path().join("claude.json");
+    let _ = std::fs::remove_file(&config);
+    let made = std::process::Command::new("mkfifo")
+        .arg(&config)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    config
+}
+
+async fn release(config: std::path::PathBuf) {
+    tokio::task::spawn_blocking(move || std::fs::write(config, "{}"))
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a7_stopping_a_meta_agent_that_is_still_starting_is_a_conflict_and_moves_nothing() {
+    let f = std::sync::Arc::new(Fixture::running("sleep 30"));
+    let (team, agents) = team(&f).await;
+    let config = hold_starts(&f);
+    let promoting = {
+        let (f, team) = (std::sync::Arc::clone(&f), team.clone());
+        tokio::spawn(async move { f.promote(&team).await })
+    };
+    f.until(|t| t.iter().any(|n| n.id == team && n.meta)).await;
+
+    let stopped = f.stop(&team).await.unwrap_err();
+
+    assert_eq!(stopped.code, code::CONFLICT);
+    release(config).await;
+    promoting.await.unwrap().unwrap();
+    let tree = f.tree().await;
+    assert_eq!(status_of(&tree, &team).kind, Kind::Working);
+    assert!(agents.iter().all(|id| {
+        tree.iter()
+            .any(|n| &n.id == id && n.parent.as_deref() == Some(team.as_str()))
+    }));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a7_stopping_an_agent_that_is_still_starting_is_a_conflict() {
+    let f = std::sync::Arc::new(Fixture::running("sleep 30"));
+    let config = hold_starts(&f);
+    let spawning = {
+        let f = std::sync::Arc::clone(&f);
+        tokio::spawn(async move { f.spawn(None, None).await })
+    };
+    let tree = f.until(|t| !t.is_empty()).await;
+
+    let stopped = f.stop(&tree[0].id).await.unwrap_err();
+
+    assert_eq!(stopped.code, code::CONFLICT);
+    release(config).await;
+    let agent = spawning.await.unwrap().unwrap();
+    assert_eq!(status_of(&f.tree().await, &agent.id).kind, Kind::Working);
+}
+
+#[tokio::test]
+async fn a7_stopping_a_meta_agent_twice_announces_the_move_once() {
+    let mut f = Fixture::running("sleep 30");
+    let (team, _) = team(&f).await;
+    f.promote(&team).await.unwrap();
+    f.stop(&team).await.unwrap();
+    f.changed();
+
+    f.stop(&team).await.unwrap();
+
+    assert_eq!(f.changed(), 0);
+}
+
+#[tokio::test]
+async fn a7_promote_names_a_node_by_its_exact_id() {
+    let f = Fixture::running("sleep 30");
+    let team = f.group("team", None).await;
+
+    let err = f.promote(&format!("0{team}")).await.unwrap_err();
+
+    assert_eq!(err.code, code::NOT_FOUND);
+    assert!(!f.tree().await[0].meta);
+    assert!(f.promote(&team).await.unwrap().meta);
 }
 
 #[tokio::test]

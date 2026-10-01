@@ -274,17 +274,21 @@ impl Agents {
             .runs()
             .get(id)
             .map(|run| run.terminal_id.clone());
-        if let Some(terminal_id) = terminal_id {
-            self.shared
-                .observe(ctx.actor.clone(), id, Observation::Stopped)?;
-            match self.shared.terminals.kill(&terminal_id).await {
-                // It exited on its own first.
-                Err(err) if err.code != code::NOT_FOUND => return Err(err),
-                _ => {}
+        match terminal_id {
+            Some(terminal_id) => {
+                self.shared
+                    .observe(ctx.actor.clone(), id, Observation::Stopped)?;
+                match self.shared.terminals.kill(&terminal_id).await {
+                    Err(err) if err.code != code::NOT_FOUND => return Err(err),
+                    // It exited on its own first.
+                    _ => {}
+                }
             }
+            // A Terminal recorded but no Run: the Daemon restarted, nothing is left to stop.
+            None if node.terminal_id.is_some() => {}
+            None => return Err(RpcError::conflict(format!("{id} is still starting"))),
         }
-        if node.kind == NodeKind::Group {
-            self.shared.rail().lift_children(id)?;
+        if node.kind == NodeKind::Group && self.shared.rail().lift_children(id)? {
             ctx.emit(EventData::RailChanged);
         }
         Ok(())
@@ -314,19 +318,7 @@ impl Agents {
             prompt,
             terminal_id: spawned.id.clone(),
         };
-        let taken = {
-            let mut runs = self.shared.runs();
-            let taken = runs.contains_key(id);
-            if !taken {
-                runs.insert(id.to_owned(), run);
-            }
-            taken
-        };
-        if taken {
-            // Another Agent already runs at this node; the new one must not replace it.
-            let _ = self.shared.terminals.kill(&spawned.id).await;
-            return Err(RpcError::conflict(format!("{id} already has an Agent")));
-        }
+        self.shared.runs().insert(id.to_owned(), run);
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),

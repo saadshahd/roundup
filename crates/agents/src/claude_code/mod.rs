@@ -10,11 +10,18 @@ use crate::{AgentAdapter, Observation};
 
 pub use launch::Launcher;
 
+/// How the program's life ended, if it has.
+#[derive(Clone, Copy, PartialEq)]
+enum Ending {
+    Running,
+    Exited,
+    /// Roundup killed it on purpose, so the exit that follows is not an error.
+    Stopped,
+}
+
 pub struct ClaudeCode {
     status: Option<Status>,
-    exited: bool,
-    /// Roundup killed it on purpose, so the exit that follows is not an error.
-    stopped: bool,
+    ending: Ending,
     /// The latest Signal was `PreToolUse`: a dialog may be about to open.
     tool_pending: bool,
     clock: Box<dyn Fn() -> i64 + Send>,
@@ -25,8 +32,7 @@ impl ClaudeCode {
     pub fn new(clock: impl Fn() -> i64 + Send + 'static) -> Self {
         Self {
             status: None,
-            exited: false,
-            stopped: false,
+            ending: Ending::Running,
             tool_pending: false,
             clock: Box::new(clock),
         }
@@ -81,10 +87,10 @@ impl ClaudeCode {
     }
 
     fn exit(&mut self, code: Option<i32>) -> Option<Status> {
-        self.exited = true;
-        if self.stopped {
+        if self.ending == Ending::Stopped {
             return None;
         }
+        self.ending = Ending::Exited;
         match code {
             Some(0) if self.status.as_ref().is_some_and(|s| s.kind == Kind::Done) => None,
             Some(0) => self.settle(Kind::Done, "exited 0".into()),
@@ -98,13 +104,14 @@ impl AgentAdapter for ClaudeCode {
     fn observe(&mut self, observation: Observation) -> Option<Status> {
         match observation {
             Observation::Exit { code } => self.exit(code),
-            Observation::Stopped if self.exited => None,
+            Observation::Stopped if self.ending != Ending::Running => None,
             Observation::Stopped => {
-                self.exited = true;
-                self.stopped = true;
+                self.ending = Ending::Stopped;
                 self.settle(Kind::Done, "stopped".into())
             }
-            Observation::Signal(_) | Observation::Title(_) if self.exited => None,
+            Observation::Signal(_) | Observation::Title(_) if self.ending != Ending::Running => {
+                None
+            }
             Observation::Signal(payload) => {
                 self.tool_pending = payload["hook_event_name"] == "PreToolUse";
                 let (kind, label) = hook_status(&payload)?;
