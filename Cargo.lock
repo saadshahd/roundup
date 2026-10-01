@@ -416,6 +416,7 @@ dependencies = [
 name = "rup"
 version = "0.0.0"
 dependencies = [
+ "contracts",
  "rpc",
  "rupd",
  "serde_json",
