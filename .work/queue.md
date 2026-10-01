@@ -43,7 +43,7 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 |---|---|---|---|---|---|
 | #67 | boxd.md corrections | docs | `docs` | reviewer approval | open |
 | none yet | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight (builder-ux-drawer) |
-| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | Claimed-by: boxd-agents 2026-10-01 |
+| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass, and the U32 test case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | Claimed-by: boxd-agents 2026-10-01 |
 | none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
 ## UX enhancements (`scenarios/ux.md`)

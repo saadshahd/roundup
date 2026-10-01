@@ -6,10 +6,8 @@ Tests run in Vitest with jsdom against the fake App seam (`apps/desktop/src/test
 
 ## V2: moving between ten Agents
 
-**V2 Rail by keyboard.** Given an open Project, focus is in exactly one place: the Rail, the pane, or an open Drawer. `⌘1` puts it in the Rail, `⌘2` in the pane. With focus in the Rail:
-- `↑` and `↓` select the previous and next visible row, and stop at the ends;
+**V2 Rail by keyboard (the rest).** `↑`, `↓`, `Enter` and the focus ring are U31; this is what U31 leaves. Given an open Project, focus is in exactly one place: the Rail, the pane, or an open Drawer. `⌘1` puts it in the Rail, `⌘2` in the pane. With focus in the Rail:
 - `←` collapses a Group or Meta-agent (U8, decision 1), or selects its parent when it is already collapsed or a leaf; `→` expands, or selects its first child;
-- `Enter` moves focus to the pane, which is U12's typing target;
 - `F2` edits the selected name in place, as double-click does in U9.
 
 Nothing in the Rail takes keystrokes while focus is in the pane, so typing `j` into a Terminal never moves the selection. Selecting a row by keyboard shows its Terminal exactly as clicking does, and calls no method of its own.
