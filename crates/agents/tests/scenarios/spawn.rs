@@ -63,7 +63,11 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
         serde_json::from_str(&std::fs::read_to_string(settings).unwrap()).unwrap();
     assert_eq!(
         settings["hooks"]["Stop"][0]["hooks"][0]["command"],
-        format!("rup hook {}", node.id)
+        format!(
+            "'{}' signal {}",
+            f.dir.path().join("rup").display(),
+            node.id
+        )
     );
     let trusted = f.dir.path().canonicalize().unwrap();
     let config: Value =
@@ -85,6 +89,21 @@ async fn a4_spawn_nests_under_a_group_and_never_under_an_agent() {
     let err = f.spawn(Some(&child.id)).await.unwrap_err();
     assert_eq!(err.code, code::CONFLICT);
     assert_eq!(f.tree().await.len(), 2);
+}
+
+#[tokio::test]
+async fn a4_a_cwd_outside_the_project_folder_is_refused_and_leaves_nothing() {
+    let f = Fixture::running("sleep 30");
+    let err = f
+        .call(
+            "agent.spawn",
+            json!({"cwd": "/usr", "prompt": null, "parent": null}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(f.tree().await.is_empty());
+    assert!(!f.dir.path().join("claude.json").exists());
 }
 
 #[tokio::test]
