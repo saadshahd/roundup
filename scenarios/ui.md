@@ -78,7 +78,7 @@ While the program runs, a light `stop` sits at the right: for an Agent it calls 
 
 Double-clicking the title or the body edits it, and leaving the field calls `todo.update` once if the text changed. Opening the Drawer calls `provenance.history {item: "todo:<id>"}` and then `todo.get` once; that `todo.get` is the one read Touch. Background refreshes never call `todo.get`.
 
-## Pads (U18 to U21, U24)
+## Pads (U18 to U21, U29)
 
 **U18 list and ownership.** Given Pads, then the Shelf's `pads` list shows each by name with an owner mark: `◈` when an Agent owns it, `◇` when the user does. The owner mark is not a Glyph; Glyphs mark Kinds. Clicking `◈` calls `pad.setOwner {name, owner: <user>}`, and the mark becomes `◇`. On `pad.changed`, the list refetches `pad.list`, which logs no Touch.
 
@@ -88,7 +88,7 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U21 export.** `export .md` opens the macOS save chooser, through U1's adapter, with `<name>.md` filled in. Choosing a path calls `pad.export {name, path}`, and cancelling calls nothing. An error shows `✕ <message>` in the Drawer.
 
-**U24 long names.** A Pad whose name is longer than its column still keeps one line in the Shelf's `pads` list: its owner mark and name stay together on that line, and the name is cut with `…` and carries its full name as a tooltip. The Drawer's first line does the same, and `export .md`, `close` and the name never overlap.
+**U29 long names.** A Pad whose name is longer than its column still keeps one line in the Shelf's `pads` list: its owner mark and name stay together on that line, and the name is cut with `…` and carries its full name as a tooltip. The Drawer's first line does the same, and `export .md`, `close` and the name never overlap.
 
 ## Stretch
 
