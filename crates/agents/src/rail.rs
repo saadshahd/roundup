@@ -6,7 +6,7 @@ use std::path::Path;
 use contracts::agent::{NodeKind, RailNode};
 use contracts::{Kind, Status};
 use rpc::{OpenError, RpcError};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, Transaction, params};
 
 pub struct Rail {
     db: Connection,
@@ -61,6 +61,50 @@ impl Rail {
         let id = tx.last_insert_rowid().to_string();
         tx.commit().map_err(sql)?;
         self.node(&id)
+    }
+
+    pub fn rename(&mut self, id: &str, name: &str) -> Result<RailNode, RpcError> {
+        let changed = self
+            .db
+            .execute("UPDATE nodes SET name = ? WHERE id = ?", params![name, id])
+            .map_err(sql)?;
+        if changed == 0 {
+            return Err(RpcError::not_found(format!("node {id}")));
+        }
+        self.node(id)
+    }
+
+    /// Put `id` at `index` among the children of `parent`, closing the gap it leaves behind.
+    pub fn move_node(
+        &mut self,
+        id: &str,
+        parent: Option<&str>,
+        index: u32,
+    ) -> Result<RailNode, RpcError> {
+        let tx = self.db.transaction().map_err(sql)?;
+        let nodes = load(&tx, self.opened)?;
+        let node = find(&nodes, id)?;
+        check_parent(&nodes, parent)?;
+        if parent.is_some_and(|parent| is_within(&nodes, parent, id)) {
+            return Err(RpcError::conflict(format!("{id} cannot move into itself")));
+        }
+        let without = |parent: Option<&str>| {
+            let mut ids = siblings(&nodes, parent);
+            ids.retain(|sibling| sibling != id);
+            ids
+        };
+        let mut ids = without(parent);
+        ids.insert((index as usize).min(ids.len()), id.to_owned());
+        place(&tx, parent, &ids)?;
+        if node.parent.as_deref() != parent {
+            place(
+                &tx,
+                node.parent.as_deref(),
+                &without(node.parent.as_deref()),
+            )?;
+        }
+        tx.commit().map_err(sql)?;
+        self.node(id)
     }
 
     fn node(&self, id: &str) -> Result<RailNode, RpcError> {
@@ -145,6 +189,33 @@ fn check_parent(nodes: &[RailNode], parent: Option<&str>) -> Result<(), RpcError
     }
 }
 
+/// Is `node` the ancestor `id` or a descendant of it?
+fn is_within(nodes: &[RailNode], node: &str, id: &str) -> bool {
+    let mut at = Some(node);
+    while let Some(current) = at {
+        if current == id {
+            return true;
+        }
+        at = nodes
+            .iter()
+            .find(|candidate| candidate.id == current)
+            .and_then(|candidate| candidate.parent.as_deref());
+    }
+    false
+}
+
+/// Make `ids` the children of `parent`, in that order, numbered from 0.
+fn place(tx: &Transaction, parent: Option<&str>, ids: &[String]) -> Result<(), RpcError> {
+    for (order, id) in (0_i64..).zip(ids) {
+        tx.execute(
+            "UPDATE nodes SET parent = ?, ord = ? WHERE id = ?",
+            params![parent, order, id],
+        )
+        .map_err(sql)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use contracts::Kind;
@@ -165,10 +236,13 @@ mod tests {
         let agent = rail
             .insert(NodeKind::Agent, "claude", None, Some("1"))
             .unwrap();
+        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
 
         let err = rail
             .insert(NodeKind::Group, "x", Some(&agent.id), None)
             .unwrap_err();
+        assert_eq!(err.code, code::CONFLICT);
+        let err = rail.move_node(&group.id, Some(&agent.id), 0).unwrap_err();
         assert_eq!(err.code, code::CONFLICT);
     }
 
