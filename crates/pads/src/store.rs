@@ -59,6 +59,12 @@ impl Store {
         Ok(())
     }
 
+    pub fn delete(&self, name: &str) -> rusqlite::Result<()> {
+        self.db
+            .execute("DELETE FROM pads WHERE name = ?1", [name])?;
+        Ok(())
+    }
+
     pub fn set_owner(&self, name: &str, owner: &Actor, at: i64) -> rusqlite::Result<()> {
         self.db.execute(
             "UPDATE pads SET owner = ?2, updated_at = ?3 WHERE name = ?1",
