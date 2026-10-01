@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Kind } from "@contracts/Kind";
+import chipStyles from "./attentionChip.styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
 import { agent, group, metaAgent, MINUTE, NOW, terminal } from "../testing/nodes";
 
@@ -135,5 +137,78 @@ describe("u30 jump", () => {
     jump();
 
     expect(screen.getAllByRole("treeitem").map((row) => row.querySelector(".name")?.textContent)).toEqual(["first", "last"]);
+  });
+});
+
+describe("u45 cmd+j follows u32's chord rules", () => {
+  const pressed = async (chord: KeyboardEventInit) => {
+    const { rail } = await mountRail([since("a", "needs-you", 1)]);
+
+    fireEvent.keyDown(document, chord);
+
+    return rail.selected();
+  };
+
+  it("u45_caps_lock_does_not_change_cmd_j", async () => {
+    expect(await pressed({ key: "J", metaKey: true })).toBe("a");
+  });
+
+  it("u45_ctrl_cmd_j_changes_nothing", async () => {
+    expect(await pressed({ key: "j", metaKey: true, ctrlKey: true })).toBeNull();
+  });
+
+  it("u45_alt_cmd_j_changes_nothing", async () => {
+    expect(await pressed({ key: "j", metaKey: true, altKey: true })).toBeNull();
+  });
+
+  it("u45_cmd_j_is_handled_by_the_webview_so_the_browser_never_sees_it", async () => {
+    await mountRail([since("a", "needs-you", 1)]);
+
+    const handled = fireEvent.keyDown(document, { key: "j", metaKey: true });
+    const ignored = fireEvent.keyDown(document, { key: "j" });
+
+    expect([handled, ignored]).toEqual([false, true]);
+  });
+});
+
+describe("u48 the attention chip looks like the control it is", () => {
+  it("u48_the_chip_is_ink_weight", async () => {
+    await mountRail([since("a", "needs-you", 1)]);
+
+    expect(screen.getByText("1 need you").classList.contains("ink")).toBe(true);
+  });
+
+  it("u48_the_chip_names_its_chord_in_the_title", async () => {
+    await mountRail([since("a", "needs-you", 1)]);
+
+    expect(screen.getByTitle("⌘J").textContent).toBe("1 need you");
+  });
+
+  it("u48_the_chip_has_a_hover_rule", () => {
+    expect(chipStyles).toMatch(/\.attention-chip:hover\s*\{[^}]*text-decoration:\s*underline/);
+  });
+
+  it("u48_it_still_shows_nothing_at_zero", async () => {
+    await mountRail([since("a", "working", 1)]);
+
+    expect(screen.queryByText(/need you/)).toBeNull();
+  });
+
+  it("u48_it_still_jumps_on_click", async () => {
+    const { rail } = await mountRail([since("a", "needs-you", 1)]);
+
+    fireEvent.click(screen.getByText("1 need you"));
+
+    expect(rail.selected()).toBe("a");
+  });
+
+  it("u48_after_daemon_exited_the_chip_stays_and_cmd_j_still_selects", async () => {
+    const [exit] = createSignal({ code: 1 });
+    const { rail } = await mountRail([since("a", "needs-you", 1)], [], exit);
+
+    expect(screen.getByText("1 need you")).toBeDefined();
+    jump();
+
+    expect(rail.selected()).toBe("a");
   });
 });
