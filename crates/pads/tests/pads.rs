@@ -69,10 +69,7 @@ async fn p1_create_makes_the_caller_owner_and_logs_a_write() {
 
     assert_eq!(pad["owner"]["id"], "a");
     assert_eq!(pad["text"], "hi");
-    let duplicate = rig
-        .ok(&a, "pad.create", json!({"name": "notes"}))
-        .await
-        .unwrap_err();
+    let duplicate = rig.fail(&a, "pad.create", json!({"name": "notes"})).await;
     assert_eq!(duplicate.code, code::CONFLICT);
     let EventData::PadChanged(changed) = events.try_recv().unwrap().data else {
         panic!("expected pad.changed");
@@ -87,18 +84,18 @@ async fn p1_create_makes_the_caller_owner_and_logs_a_write() {
 async fn p2_owner_rewrites_and_others_only_append() {
     let rig = Rig::new();
     let (a, b) = (agent("a"), agent("b"));
-    rig.fail(&a, "pad.create", json!({"name": "notes", "text": "one"}))
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "one"}))
         .await;
 
     rig.ok(&a, "pad.write", json!({"name": "notes", "text": "two"}))
         .await;
     let mut events = rig.bus.subscribe();
     let denied = rig
-        .ok(&b, "pad.write", json!({"name": "notes", "text": "x"}))
+        .fail(&b, "pad.write", json!({"name": "notes", "text": "x"}))
         .await;
     assert_eq!(denied.code, code::FORBIDDEN);
     assert!(events.try_recv().is_err());
-    rig.fail(&b, "pad.append", json!({"name": "notes", "text": "+b"}))
+    rig.ok(&b, "pad.append", json!({"name": "notes", "text": "+b"}))
         .await;
 
     let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
@@ -143,7 +140,7 @@ async fn p3_list_is_ordered_and_read_is_logged() {
         .map(|t| t.verb)
         .collect();
     assert_eq!(verbs, [Verb::Wrote, Verb::Read]);
-    let missing = rig.call(&a, "pad.read", json!({"name": "zzz"})).await;
+    let missing = rig.fail(&a, "pad.read", json!({"name": "zzz"})).await;
     assert_eq!(missing.code, code::NOT_FOUND);
 }
 
