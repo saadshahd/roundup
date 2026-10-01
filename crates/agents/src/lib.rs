@@ -1,17 +1,24 @@
 //! Agents, the Rail tree and the Claude Code adapter. Owner: agents Builder.
 
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use contracts::agent::{CreateGroupParams, MoveParams, NodeKind, RenameParams};
-use contracts::{EventData, Status};
+use contracts::agent::{
+    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SpawnParams,
+};
+use contracts::terminal::SpawnParams as TerminalSpawn;
+use contracts::{EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
+use terminal::Terminals;
 
 pub mod claude_code;
 mod rail;
+
+use claude_code::{ClaudeCode, Launcher};
 
 /// One input an adapter reads about its Agent.
 pub enum Observation {
@@ -30,25 +37,113 @@ pub trait AgentAdapter {
     fn observe(&mut self, observation: Observation) -> Option<Status>;
 }
 
-pub struct Agents {
+/// State the Terminal watchers and the RPC calls share.
+struct Shared {
     rail: Mutex<rail::Rail>,
+    runs: Mutex<HashMap<String, ClaudeCode>>,
+    terminals: Arc<Terminals>,
+    /// Since when an Agent without a Terminal has been `done`.
+    opened: i64,
+}
+
+impl Shared {
+    fn rail(&self) -> MutexGuard<'_, rail::Rail> {
+        self.rail.lock().expect("rail lock")
+    }
+
+    fn runs(&self) -> MutexGuard<'_, HashMap<String, ClaudeCode>> {
+        self.runs.lock().expect("runs lock")
+    }
+
+    /// An Agent, or a Meta-agent, has a Status: its live one, else `done` because no Terminal
+    /// outlives the Daemon. Every node that leaves the module passes through here.
+    fn present(&self, mut node: RailNode) -> RailNode {
+        if node.kind == NodeKind::Agent || node.meta {
+            let live = self
+                .runs()
+                .get(&node.id)
+                .and_then(|run| run.status().cloned());
+            node.status = Some(live.unwrap_or_else(|| Status {
+                kind: Kind::Done,
+                label: "terminal gone".into(),
+                since: self.opened,
+            }));
+        }
+        node
+    }
+}
+
+pub struct Agents {
+    shared: Arc<Shared>,
+    dir: PathBuf,
+    launcher: Launcher,
 }
 
 impl Agents {
     /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    pub fn open(
+    /// Claude Code is `ROUNDUP_CLAUDE_BIN` (default `claude`).
+    pub fn open(dir: &Path, bus: Bus, terminals: Arc<Terminals>) -> Result<Self, OpenError> {
+        Self::open_with(dir, bus, terminals, Launcher::from_env()?)
+    }
+
+    pub fn open_with(
         dir: &Path,
         _bus: Bus,
-        _terminals: Arc<terminal::Terminals>,
+        terminals: Arc<Terminals>,
+        launcher: Launcher,
     ) -> Result<Self, OpenError> {
-        let rail = rail::Rail::open(&dir.join("agents.db"), now_ms())?;
         Ok(Self {
-            rail: Mutex::new(rail),
+            shared: Arc::new(Shared {
+                rail: Mutex::new(rail::Rail::open(&dir.join("agents.db"))?),
+                runs: Mutex::new(HashMap::new()),
+                terminals,
+                opened: now_ms(),
+            }),
+            dir: dir.to_owned(),
+            launcher,
         })
     }
 
-    fn rail(&self) -> std::sync::MutexGuard<'_, rail::Rail> {
-        self.rail.lock().expect("rail lock")
+    /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
+    async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
+        let cwd = Path::new(&params.cwd);
+        let name = cwd
+            .file_name()
+            .map_or_else(|| "claude".into(), |n| n.to_string_lossy().into_owned());
+        let node =
+            self.shared
+                .rail()
+                .insert(NodeKind::Agent, &name, params.parent.as_deref(), None)?;
+        let spawned = match self.start(&node.id, cwd).await {
+            Ok(spawned) => spawned,
+            Err(err) => {
+                self.shared.rail().remove(&node.id)?;
+                return Err(err);
+            }
+        };
+        self.shared
+            .runs()
+            .insert(node.id.clone(), ClaudeCode::starting(now_ms));
+        self.shared.rail().attach_terminal(&node.id, &spawned.id)?;
+        ctx.emit(EventData::RailChanged);
+        Ok(self.shared.present(RailNode {
+            terminal_id: Some(spawned.id),
+            ..node
+        }))
+    }
+
+    async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {
+        let argv = self.launcher.prepare(&self.dir, id, cwd)?;
+        self.shared
+            .terminals
+            .spawn(TerminalSpawn {
+                cwd: cwd.to_string_lossy().into_owned(),
+                command: Some(argv),
+                env: BTreeMap::new(),
+                cols: 80,
+                rows: 24,
+            })
+            .await
     }
 }
 
@@ -67,27 +162,37 @@ impl Module for Agents {
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
+        let shared = &self.shared;
         match method {
-            "rail.tree" => reply(&self.rail().tree()?),
+            "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
+            "rail.tree" => {
+                let nodes = shared.rail().tree()?;
+                reply(
+                    &nodes
+                        .into_iter()
+                        .map(|node| shared.present(node))
+                        .collect::<Vec<_>>(),
+                )
+            }
             "rail.createGroup" => {
                 let CreateGroupParams { name, parent } = params(value)?;
-                let node = self
+                let node = shared
                     .rail()
                     .insert(NodeKind::Group, &name, parent.as_deref(), None)?;
                 ctx.emit(EventData::RailChanged);
-                reply(&node)
+                reply(&shared.present(node))
             }
             "rail.rename" => {
                 let RenameParams { id, name } = params(value)?;
-                let node = self.rail().rename(&id, &name)?;
+                let node = shared.rail().rename(&id, &name)?;
                 ctx.emit(EventData::RailChanged);
-                reply(&node)
+                reply(&shared.present(node))
             }
             "rail.move" => {
                 let MoveParams { id, parent, index } = params(value)?;
-                let node = self.rail().move_node(&id, parent.as_deref(), index)?;
+                let node = shared.rail().move_node(&id, parent.as_deref(), index)?;
                 ctx.emit(EventData::RailChanged);
-                reply(&node)
+                reply(&shared.present(node))
             }
             _ => Err(RpcError::method_not_found(method)),
         }

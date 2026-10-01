@@ -1,9 +1,11 @@
 //! Helpers shared by the scenario tests.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
 use agents::Agents;
+use agents::claude_code::Launcher;
 use contracts::agent::RailNode;
 use contracts::{Actor, Event, EventData};
 use provenance::Touches;
@@ -27,17 +29,33 @@ pub fn ctx(bus: &Bus) -> Ctx {
     }
 }
 
-pub fn open_in(dir: &Path, bus: &Bus) -> Agents {
+/// An executable `sh` script standing in for `claude`.
+pub fn fake_claude(dir: &Path, body: &str) -> String {
+    let path = dir.join("fake-claude");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+/// Agents over a fresh Terminals, launching `bin` and keeping Claude's config inside `dir`.
+pub fn open_in(dir: &Path, bus: &Bus, bin: &str) -> Agents {
     let terminals = Arc::new(Terminals::open(dir, bus.clone()).unwrap());
-    Agents::open(dir, bus.clone(), terminals).unwrap()
+    let launcher = Launcher::new(bin, dir.join("claude.json"));
+    Agents::open_with(dir, bus.clone(), terminals, launcher).unwrap()
 }
 
 impl Fixture {
     pub fn new() -> Self {
+        Self::running(":")
+    }
+
+    /// A Fixture whose Agents run `script` as their `claude`.
+    pub fn running(script: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let bus = Bus::new();
         let events = bus.subscribe();
-        let agents = open_in(dir.path(), &bus);
+        let bin = fake_claude(dir.path(), script);
+        let agents = open_in(dir.path(), &bus, &bin);
         Self {
             dir,
             bus,
@@ -53,7 +71,7 @@ impl Fixture {
         } = self;
         drop(agents);
         let events = bus.subscribe();
-        let agents = open_in(dir.path(), &bus);
+        let agents = open_in(dir.path(), &bus, "claude");
         Self {
             dir,
             bus,

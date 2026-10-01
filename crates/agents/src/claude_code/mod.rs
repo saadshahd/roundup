@@ -26,6 +26,17 @@ impl ClaudeCode {
         }
     }
 
+    /// An adapter for a program that has just started: working until it says otherwise.
+    pub fn starting(clock: impl Fn() -> i64 + Send + 'static) -> Self {
+        let mut adapter = Self::new(clock);
+        adapter.settle(Kind::Working, "starting".into());
+        adapter
+    }
+
+    pub fn status(&self) -> Option<&Status> {
+        self.status.as_ref()
+    }
+
     /// Adopt `kind` and `label`. `since` moves only when the Kind does.
     fn settle(&mut self, kind: Kind, label: String) -> Option<Status> {
         let since = match &self.status {

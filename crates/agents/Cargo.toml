@@ -18,9 +18,5 @@ tokio.workspace = true
 provenance = { path = "../provenance" }
 tempfile.workspace = true
 
-[package.metadata.cargo-machete]
-# Pre-declared by the Architect so Cargo.lock is resolved before Builders branch; delete this table when the crate uses them.
-ignored = ["tokio"]
-
 [lints]
 workspace = true

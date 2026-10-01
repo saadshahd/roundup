@@ -37,6 +37,10 @@ impl Launcher {
         }
     }
 
+    pub fn from_env() -> Result<Self, OpenError> {
+        Self::from_vars(|name| std::env::var_os(name))
+    }
+
     /// `ROUNDUP_CLAUDE_BIN` names the program (default `claude`); `CLAUDE_CONFIG_DIR`, else `HOME`,
     /// says where its config lives.
     pub fn from_vars(var: impl Fn(&str) -> Option<OsString>) -> Result<Self, OpenError> {
