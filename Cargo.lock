@@ -454,6 +454,7 @@ version = "0.0.0"
 dependencies = [
  "agents",
  "async-trait",
+ "base64",
  "contracts",
  "pads",
  "provenance",
