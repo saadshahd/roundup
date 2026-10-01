@@ -72,7 +72,7 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
-| U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now |
+| U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | after the auditor re-verifies U45 (modifiers) |
 | U43, U44, U46, U47, U49 | rail polish: rename on a selected row, rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the five do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
 | held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
