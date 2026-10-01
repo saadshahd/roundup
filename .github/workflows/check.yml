@@ -30,6 +30,7 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo nextest run
       - run: pnpm lint
+      - run: pnpm typecheck
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"
