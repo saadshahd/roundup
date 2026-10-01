@@ -18,17 +18,17 @@ afterEach(() => {
 
 describe("u13 size", () => {
   it("u13_a_terminal_first_shown_is_resized_to_the_emulators_fitted_size", async () => {
-    const { app, workspace } = await mountPane([node("a")], [info("t-a")]);
+    const { app, connected } = await mountPane([node("a")], [info("t-a")]);
 
-    workspace.rail.select("a");
+    connected.rail.select("a");
 
     expect(callsTo(app, "terminal.resize")).toEqual([{ id: "t-a", cols: 100, rows: 30 }]);
   });
 
   it("u13_a_window_resize_refits_the_shown_terminal", async () => {
-    const { app, workspace, emulators } = await mountPane([node("a")], [info("t-a")]);
+    const { app, connected, emulators } = await mountPane([node("a")], [info("t-a")]);
 
-    workspace.rail.select("a");
+    connected.rail.select("a");
 
     const shown = emulators.get("t-a");
 
@@ -44,9 +44,9 @@ describe("u13 size", () => {
   });
 
   it("u13_a_burst_of_window_resizes_calls_resize_once_per_animation_frame", async () => {
-    const { app, workspace } = await mountPane([node("a")], [info("t-a")]);
+    const { app, connected } = await mountPane([node("a")], [info("t-a")]);
 
-    workspace.rail.select("a");
+    connected.rail.select("a");
     window.dispatchEvent(new Event("resize"));
     window.dispatchEvent(new Event("resize"));
     window.dispatchEvent(new Event("resize"));
@@ -56,19 +56,19 @@ describe("u13 size", () => {
   });
 
   it("u13_opening_a_drawer_never_resizes_the_terminal", async () => {
-    const { app, workspace } = await mountPane([node("a")], [info("t-a")]);
+    const { app, connected } = await mountPane([node("a")], [info("t-a")]);
 
-    workspace.rail.select("a");
-    workspace.drawer.open(() => <p>detail</p>);
+    connected.rail.select("a");
+    connected.drawer.open(() => <p>detail</p>);
     nextFrame();
 
     expect(callsTo(app, "terminal.resize")).toHaveLength(1);
   });
 
   it("u13_an_exited_terminal_is_not_resized", async () => {
-    const { app, workspace } = await mountPane([shell("a")], [info("t-a", { running: false, exit_code: 0 })]);
+    const { app, connected } = await mountPane([shell("a")], [info("t-a", { running: false, exit_code: 0 })]);
 
-    workspace.rail.select("a");
+    connected.rail.select("a");
     window.dispatchEvent(new Event("resize"));
     nextFrame();
 
@@ -76,9 +76,9 @@ describe("u13 size", () => {
   });
 
   it("u13_a_terminal_that_exits_is_no_longer_resized", async () => {
-    const { app, workspace } = await mountPane([shell("a")], [info("t-a")]);
+    const { app, connected } = await mountPane([shell("a")], [info("t-a")]);
 
-    workspace.rail.select("a");
+    connected.rail.select("a");
     app.emit(event({ name: "terminal.exited", data: { id: "t-a", code: 0 } }));
     window.dispatchEvent(new Event("resize"));
     nextFrame();

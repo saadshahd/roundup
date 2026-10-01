@@ -29,11 +29,11 @@ describe("u11 one emulator per Terminal", () => {
   });
 
   it("u11_selecting_a_row_shows_its_emulator_and_no_other", async () => {
-    const { app, workspace, emulators, container } = await mountPane([node("a"), node("b")], [info("t-a"), info("t-b")]);
+    const { app, connected, emulators, container } = await mountPane([node("a"), node("b")], [info("t-a"), info("t-b")]);
 
     app.emit(output("t-a", "x"));
     app.emit(output("t-b", "y"));
-    workspace.rail.select("b");
+    connected.rail.select("b");
 
     expect([emulators.get("t-b")?.host?.textContent, container.querySelector(".pane-screen")?.textContent]).toEqual([
       "t-b",
@@ -42,10 +42,10 @@ describe("u11 one emulator per Terminal", () => {
   });
 
   it("u11_selecting_a_group_shows_no_emulator", async () => {
-    const { workspace, container } = await mountPane([node("a"), node("g", { kind: "group", status: null, terminal_id: null })]);
+    const { connected, container } = await mountPane([node("a"), node("g", { kind: "group", status: null, terminal_id: null })]);
 
-    workspace.rail.select("a");
-    workspace.rail.select("g");
+    connected.rail.select("a");
+    connected.rail.select("g");
 
     expect(container.querySelector(".pane-screen")?.textContent).toBe("");
   });

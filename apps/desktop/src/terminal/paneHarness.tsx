@@ -6,8 +6,8 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
 import type { FakeApp } from "../testing/fakeApp";
-import { openWorkspace, WorkspaceContext } from "../state/workspace";
-import type { Workspace } from "../state/workspace";
+import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
+import type { ConnectedProject } from "../state/connectedProject";
 import { Pane } from "./Pane";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
 import { toBase64 } from "./base64";
@@ -101,7 +101,7 @@ export const event = (data: EventData): DaemonEvent => ({ actor: USER, ...data }
 
 type Mounted = {
   app: FakeApp;
-  workspace: Workspace;
+  connected: ConnectedProject;
   emulators: ReturnType<typeof fakeEmulators>["made"];
   container: HTMLElement;
 };
@@ -115,16 +115,16 @@ export const mountPane = async (tree: RailNode[], terminals: TerminalInfo[] = []
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.resize"] = () => null;
 
-  const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now);
   const { factory, made } = fakeEmulators();
 
   const { container } = render(() => (
-    <WorkspaceContext.Provider value={workspace}>
-      <Pane createEmulator={factory} now={() => now} />
-    </WorkspaceContext.Provider>
+    <ConnectedProjectContext.Provider value={connected}>
+      <Pane createEmulator={factory} />
+    </ConnectedProjectContext.Provider>
   ));
 
-  return { app, workspace, emulators: made, container };
+  return { app, connected, emulators: made, container };
 };
 
 export const callsTo = (app: FakeApp, method: "terminal.write" | "terminal.resize") =>

@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { Workspace } from "../state/workspace";
+import type { ConnectedProject } from "../state/connectedProject";
 import { fromBase64, toBase64 } from "./base64";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
 
@@ -14,8 +14,8 @@ export type Screens = {
   dispose(): void;
 };
 
-export const createScreens = (workspace: Workspace, createEmulator: EmulatorFactory): Screens => {
-  const { app, events, rail } = workspace;
+export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
+  const { app, events, rail } = connected;
   const emulators = new Map<string, Emulator>();
   const [failure, setFailure] = createSignal<string | null>(null);
 
