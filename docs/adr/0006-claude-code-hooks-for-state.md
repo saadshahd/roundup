@@ -26,8 +26,8 @@ Hooks alone are not enough; the adapter merges three inputs.
 | error | `StopFailure` (field `error`; `Stop` does not fire). `PostToolUseFailure` is a failed tool, not an agent error |
 | done | `SessionEnd` (`prompt_input_exit`); otherwise PTY EOF and exit status. Hooks cannot tell idle from done, so roundup defines done |
 
-Silent transitions with no hook: Esc interrupt, deny or Esc on a dialog, the trust-folder dialog (before `SessionStart`), SIGKILL or crash. The terminal title (OSC 0) closes the first two; exit status closes the last. The trust dialog needs a screen-scrape or an explicit pre-trusted cwd. Ignore the spurious `SubagentStop` about 1.3 s after `Stop`.
+Silent transitions with no hook: Esc interrupt, deny or Esc on a dialog, the trust-folder dialog (before `SessionStart`), SIGKILL or crash. The terminal title (OSC 0) closes Esc interrupt only: in the fixtures a deny shows a spinner, not a star, so a deny holds `needs-you` until the next prompt. A star that follows `PreToolUse` lands 40–80 ms before `PermissionRequest` and is ignored, so `idle` never flickers before a dialog. Exit status closes the last. The trust dialog needs a screen-scrape or an explicit pre-trusted cwd. Ignore the spurious `SubagentStop` about 1.3 s after `Stop`.
 
-Input design: per-Agent `--settings` file with one command hook writing JSON lines to the Daemon, plus a title watcher and exit watcher. These are the `Signal`, `Output` and `Exit` Observations.
+Input design: per-Agent `--settings` file with one command hook writing JSON lines to the Daemon, plus a title watcher and exit watcher. These are the `Signal`, `Title` and `Exit` Observations, plus `Stopped` when roundup stops the Agent itself, so a stopped Agent is `done`, not `error`.
 
 Sample size: one run per scenario, two for Esc and deny. Treat timings as indicative. Pre-trust the working directory to avoid the trust dialog.

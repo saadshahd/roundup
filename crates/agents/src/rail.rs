@@ -64,13 +64,14 @@ impl Rail {
     }
 
     pub fn rename(&mut self, id: &str, name: &str) -> Result<RailNode, RpcError> {
-        let changed = self
-            .db
-            .execute("UPDATE nodes SET name = ? WHERE id = ?", params![name, id])
+        // SQLite would match "01" to node 1; only the exact id names a node.
+        let node = self.node(id)?;
+        self.db
+            .execute(
+                "UPDATE nodes SET name = ? WHERE id = ?",
+                params![name, node.id],
+            )
             .map_err(sql)?;
-        if changed == 0 {
-            return Err(RpcError::not_found(format!("node {id}")));
-        }
         self.node(id)
     }
 
@@ -231,19 +232,30 @@ mod tests {
     }
 
     #[test]
-    fn a6_nothing_nests_under_an_agent() {
+    fn a6_nothing_nests_under_an_agent_or_a_terminal() {
         let (_dir, mut rail) = rail();
-        let agent = rail
-            .insert(NodeKind::Agent, "claude", None, Some("1"))
-            .unwrap();
         let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        for kind in [NodeKind::Agent, NodeKind::Terminal] {
+            let leaf = rail.insert(kind, "leaf", None, Some("1")).unwrap();
+            let inserted = rail
+                .insert(NodeKind::Group, "x", Some(&leaf.id), None)
+                .unwrap_err();
+            let moved = rail.move_node(&group.id, Some(&leaf.id), 0).unwrap_err();
+            assert_eq!(
+                (inserted.code, moved.code),
+                (code::CONFLICT, code::CONFLICT),
+                "{kind:?}"
+            );
+        }
+    }
 
-        let err = rail
-            .insert(NodeKind::Group, "x", Some(&agent.id), None)
-            .unwrap_err();
-        assert_eq!(err.code, code::CONFLICT);
-        let err = rail.move_node(&group.id, Some(&agent.id), 0).unwrap_err();
-        assert_eq!(err.code, code::CONFLICT);
+    #[test]
+    fn a6_rename_needs_the_exact_id() {
+        let (_dir, mut rail) = rail();
+        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        let err = rail.rename(&format!("0{}", group.id), "other").unwrap_err();
+        assert_eq!(err.code, code::NOT_FOUND);
+        assert_eq!(rail.tree().unwrap()[0].name, "g");
     }
 
     #[test]
