@@ -42,8 +42,8 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 | PR | Item | Scenarios | Module | Observer | State |
 |---|---|---|---|---|---|
 | #67 | boxd.md corrections | docs | `docs` | reviewer approval | open |
-| none yet | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight (builder-ux-drawer) |
-| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass, and the U32 test case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | Claimed-by: boxd-agents 2026-10-01 |
+| #81 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight, rejected by a boxd Reviewer (verdict `/tmp/verdict-pr81.md`), being fixed: `↓` in the rename field cancels the rename and Enter on a row's collapse or promote button selects the row (both fixed by acting only on keys whose target is a row); six guards and the `Enter` shows-the-Terminal clause are untested, and the "selected row is tabbable" test selects the first row |
+| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass, and the U32 test case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | #80, Claimed-by: boxd-agents 2026-10-01; in flight, rejected by a boxd Reviewer (verdict `/tmp/verdict-pr80.md`), being fixed: three clauses untested (the browser never sees the chord, focus goes to the pane, the field opens at the top of the Rail), two mutants survive (any key closes the field, trimming), and three comments restate code. The prompt is trimmed by the spec (decided), and `⌘N` is ignored while the field is open |
 | none yet | scrollback (V5) | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; `just check` green; QA RSS with ten Terminals printing 100 000 lines each | ready, ids reserved; no existing test narrowed |
 | none yet | Todo triage (V7) | U35 | `apps/desktop`: only `src/todos/**` | `u35_` tests pass; `just check` green; `u15_todo_list.test.tsx` unchanged and green | ready, ids reserved; row text at rest and the second line's text must stay exactly as U15 asserts |
 | none yet | Pad edits never overwrite another Actor (V8) | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; `just check` green; the u20 tests U36 names stay green and the one it replaces is replaced as U36 says | ready, ids reserved |
@@ -73,7 +73,7 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
 | U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
-| U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the five do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
+| U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
 | held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
 
