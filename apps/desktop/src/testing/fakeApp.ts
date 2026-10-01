@@ -11,14 +11,13 @@ type Handlers = {
   ) => RpcMethods[M]["result"] | Promise<RpcMethods[M]["result"]>;
 };
 
-/** Every read the MVP UI makes when a Project opens answers empty; any other method fails until a test installs a handler. */
+/** Reads the regions make once a Project is open answer empty; any other method fails with METHOD_NOT_FOUND until a test installs a handler. */
 const emptyReads: Handlers = {
   "rail.tree": () => [],
   "terminal.list": () => [],
   "todo.list": () => [],
   "pad.list": () => [],
   "provenance.history": () => [],
-  "provenance.touched": () => [],
 };
 
 export type FakeApp = AppSeam & {
