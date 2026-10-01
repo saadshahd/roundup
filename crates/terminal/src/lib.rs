@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -107,17 +107,28 @@ impl Terminals {
         for (name, value) in &params.env {
             command.env(name, value);
         }
-        // Everything fallible that needs no program comes first, so a failure leaves nothing running.
+        // The reader thread starts before the program and receives the child over a channel, so
+        // no later failure can leave a program that nobody waits for.
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
+        let number = self.next.fetch_add(1, Ordering::Relaxed);
+        let (arrival, child_arrives) = mpsc::channel();
+        let shared = Arc::clone(&self.shared);
+        std::thread::Builder::new()
+            .name(format!("terminal-{number}"))
+            .spawn(move || {
+                // No child means the program never started: nothing to report.
+                if let Ok(child) = child_arrives.recv() {
+                    pump(&shared, number, reader, child, pair.master);
+                }
+            })
+            .map_err(RpcError::internal)?;
         let child = pair
             .slave
             .spawn_command(command)
             .map_err(RpcError::internal)?;
-        let mut killer = child.clone_killer();
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
 
-        let number = self.next.fetch_add(1, Ordering::Relaxed);
         let (sender, events) = broadcast::channel(EVENT_BACKLOG);
         self.shared.table().insert(
             number,
@@ -132,17 +143,9 @@ impl Terminals {
                 events: sender,
             },
         );
-        let shared = Arc::clone(&self.shared);
-        let pump = std::thread::Builder::new()
-            .name(format!("terminal-{number}"))
-            .spawn(move || pump(&shared, number, reader, child, pair.master));
-        if let Err(err) = pump {
-            self.shared.table().remove(&number);
-            if let Err(kill) = killer.kill() {
-                eprintln!("terminal {number}: cannot stop program after failed start: {kill}");
-            }
-            return Err(RpcError::internal(err));
-        }
+        arrival
+            .send(child)
+            .expect("the reader thread waits for its child");
         Ok(Spawned {
             id: number.to_string(),
             events,
