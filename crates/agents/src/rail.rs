@@ -160,16 +160,15 @@ mod tests {
     }
 
     #[test]
-    fn a6_nothing_nests_under_an_agent() {
+    fn a6_nothing_nests_under_an_agent_or_a_terminal() {
         let (_dir, mut rail) = rail();
-        let agent = rail
-            .insert(NodeKind::Agent, "claude", None, Some("1"))
-            .unwrap();
-
-        let err = rail
-            .insert(NodeKind::Group, "x", Some(&agent.id), None)
-            .unwrap_err();
-        assert_eq!(err.code, code::CONFLICT);
+        for kind in [NodeKind::Agent, NodeKind::Terminal] {
+            let leaf = rail.insert(kind, "leaf", None, Some("1")).unwrap();
+            let err = rail
+                .insert(NodeKind::Group, "x", Some(&leaf.id), None)
+                .unwrap_err();
+            assert_eq!(err.code, code::CONFLICT, "{kind:?}");
+        }
     }
 
     #[test]
