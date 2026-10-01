@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
@@ -19,7 +19,7 @@ export const Rail = () => {
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
 
-  const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now() }));
+  const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now(), selected: rail.selected() }));
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
 
@@ -33,14 +33,25 @@ export const Rail = () => {
     }
   };
 
+  const [spawning, setSpawning] = createSignal(false);
+
   const parent = (): string | null => {
     const selected = rail.nodes.find((node) => node.id === rail.selected());
 
-    return selected && (selected.kind === "group" || selected.meta) ? selected.id : null;
+    return selected?.kind === "group" ? selected.id : null;
   };
 
+  const attention = createMemo(() => attentionCount(rail.nodes));
+
   createEffect(() => {
-    void attempt(() => app.setDockBadge(attentionCount(rail.nodes)));
+    void attempt(() => app.setDockBadge(attention()));
+  });
+
+  onMount(() => {
+    const clear = () => setFailure(null);
+
+    document.addEventListener("click", clear, true);
+    onCleanup(() => document.removeEventListener("click", clear, true));
   });
 
   createEffect(() => {
@@ -53,7 +64,7 @@ export const Rail = () => {
   });
 
   return (
-    <div class="rail-tree" onClick={() => setFailure(null)}>
+    <div class="rail-tree">
       <div role="tree" aria-label="rail">
         <For each={keys()}>
           {(key) => (
@@ -113,13 +124,15 @@ export const Rail = () => {
       <div class="rail-actions">
         <button
           class="word"
-          onClick={() =>
+          disabled={spawning()}
+          onClick={() => {
+            setSpawning(true);
             void attempt(async () => {
               const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
 
               setWanted(spawned.id);
-            })
-          }
+            }).finally(() => setSpawning(false));
+          }}
         >
           + agent
         </button>

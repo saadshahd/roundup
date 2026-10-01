@@ -1,6 +1,6 @@
 import { cleanup } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, event, group, mountRail, terminal } from "./railFixture";
+import { agent, event, group, metaAgent, mountRail, terminal } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -23,7 +23,7 @@ describe("u10 Dock badge", () => {
   });
 
   it("u10_a_meta_agent_that_needs_you_counts", async () => {
-    const { app } = await mountRail([agent("lead", "needs-you", "x", { meta: true })]);
+    const { app } = await mountRail([metaAgent("lead", "needs-you", "x")]);
 
     expect(app.badges.at(-1)).toBe(1);
   });
@@ -38,5 +38,14 @@ describe("u10 Dock badge", () => {
     await rail.settled();
 
     expect(app.badges).toEqual([0, 1, 2, 1]);
+  });
+
+  it("u10_the_badge_is_not_resent_when_the_count_is_unchanged", async () => {
+    const { app, rail } = await mountRail([agent("a", "needs-you", "x")]);
+
+    app.emit(event({ name: "agent.status", data: { id: "a", status: { kind: "error", label: "!", since: 1 } } }));
+    await rail.settled();
+
+    expect(app.badges).toEqual([1]);
   });
 });

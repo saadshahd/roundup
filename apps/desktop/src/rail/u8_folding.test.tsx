@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
-import { agent, glyphOf, group, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
+import { agent, glyphOf, group, metaAgent, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -26,7 +26,7 @@ describe("u8 folding", () => {
     expect([rowNames(), screen.queryByText(/done$/)]).toEqual([["fresh", "busy"], null]);
   });
 
-  it("u8_a_folded_agent_unfolds_once_the_clock_passes_10_minutes", async () => {
+  it("u8_an_agent_folds_once_the_clock_passes_10_minutes_of_done", async () => {
     const { setNow } = await mountRail([doneFor("fresh", 9)]);
 
     setNow(NOW + 2 * MINUTE);
@@ -53,7 +53,7 @@ describe("u8 folding", () => {
   });
 
   it("u8_a_meta_agent_never_folds_even_when_done", async () => {
-    await mountRail([group("lead", { meta: true, status: { kind: "done", label: "d", since: NOW - 60 * MINUTE } })]);
+    await mountRail([metaAgent("lead", "done", "d", { status: { kind: "done", label: "d", since: NOW - 60 * MINUTE } })]);
 
     expect(rowNames()).toEqual(["lead"]);
   });
@@ -113,5 +113,25 @@ describe("u8 folding", () => {
     fireEvent.click(glyphOf("g"));
 
     expect(rail.selected()).toBeNull();
+  });
+
+  it("u8_the_child_count_counts_direct_children_not_descendants", async () => {
+    await mountRail([
+      group("g"),
+      group("inner", { parent: "g" }),
+      agent("deep", "working", "w", { parent: "inner" }),
+    ]);
+
+    fireEvent.click(glyphOf("g"));
+
+    expect(rowOf("g").querySelector(".light")?.textContent).toBe("1");
+  });
+
+  it("u8_a_selected_done_agent_stays_in_its_row_instead_of_folding_out_of_sight", async () => {
+    const { rail } = await mountRail([doneFor("old-1", 30, { order: 0 }), doneFor("old-2", 30, { order: 1 })]);
+
+    rail.select("old-2");
+
+    expect([rowNames(), screen.getByText("✓ 1 done").textContent]).toEqual([["old-2"], "✓ 1 done"]);
   });
 });

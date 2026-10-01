@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
-import { agent, callsTo, event, group, mountRail, rowNames, rowOf, terminal } from "./railFixture";
+import { agent, callsTo, event, glyphOf, group, metaAgent, mountRail, rowNames, rowOf, terminal } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -35,7 +35,7 @@ describe("u9 actions", () => {
   });
 
   it("u9_plus_agent_spawns_under_the_selected_meta_agent", async () => {
-    const mounted = await mountRail([agent("lead", "idle", "i", { meta: true })]);
+    const mounted = await mountRail([metaAgent("lead", "idle", "i")]);
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("lead");
 
@@ -149,7 +149,7 @@ describe("u9 actions", () => {
 
   it("u9_hovering_a_plain_group_shows_promote_which_calls_rail_promote", async () => {
     const mounted = await mountRail([group("g")]);
-    mounted.app.handlers["rail.promote"] = () => agent("g", "idle", "i", { meta: true });
+    mounted.app.handlers["rail.promote"] = () => metaAgent("g", "idle", "i");
 
     fireEvent.mouseEnter(rowOf("g"));
     fireEvent.click(screen.getByText("promote"));
@@ -189,5 +189,79 @@ describe("u9 actions", () => {
     const line = await screen.findByText("✕ boom");
 
     expect(line.compareDocumentPosition(screen.getByText("+ agent")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("u9_the_failure_line_clears_on_a_click_on_the_fold_triangle", async () => {
+    const mounted = await mountRail([group("g")]);
+    mounted.app.handlers["rail.createGroup"] = () => {
+      throw new RpcError(-32000, "boom");
+    };
+    fireEvent.click(screen.getByText("+ group"));
+    await screen.findByText("✕ boom");
+
+    fireEvent.click(glyphOf("g"));
+
+    expect(screen.queryByText("✕ boom")).toBeNull();
+  });
+
+  it("u9_the_failure_line_clears_on_a_click_on_promote", async () => {
+    const mounted = await mountRail([group("g")]);
+    mounted.app.handlers["rail.createGroup"] = () => {
+      throw new RpcError(-32000, "boom");
+    };
+    mounted.app.handlers["rail.promote"] = () => metaAgent("g", "idle", "i");
+    fireEvent.click(screen.getByText("+ group"));
+    await screen.findByText("✕ boom");
+    fireEvent.mouseEnter(rowOf("g"));
+
+    fireEvent.click(screen.getByText("promote"));
+
+    expect(screen.queryByText("✕ boom")).toBeNull();
+  });
+
+  it("u9_the_failure_line_clears_on_a_click_outside_the_rail", async () => {
+    const mounted = await mountRail([]);
+    mounted.app.handlers["rail.createGroup"] = () => {
+      throw new RpcError(-32000, "boom");
+    };
+    fireEvent.click(screen.getByText("+ group"));
+    await screen.findByText("✕ boom");
+
+    fireEvent.click(document.body);
+
+    expect(screen.queryByText("✕ boom")).toBeNull();
+  });
+
+  it("u9_promote_is_not_shown_on_a_meta_agent", async () => {
+    await mountRail([metaAgent("lead", "idle", "i")]);
+
+    fireEvent.mouseEnter(rowOf("lead"));
+
+    expect(screen.queryByText("promote")).toBeNull();
+  });
+
+  it("u9_a_collapsed_group_can_still_be_promoted", async () => {
+    const mounted = await mountRail([group("g"), agent("a", "idle", "i", { parent: "g" })]);
+    mounted.app.handlers["rail.promote"] = () => metaAgent("g", "idle", "i");
+    fireEvent.click(glyphOf("g"));
+
+    fireEvent.mouseEnter(rowOf("g"));
+    fireEvent.click(screen.getByText("promote"));
+
+    await waitFor(() => expect(callsTo(mounted.app, "rail.promote")).toEqual([{ id: "g" }]));
+  });
+
+  it("u9_a_double_click_on_plus_agent_spawns_one_agent", async () => {
+    const mounted = await mountRail([]);
+    let finish: (node: RailNode) => void = () => {};
+    mounted.app.handlers["agent.spawn"] = () => new Promise<RailNode>((done) => (finish = done));
+    const button = screen.getByText("+ agent");
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    finish(SPAWNED);
+
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    expect(callsTo(mounted.app, "agent.spawn")).toHaveLength(1);
   });
 });

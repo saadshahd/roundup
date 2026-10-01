@@ -42,6 +42,10 @@ export const group = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   ...over,
 });
 
+/** A Meta-agent as the Daemon sends it: a Group with a live Agent sitting at it. */
+export const metaAgent = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
+  group(id, { meta: true, status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
+
 export const terminal = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   id,
   kind: "terminal",

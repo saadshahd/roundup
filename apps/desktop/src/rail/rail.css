@@ -38,15 +38,3 @@
   min-width: 0;
   font: inherit;
 }
-
-.glyph[data-tone="grey"] {
-  color: var(--grey);
-}
-
-.glyph[data-tone="light"] {
-  color: var(--light);
-}
-
-.glyph[data-tone="lightest"] {
-  color: var(--lightest);
-}
