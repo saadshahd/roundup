@@ -5,15 +5,15 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import * as v from "valibot";
 import type { Event as DaemonEvent } from "@contracts/Event";
-import { INTERNAL_CODE, RpcError } from "./seam";
-import type { AppSeam, DaemonExit, Project } from "./seam";
+import { daemonExitSchema, INTERNAL_CODE, projectSchema, RpcError } from "./seam";
+import type { AppSeam } from "./seam";
 
 const parseFailure = v.safeParser(v.object({ code: v.number(), message: v.string() }));
 
 /**
- * The type argument is trusted, not checked: the App returns the JSON of the Rust types that
- * `contracts/generated` is generated from, so a mismatch is a contract bug, not bad input.
- * A rejection that is not `{code, message}` becomes INTERNAL, so callers never see a bare string.
+ * The type argument is trusted, not checked, so use it only for `rpc` and `subscribe`: their types are
+ * generated from the Daemon's own Rust types, so a mismatch is a contract bug, not bad input. Everything else
+ * is parsed. A rejection that is not `{code, message}` becomes INTERNAL, so callers never see a bare string.
  */
 const command = async <Result>(name: string, args: InvokeArgs): Promise<Result> => {
   try {
@@ -28,8 +28,8 @@ const command = async <Result>(name: string, args: InvokeArgs): Promise<Result> 
 };
 
 export const createTauriApp = (): AppSeam => ({
-  project: () => command<Project | null>("project", {}),
-  openProject: (path) => command<Project>("open_project", { path }),
+  project: async () => v.parse(v.nullable(projectSchema), await command("project", {})),
+  openProject: async (path) => v.parse(projectSchema, await command("open_project", { path })),
   chooseProjectPath: () => open({ directory: true, multiple: false }),
   chooseSavePath: (suggestedName) => save({ defaultPath: suggestedName }),
   setDockBadge: (count) => getCurrentWindow().setBadgeCount(count === 0 ? undefined : count),
@@ -37,6 +37,6 @@ export const createTauriApp = (): AppSeam => ({
   subscribe: async (onEvent) => {
     await command("subscribe", { channel: new Channel<DaemonEvent>(onEvent) });
   },
-  onDaemonExited: async (listener) =>
-    listen<DaemonExit>("daemon-exited", (event) => listener(event.payload)),
+  onDaemonExited: (listener) =>
+    listen("daemon-exited", (event) => listener(v.parse(daemonExitSchema, event.payload))),
 });

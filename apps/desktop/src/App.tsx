@@ -7,8 +7,10 @@ import { DrawerHost } from "./drawer/DrawerHost";
 import { ErrorLine } from "./ink/ErrorLine";
 import { Pads } from "./pads/Pads";
 import { Rail } from "./rail/Rail";
+import { createNow } from "./state/clock";
+import type { Clock } from "./state/clock";
 import { createProjectState } from "./state/project";
-import { openWorkspace, WorkspaceContext } from "./state/workspace";
+import { connectProject, ConnectedProjectContext } from "./state/connectedProject";
 import { Pane } from "./terminal/Pane";
 import { Todos } from "./todos/Todos";
 
@@ -20,19 +22,23 @@ const OpenProject = (props: {
   project: Project;
   daemonExit: DaemonExit | null;
   reducedMotion: Accessor<boolean>;
+  now: Accessor<number>;
 }) => {
-  const [workspace] = createResource(() => openWorkspace(props.app, props.project, props.reducedMotion));
+  const [connected] = createResource(() =>
+    connectProject(props.app, props.project, props.reducedMotion, props.now),
+  );
 
   return (
     <ErrorBoundary fallback={(failure) => <ErrorLine message={failure instanceof Error ? failure.message : String(failure)} />}>
-      <Show when={workspace()}>
+      <Show when={connected()}>
         {(open) => (
-          <WorkspaceContext.Provider value={open()}>
+          <ConnectedProjectContext.Provider value={open()}>
             <Layout
               header={`roundup   ${open().project.name}`}
               rail={<Rail />}
               centre={
                 <>
+                  <Show when={open().rail.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
                   <Show when={props.daemonExit}>{(exit) => <ErrorLine message={daemonExitText(exit())} />}</Show>
                   <Pane />
                 </>
@@ -45,15 +51,16 @@ const OpenProject = (props: {
               }
               overlay={<DrawerHost drawer={open().drawer} reducedMotion={open().reducedMotion} />}
             />
-          </WorkspaceContext.Provider>
+          </ConnectedProjectContext.Provider>
         )}
       </Show>
     </ErrorBoundary>
   );
 };
 
-export const App = (props: { app: AppSeam; reducedMotion: Accessor<boolean> }) => {
+export const App = (props: { app: AppSeam; reducedMotion: Accessor<boolean>; clock: Clock }) => {
   const project = createProjectState(props.app);
+  const now = createNow(props.clock);
 
   const empty = createMemo(() => {
     const phase = project.phase();
@@ -87,6 +94,7 @@ export const App = (props: { app: AppSeam; reducedMotion: Accessor<boolean> }) =
             project={phase().project}
             daemonExit={phase().daemonExit}
             reducedMotion={props.reducedMotion}
+            now={now}
           />
         )}
       </Show>
