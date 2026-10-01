@@ -7,10 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SpawnParams,
+    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SpawnParams, StatusEvent,
 };
 use contracts::terminal::SpawnParams as TerminalSpawn;
-use contracts::{EventData, Kind, Status};
+use contracts::{Actor, EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
 use terminal::Terminals;
@@ -45,6 +45,7 @@ pub trait AgentAdapter {
 struct Shared {
     rail: Mutex<rail::Rail>,
     runs: Mutex<HashMap<String, ClaudeCode>>,
+    bus: Bus,
     terminals: Arc<Terminals>,
     /// Since when an Agent without a Terminal has been `done`.
     opened: i64,
@@ -76,20 +77,42 @@ impl Shared {
         }
         node
     }
+
+    /// Fold `observation` into Agent `id`'s Status and announce it if it changed.
+    fn observe(&self, actor: Actor, id: &str, observation: Observation) {
+        let changed = self
+            .runs()
+            .get_mut(id)
+            .and_then(|run| run.observe(observation));
+        if let Some(status) = changed {
+            let event = StatusEvent {
+                id: id.to_owned(),
+                status,
+            };
+            self.bus.emit(actor, EventData::AgentStatus(event));
+        }
+    }
 }
 
-/// Tell Agent `id` its program ended, so it stops reading `working`.
-async fn watch_exit(
+/// Feed one Terminal's title changes and its exit to the Agent behind it.
+async fn watch(
     shared: Arc<Shared>,
     id: String,
     terminal_id: String,
     mut events: Receiver<EventData>,
 ) {
-    let code = loop {
+    let daemon = Actor::daemon;
+    loop {
         match events.recv().await {
-            Ok(EventData::TerminalExited(exited)) => break exited.code,
+            Ok(EventData::TerminalTitle(title)) => {
+                shared.observe(daemon(), &id, Observation::Title(title.title));
+            }
+            Ok(EventData::TerminalExited(exited)) => {
+                shared.observe(daemon(), &id, Observation::Exit { code: exited.code });
+                return;
+            }
             Ok(_) => {}
-            // Output can outrun this task and drop the exit event; the table still knows.
+            // Output can outrun this task and drop the exit event with it; the table still knows.
             Err(RecvError::Lagged(_)) => {
                 let gone = shared
                     .terminals
@@ -97,14 +120,18 @@ async fn watch_exit(
                     .into_iter()
                     .find(|t| t.id == terminal_id && !t.running);
                 if let Some(gone) = gone {
-                    break gone.exit_code;
+                    shared.observe(
+                        daemon(),
+                        &id,
+                        Observation::Exit {
+                            code: gone.exit_code,
+                        },
+                    );
+                    return;
                 }
             }
             Err(RecvError::Closed) => return,
         }
-    };
-    if let Some(run) = shared.runs().get_mut(&id) {
-        run.observe(Observation::Exit { code });
     }
 }
 
@@ -123,7 +150,7 @@ impl Agents {
 
     pub fn open_with(
         dir: &Path,
-        _bus: Bus,
+        bus: Bus,
         terminals: Arc<Terminals>,
         launcher: Launcher,
     ) -> Result<Self, OpenError> {
@@ -131,6 +158,7 @@ impl Agents {
             shared: Arc::new(Shared {
                 rail: Mutex::new(rail::Rail::open(&dir.join("agents.db"))?),
                 runs: Mutex::new(HashMap::new()),
+                bus,
                 terminals,
                 opened: now_ms(),
             }),
@@ -160,7 +188,7 @@ impl Agents {
             .runs()
             .insert(node.id.clone(), ClaudeCode::starting(now_ms));
         self.shared.rail().attach_terminal(&node.id, &spawned.id)?;
-        tokio::spawn(watch_exit(
+        tokio::spawn(watch(
             Arc::clone(&self.shared),
             node.id.clone(),
             spawned.id.clone(),
