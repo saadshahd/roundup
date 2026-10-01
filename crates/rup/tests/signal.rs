@@ -1,4 +1,5 @@
-//! A4: `rup hook <agent-id>` turns one hook payload on stdin into `agent.signal` as that Agent.
+//! A4: `rup signal <agent-id>` turns one hook payload on stdin into `agent.signal` as that Agent.
+//! It never exits 2, which Claude Code reads as "block": every failure is exit 1 and a message.
 //!
 //! The Daemon runs in a child process (this test binary re-run on `serve_for_the_parent`) because
 //! only a process of its own can be given a fake `claude` through the environment.
@@ -44,6 +45,7 @@ impl Served {
             .args(["--exact", "serve_for_the_parent"])
             .env(SERVE_ENV, dir.path())
             .env("ROUNDUP_CLAUDE_BIN", &fake)
+            .env("ROUNDUP_RUP_BIN", env!("CARGO_BIN_EXE_rup"))
             .env("CLAUDE_CONFIG_DIR", dir.path())
             .stdout(Stdio::null())
             .spawn()
@@ -62,23 +64,25 @@ impl Served {
         self.dir.path().join("rupd.sock")
     }
 
-    /// Run `rup hook <agent_id>` with `stdin` on its standard input.
-    fn hook(&self, agent_id: &str, stdin: &str) -> Output {
-        let mut rup = Command::new(env!("CARGO_BIN_EXE_rup"))
-            .args(["hook", agent_id])
-            .env("RUPD_SOCKET", self.socket())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        rup.stdin
-            .take()
-            .unwrap()
-            .write_all(stdin.as_bytes())
-            .unwrap();
-        rup.wait_with_output().unwrap()
+    /// Run `rup signal <agent_id>` against this Daemon.
+    fn signal(&self, agent_id: &str, stdin: &str) -> Output {
+        rup(&self.socket(), &["signal", agent_id], stdin)
     }
+}
+
+/// Run `rup <args>` with `stdin` on its standard input, pointed at `socket`.
+fn rup(socket: &Path, args: &[&str], stdin: &str) -> Output {
+    let mut rup = Command::new(env!("CARGO_BIN_EXE_rup"))
+        .args(args)
+        .env("RUPD_SOCKET", socket)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // A rup that exits before reading (bad arguments) closes the pipe; that is not a test error.
+    let _ = rup.stdin.take().unwrap().write_all(stdin.as_bytes());
+    rup.wait_with_output().unwrap()
 }
 
 impl Drop for Served {
@@ -89,7 +93,7 @@ impl Drop for Served {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a4_hook_signals_the_agent_as_that_agent() {
+async fn a4_signal_signals_the_agent_as_that_agent() {
     let served = Served::start().await;
     let mut client = rpc::Client::connect(&served.socket()).await.unwrap();
     client
@@ -106,7 +110,7 @@ async fn a4_hook_signals_the_agent_as_that_agent() {
         .unwrap();
     let id = agent["id"].as_str().unwrap();
 
-    let out = served.hook(id, r#"{"hook_event_name":"Stop"}"#);
+    let out = served.signal(id, r#"{"hook_event_name":"Stop"}"#);
 
     assert!(
         out.status.success(),
@@ -129,17 +133,38 @@ async fn a4_hook_signals_the_agent_as_that_agent() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a4_hook_for_an_unknown_agent_fails_loudly() {
+async fn a4_signal_for_an_unknown_agent_fails_loudly() {
     let served = Served::start().await;
-    let out = served.hook("999", r#"{"hook_event_name":"Stop"}"#);
-    assert!(!out.status.success());
+    let out = served.signal("999", r#"{"hook_event_name":"Stop"}"#);
+    assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("agent 999"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a4_hook_rejects_a_payload_that_is_not_json() {
+async fn a4_signal_rejects_a_payload_that_is_not_json() {
     let served = Served::start().await;
-    let out = served.hook("1", "not json");
-    assert!(!out.status.success());
+    let out = served.signal("1", "not json");
+    assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("payload"));
+}
+
+#[test]
+fn a4_signal_with_no_daemon_exits_1_with_a_message() {
+    let nowhere = tempfile::tempdir().unwrap().path().join("missing.sock");
+    let out = rup(&nowhere, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(!out.stderr.is_empty());
+}
+
+#[test]
+fn a4_signal_with_the_wrong_number_of_arguments_exits_1_not_2() {
+    let nowhere = tempfile::tempdir().unwrap().path().join("missing.sock");
+    for args in [&["signal"][..], &["signal", "1", "extra"]] {
+        let out = rup(&nowhere, args, "{}");
+        assert_eq!(out.status.code(), Some(1), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("usage"),
+            "{args:?}"
+        );
+    }
 }

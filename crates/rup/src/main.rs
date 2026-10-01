@@ -10,7 +10,9 @@ async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let outcome = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["ping"] => ping().await,
-        ["hook", agent_id] => hook(agent_id).await,
+        ["signal", agent_id] => signal(agent_id).await,
+        // Exit 2 would tell Claude Code to block its tool call or prompt; `signal` only ever exits 1.
+        ["signal", ..] => Err("usage: rup signal <agent-id>".into()),
         [] => return usage(),
         [other, ..] => {
             eprintln!("rup: unknown command {other:?}");
@@ -27,7 +29,7 @@ async fn main() -> ExitCode {
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: rup ping | rup hook <agent-id>");
+    eprintln!("usage: rup ping | rup signal <agent-id>");
     ExitCode::from(2)
 }
 
@@ -49,7 +51,7 @@ async fn ping() -> Result<(), String> {
 }
 
 /// Claude Code runs this as the Agent's command hook: one payload on stdin is one Signal.
-async fn hook(agent_id: &str) -> Result<(), String> {
+async fn signal(agent_id: &str) -> Result<(), String> {
     let mut input = String::new();
     std::io::stdin()
         .read_to_string(&mut input)
