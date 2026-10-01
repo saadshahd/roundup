@@ -1,7 +1,8 @@
 import { cleanup, fireEvent } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
-import { agent, exitedTerminal, glyphOf, liveLineOf, MINUTE, mountRail, NOW, rowOf, terminal } from "./railFixture";
+import { exitedTerminal, glyphOf, liveLineOf, mountRail, rowOf } from "./railFixture";
+import { agent, MINUTE, NOW, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 

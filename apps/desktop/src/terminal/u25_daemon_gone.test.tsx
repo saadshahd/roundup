@@ -2,7 +2,8 @@ import { cleanup, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DaemonExit } from "../app/seam";
-import { callsTo, info, mountPane, node } from "./paneHarness";
+import { callsTo, mountPane } from "./paneHarness";
+import { info, node } from "../testing/nodes";
 
 afterEach(cleanup);
 

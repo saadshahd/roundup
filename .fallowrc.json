@@ -1,6 +1,7 @@
 {
   "entry": [
-    "contracts/**/*.ts"
+    "contracts/**/*.ts",
+    "apps/*/harness.html"
   ],
   "ignorePatterns": [
     "tools/oxlint/anti-slop/**",

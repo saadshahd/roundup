@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { CONFLICT, openShelf, padOf, RpcError, YOU } from "./padsFixture";
+import { CONFLICT, openShelf, padOf, RpcError } from "./padsFixture";
+import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -38,7 +39,7 @@ describe("u19 create", () => {
 
   it("u19_enter_calls_pad_create_with_the_name_and_closes_the_field", async () => {
     const { app } = await openShelf([]);
-    app.handlers["pad.create"] = ({ name }) => padOf(name, YOU);
+    app.handlers["pad.create"] = ({ name }) => padOf(name, USER);
 
     await typeName("notes");
     await screen.findByText("+");
