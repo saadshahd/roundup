@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use contracts::agent::{CreateGroupParams, NodeKind};
+use contracts::agent::{CreateGroupParams, MoveParams, NodeKind, RenameParams};
 use contracts::{EventData, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
@@ -78,6 +78,18 @@ impl Module for Agents {
                     .insert(NodeKind::Group, &name, parent.as_deref(), None)?;
                 ctx.emit(EventData::RailChanged);
                 reply(&node)
+            }
+            "rail.rename" => {
+                let RenameParams { id, name } = params(value)?;
+                let node = self.rail().rename(&id, &name)?;
+                ctx.emit(EventData::RailChanged);
+                reply(&node)
+            }
+            "rail.move" => {
+                let MoveParams { id, parent, index } = params(value)?;
+                self.rail().move_node(&id, parent.as_deref(), index)?;
+                ctx.emit(EventData::RailChanged);
+                reply(&())
             }
             _ => Err(RpcError::method_not_found(method)),
         }
