@@ -1,0 +1,5 @@
+# RPC client
+
+The `rpc::Client` in `crates/rpc` is how the App, `rup` and the tests call a Daemon. This file holds the one scenario about what a dropped connection tells its caller (`.claude/sound/resilience/remote-call-has-a-third-outcome.md`). Tests use a fake server on a temp socket.
+
+**C1 a call that may have run is not reported as one that failed.** Given a Client whose request line has been written, when the connection closes before the reply, then `request` fails with the new code `rpc::code::UNKNOWN_OUTCOME`, whose message says the Daemon may have run the call, and every other pending call on that Client fails the same way and none hangs. A request that could not be written at all fails with `INTERNAL` and says it was not sent. A request made after the connection is known closed fails at once and says it was not sent. Every caller of `request` that matches on `INTERNAL` for a dropped connection changes in the same PR (no v2); the Builder greps `crates/` for them first and lists them in the PR. Narrowing: `s3_after_the_daemon_exits_rpc_fails_with_internal` keeps passing as written, because the App fails those calls itself.
