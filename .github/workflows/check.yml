@@ -31,8 +31,6 @@ jobs:
       - uses: taiki-e/install-action@just
       - run: pnpm install --frozen-lockfile
       - run: just check
-      - if: github.event_name == 'pull_request'
-        run: just pr-size origin/${{ github.base_ref }}
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"

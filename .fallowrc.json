@@ -1,7 +1,6 @@
 {
   "entry": [
-    "contracts/**/*.ts",
-    "scripts/*.mjs"
+    "contracts/**/*.ts"
   ],
   "ignorePatterns": [
     "tools/oxlint/anti-slop/**",

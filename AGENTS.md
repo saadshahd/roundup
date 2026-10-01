@@ -23,6 +23,6 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 ## Branches and reviews
 
 - Builders work on a branch in their own worktree and open a PR against `main`. Nobody pushes to `main` except the Architect for `contracts/` and core crates, and docs.
-- Before pushing: `pnpm install` then `just check`; the PR must also pass `just pr-size origin/main`.
+- Before pushing: `pnpm install` then `just check`; the PR must also pass `loop/rules.sh size origin/main`.
 - A module ships as several small PRs, each naming its scenario ids.
 - The generated TypeScript in `contracts/generated/` comes from `crates/contracts`; never edit it by hand.
