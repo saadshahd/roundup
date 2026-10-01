@@ -106,19 +106,29 @@ impl Rail {
         self.node(id)
     }
 
-    /// Make Group `id` a Meta-agent whose live Agent runs in Terminal `terminal_id`.
-    pub fn promote(&mut self, id: &str, terminal_id: &str) -> Result<RailNode, RpcError> {
-        let changed = self
+    /// Mark plain Group `id` as a Meta-agent before its Agent starts, so a second promote of the
+    /// same Group finds it taken. `CONFLICT` if it is not a plain Group.
+    pub fn reserve_meta(&mut self, id: &str) -> Result<(), RpcError> {
+        let reserved = self
             .db
             .execute(
-                "UPDATE nodes SET meta = 1, terminal_id = ? WHERE id = ? AND kind = 'group'",
-                params![terminal_id, id],
+                "UPDATE nodes SET meta = 1 WHERE id = ? AND kind = 'group' AND meta = 0",
+                params![id],
             )
             .map_err(sql)?;
-        if changed == 0 {
-            return Err(RpcError::not_found(format!("group {id}")));
+        if reserved == 0 {
+            self.node(id)?;
+            return Err(RpcError::conflict(format!("{id} is not a plain Group")));
         }
-        self.node(id)
+        Ok(())
+    }
+
+    /// Give back a reservation whose Agent never started.
+    pub fn release_meta(&mut self, id: &str) -> Result<(), RpcError> {
+        self.db
+            .execute("UPDATE nodes SET meta = 0 WHERE id = ?", params![id])
+            .map_err(sql)?;
+        Ok(())
     }
 
     /// Move the children of `id` up into its parent, in order, where `id` stood; `id` follows them.

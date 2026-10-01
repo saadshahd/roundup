@@ -241,15 +241,25 @@ impl Agents {
 
     /// Make a Group a Meta-agent: start a live Agent that sits at it, in the Project's folder.
     async fn promote(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
-        let group = self.shared.rail().node(id)?;
-        if group.kind != NodeKind::Group || group.meta {
-            return Err(RpcError::conflict(format!("{id} is not a plain Group")));
-        }
+        self.shared.rail().reserve_meta(id)?;
         let project = self.dir.parent().unwrap_or(&self.dir);
-        let terminal_id = self.run_agent(id, project, None).await?;
-        let node = self.shared.rail().promote(id, &terminal_id)?;
+        let terminal_id = match self.run_agent(id, project, None).await {
+            Ok(terminal_id) => terminal_id,
+            Err(err) => {
+                self.shared.rail().release_meta(id)?;
+                return Err(err);
+            }
+        };
+        let attached = self.shared.rail().attach_terminal(id, &terminal_id);
+        if let Err(err) = attached {
+            self.shared.runs().remove(id);
+            // Already gone is as good as killed.
+            let _ = self.shared.terminals.kill(&terminal_id).await;
+            self.shared.rail().release_meta(id)?;
+            return Err(err);
+        }
         ctx.emit(EventData::RailChanged);
-        Ok(self.shared.present(node))
+        Ok(self.shared.present(self.shared.rail().node(id)?))
     }
 
     /// Stop an Agent's program; it stays in the Rail as `done`. A Meta-agent's children move up
@@ -304,7 +314,19 @@ impl Agents {
             prompt,
             terminal_id: spawned.id.clone(),
         };
-        self.shared.runs().insert(id.to_owned(), run);
+        let taken = {
+            let mut runs = self.shared.runs();
+            let taken = runs.contains_key(id);
+            if !taken {
+                runs.insert(id.to_owned(), run);
+            }
+            taken
+        };
+        if taken {
+            // Another Agent already runs at this node; the new one must not replace it.
+            let _ = self.shared.terminals.kill(&spawned.id).await;
+            return Err(RpcError::conflict(format!("{id} already has an Agent")));
+        }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
