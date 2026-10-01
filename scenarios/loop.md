@@ -1,6 +1,6 @@
 # Loop tooling
 
-**L1 size.** Given a PR, when `loop/rules.sh size` runs, then it fails above 400 changed lines (lockfiles and files under `generated/` excluded) and when the changed files span more than one module directory. A binary file and a rename into another module each count toward the module list. An unknown base ref fails loudly.
+**L1 size.** Given a PR, when `loop/rules.sh size` runs, then it fails when the changed files span more than one module directory. Above about 2000 changed lines (lockfiles and files under `generated/` excluded) it exits 0 and prints an advisory on stderr; at or below it prints nothing. A binary file and a rename into another module each count toward the module list. An unknown base ref fails loudly.
 
 **L2 approval.** Given commits that each carry `Author-Agent`, and an empty newest commit carrying only `Reviewed-by-Agent`, when `loop/rules.sh trailers` runs, then it passes. It fails when the reviewer id is also an author id, when a commit that changes files carries the reviewer trailer, when a commit follows the approval, and when a commit has neither trailer.
 

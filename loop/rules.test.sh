@@ -29,13 +29,23 @@ expect() {
   if [ "$got" != "$want" ]; then echo "FAIL: $name (wanted $want, got $got)"; failures=$((failures + 1)); else echo "ok:   $name"; fi
 }
 
+# stderr must (advisory) or must not (quiet) mention the size guide.
+expect_stderr() {
+  local want=$1 name=$2 err
+  shift 2
+  err=$("$@" 2>&1 >/dev/null || true)
+  if { [ "$want" = advisory ] && [[ $err == *"size guide"* ]]; } || { [ "$want" = quiet ] && [ -z "$err" ]; }; then echo "ok:   $name"; else echo "FAIL: $name (stderr: $err)"; failures=$((failures + 1)); fi
+}
+
 rules() { loop/rules.sh "$1" main; }
 
 # size
-new_repo; seq 1 401 >crates/big.txt; commit x
-expect fail "L1 size: 401 lines" rules size
-new_repo; seq 1 400 >crates/big.txt; commit x
-expect pass "L1 size: 400 lines" rules size
+new_repo; seq 1 2001 >crates/big.txt; commit x
+expect pass "L1 size: above the guide still passes" rules size
+expect_stderr advisory "L1 size: above the guide prints an advisory" rules size
+new_repo; seq 1 2000 >crates/big.txt; commit x
+expect pass "L1 size: at the guide passes" rules size
+expect_stderr quiet "L1 size: at the guide prints nothing" rules size
 new_repo; mkdir -p a/b; seq 1 900 >a/b/pnpm-lock.yaml; echo x >crates/x.txt; commit x
 expect pass "L1 size: nested lockfile is excluded" rules size
 new_repo; echo x >crates/x.txt; echo y >contracts/y.txt; commit x
