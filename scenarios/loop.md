@@ -10,8 +10,14 @@
 
 **L5 cleanup.** Given any exit path of `loop/boxd.sh build`, then the VM it created is destroyed, the original exit code is kept, and a failed removal is reported as a leaked VM. A failed create removes nothing. A successful run leaves a patch in `loop/out/patches/`.
 
-**L6 token.** Given the Claude token in the Builder's result, in the check output or in the Builder's tree, when `loop/boxd.sh build` runs, then it exits 1, deletes the artifact and prints no token. No patch is written for a tree that contains it.
+**L6 secret.** Given the boxd secret `CLAUDE_CODE_OAUTH_TOKEN` is missing, when `loop/boxd.sh build` or `review` runs, then no VM is created and it exits 1. A VM only ever sees the secret's placeholder, so no token is scanned for or handled.
 
 **L7 isolation.** Given a Builder run, then its VM is created from the `ru-toolchain` snapshot with `--isolated`.
 
-**L8 cap.** Given four `ru-` VMs, or a held `loop/out/lock`, when `loop/boxd.sh build` runs, then no VM is created and it exits 1.
+**L8 cap.** Given `BOXD_MAX_VMS` `ru-` VMs (default 12), or a held `loop/out/lock`, when `loop/boxd.sh build` runs, then no VM is created and it exits 1. A non-numeric `BOXD_MAX_VMS` exits 2.
+
+**L9 review.** Given a ref, when `loop/boxd.sh review <name> <prompt-file> [ref]` runs, then an isolated VM holds a git checkout whose tag `base` is the merge-base with `origin/main` and whose HEAD is the ref, the Reviewer's answer is written to `loop/out/verdicts/<name>.md`, and the VM is destroyed.
+
+**L10 input.** Given a name outside `^[a-z0-9][a-z0-9-]*$`, a prompt file starting with `-`, or a ref starting with `-`, when `build` or `review` runs, then it exits 2 before creating a VM or a file.
+
+**L11 reboot.** Given a VM created from the snapshot, then it is rebooted and answers `exec` before any agent or check runs on it.
