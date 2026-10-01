@@ -69,7 +69,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     await mountRail([group("g")]);
-    const line = getComputedStyle(screen.getByText("+ agent").parentElement as Element);
+    const line = getComputedStyle(screen.getByText("+ agent").closest(".rail-actions") ?? document.body);
     const pinned = [line.position, line.bottom];
 
     sheet.remove();
