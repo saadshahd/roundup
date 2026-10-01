@@ -42,6 +42,7 @@ bake() {
     curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $rust -c clippy -c rustfmt >/dev/null 2>&1
     . ~/.cargo/env
     curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ~/.cargo/bin
+    sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev pkg-config >/dev/null
     cargo install cargo-machete just --locked >/dev/null 2>&1
     npm i -g pnpm@$pnpm >/dev/null 2>&1
     sudo ln -sf \"\$(ls -d ~/.nvm/versions/node/*/bin/pnpm | head -1)\" /usr/local/bin/pnpm
@@ -120,7 +121,7 @@ run_agent() {
 review() {
   local name=$1 prompt=$2 ref=${3:-HEAD}
   local result="$OUT/runs/$name.json" verdict="$OUT/verdicts/$name.md" base
-  base="$(git merge-base origin/main "$ref")"
+  base="$(git merge-base origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   start_vm "$name"
   upload_checkout "$base" "$ref" "$prompt"
   run_agent "${BOXD_MODEL:-opus}" "$result"
