@@ -119,6 +119,9 @@ p {
   box-sizing: border-box;
   overflow: auto;
   background: var(--ground);
+  border-left-width: 1px;
+  border-left-style: solid;
+  border-left-color: var(--lightest);
 }
 
 .drawer > .close {

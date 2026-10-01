@@ -157,6 +157,13 @@ impl AgentAdapter for ClaudeCode {
     }
 }
 
+/// The prompt a `UserPromptSubmit` payload carries (empty when it carries none); `None` for any
+/// other payload.
+pub fn submitted_prompt(payload: &Value) -> Option<&str> {
+    (payload["hook_event_name"] == "UserPromptSubmit")
+        .then(|| payload["prompt"].as_str().unwrap_or_default())
+}
+
 /// What one hook payload says about the Agent. `None` for events that say nothing: the late
 /// permission Notification, the spurious `SubagentStop` and display noise; an unknown event also
 /// goes to stderr.

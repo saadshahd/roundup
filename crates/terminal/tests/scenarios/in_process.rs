@@ -2,12 +2,13 @@
 
 use std::time::Duration;
 
-use crate::common::{PATIENCE, open, sh, until_exit};
+use crate::common::{open, sh, until_exit};
 use contracts::EventData;
 use rpc::code;
 use tokio::sync::broadcast::error::RecvError;
 
-const LIST_POLL: Duration = Duration::from_millis(20);
+/// How long a Terminal may go without any event before its reader counts as blocked.
+const STALL: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn x8_a_late_subscriber_sees_output_in_order() {
@@ -50,18 +51,23 @@ async fn x8_a_slow_subscriber_never_blocks_the_reader() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
     let mut slow = terminals
-        .spawn(sh(dir.path(), "yes x | head -c 2000000"))
+        .spawn(sh(dir.path(), "yes x | head -c 8500000"))
         .await
         .unwrap();
-    // 2 MB is about 2900 events on macOS, three times the backlog; fewer would not overflow it.
-    // `slow` is not read until the program has finished and been listed as exited.
-    tokio::time::timeout(PATIENCE, async {
-        while terminals.list().iter().any(|t| t.running) {
-            tokio::time::sleep(LIST_POLL).await;
+    let mut draining = terminals.subscribe(&slow.id).unwrap();
+    // Each event carries at most 8192 bytes and the backlog is 1024 events, so 8.5 MB overflows it
+    // however the kernel chunks the reads (Linux hands out about 4 KiB, macOS about 700 bytes).
+    // `slow` is not read until the program has exited. A blocked reader stops the draining
+    // subscriber too, so "no event for STALL" proves the block however slow the machine is.
+    loop {
+        match tokio::time::timeout(STALL, draining.recv()).await {
+            Err(_) => panic!("the reader was blocked: no event for {STALL:?}"),
+            Ok(Ok(EventData::TerminalExited(_))) => break,
+            Ok(Ok(_) | Err(RecvError::Lagged(_))) => {}
+            Ok(Err(RecvError::Closed)) => panic!("events closed before the exit"),
         }
-    })
-    .await
-    .expect("the reader was blocked");
+    }
+    assert!(terminals.list().iter().all(|t| !t.running));
     assert!(matches!(
         slow.events.recv().await,
         Err(RecvError::Lagged(_))

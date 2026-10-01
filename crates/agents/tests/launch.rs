@@ -85,15 +85,78 @@ fn a4_the_argv_runs_claude_with_a_per_agent_settings_file() {
     let s = setup();
     let argv = s.prepare("7").unwrap();
     assert_eq!(argv[..2], ["fake-claude", "--settings"]);
-    assert_eq!(argv.len(), 3);
-    assert!(Path::new(&argv[2]).starts_with(s.dir.canonicalize().unwrap()));
-    assert_ne!(argv[2], s.prepare("8").unwrap()[2]);
+    assert_eq!(argv[3], "--mcp-config");
+    assert_eq!(argv.len(), 5);
+    for file in [&argv[2], &argv[4]] {
+        assert!(Path::new(file).starts_with(s.dir.canonicalize().unwrap()));
+    }
+    let other = s.prepare("8").unwrap();
+    assert_ne!((&argv[2], &argv[4]), (&other[2], &other[4]));
+}
+
+#[test]
+fn a11_the_mcp_config_declares_one_stdio_server_that_runs_rup_mcp_for_the_agent() {
+    let s = setup();
+    let argv = s.prepare("7").unwrap();
+    let config = read(Path::new(&argv[4]));
+    assert_eq!(
+        config,
+        json!({"mcpServers": {"roundup": {
+            "type": "stdio",
+            "command": s.rup.to_string_lossy(),
+            "args": ["mcp", "7"],
+        }}})
+    );
+    assert_eq!(Path::new(&argv[4]).file_name().unwrap(), "7.mcp.json");
+}
+
+#[test]
+fn a11_the_users_own_mcp_servers_stay_because_the_config_is_not_strict() {
+    let s = setup();
+    assert!(
+        !s.prepare("7")
+            .unwrap()
+            .iter()
+            .any(|arg| arg == "--strict-mcp-config")
+    );
+}
+
+#[test]
+fn a11_the_settings_allow_every_roundup_tool_so_none_raises_a_dialog() {
+    let s = setup();
+    let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    assert_eq!(
+        settings["permissions"],
+        json!({"allow": ["mcp__roundup__*"]})
+    );
+}
+
+#[test]
+fn a11_the_daemons_socket_is_in_neither_file() {
+    let s = setup();
+    let argv = s.prepare("7").unwrap();
+    for file in [&argv[2], &argv[4]] {
+        assert!(
+            !std::fs::read_to_string(file)
+                .unwrap()
+                .contains("RUPD_SOCKET")
+        );
+    }
+}
+
+#[test]
+fn a11_discarding_an_agent_deletes_both_of_its_files() {
+    let s = setup();
+    let argv = s.prepare("7").unwrap();
+    Launcher::discard(&s.dir, "7").unwrap();
+    assert!(!Path::new(&argv[2]).exists() && !Path::new(&argv[4]).exists());
 }
 
 #[test]
 fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
     let s = setup();
-    let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    let mut settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    settings.as_object_mut().unwrap().remove("permissions");
     assert!(s.rup.is_absolute() && s.rup.exists());
     let command = format!("'{}' signal '7'", s.rup.display());
     let entry = json!([{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]);
@@ -521,18 +584,24 @@ fn a4_the_home_folder_is_refused_and_never_trusted() {
 }
 
 #[test]
-fn a4_a_symlink_planted_where_the_settings_go_is_replaced_not_written_through() {
+fn a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through() {
     let s = setup();
-    let victim = s.root.path().join("zshrc");
-    std::fs::write(&victim, "export KEEP=1\n").unwrap();
     let agents = s.dir.join("agents");
     std::fs::create_dir(&agents).unwrap();
-    let planted = agents.join("1.settings.json");
-    std::os::unix::fs::symlink(&victim, &planted).unwrap();
+    for name in ["1.settings.json", "1.mcp.json"] {
+        let victim = s.root.path().join(format!("victim-{name}"));
+        std::fs::write(&victim, "export KEEP=1\n").unwrap();
+        std::os::unix::fs::symlink(&victim, agents.join(name)).unwrap();
+    }
 
     s.prepare("1").unwrap();
 
-    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "export KEEP=1\n");
-    assert!(!planted.symlink_metadata().unwrap().file_type().is_symlink());
-    assert!(read(&planted)["hooks"]["Stop"].is_array());
+    for name in ["1.settings.json", "1.mcp.json"] {
+        let victim = s.root.path().join(format!("victim-{name}"));
+        let planted = agents.join(name);
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "export KEEP=1\n");
+        assert!(!planted.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+    assert!(read(&agents.join("1.settings.json"))["hooks"]["Stop"].is_array());
+    assert!(read(&agents.join("1.mcp.json"))["mcpServers"]["roundup"].is_object());
 }
