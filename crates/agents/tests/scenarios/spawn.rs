@@ -23,6 +23,7 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
     let settings = argv
         .trim()
         .strip_prefix("--settings ")
+        .and_then(|rest| rest.split(' ').next())
         .expect("--settings first");
     let settings: Value =
         serde_json::from_str(&std::fs::read_to_string(settings).unwrap()).unwrap();
