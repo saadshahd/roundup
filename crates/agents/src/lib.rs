@@ -1,14 +1,17 @@
 //! Agents, the Rail tree and the Claude Code adapter. Owner: agents Builder.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use contracts::Status;
-use rpc::{Bus, Ctx, Module, OpenError, RpcError};
+use contracts::agent::{CreateGroupParams, NodeKind};
+use contracts::{EventData, Status};
+use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
 
 pub mod claude_code;
+mod rail;
 
 /// One input an adapter reads about its Agent.
 pub enum Observation {
@@ -27,17 +30,34 @@ pub trait AgentAdapter {
     fn observe(&mut self, observation: Observation) -> Option<Status>;
 }
 
-pub struct Agents;
+pub struct Agents {
+    rail: Mutex<rail::Rail>,
+}
 
 impl Agents {
     /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
     pub fn open(
-        _dir: &Path,
+        dir: &Path,
         _bus: Bus,
         _terminals: Arc<terminal::Terminals>,
     ) -> Result<Self, OpenError> {
-        Ok(Self)
+        let rail = rail::Rail::open(&dir.join("agents.db"), now_ms())?;
+        Ok(Self {
+            rail: Mutex::new(rail),
+        })
     }
+
+    fn rail(&self) -> std::sync::MutexGuard<'_, rail::Rail> {
+        self.rail.lock().expect("rail lock")
+    }
+}
+
+/// Milliseconds since the Unix epoch.
+fn now_ms() -> i64 {
+    let since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    i64::try_from(since_epoch.as_millis()).unwrap_or(i64::MAX)
 }
 
 #[async_trait]
@@ -46,7 +66,18 @@ impl Module for Agents {
         &["agent", "rail"]
     }
 
-    async fn call(&self, _ctx: &Ctx, method: &str, _params: Value) -> Result<Value, RpcError> {
-        Err(RpcError::method_not_found(method))
+    async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
+        match method {
+            "rail.tree" => reply(&self.rail().tree()?),
+            "rail.createGroup" => {
+                let CreateGroupParams { name, parent } = params(value)?;
+                let node = self
+                    .rail()
+                    .insert(NodeKind::Group, &name, parent.as_deref(), None)?;
+                ctx.emit(EventData::RailChanged);
+                reply(&node)
+            }
+            _ => Err(RpcError::method_not_found(method)),
+        }
     }
 }
