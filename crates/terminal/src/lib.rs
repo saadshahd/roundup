@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -15,7 +16,8 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use contracts::terminal::{
-    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, WriteParams,
+    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, TitleEvent,
+    WriteParams,
 };
 use contracts::{Actor, EventData};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -25,6 +27,9 @@ use tokio::sync::broadcast;
 
 /// Events a slow subscriber may fall behind by before it is told it lagged (it never blocks the reader).
 const EVENT_BACKLOG: usize = 1024;
+/// The parser only listens for titles, so its screen is small and fixed however big the window is.
+const TITLE_ROWS: u16 = 24;
+const TITLE_COLS: u16 = 80;
 /// How often the reader thread checks whether a program that closed its PTY has ended.
 const REAP_POLL: Duration = Duration::from_millis(5);
 const READ_CHUNK: usize = 8192;
@@ -72,6 +77,14 @@ impl Shared {
         self.bus.emit(Actor::daemon(), data);
     }
 
+    fn retitle(&self, number: u64, title: String) {
+        let id = number.to_string();
+        if let Some(entry) = self.table().get_mut(&number) {
+            entry.info.title = Some(title.clone());
+        }
+        self.publish(number, EventData::TerminalTitle(TitleEvent { id, title }));
+    }
+
     fn finish(&self, number: u64, code: Option<i32>) {
         let id = number.to_string();
         if let Some(entry) = self.table().get_mut(&number) {
@@ -103,20 +116,13 @@ impl Terminals {
     /// Start `params.command` (or the login shell) in a new PTY.
     /// A missing cwd or an empty command is the caller's error; a failure to start is the Daemon's.
     pub async fn spawn(&self, params: SpawnParams) -> Result<Spawned, RpcError> {
-        if params.command.as_ref().is_some_and(Vec::is_empty) {
-            return Err(invalid("command must not be empty"));
-        }
+        check_program(&params)?;
         // portable-pty silently falls back to $HOME when the cwd is unusable; refuse instead.
         if !Path::new(&params.cwd).is_dir() {
             return Err(invalid(format!("cwd is not a directory: {}", params.cwd)));
         }
         let pair = native_pty_system()
-            .openpty(PtySize {
-                rows: params.rows,
-                cols: params.cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
+            .openpty(window(params.cols, params.rows)?)
             .map_err(RpcError::internal)?;
         let mut command = match &params.command {
             Some(argv) => CommandBuilder::from_argv(argv.iter().map(Into::into).collect()),
@@ -195,12 +201,7 @@ impl Terminals {
 
     /// Tell a running Terminal its window is now `cols` x `rows`. `NOT_FOUND` as for [`Terminals::write`].
     pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), RpcError> {
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
+        let size = window(cols, rows)?;
         let handle = self.running(id)?;
         let master = handle.master.lock().expect("terminal master lock");
         master.resize(size).map_err(RpcError::internal)
@@ -241,6 +242,16 @@ impl Terminals {
     }
 }
 
+/// Collects the window titles (OSC 0 and 2) the parser sees; vt100 stitches sequences split across reads.
+#[derive(Default)]
+struct Titles(Vec<String>);
+
+impl vt100::Callbacks for Titles {
+    fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
+        self.0.push(String::from_utf8_lossy(title).into_owned());
+    }
+}
+
 /// Wait for the program to end without holding the lock while it runs, so `kill` can take it.
 fn reap(program: &Program) -> std::io::Result<portable_pty::ExitStatus> {
     loop {
@@ -255,6 +266,12 @@ fn reap(program: &Program) -> std::io::Result<portable_pty::ExitStatus> {
 /// Read until the program closes the PTY, publishing each chunk, then report how it ended.
 fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program: &Program) {
     let id = number.to_string();
+    let mut parser = Some(vt100::Parser::new_with_callbacks(
+        TITLE_ROWS,
+        TITLE_COLS,
+        0,
+        Titles::default(),
+    ));
     let mut chunk = [0u8; READ_CHUNK];
     // Linux reports the closed PTY as an error, macOS as end of file: both mean "no more output".
     while let Ok(read) = reader.read(&mut chunk) {
@@ -269,6 +286,23 @@ fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program:
                 data,
             }),
         );
+        // A parser bug must cost titles, never the reader: the Terminal has to report its exit.
+        let parsed = parser.as_mut().map(|parser| {
+            catch_unwind(AssertUnwindSafe(|| {
+                parser.process(&chunk[..read]);
+                std::mem::take(&mut parser.callbacks_mut().0)
+            }))
+        });
+        match parsed {
+            Some(Ok(titles)) => titles
+                .into_iter()
+                .for_each(|title| shared.retitle(number, title)),
+            Some(Err(_)) => {
+                eprintln!("terminal {number}: title parser panicked; titles are off");
+                parser = None;
+            }
+            None => {}
+        }
     }
     let code = match reap(program) {
         Ok(status) if status.signal().is_some() => None,
@@ -280,6 +314,38 @@ fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program:
         }
     };
     shared.finish(number, code);
+}
+
+/// What the OS would refuse at exec time, caught here so it is the caller's error with a short message.
+fn check_program(params: &SpawnParams) -> Result<(), RpcError> {
+    let argv = params.command.as_deref().unwrap_or_default();
+    if params.command.is_some() && argv.first().is_none_or(String::is_empty) {
+        return Err(invalid("command must start with a program name"));
+    }
+    let env = params.env.iter().flat_map(|(name, value)| [name, value]);
+    if argv.iter().chain(env).any(|text| text.contains('\0')) {
+        return Err(invalid("command and env must not contain NUL"));
+    }
+    if params
+        .env
+        .keys()
+        .any(|name| name.is_empty() || name.contains('='))
+    {
+        return Err(invalid("env names must be non-empty and contain no '='"));
+    }
+    Ok(())
+}
+
+fn window(cols: u16, rows: u16) -> Result<PtySize, RpcError> {
+    if cols == 0 || rows == 0 {
+        return Err(invalid("cols and rows must be at least 1"));
+    }
+    Ok(PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    })
 }
 
 fn invalid(message: impl Into<String>) -> RpcError {

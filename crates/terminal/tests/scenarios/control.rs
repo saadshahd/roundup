@@ -103,6 +103,22 @@ async fn x6_kill_stops_a_program_that_ignores_hangup() {
 }
 
 #[tokio::test]
+async fn x5_a_zero_sized_window_is_the_callers_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    for (cols, rows) in [(0, 24), (80, 0)] {
+        let mut params = sh(dir.path(), "cat");
+        (params.cols, params.rows) = (cols, rows);
+        let err = terminals.spawn(params).await.err().expect("spawn fails");
+        assert_eq!(err.code, code::INVALID_PARAMS);
+    }
+    let running = terminals.spawn(sh(dir.path(), "cat")).await.unwrap();
+    let err = terminals.resize(&running.id, 0, 30).await.unwrap_err();
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    terminals.kill(&running.id).await.unwrap();
+}
+
+#[tokio::test]
 async fn x6_an_unknown_terminal_is_not_found() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);

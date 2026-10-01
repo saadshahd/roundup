@@ -95,3 +95,22 @@ async fn x7_a_missing_cwd_is_the_callers_error() {
     let err = terminals.spawn(params).await.err().expect("spawn fails");
     assert_eq!(err.code, rpc::code::INVALID_PARAMS);
 }
+
+#[tokio::test]
+async fn x7_an_argv_or_env_the_os_cannot_take_is_the_callers_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mutations: [fn(&mut SpawnParams); 5] = [
+        |p| p.command = Some(vec![String::new()]),
+        |p| p.command = Some(vec!["/bin/sh".into(), "a\0b".into()]),
+        |p| _ = p.env.insert("A\0B".into(), "v".into()),
+        |p| _ = p.env.insert("A=B".into(), "v".into()),
+        |p| _ = p.env.insert("A".into(), "v\0".into()),
+    ];
+    for mutate in mutations {
+        let mut params = sh(dir.path(), "true");
+        mutate(&mut params);
+        let err = terminals.spawn(params).await.err().expect("spawn fails");
+        assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{}", err.message);
+    }
+}
