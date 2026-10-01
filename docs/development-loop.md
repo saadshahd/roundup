@@ -93,7 +93,7 @@ After the daemon and modules demo (Phase 2), the UI screenshot pack (Phase 3), a
 
 ## Where boxd fits
 
-Optional, never required to merge. Use it for unattended Builders (the VM is the sandbox for `--dangerously-skip-permissions`), for parallel Builders up to 4, and for web-UI QA runs. See `docs/boxd.md`. The rules for agents using it are in `AGENTS.md`.
+Optional, never required to merge. Use it for unattended Builders (the VM is the sandbox for `--dangerously-skip-permissions`), for parallel Builders (up to `BOXD_MAX_VMS`, default 12), and for web-UI QA runs. See `docs/boxd.md`. The rules for agents using it are in `AGENTS.md`.
 
 ## Loop on the loop
 
