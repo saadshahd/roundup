@@ -4,4 +4,8 @@ export type TerminalInfo = { id: string, cwd: string,
 /**
  * Latest OSC 0/2 window title, if any.
  */
-title: string | null, running: boolean, exit_code: number | null, };
+title: string | null, running: boolean, 
+/**
+ * `None` while running or when killed by a signal; `-1` when the Daemon could not read the exit status.
+ */
+exit_code: number | null, };
