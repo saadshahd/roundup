@@ -51,7 +51,7 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 
 **U33 spawn with a prompt.** Given an open Project, when the user presses `⇧⌘N`, then an inline prompt field opens at the top of the Rail, focused. Enter calls `agent.spawn {cwd: <Project path>, prompt: <text>, parent}` with U9's parent rule, and an empty field calls it with `prompt: null`. The new row becomes selected and focus goes to the pane, so the user can type at once. Esc closes the field and calls nothing. A failed call shows U9's `✕ <message>` line and keeps the field's text. This narrows U32: its test case "cmd and shift" in `apps/desktop/src/rail/u32_spawn_shortcuts.test.tsx` must exclude `⇧⌘N` (and keep `⇧⌘T` doing nothing) in the same PR. As in U32, the chord is handled by the webview and never reaches a Terminal, Caps Lock does not change it, other modifier sets do nothing, and it does not act while a spawn call is in flight or after `daemon-exited`. `⌘N` is unchanged: it still spawns with no prompt and no field (U32).
 
-## Terminal pane (U11 to U14)
+## Terminal pane (U11 to U14, U34)
 
 **U11 one emulator per Terminal.** Given an open Project, when `terminal.output {id, data}` arrives, then its base64-decoded bytes are handed, in order, to the emulator for Terminal `id`. That emulator is created on the Terminal's first output, whether or not its row is selected. `terminal.output` is never replayed, so an emulator created later would show a blank pane. Selecting a row shows its Terminal's emulator and no other. Tests observe the bytes handed to an injected emulator.
 
@@ -69,7 +69,9 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 
 While the program runs, a light `stop` sits at the right: for an Agent it calls `agent.stop {id}`, for a Terminal `terminal.kill {id: <terminal_id>}`. With an open Project and nothing selected, the pane is empty.
 
-## Todos (U15 to U17)
+**U34 bounded scrollback.** Given Terminals that print without end, then every emulator keeps at most 10 000 lines of scrollback, one named constant that the real xterm emulator is constructed with, so memory stays steady however much a Terminal prints; rule 7's 150 MB budget for ten idle Agents holds under heavy output, and the MVP gate measures the real number. `terminal.output` is still handed to the emulator in order whether or not its row is selected (U11). When the user has scrolled up in a Terminal, new output never moves the view, and a light `↓ latest` shows at the bottom of the pane; clicking it, or typing into the pane (U12), returns to the newest line and hides it. The `Emulator` type in `src/terminal/emulator.ts` gains what the pane needs to know whether the view is at the bottom, to hear scrolling, and to return to the newest line; the fake emulator in `paneHarness.tsx` gains the same, and the pane is tested through it. The bound itself is tested without a display, on the options the real emulator is built with. No existing test is narrowed.
+
+## Todos (U15 to U17, U35)
 
 **U15 list.** Given Todos, then the Shelf's `todos` list shows the open ones in id order as `<glyph> #<id> <title>`. An open Todo is `·`. A blocked one is `⏸`, with a second line naming each open blocker in id order (`waits on #4, #5`). Done Todos fold into one `✓ n done` line that unfolds on click. On `todo.created`, `todo.updated`, `todo.unblocked` and `todo.deleted`, the list refetches `todo.list`, which logs no Touch.
 
@@ -86,7 +88,9 @@ While the program runs, a light `stop` sits at the right: for an Agent it calls 
 
 Double-clicking the title or the body edits it, and leaving the field calls `todo.update` once if the text changed. Opening the Drawer calls `provenance.history {item: "todo:<id>"}` and then `todo.get` once; that `todo.get` is the one read Touch. Background refreshes never call `todo.get`.
 
-## Pads (U18 to U21, U29)
+**U35 Todo triage without the Drawer.** Given open Todos, then hovering or focusing an open row shows a light `complete`, which calls `todo.complete {id}`. It logs no read Touch and does not open the Drawer. On a blocked Todo's second line (`waits on #4, #5`), each `#<id>` is a click target that opens that blocker's Drawer (U17), and that click never also opens the blocked Todo's own Drawer. The list is driven by events as in U15: a row changes only when `todo.updated` and `todo.unblocked` arrive and `todo.list` is refetched. A failed `todo.complete` shows `✕ <message>` in place of the row's second line until the next click. Narrowing: the text of a row at rest stays exactly `<glyph> #<id> <title>`, so `complete` is not part of the row's text until it is hovered or focused, and the second line's text stays exactly `waits on #4, #5` (`u15_todo_list.test.tsx` asserts both).
+
+## Pads (U18 to U21, U29, U36)
 
 **U18 list and ownership.** Given Pads, then the Shelf's `pads` list shows each by name with an owner mark: `◈` when an Agent owns it, `◇` when the user does. The owner mark is not a Glyph; Glyphs mark Kinds. Clicking `◈` calls `pad.setOwner {name, owner: <user>}`, and the mark becomes `◇`. On `pad.changed`, the list refetches `pad.list`, which logs no Touch.
 
@@ -97,6 +101,8 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 **U21 export.** `export .md` opens the macOS save chooser, through U1's adapter, with `<name>.md` filled in. Choosing a path calls `pad.export {name, path}`, and cancelling calls nothing. An error shows `✕ <message>` in the Drawer.
 
 **U29 long names.** A Pad whose name is longer than its column still keeps one line in the Shelf's `pads` list: its owner mark and name stay together on that line, and the name is cut with `…` and carries its full name as a tooltip. The Drawer's first line does the same, and `export .md`, `close` and the name never overlap.
+
+**U36 a Pad edit never overwrites another Actor's change.** Given a Pad the user owns and is editing in its Drawer (U20), when `pad.changed` for that Pad arrives from an Actor other than the user, then the draft stays untouched (U20) and a light `changed by <name>` line appears, with `keep mine` and `use theirs`. `<name>` is `nameOf` of the event's `actor`, and nothing is read from the Daemon for it, because `pad.read` would log a Touch. While that line shows, leaving the field does not call `pad.write`. `keep mine` calls `pad.write` with the draft; `use theirs` replaces the draft with the text from `pad.list` and calls nothing else. A `pad.changed` whose actor is the user, which is the echo of the user's own write, never shows the line. Without another Actor's change, leaving the field calls `pad.write` once, as in U20. Narrowing: `u20_pad_changed_while_the_user_is_editing_leaves_the_text_alone` keeps passing, and the own-write tests `u20_a_write_reply_never_overwrites_text_typed_after_a_quick_refocus` and `u20_clicking_back_in_while_a_save_is_in_flight_never_loses_an_agents_append` must still pass, because an Agent's append during a save is exactly the case this line makes visible instead of overwriting.
 
 ## Drawer keys (U27 to U28)
 
