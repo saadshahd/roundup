@@ -1,0 +1,9 @@
+{
+  "cold_start_ms": { "limit": 300, "noise": 5 },
+  "rss_extra_mb": { "limit": 150, "noise": 2 },
+  "write_to_output_p95_ms": { "limit": 16, "noise": 0.3 },
+  "terminal_write_p95_ms": { "noise": 0.3 },
+  "ping_p95_ms": { "noise": 0.3 },
+  "rail_tree_10_p95_ms": { "noise": 0.3 },
+  "rail_tree_40_p95_ms": { "noise": 0.3 }
+}
