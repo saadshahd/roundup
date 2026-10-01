@@ -1,8 +1,8 @@
 //! Terminals: plain shell processes behind a PTY. Owner: terminal Builder.
 //!
 //! Rust callers (the agents module) use [`Terminals`] directly, with no socket: [`Terminals::spawn`]
-//! returns the new Terminal's id together with a [`broadcast::Receiver`] of its events, subscribed
-//! before the program starts so no output is missed.
+//! returns the new Terminal's id together with a [`broadcast::Receiver`] of its events. The receiver
+//! exists before the reader thread reads any output, so none is missed.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -20,20 +20,18 @@ use contracts::terminal::{
     WriteParams,
 };
 use contracts::{Actor, EventData};
-use nix::sys::signal::{Signal, kill};
-use nix::unistd::Pid;
-use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use tokio::sync::broadcast;
 
 /// Events a slow subscriber may fall behind by before it is told it lagged (it never blocks the reader).
 const EVENT_BACKLOG: usize = 1024;
-/// How long a program gets to act on SIGHUP before `kill` sends SIGKILL.
-const HANGUP_GRACE: Duration = Duration::from_millis(500);
 /// The parser only listens for titles, so its screen is small and fixed however big the window is.
 const TITLE_ROWS: u16 = 24;
 const TITLE_COLS: u16 = 80;
+/// How often the reader thread checks whether a program that closed its PTY has ended.
+const REAP_POLL: Duration = Duration::from_millis(5);
 const READ_CHUNK: usize = 8192;
 
 /// A freshly spawned Terminal: its id and every event it emits, from the first byte of output.
@@ -42,12 +40,16 @@ pub struct Spawned {
     pub events: broadcast::Receiver<EventData>,
 }
 
-/// What it takes to drive a running program. Dropped when the program exits.
+/// The program, shared by whoever reaps it and whoever stops it.
+/// Invariant: only code holding this lock reaps or signals, and signals only when `try_wait` under
+/// that lock has just said the program is still running. A reaped pid is never signalled.
+type Program = Arc<Mutex<Box<dyn Child + Send + Sync>>>;
+
+/// What it takes to drive a running program. Dropped from the Terminal's entry once it is reaped.
 struct Handle {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
-    pid: Option<u32>,
+    program: Program,
 }
 
 struct Entry {
@@ -114,9 +116,7 @@ impl Terminals {
     /// Start `params.command` (or the login shell) in a new PTY.
     /// A missing cwd or an empty command is the caller's error; a failure to start is the Daemon's.
     pub async fn spawn(&self, params: SpawnParams) -> Result<Spawned, RpcError> {
-        if params.command.as_ref().is_some_and(Vec::is_empty) {
-            return Err(invalid("command must not be empty"));
-        }
+        check_program(&params)?;
         // portable-pty silently falls back to $HOME when the cwd is unusable; refuse instead.
         if !Path::new(&params.cwd).is_dir() {
             return Err(invalid(format!("cwd is not a directory: {}", params.cwd)));
@@ -143,21 +143,21 @@ impl Terminals {
             .name(format!("terminal-{number}"))
             .spawn(move || {
                 // No child means the program never started: nothing to report.
-                if let Ok(child) = child_arrives.recv() {
-                    pump(&shared, number, reader, child);
+                if let Ok(program) = child_arrives.recv() {
+                    pump(&shared, number, reader, &program);
                 }
             })
             .map_err(RpcError::internal)?;
-        let child = pair
-            .slave
-            .spawn_command(command)
-            .map_err(RpcError::internal)?;
+        let program: Program = Arc::new(Mutex::new(
+            pair.slave
+                .spawn_command(command)
+                .map_err(RpcError::internal)?,
+        ));
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
         let handle = Handle {
             writer: Mutex::new(writer),
-            killer: Mutex::new(child.clone_killer()),
-            pid: child.process_id(),
+            program: Arc::clone(&program),
             master: Mutex::new(pair.master),
         };
 
@@ -177,7 +177,7 @@ impl Terminals {
             },
         );
         arrival
-            .send(child)
+            .send(program)
             .expect("the reader thread waits for its child");
         Ok(Spawned {
             id: number.to_string(),
@@ -189,7 +189,7 @@ impl Terminals {
     pub async fn write(&self, id: &str, bytes: &[u8]) -> Result<(), RpcError> {
         let handle = self.running(id)?;
         let bytes = bytes.to_vec();
-        // A program that stops reading fills the PTY buffer and blocks the write.
+        // A program that stops reading may fill the PTY buffer and block the write.
         tokio::task::spawn_blocking(move || {
             let mut writer = handle.writer.lock().expect("terminal writer lock");
             writer.write_all(&bytes).and_then(|()| writer.flush())
@@ -207,30 +207,22 @@ impl Terminals {
         master.resize(size).map_err(RpcError::internal)
     }
 
-    /// Stop a running Terminal's program: SIGHUP, then SIGKILL if it is still running after a grace
-    /// period. It stays listed as exited once `terminal.exited` is emitted.
-    /// `NOT_FOUND` as for [`Terminals::write`].
+    /// Stop a running Terminal's program (SIGHUP, then SIGKILL if it lingers) and return once it is
+    /// stopped. It stays listed as exited once `terminal.exited` is emitted. `NOT_FOUND` as for
+    /// [`Terminals::write`], including a program that ended just before this call.
     pub async fn kill(&self, id: &str) -> Result<(), RpcError> {
         let handle = self.running(id)?;
-        handle
-            .killer
-            .lock()
-            .expect("terminal killer lock")
-            .kill()
-            .map_err(RpcError::internal)?;
-        if let Some(pid) = handle.pid.and_then(|pid| i32::try_from(pid).ok()) {
-            // The Terminal drops its handle when the program is reaped, so a dead handle means done.
-            let alive = Arc::downgrade(&handle);
-            tokio::spawn(async move {
-                tokio::time::sleep(HANGUP_GRACE).await;
-                if alive.upgrade().is_some()
-                    && let Err(err) = kill(Pid::from_raw(pid), Signal::SIGKILL)
-                {
-                    eprintln!("terminal: cannot SIGKILL program {pid}: {err}");
-                }
-            });
-        }
-        Ok(())
+        // portable-pty's `Child::kill` waits out the SIGHUP grace period, so keep it off the runtime.
+        tokio::task::spawn_blocking(move || {
+            let mut program = handle.program.lock().expect("terminal program lock");
+            match program.try_wait() {
+                Ok(None) => program.kill().map_err(RpcError::internal),
+                Ok(Some(_)) => Err(RpcError::not_found("running terminal")),
+                Err(err) => Err(RpcError::internal(err)),
+            }
+        })
+        .await
+        .map_err(RpcError::internal)?
     }
 
     fn running(&self, id: &str) -> Result<Arc<Handle>, RpcError> {
@@ -260,13 +252,19 @@ impl vt100::Callbacks for Titles {
     }
 }
 
+/// Wait for the program to end without holding the lock while it runs, so `kill` can take it.
+fn reap(program: &Program) -> std::io::Result<portable_pty::ExitStatus> {
+    loop {
+        let status = program.lock().expect("terminal program lock").try_wait()?;
+        match status {
+            Some(status) => return Ok(status),
+            None => std::thread::sleep(REAP_POLL),
+        }
+    }
+}
+
 /// Read until the program closes the PTY, publishing each chunk, then report how it ended.
-fn pump(
-    shared: &Shared,
-    number: u64,
-    mut reader: Box<dyn Read + Send>,
-    mut child: Box<dyn portable_pty::Child + Send + Sync>,
-) {
+fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program: &Program) {
     let id = number.to_string();
     let mut parser = Some(vt100::Parser::new_with_callbacks(
         TITLE_ROWS,
@@ -306,7 +304,7 @@ fn pump(
             None => {}
         }
     }
-    let code = match child.wait() {
+    let code = match reap(program) {
         Ok(status) if status.signal().is_some() => None,
         Ok(status) => Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX)),
         Err(err) => {
@@ -316,6 +314,26 @@ fn pump(
         }
     };
     shared.finish(number, code);
+}
+
+/// What the OS would refuse at exec time, caught here so it is the caller's error with a short message.
+fn check_program(params: &SpawnParams) -> Result<(), RpcError> {
+    let argv = params.command.as_deref().unwrap_or_default();
+    if params.command.is_some() && argv.first().is_none_or(String::is_empty) {
+        return Err(invalid("command must start with a program name"));
+    }
+    let env = params.env.iter().flat_map(|(name, value)| [name, value]);
+    if argv.iter().chain(env).any(|text| text.contains('\0')) {
+        return Err(invalid("command and env must not contain NUL"));
+    }
+    if params
+        .env
+        .keys()
+        .any(|name| name.is_empty() || name.contains('='))
+    {
+        return Err(invalid("env names must be non-empty and contain no '='"));
+    }
+    Ok(())
 }
 
 fn window(cols: u16, rows: u16) -> Result<PtySize, RpcError> {

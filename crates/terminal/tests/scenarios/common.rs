@@ -27,7 +27,7 @@ pub fn ctx(dir: &tempfile::TempDir, bus: &Bus) -> Ctx {
     }
 }
 
-const PATIENCE: Duration = Duration::from_secs(10);
+pub const PATIENCE: Duration = Duration::from_secs(10);
 
 pub fn sh(cwd: &Path, script: &str) -> SpawnParams {
     SpawnParams {
