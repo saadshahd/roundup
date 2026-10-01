@@ -1,10 +1,10 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { createRailDrag } from "./drag";
-import { layoutRail } from "./layout";
+import { ancestorsOf, layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
 import "./styles.css";
@@ -80,6 +80,18 @@ export const Rail = () => {
     document.addEventListener("click", clear, true);
     onCleanup(() => document.removeEventListener("click", clear, true));
   });
+
+  /** A selection made elsewhere (the header's jump) may sit under a collapsed Group; its row is revealed and scrolled to. */
+  createEffect(
+    on(rail.selected, (id) => {
+      if (id === null) return;
+
+      const above = new Set(untrack(() => ancestorsOf(rail.nodes, id)));
+
+      setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
+      queueMicrotask(() => container()?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" }));
+    }),
+  );
 
   createEffect(() => {
     const id = wanted();

@@ -100,6 +100,10 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U28 Esc closes.** While a Drawer is open, Esc closes it. Esc inside an inline field or a Pad's text field is that field's own key (U16, U19) and the Drawer stays open; Esc inside a Terminal goes to the program, and a closed Drawer does nothing with it.
 
+## Jump to what needs you (U30)
+
+**U30 jump.** Given a Rail with Agents or Meta-agents of Kind `needs-you` or `error`, then the header reads `<n> need you` after the Project name, where `<n>` is the count U10 puts on the Dock badge, and nothing is shown at zero. Pressing `⌘J`, or clicking that text, selects the most urgent of them: Kind `error` before `needs-you`, and within a Kind the one whose Status `since` is oldest, ties in the Daemon's order. Its row scrolls into view, under any collapsed Group (the Group expands) and its Terminal shows. Doing it again selects the next in that order and wraps after the last, and from a selection outside that order it selects the first. With none, `⌘J` changes nothing. Terminals never count and the Rail never reorders (wireframes decision 3). This is V1 of `ux.md`.
+
 ## Stretch
 
 **U22 drag.** Dragging a row shows a drop line whose left end is the depth the row lands at; moving sideways changes the depth. Release calls `rail.move {id, parent, index}`. A `CONFLICT` puts the row back and shows the message as in U9. The other rows make room as the pointer moves (motion.md, "Drag to reorder").
