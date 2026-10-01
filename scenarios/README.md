@@ -21,5 +21,6 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
 | `ux.md` | `apps/desktop` (the webview; V4 also `crates/desktop`): UX enhancements after the MVP | V1–V9 |
 | `workspace.md` | root files | W1 |
+| `perf.md` | `crates/perf` | R1–R7 |
 
 The order of work, the PR each scenario belongs to and what can start now are in `.work/queue.md`.
