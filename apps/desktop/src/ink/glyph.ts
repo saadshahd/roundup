@@ -1,8 +1,8 @@
 import type { Kind } from "@contracts/Kind";
 
-export type Tone = "amber" | "red" | "grey" | "light" | "lightest";
+type Tone = "amber" | "red" | "grey" | "light" | "lightest";
 
-export type Glyph = { mark: string; tone: Tone };
+type Glyph = { mark: string; tone: Tone };
 
 const GLYPHS: Record<Kind, Glyph> = {
   "needs-you": { mark: "●", tone: "amber" },
