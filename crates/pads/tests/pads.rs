@@ -157,7 +157,7 @@ async fn p8_bad_names_are_invalid_params_for_every_method() {
         "pad.setOwner",
         "pad.export",
     ] {
-        for name in ["", "a/b", "a\\b", "..", ".hidden", "a..b"] {
+        for name in ["", "a/b", "a\\b", "..", ".hidden", "a..b", "a\0b"] {
             let err = rig
                 .fail(
                     &a,
@@ -478,6 +478,50 @@ async fn p5_a_name_the_file_system_refuses_is_invalid_params() {
         .await;
 
     assert_eq!(err.code, code::INVALID_PARAMS);
+}
+
+#[tokio::test]
+async fn p1_names_that_fold_or_normalize_together_conflict() {
+    let rig = Rig::new();
+    let a = agent("a");
+    for (first, second) in [
+        ("ΑΣ", "ασ"),
+        ("straße", "STRASSE"),
+        ("caf\u{e9}", "cafe\u{301}"),
+    ] {
+        rig.ok(&a, "pad.create", json!({"name": first})).await;
+        let clash = rig.fail(&a, "pad.create", json!({"name": second})).await;
+        assert_eq!(clash.code, code::CONFLICT, "{first} vs {second}");
+    }
+}
+
+#[tokio::test]
+async fn p1_every_method_resolves_other_spellings_to_the_same_pad() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    let out = TempDir::new().unwrap();
+    rig.ok(&a, "pad.create", json!({"name": "Notes", "text": "x"}))
+        .await;
+
+    rig.ok(&a, "pad.write", json!({"name": "nOTES", "text": "y"}))
+        .await;
+    rig.ok(&b, "pad.append", json!({"name": "NOTES", "text": "z"}))
+        .await;
+    let read = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(
+        (read["name"].as_str(), read["text"].as_str()),
+        (Some("Notes"), Some("yz"))
+    );
+    rig.ok(&a, "pad.setOwner", json!({"name": "nOtEs", "owner": b}))
+        .await;
+    let path = out.path().join("n.md");
+    rig.ok(&b, "pad.export", json!({"name": "NOTES", "path": path}))
+        .await;
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "yz");
+    rig.ok(&b, "pad.delete", json!({"name": "noTES"})).await;
+
+    let gone = rig.fail(&a, "pad.read", json!({"name": "Notes"})).await;
+    assert_eq!(gone.code, code::NOT_FOUND);
     assert!(
         rig.ok(&a, "pad.list", Value::Null)
             .await
