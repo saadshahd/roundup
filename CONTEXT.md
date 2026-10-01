@@ -10,7 +10,9 @@ Glossary only. No implementation. Rule 6 of the loop: every identifier, RPC meth
 - **Group** — a named, process-less node that holds Agents, Terminals and Groups. _Avoid:_ folder.
 - **Meta-agent** (the user's own term) — a Group promoted so that a live Agent sits at it and receives its children's events. _Avoid:_ parent agent, lead.
 - **Rail** — the tree of Groups, Meta-agents, Agents and Terminals. **Shelf** — the Todo and Pad column. **Inbox** — the time-ordered drawer of Messages to the user.
-- **Status** — `{kind, label, since}`. **Kind** — one of `error | needs-you | blocked | working | idle | done`. **Chip** — extra label after a name; never changes the glyph.
+- **Status** — `{kind, label, since}`. **Kind** — one of `error | needs-you | blocked | working | idle | done`, listed most urgent first. **Chip** — extra label after a name; never changes the glyph.
+- **Glyph** — the one mark a row shows for its Kind: `✕ ● ⏸ ○ · ✓`. **Ink** — bold plus colour, used only for `error` (red) and `needs-you` (amber). **Live line** — the second line under a Rail row: the Status label and how long it has held.
+- **App** — the macOS window. It starts a Daemon for one Project and hosts the webview, which is a client of that Daemon like any other. **Drawer** — a panel that slides in from the right over the terminal and the Shelf (a Todo, a Pad, later the Inbox); it never resizes the terminal.
 - **Observation** — one input an adapter reads about its Agent: a terminal title, a Signal, an exit, a stop roundup itself asked for, or a clock tick. **Signal** — a structured event the Agent's own tooling pushes (for Claude Code, a hook payload). _Avoid:_ notification, alert.
 - **Todo** — an item with an optional blocker list, owned by the Project. _Avoid:_ task, ticket.
 - **Pad** — a markdown note owned by an Agent or the user. _Avoid:_ scratchpad. "Scratchpad" is the product word in prose only; code says Pad.
