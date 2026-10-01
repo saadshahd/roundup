@@ -8,7 +8,7 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 2. **Slop** (each is a CI failure): an anti-slop rule violation; TypeScript duplication, unused exports, files or dependencies reported by `pnpm slop` (fallow); Rust dead code or unused dependencies reported by clippy and `cargo machete`; a public function with no test or caller; a comment that restates the line below it.
 3. **Small PR**: at most 400 changed lines (excluding lockfiles and generated files) and exactly one module directory, or only `contracts/`.
 4. **Contract change** = any edit under `contracts/`. Needs Architect approval. No v2s: change every caller in the same PR.
-5. **Reviewer input** = diff + linked spec + this file. Never the author's rationale.
+5. **Reviewer input** = diff + linked spec + this file, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
 6. **Vocabulary**: see `CONTEXT.md`; `session`, `process`, `task`, `notification` and the other _Avoid_ words are banned in public names, except under `crates/agents/claude_code/`.
 7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails.
 
