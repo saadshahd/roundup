@@ -37,6 +37,25 @@ describe("u12 typing", () => {
     await vi.waitFor(() => expect(releases).toHaveLength(2));
   });
 
+  it("u12_what_is_typed_while_a_write_is_in_flight_goes_as_one_write_in_order", async () => {
+    const { app, connected, emulators } = await mountPane([shell("a")], [info("t-a")]);
+    const releases: (() => void)[] = [];
+
+    app.handlers["terminal.write"] = () => new Promise<null>((resolve) => releases.push(() => resolve(null)));
+    connected.rail.select("a");
+    emulators.get("t-a")?.type(bytes(1));
+    emulators.get("t-a")?.type(bytes(2));
+    emulators.get("t-a")?.type(bytes(3, 4));
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    releases[0]?.();
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+
+    expect(callsTo(app, "terminal.write")).toEqual([
+      { id: "t-a", data: "AQ==" },
+      { id: "t-a", data: "AgME" },
+    ]);
+  });
+
   it("u12_an_exited_terminal_takes_no_input", async () => {
     const { app, connected, emulators } = await mountPane(
       [shell("a"), shell("b")],

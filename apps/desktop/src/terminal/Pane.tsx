@@ -3,9 +3,9 @@ import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createXtermEmulators } from "./emulator";
 import type { EmulatorFactory } from "./emulator";
-import { paneHeader } from "./header";
+import { isStoppable, paneHeader } from "./header";
 import { createScreens } from "./screens";
-import "./pane.css";
+import "./styles.css";
 
 /** The selected row's Terminal. `createEmulator` is the edge tests replace; the App passes none. */
 export const Pane = (props: { createEmulator?: EmulatorFactory }) => {
@@ -56,14 +56,23 @@ export const Pane = (props: { createEmulator?: EmulatorFactory }) => {
 
   return (
     <div class="pane">
-      <Show when={selected()}>
-        {(node) => (
-          <Show when={paneHeader(node(), rail.exitOf(node()), connected.now())}>
-            {(header) => <p class="pane-header">{header()}</p>}
-          </Show>
-        )}
-      </Show>
-      <Show when={screens.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <div class="pane-header">
+        <Show when={selected()}>
+          {(node) => (
+            <>
+              <span class="pane-title">{paneHeader(node(), rail.exitOf(node()), connected.now())}</span>
+              <Show when={isStoppable(node(), rail.exitOf(node()))}>
+                <button type="button" class="word" onClick={() => screens.stop(node())}>
+                  stop
+                </button>
+              </Show>
+            </>
+          )}
+        </Show>
+      </div>
+      <div class="pane-failure">
+        <Show when={screens.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      </div>
       <div class="pane-screen" ref={setScreen} />
     </div>
   );

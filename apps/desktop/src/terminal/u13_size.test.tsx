@@ -1,7 +1,7 @@
 import { cleanup } from "@solidjs/testing-library";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ITerminalAddon } from "@xterm/xterm";
-import { attachRenderer } from "./emulator";
+import { attachRenderer, createXtermEmulators } from "./emulator";
 import type { RendererAddon } from "./emulator";
 import { callsTo, event, info, mountPane, node, shell } from "./paneHarness";
 
@@ -23,6 +23,21 @@ describe("u13 size", () => {
     connected.rail.select("a");
 
     expect(callsTo(app, "terminal.resize")).toEqual([{ id: "t-a", cols: 100, rows: 30 }]);
+  });
+
+  it("u13_showing_a_terminal_again_resizes_it_to_the_current_fit", async () => {
+    const { app, connected, emulators } = await mountPane([node("a"), node("b")], [info("t-a"), info("t-b")]);
+
+    connected.rail.select("a");
+    connected.rail.select("b");
+
+    const first = emulators.get("t-a");
+
+    if (first) first.size = { cols: 90, rows: 20 };
+
+    connected.rail.select("a");
+
+    expect(callsTo(app, "terminal.resize").at(-1)).toEqual({ id: "t-a", cols: 90, rows: 20 });
   });
 
   it("u13_a_window_resize_refits_the_shown_terminal", async () => {
@@ -152,5 +167,24 @@ describe("u13 renderer", () => {
     webgl.created.lost();
 
     expect(webgl.created.disposed).toBe(true);
+  });
+
+  it("u13_the_warning_for_a_refused_webgl_context_is_logged_once_across_terminals", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const noMedia = { matches: false, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {} };
+
+    vi.stubGlobal("matchMedia", () => noMedia);
+
+    const create = createXtermEmulators();
+
+    create("t-a").show(document.createElement("div"));
+    create("t-b").show(document.createElement("div"));
+
+    const warnings = warn.mock.calls.length;
+
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+
+    expect(warnings).toBe(1);
   });
 });

@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
+import type { RailNode } from "@contracts/agent/RailNode";
 import type { ConnectedProject } from "../state/connectedProject";
 import { fromBase64, toBase64 } from "./base64";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
@@ -9,7 +10,9 @@ export type Screens = {
   emulatorFor(id: string): Emulator;
   /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited takes no resize. */
   resize(id: string, size: Size): void;
-  /** The last call or `terminal.output` that failed, until a later one succeeds. */
+  /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
+  stop(node: RailNode): void;
+  /** The last call or `terminal.output` that failed, until a later call succeeds. */
   failure: Accessor<string | null>;
   dispose(): void;
 };
@@ -42,13 +45,29 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     if (known) return known;
 
     const emulator = createEmulator(id);
-    // Tauri may run two `rpc` calls out of order; each write waits for the one typed before it.
-    let sent: Promise<void> = Promise.resolve();
+    // Tauri may run two `rpc` calls out of order, so at most one write is in flight; what is typed meanwhile goes as one write.
+    let typed: number[] = [];
+    let writing = false;
+
+    const flush = async (): Promise<void> => {
+      writing = true;
+
+      while (typed.length > 0) {
+        const data = toBase64(Uint8Array.from(typed));
+
+        typed = [];
+        await attempt(app.rpc("terminal.write", { id, data }));
+      }
+
+      writing = false;
+    };
 
     emulator.onInput((bytes) => {
       if (exited(id)) return;
 
-      sent = sent.then(() => attempt(app.rpc("terminal.write", { id, data: toBase64(bytes) })));
+      for (const byte of bytes) typed.push(byte);
+
+      if (!writing) void flush();
     });
     emulators.set(id, emulator);
 
@@ -56,7 +75,8 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   };
 
   const stopListening = output.subscribe((chunk) => {
-    // A throw here would stop `connectEvents` from reaching the Rail state for the same Event.
+    // A throw escapes into the Tauri Channel callback, which then never advances its message index, so every later
+    // Daemon Event is held forever; during the feed's replay it would also abort the Pane's mount.
     try {
       emulatorFor(chunk.id).write(fromBase64(chunk.data));
     } catch (thrown) {
@@ -70,6 +90,13 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     emulatorFor,
     resize: (id, size) => {
       if (!exited(id)) void attempt(app.rpc("terminal.resize", { id, ...size }));
+    },
+    stop: (node) => {
+      if (node.status !== null) {
+        void attempt(app.rpc("agent.stop", { id: node.id }));
+      } else if (node.terminal_id !== null) {
+        void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
+      }
     },
     failure,
     dispose: () => {

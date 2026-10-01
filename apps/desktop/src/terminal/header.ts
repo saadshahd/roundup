@@ -11,3 +11,7 @@ export const paneHeader = (node: RailNode, exit: ExitState | null, now: number):
 
   return exit === null ? node.name : `${node.name}  ${exitText(exit)}`;
 };
+
+/** A row whose program runs: an Agent, a Meta-agent or a Terminal that has not exited. */
+export const isStoppable = (node: RailNode, exit: ExitState | null): boolean =>
+  exit === null && (node.status !== null || node.kind === "terminal");
