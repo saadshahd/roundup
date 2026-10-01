@@ -1,6 +1,6 @@
 # SolidJS + Vite + xterm.js (WebGL addon)
 
-Status: Accepted, subject to 0001
+Status: Accepted
 
 ## Decision
 
@@ -16,4 +16,4 @@ Fine-grained reactivity without a vDOM suits a rail that re-renders on every Sta
 
 ## Notes
 
-WebGL addon on/off is part of the latency spike.
+The latency spike chose the WebGL addon (p95 11-13 ms vs 14-15 ms DOM); see ADR 0001.
