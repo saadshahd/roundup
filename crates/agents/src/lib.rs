@@ -3,11 +3,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SpawnParams, StatusEvent,
+    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SignalParams, SpawnParams,
+    StatusEvent,
 };
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
@@ -42,7 +43,7 @@ pub trait AgentAdapter {
 /// State the Terminal watchers and the RPC calls share.
 struct Shared {
     rail: Mutex<rail::Rail>,
-    runs: Mutex<HashMap<String, ClaudeCode>>,
+    runs: Mutex<HashMap<String, Run>>,
     bus: Bus,
     terminals: Arc<Terminals>,
     /// Since when an Agent without a Terminal has been `done`.
@@ -54,7 +55,7 @@ impl Shared {
         self.rail.lock().expect("rail lock")
     }
 
-    fn runs(&self) -> MutexGuard<'_, HashMap<String, ClaudeCode>> {
+    fn runs(&self) -> MutexGuard<'_, HashMap<String, Run>> {
         self.runs.lock().expect("runs lock")
     }
 
@@ -65,7 +66,7 @@ impl Shared {
             let live = self
                 .runs()
                 .get(&node.id)
-                .and_then(|run| run.status().cloned());
+                .and_then(|run| run.adapter.status().cloned());
             node.status = Some(live.unwrap_or_else(|| Status {
                 kind: Kind::Done,
                 label: "terminal gone".into(),
@@ -75,12 +76,24 @@ impl Shared {
         node
     }
 
-    /// Fold `observation` into Agent `id`'s Status and announce it if it changed.
-    fn observe(&self, actor: Actor, id: &str, observation: Observation) {
-        let changed = self
-            .runs()
-            .get_mut(id)
-            .and_then(|run| run.observe(observation));
+    /// Fold `observation` into Agent `id`'s Status. A change is announced as `agent.status`, and
+    /// the first idle types the prompt the Agent was spawned with.
+    fn observe(&self, actor: Actor, id: &str, observation: Observation) -> Result<(), RpcError> {
+        let (changed, prompt) = {
+            let mut runs = self.runs();
+            let run = runs
+                .get_mut(id)
+                .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
+            let changed = run.adapter.observe(observation);
+            let idle = changed
+                .as_ref()
+                .is_some_and(|status| status.kind == Kind::Idle);
+            let prompt = run.prompt.take_if(|_| idle);
+            (
+                changed,
+                prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
+            )
+        };
         if let Some(status) = changed {
             let event = StatusEvent {
                 id: id.to_owned(),
@@ -88,8 +101,42 @@ impl Shared {
             };
             self.bus.emit(actor, EventData::AgentStatus(event));
         }
+        if let Some((terminal_id, prompt)) = prompt {
+            tokio::spawn(type_prompt(
+                Arc::clone(&self.terminals),
+                terminal_id,
+                prompt,
+            ));
+        }
+        Ok(())
     }
 }
+
+/// An Agent's program and what is left to tell it.
+struct Run {
+    adapter: ClaudeCode,
+    /// Typed into the Terminal at the first idle, then gone.
+    prompt: Option<String>,
+    terminal_id: String,
+}
+
+/// Claude Code reads a prompt typed and submitted in one burst as a paste, so Enter follows after
+/// a pause, as in the spike (`spikes/hooks-state/drive.py`).
+const SUBMIT_DELAY: Duration = Duration::from_secs(1);
+
+async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: String) {
+    let typed = async {
+        terminals.write(&terminal_id, prompt.as_bytes()).await?;
+        tokio::time::sleep(SUBMIT_DELAY).await;
+        terminals.write(&terminal_id, b"\r").await
+    };
+    if let Err(err) = typed.await {
+        eprintln!("agents: could not type the prompt into terminal {terminal_id}: {err}");
+    }
+}
+
+/// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
+const REGISTERED: &str = "a watched Agent is registered";
 
 /// Feed one Terminal's title changes and its exit to the Agent behind it.
 async fn watch(
@@ -102,10 +149,14 @@ async fn watch(
     loop {
         match events.recv().await {
             Ok(EventData::TerminalTitle(title)) => {
-                shared.observe(daemon(), &id, Observation::Title(title.title));
+                shared
+                    .observe(daemon(), &id, Observation::Title(title.title))
+                    .expect(REGISTERED);
             }
             Ok(EventData::TerminalExited(exited)) => {
-                shared.observe(daemon(), &id, Observation::Exit { code: exited.code });
+                shared
+                    .observe(daemon(), &id, Observation::Exit { code: exited.code })
+                    .expect(REGISTERED);
                 return;
             }
             Ok(_) => {}
@@ -117,13 +168,10 @@ async fn watch(
                     .into_iter()
                     .find(|t| t.id == terminal_id && !t.running);
                 if let Some(gone) = gone {
-                    shared.observe(
-                        daemon(),
-                        &id,
-                        Observation::Exit {
-                            code: gone.exit_code,
-                        },
-                    );
+                    let exit = Observation::Exit {
+                        code: gone.exit_code,
+                    };
+                    shared.observe(daemon(), &id, exit).expect(REGISTERED);
                     return;
                 }
             }
@@ -181,9 +229,12 @@ impl Agents {
                 return Err(err);
             }
         };
-        self.shared
-            .runs()
-            .insert(node.id.clone(), ClaudeCode::starting(now_ms));
+        let run = Run {
+            adapter: ClaudeCode::starting(now_ms),
+            prompt: params.prompt,
+            terminal_id: spawned.id.clone(),
+        };
+        self.shared.runs().insert(node.id.clone(), run);
         self.shared.rail().attach_terminal(&node.id, &spawned.id)?;
         tokio::spawn(watch(
             Arc::clone(&self.shared),
@@ -231,6 +282,11 @@ impl Module for Agents {
         let shared = &self.shared;
         match method {
             "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
+            "agent.signal" => {
+                let SignalParams { id, payload } = params(value)?;
+                shared.observe(ctx.actor.clone(), &id, Observation::Signal(payload))?;
+                reply(&())
+            }
             "rail.tree" => {
                 let nodes = shared.rail().tree()?;
                 reply(

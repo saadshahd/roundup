@@ -1,52 +1,17 @@
 //! A4 spawn, and A2, A3, A8 as seen through a real Terminal running a fake `claude`.
 
-use std::path::Path;
-use std::time::Duration;
-
 use contracts::Kind;
-use contracts::agent::{NodeKind, RailNode};
+use contracts::agent::NodeKind;
 use rpc::code;
 use serde_json::{Value, json};
 
-use crate::common::Fixture;
-
-impl Fixture {
-    async fn spawn(&self, parent: Option<&str>) -> Result<RailNode, rpc::RpcError> {
-        let cwd = self.dir.path().to_string_lossy().into_owned();
-        let node = self
-            .call(
-                "agent.spawn",
-                json!({"cwd": cwd, "prompt": null, "parent": parent}),
-            )
-            .await?;
-        Ok(serde_json::from_value(node).unwrap())
-    }
-}
-
-async fn until_file(path: &Path) -> String {
-    for _ in 0..500 {
-        if let Ok(text) = std::fs::read_to_string(path)
-            && !text.is_empty()
-        {
-            return text;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    panic!("{} was never written", path.display());
-}
-
-fn status_of<'a>(tree: &'a [RailNode], id: &str) -> &'a contracts::Status {
-    tree.iter()
-        .find(|node| node.id == id)
-        .and_then(|node| node.status.as_ref())
-        .expect("an Agent has a Status")
-}
+use crate::common::{Fixture, status_of, until_file};
 
 #[tokio::test]
 async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
     let mut f = Fixture::running("echo \"$@\" > \"$(dirname \"$0\")/argv\"; sleep 30");
     f.changed();
-    let node = f.spawn(None).await.unwrap();
+    let node = f.spawn(None, None).await.unwrap();
 
     assert_eq!(node.kind, NodeKind::Agent);
     assert!(node.terminal_id.is_some() && !node.meta);
@@ -79,10 +44,10 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
 async fn a4_spawn_nests_under_a_group_and_never_under_an_agent() {
     let f = Fixture::running("sleep 30");
     let group = f.group("team", None).await;
-    let child = f.spawn(Some(&group)).await.unwrap();
+    let child = f.spawn(Some(&group), None).await.unwrap();
     assert_eq!(child.parent.as_deref(), Some(group.as_str()));
 
-    let err = f.spawn(Some(&child.id)).await.unwrap_err();
+    let err = f.spawn(Some(&child.id), None).await.unwrap_err();
     assert_eq!(err.code, code::CONFLICT);
     assert_eq!(f.tree().await.len(), 2);
 }
@@ -104,7 +69,7 @@ async fn a4_a_spawn_that_cannot_start_leaves_no_agent_behind() {
 #[tokio::test]
 async fn a3_a_clean_exit_makes_the_agent_done() {
     let f = Fixture::running("exit 0");
-    let node = f.spawn(None).await.unwrap();
+    let node = f.spawn(None, None).await.unwrap();
     let tree = f
         .until(|t| status_of(t, &node.id).kind != Kind::Working)
         .await;
@@ -114,7 +79,7 @@ async fn a3_a_clean_exit_makes_the_agent_done() {
 #[tokio::test]
 async fn a3_a_non_zero_exit_makes_the_agent_an_error() {
     let f = Fixture::running("exit 3");
-    let node = f.spawn(None).await.unwrap();
+    let node = f.spawn(None, None).await.unwrap();
     let tree = f
         .until(|t| status_of(t, &node.id).kind != Kind::Working)
         .await;
@@ -128,7 +93,7 @@ async fn a3_a_non_zero_exit_makes_the_agent_an_error() {
 #[tokio::test]
 async fn a2_a_star_title_from_the_terminal_ends_working() {
     let f = Fixture::running("printf '\\033]0;\\342\\234\\263 Claude Code\\007'; sleep 30");
-    let node = f.spawn(None).await.unwrap();
+    let node = f.spawn(None, None).await.unwrap();
     let tree = f
         .until(|t| status_of(t, &node.id).kind != Kind::Working)
         .await;
@@ -138,7 +103,7 @@ async fn a2_a_star_title_from_the_terminal_ends_working() {
 #[tokio::test]
 async fn a8_an_agent_whose_terminal_is_gone_comes_back_done() {
     let f = Fixture::running("sleep 30");
-    let node = f.spawn(None).await.unwrap();
+    let node = f.spawn(None, None).await.unwrap();
     let tree = f.reopen().tree().await;
     assert_eq!(tree[0].id, node.id);
     assert_eq!(tree[0].status.as_ref().map(|s| s.kind), Some(Kind::Done));

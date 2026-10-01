@@ -3,6 +3,7 @@
 mod common;
 mod launch;
 mod rail;
+mod signal;
 mod spawn;
 mod status;
 mod title;

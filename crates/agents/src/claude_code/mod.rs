@@ -95,18 +95,23 @@ impl AgentAdapter for ClaudeCode {
 }
 
 /// What one hook payload says about the Agent. `None` for events that say nothing: the late
-/// permission Notification, the spurious `SubagentStop`, display noise and anything unknown.
+/// permission Notification, the spurious `SubagentStop` and display noise; an unknown event also
+/// goes to stderr.
 fn hook_status(payload: &Value) -> Option<(Kind, String)> {
     let text = |field: &str| payload[field].as_str().map(str::to_owned);
-    match payload["hook_event_name"].as_str()? {
-        "SessionStart" | "Stop" => Some((Kind::Idle, "idle".into())),
-        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => {
+    match payload["hook_event_name"].as_str() {
+        Some("SessionStart" | "Stop") => Some((Kind::Idle, "idle".into())),
+        Some("UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure") => {
             Some((Kind::Working, "working".into()))
         }
-        "PermissionRequest" => Some((Kind::NeedsYou, permission_label(payload))),
-        "StopFailure" => Some((Kind::Error, text("error")?)),
-        "SessionEnd" => Some((Kind::Done, text("reason").unwrap_or_else(|| "done".into()))),
-        _ => None,
+        Some("PermissionRequest") => Some((Kind::NeedsYou, permission_label(payload))),
+        Some("StopFailure") => Some((Kind::Error, text("error")?)),
+        Some("SessionEnd") => Some((Kind::Done, text("reason").unwrap_or_else(|| "done".into()))),
+        Some("Notification" | "SubagentStop" | "MessageDisplay" | "PostToolBatch") => None,
+        _ => {
+            eprintln!("agents: ignoring an unrecognised hook payload: {payload}");
+            None
+        }
     }
 }
 
