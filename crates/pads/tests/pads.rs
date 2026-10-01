@@ -48,6 +48,10 @@ impl Rig {
         self.pads.call(&ctx, method, params).await
     }
 
+    fn file_text(&self, name: &str) -> String {
+        std::fs::read_to_string(self.dir.path().join("pads").join(name)).unwrap()
+    }
+
     async fn ok(&self, actor: &Actor, method: &str, params: Value) -> Value {
         self.call(actor, method, params).await.unwrap()
     }
@@ -329,16 +333,13 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
     rig.call(&a, "pad.setStorage", json!({"files": true}))
         .await
         .unwrap();
-    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "one");
-    assert_eq!(
-        std::fs::read_to_string(rig.dir.path().join("pads/plan.md")).unwrap(),
-        "p"
-    );
+    assert_eq!(rig.file_text("notes.md"), "one");
+    assert_eq!(rig.file_text("plan.md"), "p");
 
     rig.call(&a, "pad.write", json!({"name": "notes", "text": "two"}))
         .await
         .unwrap();
-    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "two");
+    assert_eq!(rig.file_text("notes.md"), "two");
     rig.call(
         &agent("b"),
         "pad.append",
@@ -346,7 +347,7 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
     )
     .await
     .unwrap();
-    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "two+b");
+    assert_eq!(rig.file_text("notes.md"), "two+b");
 
     let reopened = Pads::open(rig.dir.path(), Bus::new()).unwrap();
     let ctx = Ctx {
@@ -358,7 +359,7 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
         .call(&ctx, "pad.append", json!({"name": "notes", "text": "!"}))
         .await
         .unwrap();
-    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "two+b!");
+    assert_eq!(rig.file_text("notes.md"), "two+b!");
 
     std::fs::write(&notes, "edited on disk").unwrap();
     reopened
@@ -524,14 +525,8 @@ async fn p5_a_write_is_atomic_so_hard_links_keep_the_old_text() {
     rig.ok(&a, "pad.write", json!({"name": "notes", "text": "new"}))
         .await;
 
-    assert_eq!(
-        std::fs::read_to_string(files.join("notes.md")).unwrap(),
-        "new"
-    );
-    assert_eq!(
-        std::fs::read_to_string(files.join("link.md")).unwrap(),
-        "old"
-    );
+    assert_eq!(rig.file_text("notes.md"), "new");
+    assert_eq!(rig.file_text("link.md"), "old");
 }
 
 #[tokio::test]
@@ -548,10 +543,7 @@ async fn p5_a_case_clash_in_file_mode_leaves_the_first_pad_and_its_file() {
 
     assert_eq!(clash.code, code::CONFLICT);
     let files = rig.dir.path().join("pads");
-    assert_eq!(
-        std::fs::read_to_string(files.join("notes.md")).unwrap(),
-        "first"
-    );
+    assert_eq!(rig.file_text("notes.md"), "first");
     assert_eq!(std::fs::read_dir(&files).unwrap().count(), 1);
 }
 
