@@ -12,6 +12,8 @@ const SIGNAL_DEADLINE: Duration = Duration::from_secs(1);
 /// What `rup signal` says when it cannot know whether the Daemon took the Signal.
 const MAYBE_ARRIVED: &str = "the Signal may or may not have arrived";
 
+mod mcp;
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,6 +22,8 @@ async fn main() -> ExitCode {
         ["signal", agent_id] => signal(agent_id).await,
         // Exit 2 would tell Claude Code to block its tool call or prompt; `signal` only ever exits 1.
         ["signal", ..] => Err("usage: rup signal <agent-id>".into()),
+        ["mcp"] => return mcp::run(None).await,
+        ["mcp", agent_id, ..] => return mcp::run(Some(agent_id.to_owned())).await,
         [] => return usage(),
         [other, ..] => {
             eprintln!("rup: unknown command {other:?}");
@@ -36,7 +40,7 @@ async fn main() -> ExitCode {
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: rup ping | rup signal <agent-id>");
+    eprintln!("usage: rup ping | rup signal <agent-id> | rup mcp <agent-id>");
     ExitCode::from(2)
 }
 

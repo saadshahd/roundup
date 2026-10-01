@@ -1,4 +1,4 @@
-//! File-backed storage: each Pad is `<dir>/pads/<name>.md`. Names are validated before they get here.
+//! File-backed storage: each Pad is `<dir>/<name>.md`. Callers validate names first; a name the file system still refuses is reported as invalid params.
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -39,11 +39,14 @@ fn path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{name}.md"))
 }
 
-/// A name the file system refuses is the caller's mistake; anything else is ours.
+/// The file system refusing a name (too long, or code points it cannot store) is the caller's mistake; anything else is ours.
 fn refused(err: io::Error, name: &str) -> RpcError {
-    let code = match err.kind() {
-        io::ErrorKind::InvalidFilename => rpc::code::INVALID_PARAMS,
-        _ => rpc::code::INTERNAL,
+    let invalid =
+        err.kind() == io::ErrorKind::InvalidFilename || err.raw_os_error() == Some(libc::EILSEQ);
+    let code = if invalid {
+        rpc::code::INVALID_PARAMS
+    } else {
+        rpc::code::INTERNAL
     };
     RpcError::new(code, format!("pad file {name}.md: {err}"))
 }

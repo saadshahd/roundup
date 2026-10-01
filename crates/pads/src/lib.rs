@@ -42,14 +42,12 @@ impl Pads {
             updated_at: now_ms(),
         };
         let store = self.store()?;
-        let exists = || RpcError::conflict(format!("pad exists: {}", pad.name));
-        if store.get(&pad.name).map_err(RpcError::internal)?.is_some() {
-            return Err(exists());
-        }
-        self.mirror(&store, &pad.name, &pad.text)?;
-        if !store.insert(&pad).map_err(RpcError::internal)? {
-            return Err(exists());
-        }
+        store.atomically(|| {
+            if !store.insert(&pad).map_err(RpcError::internal)? {
+                return Err(RpcError::conflict(format!("pad exists: {}", pad.name)));
+            }
+            self.mirror(&store, &pad.name, &pad.text)
+        })?;
         wrote(ctx, &pad.name)?;
         reply(&pad)
     }
@@ -74,10 +72,10 @@ impl Pads {
                 pad.owner.id, pad.name
             )));
         }
-        self.mirror(&store, &pad.name, &p.text)?;
-        store
-            .set_text(&pad.name, &p.text, now_ms())
-            .map_err(RpcError::internal)?;
+        store.atomically(|| {
+            found(store.set_text(&pad.name, &p.text, now_ms()), &pad.name)?;
+            self.mirror(&store, &pad.name, &p.text)
+        })?;
         wrote(ctx, &pad.name)?;
         reply(&Pad {
             text: p.text,
@@ -89,10 +87,10 @@ impl Pads {
         let store = self.store()?;
         let pad = get(&store, &p.name)?;
         let text = pad.text + &p.text;
-        self.mirror(&store, &pad.name, &text)?;
-        store
-            .set_text(&pad.name, &text, now_ms())
-            .map_err(RpcError::internal)?;
+        store.atomically(|| {
+            found(store.set_text(&pad.name, &text, now_ms()), &pad.name)?;
+            self.mirror(&store, &pad.name, &text)
+        })?;
         let pad = Pad { text, ..pad };
         wrote(ctx, &pad.name)?;
         reply(&pad)
@@ -102,9 +100,7 @@ impl Pads {
         let store = self.store()?;
         let pad = get(&store, &p.name)?;
         require_owner_or_user(ctx, &pad, "hand over")?;
-        store
-            .set_owner(&pad.name, &p.owner, now_ms())
-            .map_err(RpcError::internal)?;
+        found(store.set_owner(&pad.name, &p.owner, now_ms()), &pad.name)?;
         wrote(ctx, &pad.name)?;
         reply(&Pad {
             owner: p.owner,
@@ -116,15 +112,24 @@ impl Pads {
         let store = self.store()?;
         let pad = get(&store, &p.name)?;
         require_owner_or_user(ctx, &pad, "delete")?;
-        if store.files().map_err(RpcError::internal)? {
-            files::remove(&self.files_dir, &pad.name)?;
-        }
-        store.delete(&pad.name).map_err(RpcError::internal)?;
+        store.atomically(|| {
+            found(store.delete(&pad.name), &pad.name)?;
+            if store.files().map_err(RpcError::internal)? {
+                files::remove(&self.files_dir, &pad.name)?;
+            }
+            Ok(())
+        })?;
         wrote(ctx, &pad.name)?;
         Ok(Value::Null)
     }
 
     fn export(&self, ctx: &Ctx, p: ExportParams) -> Result<Value, RpcError> {
+        if !Path::new(&p.path).is_absolute() {
+            return Err(RpcError::new(
+                rpc::code::INVALID_PARAMS,
+                format!("export path must be absolute: {}", p.path),
+            ));
+        }
         let store = self.store()?;
         let pad = get(&store, &p.name)?;
         std::fs::write(&p.path, &pad.text).map_err(|err| {
@@ -143,29 +148,32 @@ impl Pads {
         if store.files().map_err(RpcError::internal)? == p.files {
             return Ok(Value::Null);
         }
-        let pads = store.list().map_err(RpcError::internal)?;
-        let mut imports = Vec::new();
-        for pad in &pads {
-            if p.files {
+        let imported = store.atomically(|| {
+            let pads = store.list().map_err(RpcError::internal)?;
+            for pad in &pads {
                 name::validate(&pad.name)?;
-                files::write(&self.files_dir, &pad.name, &pad.text)?;
-            } else if let Some(text) = files::read(&self.files_dir, &pad.name)?
-                && text != pad.text
-            {
-                imports.push((&pad.name, text));
             }
-        }
-        for (name, text) in imports {
-            store
-                .set_text(name, &text, now_ms())
-                .map_err(RpcError::internal)?;
+            let mut imported = Vec::new();
+            for pad in &pads {
+                if p.files {
+                    files::write(&self.files_dir, &pad.name, &pad.text)?;
+                } else if let Some(text) = files::read(&self.files_dir, &pad.name)?
+                    && text != pad.text
+                {
+                    found(store.set_text(&pad.name, &text, now_ms()), &pad.name)?;
+                    imported.push(pad.name.clone());
+                }
+            }
+            store.set_files(p.files).map_err(RpcError::internal)?;
+            Ok(imported)
+        })?;
+        for name in &imported {
             wrote(ctx, name)?;
         }
-        store.set_files(p.files).map_err(RpcError::internal)?;
         Ok(Value::Null)
     }
 
-    /// Writes the file while file storage is on. Callers do this before changing the database.
+    /// Writes the file while file storage is on. Callers do this inside `Store::atomically`, so a failure rolls the database change back.
     fn mirror(&self, store: &Store, name: &str, text: &str) -> Result<(), RpcError> {
         if store.files().map_err(RpcError::internal)? {
             files::write(&self.files_dir, name, text)?;
@@ -221,6 +229,14 @@ fn get(store: &Store, name: &str) -> Result<Pad, RpcError> {
         .ok_or_else(|| RpcError::not_found(format!("pad {name}")))
 }
 
+/// An update that touched no row means another Daemon deleted the Pad since we looked.
+fn found(updated: rusqlite::Result<bool>, name: &str) -> Result<(), RpcError> {
+    match updated.map_err(RpcError::internal)? {
+        true => Ok(()),
+        false => Err(RpcError::not_found(format!("pad {name}"))),
+    }
+}
+
 fn wrote(ctx: &Ctx, name: &str) -> Result<(), RpcError> {
     ctx.touch(Verb::Wrote, &item(name))?;
     ctx.emit(EventData::PadChanged(PadName { name: name.into() }));
@@ -239,4 +255,16 @@ fn now_ms() -> i64 {
             .as_millis(),
     )
     .unwrap_or(i64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_update_that_changed_no_row_is_not_found() {
+        assert!(found(Ok(true), "notes").is_ok());
+        let err = found(Ok(false), "notes").unwrap_err();
+        assert_eq!(err.code, rpc::code::NOT_FOUND);
+    }
 }

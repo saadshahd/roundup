@@ -7,6 +7,11 @@ use rpc::{Bus, Ctx, Module, code};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
+/// APFS caps a file name at 255 characters (bytes on other file systems).
+const BEYOND_NAME_MAX: usize = 300;
+
+const NOT_UTF8: [u8; 2] = [0xff, 0xfe];
+
 fn agent(id: &str) -> Actor {
     Actor {
         kind: ActorKind::Agent,
@@ -50,6 +55,22 @@ impl Rig {
 
     fn file_text(&self, name: &str) -> String {
         std::fs::read_to_string(self.dir.path().join("pads").join(name)).unwrap()
+    }
+
+    /// A row written straight to the database, bypassing name validation.
+    fn store_row(&self, name: &str) {
+        rusqlite::Connection::open(self.dir.path().join("pads.db"))
+            .unwrap()
+            .execute(
+                "INSERT INTO pads (key, name, owner, text, updated_at) VALUES (?1, ?1, ?2, 'orig', 0)",
+                [name.to_string(), serde_json::to_string(&agent("a")).unwrap()],
+            )
+            .unwrap();
+    }
+
+    async fn create(&self, name: &str, text: &str) {
+        let params = json!({"name": name, "text": text});
+        self.ok(&agent("a"), "pad.create", params).await;
     }
 
     async fn ok(&self, actor: &Actor, method: &str, params: Value) -> Value {
@@ -152,6 +173,7 @@ async fn p3_list_is_ordered_and_read_is_logged() {
 async fn p8_bad_names_are_invalid_params_for_every_method() {
     let rig = Rig::new();
     let a = agent("a");
+    let path = rig.dir.path().join("out.md");
     for method in [
         "pad.create",
         "pad.read",
@@ -166,10 +188,15 @@ async fn p8_bad_names_are_invalid_params_for_every_method() {
                 .fail(
                     &a,
                     method,
-                    json!({"name": name, "text": "x", "owner": a, "path": "x.md"}),
+                    json!({"name": name, "text": "x", "owner": a, "path": path}),
                 )
                 .await;
             assert_eq!(err.code, code::INVALID_PARAMS, "{method} {name:?}");
+            assert!(
+                err.message.contains("invalid pad name"),
+                "{method} {name:?}: {}",
+                err.message
+            );
         }
     }
 }
@@ -420,7 +447,7 @@ async fn p5_a_failed_flip_back_applies_nothing_and_can_be_retried() {
     rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
     let files = rig.dir.path().join("pads");
     std::fs::write(files.join("notes.md"), "edited").unwrap();
-    std::fs::write(files.join("plan.md"), [0xff, 0xfe]).unwrap();
+    std::fs::write(files.join("plan.md"), NOT_UTF8).unwrap();
 
     let err = rig
         .fail(&a, "pad.setStorage", json!({"files": false}))
@@ -559,13 +586,7 @@ async fn p8_a_stored_pad_with_a_bad_name_fails_the_flip_as_invalid_params() {
     let nul = rig.fail(&a, "pad.create", json!({"name": "a\0b"})).await;
     assert_eq!(nul.code, code::INVALID_PARAMS);
     rig.ok(&a, "pad.setStorage", json!({"files": false})).await;
-    rusqlite::Connection::open(rig.dir.path().join("pads.db"))
-        .unwrap()
-        .execute(
-            "INSERT INTO pads (key, name, owner, text, updated_at) VALUES ('k', ?1, ?2, '', 0)",
-            ["a\0b".to_string(), serde_json::to_string(&a).unwrap()],
-        )
-        .unwrap();
+    rig.store_row("a\0b");
 
     let err = rig.fail(&a, "pad.setStorage", json!({"files": true})).await;
 
@@ -580,7 +601,11 @@ async fn p5_a_name_the_file_system_refuses_is_invalid_params() {
     rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
 
     let err = rig
-        .fail(&a, "pad.create", json!({"name": "x".repeat(300)}))
+        .fail(
+            &a,
+            "pad.create",
+            json!({"name": "x".repeat(BEYOND_NAME_MAX)}),
+        )
         .await;
 
     assert_eq!(err.code, code::INVALID_PARAMS);
@@ -629,4 +654,195 @@ async fn p1_every_method_resolves_other_spellings_to_the_same_pad() {
 
     let gone = rig.fail(&a, "pad.read", json!({"name": "Notes"})).await;
     assert_eq!(gone.code, code::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn p8_a_stored_pad_that_escapes_the_directory_fails_flip_back() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    std::fs::write(rig.dir.path().join("evil.md"), "outside").unwrap();
+    rig.store_row("../evil");
+
+    let err = rig
+        .fail(&a, "pad.setStorage", json!({"files": false}))
+        .await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(err.message.contains("../evil"), "{}", err.message);
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn p5_a_code_point_apfs_refuses_is_invalid_params() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.store_row("a\u{FFFE}");
+    let on_flip = rig.fail(&a, "pad.setStorage", json!({"files": true})).await;
+    assert_eq!(on_flip.code, code::INVALID_PARAMS);
+    rig.ok(&a, "pad.delete", json!({"name": "a\u{FFFE}"})).await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+
+    let on_create = rig
+        .fail(&a, "pad.create", json!({"name": "b\u{FFFE}"}))
+        .await;
+
+    assert_eq!(on_create.code, code::INVALID_PARAMS);
+}
+
+#[tokio::test]
+async fn p9_delete_succeeds_when_the_file_was_removed_on_disk() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.create("notes", "x").await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    std::fs::remove_file(rig.dir.path().join("pads/notes.md")).unwrap();
+
+    rig.ok(&a, "pad.delete", json!({"name": "notes"})).await;
+
+    let gone = rig.fail(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(gone.code, code::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn p5_flip_back_reports_only_the_edited_pad() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.create("notes", "n").await;
+    rig.create("plan", "p").await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    std::fs::write(rig.dir.path().join("pads/plan.md"), "edited").unwrap();
+    let mut events = rig.bus.subscribe();
+
+    rig.ok(&a, "pad.setStorage", json!({"files": false})).await;
+
+    let EventData::PadChanged(changed) = events.try_recv().unwrap().data else {
+        panic!("expected pad.changed");
+    };
+    assert_eq!(changed.name, "plan");
+    assert!(events.try_recv().is_err());
+    let verbs = |item| -> Vec<_> {
+        rig.touches
+            .history(item)
+            .unwrap()
+            .iter()
+            .map(|t| t.verb)
+            .collect()
+    };
+    assert_eq!(verbs("pad:plan"), [Verb::Wrote, Verb::Wrote]);
+    assert_eq!(verbs("pad:notes"), [Verb::Wrote]);
+}
+
+#[tokio::test]
+async fn a_database_from_an_older_version_fails_to_open_loudly() {
+    let dir = TempDir::new().unwrap();
+    rusqlite::Connection::open(dir.path().join("pads.db"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE pads (name TEXT PRIMARY KEY, owner TEXT NOT NULL, text TEXT NOT NULL, updated_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+
+    let err = Pads::open(dir.path(), Bus::new())
+        .err()
+        .expect("must not open");
+
+    assert!(err.to_string().contains("pads.db"), "{err}");
+}
+
+#[tokio::test]
+async fn p6_a_relative_export_path_is_invalid_params() {
+    let rig = Rig::new();
+    rig.create("notes", "x").await;
+
+    let err = rig
+        .fail(
+            &agent("a"),
+            "pad.export",
+            json!({"name": "notes", "path": "out.md"}),
+        )
+        .await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+}
+
+#[tokio::test]
+async fn p8_flip_validates_every_name_before_any_file_operation() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.create("-first", "x").await;
+    rig.store_row("a\0b");
+
+    let err = rig.fail(&a, "pad.setStorage", json!({"files": true})).await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(!rig.dir.path().join("pads/-first.md").exists());
+}
+
+#[tokio::test]
+async fn p8_flip_back_validates_before_reading_any_file() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.create("-first", "x").await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let first = rig.dir.path().join("pads/-first.md");
+    std::fs::remove_file(&first).unwrap();
+    std::fs::create_dir(&first).unwrap();
+    std::fs::create_dir(rig.dir.path().join("evil.md")).unwrap();
+    rig.store_row("../evil");
+
+    let err = rig
+        .fail(&a, "pad.setStorage", json!({"files": false}))
+        .await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+}
+
+/// Makes the next update of `name` delete the row first, as a concurrent Daemon's delete would.
+fn delete_row_before_update_of(rig: &Rig, name: &str) {
+    rusqlite::Connection::open(rig.dir.path().join("pads.db"))
+        .unwrap()
+        .execute_batch(&format!(
+            "CREATE TRIGGER racing_delete BEFORE UPDATE ON pads WHEN OLD.name = '{name}'
+             BEGIN DELETE FROM pads WHERE name = OLD.name; END;"
+        ))
+        .unwrap();
+}
+
+#[tokio::test]
+async fn p5_a_write_that_loses_to_a_delete_leaves_no_file() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.create("notes", "x").await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    std::fs::remove_file(rig.dir.path().join("pads/notes.md")).unwrap();
+    delete_row_before_update_of(&rig, "notes");
+
+    let err = rig
+        .fail(&a, "pad.write", json!({"name": "notes", "text": "y"}))
+        .await;
+
+    assert_eq!(err.code, code::NOT_FOUND);
+    assert!(!rig.dir.path().join("pads/notes.md").exists());
+}
+
+#[tokio::test]
+async fn p5_a_flip_back_that_fails_part_way_imports_nothing() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.create("notes", "n").await;
+    rig.create("plan", "p").await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    std::fs::write(rig.dir.path().join("pads/notes.md"), "edited").unwrap();
+    std::fs::write(rig.dir.path().join("pads/plan.md"), "edited").unwrap();
+    delete_row_before_update_of(&rig, "plan");
+
+    rig.fail(&a, "pad.setStorage", json!({"files": false}))
+        .await;
+
+    let notes = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(notes["text"], "n");
+    rig.ok(&a, "pad.write", json!({"name": "notes", "text": "z"}))
+        .await;
+    assert_eq!(rig.file_text("notes.md"), "z");
 }

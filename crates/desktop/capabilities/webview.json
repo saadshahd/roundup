@@ -1,0 +1,11 @@
+{
+  "identifier": "webview",
+  "windows": ["*"],
+  "permissions": [
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "core:window:allow-set-badge-count",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}
