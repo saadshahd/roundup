@@ -16,6 +16,7 @@ new_repo() {
   echo x >f
   git add -A
   git commit -qm base
+  git update-ref refs/remotes/origin/main HEAD
   echo 'do the thing' >prompt.md
   # The stub logs every call; `exec ... CLAUDE_CODE_OAUTH_TOKEN` answers per $STUB_MODE.
   cat >bin/boxd <<'S'
@@ -100,5 +101,11 @@ expect_true "L4 PAUSED keeps its original time" test "$(cat loop/out/PAUSED)" = 
 new_repo; STUB_MODE=tree-leak expect_code 1 "L6 token in the Builder's tree is refused"
 expect_true "L6 no patch for a leaking tree" test ! -s loop/out/patches/t.patch
 new_repo; STUB_MODE=scan-fails expect_code 1 "L6 a failed token scan refuses (fails closed)"
+
+new_repo; loop/boxd.sh review r prompt.md >out 2>err && echo "ok:   L9 review succeeds" || { echo "FAIL: L9 review succeeds"; failures=$((failures + 1)); }
+expect_true "L9 verdict written" test "$(cat loop/out/verdicts/r.md)" = ok
+expect_log 'machine new ru-r .*--isolated' "L9 review VM is isolated"
+expect_log 'machine remove ru-r' "L9 review VM destroyed"
+new_repo; STUB_MODE=leak loop/boxd.sh review r prompt.md >out 2>err && { echo "FAIL: L9 leaking verdict accepted"; failures=$((failures + 1)); } || echo "ok:   L9 token in the verdict is refused"
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
