@@ -157,3 +157,109 @@ async fn p8_bad_names_are_invalid_params_for_every_method() {
         }
     }
 }
+
+fn user() -> Actor {
+    Actor::user()
+}
+
+#[tokio::test]
+async fn p4_user_flips_ownership_and_owner_may_hand_over() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    rig.call(&a, "pad.create", json!({"name": "notes"}))
+        .await
+        .unwrap();
+
+    let denied = rig
+        .call(&b, "pad.setOwner", json!({"name": "notes", "owner": b}))
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, code::FORBIDDEN);
+    let flipped = rig
+        .call(
+            &user(),
+            "pad.setOwner",
+            json!({"name": "notes", "owner": user()}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(flipped["owner"]["kind"], "user");
+
+    let locked_out = rig
+        .call(&a, "pad.write", json!({"name": "notes", "text": "x"}))
+        .await
+        .unwrap_err();
+    assert_eq!(locked_out.code, code::FORBIDDEN);
+    rig.call(
+        &user(),
+        "pad.write",
+        json!({"name": "notes", "text": "mine"}),
+    )
+    .await
+    .unwrap();
+    let handed = rig
+        .call(
+            &user(),
+            "pad.setOwner",
+            json!({"name": "notes", "owner": b}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(handed["owner"]["id"], "b");
+}
+
+#[tokio::test]
+async fn p6_export_writes_one_file_and_never_creates_directories() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.call(&a, "pad.create", json!({"name": "notes", "text": "hello"}))
+        .await
+        .unwrap();
+    let out = TempDir::new().unwrap();
+
+    let target = out.path().join("notes.md");
+    rig.call(&a, "pad.export", json!({"name": "notes", "path": target}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello");
+
+    let missing_dir = out.path().join("nope").join("notes.md");
+    let err = rig
+        .call(
+            &a,
+            "pad.export",
+            json!({"name": "notes", "path": missing_dir}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(!out.path().join("nope").exists());
+}
+
+#[tokio::test]
+async fn p7_pads_survive_reopening_the_directory() {
+    let dir = TempDir::new().unwrap();
+    let a = agent("a");
+    let touches = Arc::new(Touches::in_memory().unwrap());
+    let call = |pads: Pads, method: &'static str, params: Value| {
+        let ctx = Ctx {
+            actor: a.clone(),
+            bus: Bus::new(),
+            touches: Arc::clone(&touches),
+        };
+        async move { pads.call(&ctx, method, params).await.unwrap() }
+    };
+    let first = Pads::open(dir.path(), Bus::new()).unwrap();
+    call(
+        first,
+        "pad.create",
+        json!({"name": "notes", "text": "kept"}),
+    )
+    .await;
+
+    let reopened = Pads::open(dir.path(), Bus::new()).unwrap();
+    let pad = call(reopened, "pad.read", json!({"name": "notes"})).await;
+
+    assert_eq!(pad["text"], "kept");
+    assert_eq!(pad["owner"]["id"], "a");
+}
