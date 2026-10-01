@@ -16,16 +16,19 @@ contracts-fresh:
     git diff --exit-code -- contracts/generated
     test -z "$(git ls-files --others --exclude-standard contracts/generated)"
 
-# Runs a script in every pnpm package under apps/ and ext/; packages without it are skipped, no packages is a pass.
+# Runs a script in every pnpm workspace package (apps/*, ext/*); packages without it are skipped, no packages is a pass.
 packages script:
-    pnpm -r --filter "./apps/*" --filter "./ext/*" --if-present {{script}}
+    pnpm -r --if-present {{script}}
 
 # Builds rupd and rup, starts the webview dev server, runs the App on a folder.
 app folder:
     #!/usr/bin/env bash
     set -euo pipefail
+    project=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(folder)}})
     cargo build -p rupd -p rup
+    set -m
     pnpm --filter "./apps/*" --if-present dev &
     dev=$!
-    trap 'kill $dev' EXIT
-    cargo run -p desktop -- {{folder}}
+    set +m
+    trap 'kill -- -"$dev" 2>/dev/null || true' EXIT
+    cargo run -p desktop -- "$project"
