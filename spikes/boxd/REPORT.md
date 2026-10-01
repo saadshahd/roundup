@@ -15,7 +15,8 @@ Superseded in part by `docs/boxd.md`, which holds the current use cases and reci
 |---|---|
 | Default VM | 2 vCPU / 8G, x86_64, Ubuntu 24.04; node 24, claude 2.1.283, `agent-browser` 0.34.0 preinstalled; no Rust |
 | Fresh VM | boot reported 8 ms, about 1.0 s wall; first exec about 0.9 s |
-| Builder + `just check` on a snapshot VM | 29–37 s wall with Rust 1.89; 56 s with Rust 1.99 and the larger workspace (`loop/boxd.sh build`) |
+| Linux check on a snapshot VM | fmt, clippy, nextest, lint and the `rup ping` round trip: 15 s (Rust 1.89, small workspace, snapshot with the toolchain) |
+| Builder + `just check` on a snapshot VM | 29–37 s wall with Rust 1.89; 56 s with Rust 1.99 and the larger workspace |
 | From snapshot | boot reported 4–5 ms; about 2.2 s wall; toolchain, Desktop URL and `agent-browser` all present |
 | Fork of a running VM | reported 222 ms, about 2.4 s wall |
 | Exit codes | propagate through `boxd machine exec` |
@@ -33,7 +34,7 @@ Superseded in part by `docs/boxd.md`, which holds the current use cases and reci
 | Opus: one-line review | 2 | 5.2 s | $0.170 |
 | 4 Sonnet Builders in parallel, distinct tasks | 3–6 each | 21–27 s wall each (model time 19–25 s) | $0.08–0.11 each |
 
-No 401, 429 or terms error appeared in any run. The JSON has no quota field. `sonnet` and `opus` resolve to claude-sonnet-5-5 and claude-opus-5-5.
+The 56 s run used the rewritten `loop/boxd.sh` (`--isolated` from the snapshot, prompt on stdin), before the second round of review fixes; it is the real-boxd evidence that this combination works. The earlier `ru-iso` VM also ran `claude -p` and `agent-browser` while isolated. No 401, 429 or terms error appeared in any run. Token detail (input / cache-create / cache-read / output): ping on a VM 2 / 22,038 / 18,639 / 4; Sonnet task 6 / 19,617 / 68,138 / 896; Opus review 4 / 19,558 / 38,998 / 266. The JSON has no quota field. `sonnet` and `opus` resolve to claude-sonnet-5-5 and claude-opus-5-5.
 
 ## Secrets
 
