@@ -13,7 +13,7 @@ export type DaemonExit = v.InferOutput<typeof daemonExitSchema>;
 
 export type Unsubscribe = () => void;
 
-/** The Tauri commands of `scenarios/app.md`, plus the macOS chooser; the one thing the webview knows about the App. */
+/** The Tauri commands of `scenarios/app.md`, plus the macOS choosers and the Dock badge; the only door from the webview to Tauri. */
 export type AppSeam = {
   project(): Promise<Project | null>;
   openProject(path: string): Promise<Project>;
