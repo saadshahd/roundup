@@ -49,14 +49,14 @@ export const Pads = () => {
       <Show when={failure.message()} fallback={<Show when={naming()}><NameField onName={create} /></Show>}>
         {(message) => <ErrorLine message={message()} />}
       </Show>
-      <Show when={pads.error} fallback={<PadRows pads={pads.latest ?? []} onMakeYours={(name) => void makeYours(name)} />}>
+      <Show when={pads.error} fallback={<PadRows pads={pads.latest ?? []} onMakeYours={(name) => void makeYours(name)} onLateFailure={failure.show} />}>
         {(error) => <ErrorLine message={error() instanceof Error ? error().message : String(error())} />}
       </Show>
     </section>
   );
 };
 
-const PadRows = (props: { pads: readonly Pad[]; onMakeYours: (name: string) => void }) => {
+const PadRows = (props: { pads: readonly Pad[]; onMakeYours: (name: string) => void; onLateFailure: (message: string) => void }) => {
   const connected = useConnectedProject();
 
   return (
@@ -73,7 +73,7 @@ const PadRows = (props: { pads: readonly Pad[]; onMakeYours: (name: string) => v
           >
             <span class="light">{ownerMark(pad.owner)}</span>
           </Show>{" "}
-          <button type="button" class="word" onClick={() => connected.drawer.open(() => <PadDrawer name={pad.name} />)}>
+          <button type="button" class="word" onClick={() => connected.drawer.open(() => <PadDrawer name={pad.name} onLateFailure={props.onLateFailure} />)}>
             {pad.name}
           </button>
         </p>

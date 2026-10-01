@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
+import type { Pad } from "@contracts/pad/Pad";
 import { afterEach, describe, expect, it } from "vitest";
-import { AGENT, openShelf, padOf, RpcError, YOU } from "./padsFixture";
+import { AGENT, deferred, openShelf, padOf, RpcError, YOU } from "./padsFixture";
 
 afterEach(cleanup);
 
@@ -64,5 +65,30 @@ describe("u18 list and ownership", () => {
 
     expect(calls().filter((method) => method !== "rail.tree" && method !== "terminal.list")).toEqual(["pad.list", "pad.list"]);
     await waitFor(() => expect(calls()).not.toContain("pad.read"));
+  });
+
+  it("u18_an_older_pad_list_reply_that_arrives_late_never_wins", async () => {
+    const { app } = await openShelf([padOf("auth-notes", AGENT)]);
+    await screen.findByText("auth-notes");
+    const replies: ReturnType<typeof deferred<Pad[]>>[] = [];
+    app.handlers["pad.list"] = () => {
+      const reply = deferred<Pad[]>();
+      replies.push(reply);
+
+      return reply.promise;
+    };
+
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    await waitFor(() => expect(replies.length).toBeGreaterThanOrEqual(1));
+    const newest = replies.length - 1;
+
+    replies[newest].resolve([padOf("newest", AGENT)]);
+    await screen.findByText("newest");
+    replies.slice(0, newest).forEach((older) => older.resolve([padOf("older", AGENT)]));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.queryByText("older")).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { AGENT, openShelf, padOf, RpcError } from "./padsFixture";
 
@@ -14,7 +14,7 @@ describe("u21 export", () => {
     const { app } = await openShelf([padOf("auth-notes", AGENT)]);
 
     await clickExport();
-    await Promise.resolve();
+    await waitFor(() => expect(app.chooser.suggestedNames).toHaveLength(1));
 
     expect(app.chooser.suggestedNames).toEqual(["auth-notes.md"]);
   });
@@ -25,7 +25,7 @@ describe("u21 export", () => {
     app.handlers["pad.export"] = () => null;
 
     await clickExport();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(() => expect(app.calls.some((call) => call.method === "pad.export")).toBe(true));
 
     expect(app.calls.filter((call) => call.method === "pad.export")).toEqual([
       { method: "pad.export", params: { name: "auth-notes", path: "/Users/me/auth-notes.md" } },
@@ -37,7 +37,7 @@ describe("u21 export", () => {
     app.chooser.savePath = null;
 
     await clickExport();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitFor(() => expect(app.chooser.suggestedNames).toHaveLength(1));
 
     expect([app.chooser.suggestedNames, calls().includes("pad.export")]).toEqual([["auth-notes.md"], false]);
   });

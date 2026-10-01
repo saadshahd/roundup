@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { AGENT, openShelf, padOf, YOU } from "./padsFixture";
+import { AGENT, deferred, openShelf, padOf, RpcError, YOU } from "./padsFixture";
+import type { Pad } from "@contracts/pad/Pad";
 
 afterEach(cleanup);
 
@@ -30,7 +31,7 @@ describe("u20 open and edit", () => {
     await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
 
-    expect(screen.getByText("export .md").className).toBe("word");
+    expect(screen.getByText("export .md").className).toContain("light");
   });
 
   it("u20_the_text_is_markdown_source_in_the_monospace_face", async () => {
@@ -120,37 +121,173 @@ describe("u20 open and edit", () => {
     await waitFor(() => expect(append.value).toBe(""));
   });
 
-  it("u20_pad_changed_for_the_open_pad_refreshes_its_text_from_pad_list", async () => {
-    const { app, state } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
+  it("u20_the_export_word_and_the_close_word_are_distinct_targets", async () => {
+    await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
+
+    expect([screen.getByText("close").matches(".drawer .word"), screen.getByText("export .md").matches(".drawer .word")]).toEqual([true, false]);
+  });
+
+  it("u20_pad_changed_for_the_open_pad_calls_only_pad_list_and_refreshes_its_text", async () => {
+    const { app, state, calls } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
+    await openPad("auth-notes");
+    const before = calls().length;
+    state.pads = [padOf("auth-notes", AGENT, "v2")];
+
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    await screen.findByDisplayValue("v2");
+
+    expect(calls().slice(before)).toEqual(["pad.list", "pad.list"]);
+  });
+
+  it("u20_focusing_an_agents_read_only_text_does_not_stop_it_refreshing", async () => {
+    const { app, state } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
+    const field = await openPad("auth-notes");
+    fireEvent.focus(field);
     state.pads = [padOf("auth-notes", AGENT, "v2")];
 
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
 
-    expect((await screen.findByDisplayValue("v2")).tagName).toBe("TEXTAREA");
+    expect(await screen.findByDisplayValue("v2")).toBe(field);
   });
 
   it("u20_pad_changed_while_the_user_is_editing_leaves_the_text_alone", async () => {
-    const { app, state } = await openShelf([padOf("release-checklist", YOU, "mine")]);
+    const { app, state, calls } = await openShelf([padOf("release-checklist", YOU, "mine")]);
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "mine, typing" } });
     state.pads = [padOf("release-checklist", YOU, "theirs")];
+    const before = calls().length;
 
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitFor(() => expect(calls().length).toBeGreaterThan(before));
 
     expect(field.value).toBe("mine, typing");
   });
 
-  it("u20_pad_changed_for_another_pad_leaves_the_open_pad_alone", async () => {
+  it("u20_pad_changed_for_another_pad_does_not_touch_the_open_pad", async () => {
     const { app, calls } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
     await openPad("auth-notes");
     const before = calls().length;
 
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "other" } });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitFor(() => expect(calls().length).toBeGreaterThan(before));
 
     expect(calls().slice(before)).toEqual(["pad.list"]);
+  });
+
+  it("u20_a_write_reply_never_overwrites_text_typed_after_a_quick_refocus", async () => {
+    const { app } = await openShelf([padOf("release-checklist", YOU, "old")]);
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+    const field = await openPad("release-checklist");
+    edit(field, "new");
+
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "newer" } });
+    reply.resolve(padOf("release-checklist", YOU, "new"));
+    await reply.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(field.value).toBe("newer");
+  });
+
+  it("u20_a_change_skipped_while_editing_is_caught_up_after_the_write_settles", async () => {
+    const { app, state, calls } = await openShelf([padOf("release-checklist", YOU, "mine")]);
+    app.handlers["pad.write"] = ({ name, text }) => padOf(name, YOU, text);
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "mine, edited" } });
+    state.pads = [padOf("release-checklist", YOU, "mine\nagent line")];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
+    await waitFor(() => expect(calls().filter((method) => method === "pad.list").length).toBeGreaterThan(1));
+    const before = calls().length;
+
+    fireEvent.blur(field);
+
+    await waitFor(() => expect(calls().slice(before)).toEqual(["pad.write", "pad.list"]));
+    await waitFor(() => expect(field.value).toBe("mine\nagent line"));
+  });
+
+  it("u20_a_change_skipped_while_editing_refreshes_on_blur_when_nothing_was_typed", async () => {
+    const { app, state } = await openShelf([padOf("release-checklist", YOU, "mine")]);
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    state.pads = [padOf("release-checklist", YOU, "mine plus")];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
+    await waitFor(() => expect(app.calls.filter((call) => call.method === "pad.list").length).toBeGreaterThan(1));
+
+    fireEvent.blur(field);
+
+    expect(await screen.findByDisplayValue("mine plus")).toBe(field);
+  });
+
+  it("u20_a_background_refresh_does_not_clear_a_visible_error", async () => {
+    const { app, calls } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
+    app.chooser.savePath = "/gone/auth-notes.md";
+    app.handlers["pad.export"] = () => {
+      throw new RpcError(-32602, "directory /gone does not exist");
+    };
+
+    await openPad("auth-notes");
+    fireEvent.click(screen.getByText("export .md"));
+    await screen.findByText(/does not exist/);
+    const before = calls().length;
+
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    await waitFor(() => expect(calls().length).toBeGreaterThan(before + 1));
+
+    expect(screen.queryByText(/does not exist/)).not.toBeNull();
+  });
+
+  it("u20_an_empty_append_calls_nothing", async () => {
+    const { calls } = await openShelf([padOf("auth-notes", AGENT, "a")]);
+    await openPad("auth-notes");
+    const append = await screen.findByLabelText<HTMLInputElement>("append");
+
+    fireEvent.keyDown(append, { key: "Enter" });
+
+    expect(calls()).not.toContain("pad.append");
+  });
+
+  it("u20_an_older_pad_list_reply_that_arrives_late_never_wins", async () => {
+    const { app } = await openShelf([padOf("auth-notes", AGENT, "v0")]);
+    const field = await openPad("auth-notes");
+    const replies: ReturnType<typeof deferred<Pad[]>>[] = [];
+    app.handlers["pad.list"] = () => {
+      const reply = deferred<Pad[]>();
+      replies.push(reply);
+
+      return reply.promise;
+    };
+
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    await waitFor(() => expect(replies.length).toBeGreaterThanOrEqual(3));
+    const newest = replies.length - 1;
+
+    replies[newest].resolve([padOf("auth-notes", AGENT, "newest")]);
+    await screen.findByDisplayValue("newest");
+    replies.slice(0, newest).forEach((older) => older.resolve([padOf("auth-notes", AGENT, "older")]));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(field.value).toBe("newest");
+  });
+
+  it("u20_a_write_that_fails_after_the_drawer_closed_shows_its_message_on_the_shelf", async () => {
+    const { app, connected } = await openShelf([padOf("release-checklist", YOU, "old")]);
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+    const field = await openPad("release-checklist");
+    edit(field, "new");
+    await waitFor(() => expect(app.calls.some((call) => call.method === "pad.write")).toBe(true));
+
+    connected.drawer.close();
+    reply.reject(new RpcError(-32001, "only the owner may write"));
+
+    expect((await screen.findByText(/only the owner may write/)).textContent).toBe("✕ only the owner may write");
+    expect(screen.queryByLabelText("drawer")?.textContent).not.toContain("only the owner");
   });
 });

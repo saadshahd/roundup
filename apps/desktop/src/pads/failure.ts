@@ -4,6 +4,7 @@ import type { Accessor } from "solid-js";
 export type Failure = {
   message: Accessor<string | null>;
   clear(): void;
+  show(message: string): void;
   /** Clears the last failure, runs `work`, and keeps the message of an Error it throws; anything else is rethrown. */
   run(work: () => Promise<void>): Promise<void>;
 };
@@ -14,6 +15,7 @@ export const createFailure = (): Failure => {
   return {
     message,
     clear: () => setMessage(null),
+    show: setMessage,
     run: async (work) => {
       setMessage(null);
 
