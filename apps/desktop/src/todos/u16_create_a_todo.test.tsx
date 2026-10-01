@@ -6,7 +6,7 @@ import { callsTo, mountTodos, todo, todoEvent } from "./testHarness";
 afterEach(cleanup);
 
 const openField = async () => {
-  fireEvent.click(await screen.findByText("+ todo"));
+  fireEvent.click(await screen.findByText("+"));
 
   return screen.getByRole("textbox", { name: "new todo title" });
 };
@@ -26,7 +26,7 @@ describe("u16 create a Todo", () => {
     await mountTodos([]);
     await openField();
 
-    fireEvent.click(screen.getByText("+ todo"));
+    fireEvent.click(screen.getByText("+"));
 
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
@@ -102,7 +102,7 @@ describe("u16 create a Todo", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     await screen.findByText(/title is empty/);
 
-    fireEvent.click(screen.getByText("+ todo"));
+    fireEvent.click(screen.getByText("+"));
 
     expect([screen.queryByText(/title is empty/), screen.getAllByRole("textbox")]).toEqual([null, [expect.anything()]]);
   });

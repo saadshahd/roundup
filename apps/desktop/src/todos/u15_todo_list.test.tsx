@@ -12,7 +12,7 @@ describe("u15 Todo list", () => {
 
     await screen.findByText(/refresh tokens/);
 
-    expect(rows()).toEqual(["+ todo", "· #3 refresh tokens", "· #7 split checkout flow"]);
+    expect(rows()).toEqual(["+", "· #3 refresh tokens", "· #7 split checkout flow"]);
   });
 
   it("u15_a_blocked_todo_has_the_pause_glyph_and_a_second_line_naming_its_open_blockers_in_id_order", async () => {
@@ -44,7 +44,7 @@ describe("u15 Todo list", () => {
 
     await screen.findByRole("button", { name: "✓ 2 done" });
 
-    expect([rows(), screen.queryByText(/old one/)]).toEqual([["+ todo", "· #3 todo 3", "✓ 2 done"], null]);
+    expect([rows(), screen.queryByText(/old one/)]).toEqual([["+", "· #3 todo 3", "✓ 2 done"], null]);
   });
 
   it("u15_clicking_the_done_line_unfolds_the_done_todos", async () => {
@@ -52,7 +52,7 @@ describe("u15 Todo list", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "✓ 1 done" }));
 
-    expect(rows()).toEqual(["+ todo", "✓ 1 done", "✓ #1 old one"]);
+    expect(rows()).toEqual(["+", "✓ 1 done", "✓ #1 old one"]);
   });
 
   it("u15_no_done_todos_show_no_done_line", async () => {
@@ -72,15 +72,12 @@ describe("u15 Todo list", () => {
     expect(await screen.findByText(/fresh/)).toBeTruthy();
   });
 
-  it.each([
-    { actor: USER, name: "todo.unblocked", data: { id: 1 } },
-    { actor: USER, name: "todo.deleted", data: { id: 1 } },
-  ] as const)("u15_$name_refetches_todo_list", async (event) => {
+  it.each(["todo.unblocked", "todo.deleted"] as const)("u15_%s_refetches_todo_list", async (name) => {
     const { app, store } = await mountTodos([todo(1), todo(2)]);
     await screen.findByText(/todo 2/);
     store.todos = [todo(2)];
 
-    app.emit(event);
+    app.emit({ actor: USER, name, data: { id: 1 } });
 
     await waitFor(() => expect(screen.queryByText(/todo 1/)).toBeNull());
   });
@@ -127,6 +124,7 @@ describe("u15 Todo list", () => {
 
     releaseOlder();
     await older;
+    await new Promise((settle) => setTimeout(settle));
 
     expect(screen.queryByText(/stale/)).toBeNull();
   });
@@ -138,5 +136,39 @@ describe("u15 Todo list", () => {
     app.emit(todoEvent("todo.updated", todo(1)));
 
     expect((await screen.findByText(/daemon says no/)).textContent).toBe("✕ daemon says no");
+  });
+
+  it("u15_a_refetch_that_changes_one_todo_leaves_every_other_row_in_place", async () => {
+    const { app, store } = await mountTodos([todo(1), todo(2)]);
+    const before = (await screen.findByRole("button", { name: /#2/ }));
+    store.todos = [todo(1, { title: "renamed" }), todo(2)];
+
+    app.emit(todoEvent("todo.updated", todo(1)));
+
+    await screen.findByRole("button", { name: /renamed/ });
+    expect(screen.getByRole("button", { name: /#2/ })).toBe(before);
+  });
+
+  it("u15_listing_blocked_todos_reads_each_ones_blockers_a_constant_number_of_times", async () => {
+    const count = 120;
+    let reads = 0;
+
+    const counted = (id: number) => {
+      const row = todo(id, { blocked: true });
+
+      return Object.defineProperty(row, "blockers", {
+        enumerable: true,
+        get: () => {
+          reads += 1;
+
+          return [(id % count) + 1];
+        },
+      });
+    };
+
+    await mountTodos(Array.from({ length: count }, (_, index) => counted(index + 1)));
+    await screen.findByRole("button", { name: /#120 todo 120/ });
+
+    expect(reads).toBeLessThan(count * 10);
   });
 });

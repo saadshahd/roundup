@@ -37,21 +37,21 @@ export const mountTodos = async (initial: Todo[]) => {
   app.handlers["todo.list"] = () => store.todos;
   app.handlers["todo.get"] = ({ id }) => store.todos.find((candidate) => candidate.id === id) ?? todo(id);
 
-  const workspace = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
 
   render(() => (
-    <ConnectedProjectContext.Provider value={workspace}>
+    <ConnectedProjectContext.Provider value={connected}>
       <Layout
         header="roundup"
         rail={null}
         centre={null}
         shelf={<Todos />}
-        overlay={<DrawerHost drawer={workspace.drawer} reducedMotion={() => true} />}
+        overlay={<DrawerHost drawer={connected.drawer} reducedMotion={() => true} />}
       />
     </ConnectedProjectContext.Provider>
   ));
 
-  return { app, store, workspace };
+  return { app, store, connected };
 };
 
 export const callsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>

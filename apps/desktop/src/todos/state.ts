@@ -1,5 +1,6 @@
-import { createSignal, onCleanup } from "solid-js";
+import { createMemo, createSignal, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import type { Todo } from "@contracts/todo/Todo";
 import type { Events } from "../app/events";
 import type { AppSeam } from "../app/seam";
@@ -8,6 +9,8 @@ import { failureOf } from "./failureOf";
 export type TodosState = {
   /** The Project's Todos as `todo.list` last answered. */
   all: Accessor<readonly Todo[]>;
+  /** Every Todo by id, rebuilt once per change of the list, so a row finds its blockers without scanning. */
+  byId: Accessor<ReadonlyMap<number, Todo>>;
   /** The message of the last failed `todo.list`, until a later one succeeds. */
   failure: Accessor<string | null>;
 };
@@ -16,7 +19,8 @@ const REFETCH_ON = new Set(["todo.created", "todo.updated", "todo.unblocked", "t
 
 /** Subscribes before its first fetch, so no Event between the two is lost. */
 export const createTodosState = (app: AppSeam, events: Events): TodosState => {
-  const [all, setAll] = createSignal<readonly Todo[]>([]);
+  // Reconciled by id, so a refetch that changes one Todo leaves every other row untouched.
+  const [shelf, setShelf] = createStore<{ todos: Todo[] }>({ todos: [] });
   const [failure, setFailure] = createSignal<string | null>(null);
 
   // Overlapping fetches can answer out of order; only the newest one may write.
@@ -26,7 +30,7 @@ export const createTodosState = (app: AppSeam, events: Events): TodosState => {
     newest += 1;
 
     const mine = newest;
-    let list: readonly Todo[] = [];
+    let list: Todo[] = [];
 
     const message = await failureOf(async () => {
       list = await app.rpc("todo.list", null);
@@ -34,7 +38,7 @@ export const createTodosState = (app: AppSeam, events: Events): TodosState => {
 
     if (mine !== newest) return;
 
-    if (message === null) setAll(list);
+    if (message === null) setShelf("todos", reconcile(list, { key: "id" }));
 
     setFailure(message);
   };
@@ -46,5 +50,7 @@ export const createTodosState = (app: AppSeam, events: Events): TodosState => {
   );
   void refetch();
 
-  return { all, failure };
+  const byId = createMemo(() => new Map(shelf.todos.map((todo) => [todo.id, todo])));
+
+  return { all: () => shelf.todos, byId, failure };
 };
