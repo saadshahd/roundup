@@ -29,6 +29,8 @@ impl Rail {
                 terminal_id TEXT
             );",
         )?;
+        // Terminal ids restart at 1 with the Daemon, so a stored id could name an unrelated Terminal.
+        db.execute("UPDATE nodes SET terminal_id = NULL", [])?;
         Ok(Self { db, opened: now })
     }
 
@@ -172,18 +174,23 @@ mod tests {
     }
 
     #[test]
-    fn a8_an_agent_whose_terminal_is_gone_comes_back_done() {
+    fn a8_an_agent_whose_terminal_is_gone_comes_back_done_and_unlinked() {
         let (dir, mut rail) = rail();
         rail.insert(NodeKind::Agent, "claude", None, Some("1"))
             .unwrap();
         drop(rail);
 
-        let tree = Rail::open(&dir.path().join("agents.db"), 7)
-            .unwrap()
-            .tree()
+        let mut reopened = Rail::open(&dir.path().join("agents.db"), 9).unwrap();
+        // A new, unrelated Terminal reuses id 1 after the restart.
+        reopened
+            .insert(NodeKind::Terminal, "shell", None, Some("1"))
             .unwrap();
-        let status = tree[0].status.as_ref().unwrap();
-        assert_eq!(status.kind, Kind::Done);
-        assert_eq!(tree[0].terminal_id.as_deref(), Some("1"));
+        let tree = reopened.tree().unwrap();
+
+        let agent = &tree[0];
+        let status = agent.status.as_ref().unwrap();
+        assert_eq!((status.kind, status.since), (Kind::Done, 9));
+        assert_eq!(agent.terminal_id, None);
+        assert_eq!(tree[1].terminal_id.as_deref(), Some("1"));
     }
 }
