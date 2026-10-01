@@ -1,0 +1,97 @@
+:root {
+  --ground: #ffffff;
+  --text: #1c1c1e;
+  --grey: #6e6e73;
+  --light: #a1a1a6;
+  --lightest: #c7c7cc;
+  --amber: #b86e00;
+  --red: #c4262e;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--ground);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  padding: 8px 16px;
+  white-space: pre;
+}
+
+.columns {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24% 1fr 24%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rail,
+.centre,
+.shelf {
+  min-width: 0;
+  padding: 0 16px;
+  overflow: auto;
+}
+
+.centre {
+  background: var(--ground);
+}
+
+.word {
+  all: unset;
+  color: var(--light);
+  cursor: pointer;
+}
+
+.word:hover {
+  color: var(--grey);
+}
+
+.light {
+  color: var(--light);
+}
+
+.ink {
+  font-weight: 700;
+}
+
+.ink[data-tone="amber"] {
+  color: var(--amber);
+}
+
+.ink[data-tone="red"] {
+  color: var(--red);
+}
+
+.drawer {
+  width: min(560px, 70%);
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: auto;
+  background: var(--ground);
+}
+
+.drawer .word {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+}
