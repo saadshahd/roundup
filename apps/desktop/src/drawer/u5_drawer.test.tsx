@@ -239,4 +239,15 @@ describe("u5 Drawer and last touch", () => {
       "window",
     ]);
   });
+
+  it("u5_the_close_word_is_light_and_clear_of_the_content", () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    const { panel } = drawerSetup();
+    const close = screen.getByText("close");
+    const [color, padding] = [getComputedStyle(close).color, getComputedStyle(panel).paddingRight];
+    sheet.remove();
+
+    expect([close.classList.contains("word"), color, padding]).toEqual([true, "var(--light)", "72px"]);
+  });
 });

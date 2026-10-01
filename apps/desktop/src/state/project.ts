@@ -2,12 +2,12 @@ import { createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { AppSeam, DaemonExit, Project } from "../app/seam";
 
-export type Phase =
+type Phase =
   | { kind: "loading" }
   | { kind: "empty"; failure: string | null }
   | { kind: "open"; project: Project; daemonExit: DaemonExit | null };
 
-export type ProjectState = {
+type ProjectState = {
   phase: Accessor<Phase>;
   /** Asks the macOS chooser for a folder and opens it as the Project; a cancel changes nothing. */
   choose(): Promise<void>;
@@ -16,7 +16,7 @@ export type ProjectState = {
 export const createProjectState = (app: AppSeam): ProjectState => {
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading" });
 
-  // The adapter rejects every failure as an RpcError; a rejection that is not an Error is a bug and escapes instead of becoming text.
+  // The adapter rejects as an RpcError; a rejection that is not an Error is a bug, and it escapes instead of becoming text.
   const fail = (failure: Error) => setPhase({ kind: "empty", failure: failure.message });
 
   const load = async () => {

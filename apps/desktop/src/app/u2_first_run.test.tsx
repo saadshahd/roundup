@@ -77,7 +77,6 @@ describe("u2 first run", () => {
     app.opened.project = PROJECT;
     const { container } = renderApp(app);
 
-
     await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
   });
 
@@ -167,5 +166,15 @@ describe("u2 first run", () => {
     app.emit({ actor: { kind: "user", id: "you", parent: null }, name: "rail.changed" });
 
     expect((await within(region("centre")).findByText("✕ daemon is gone")).className).toBe("ink");
+  });
+
+  it("u5_the_app_passes_prefers_reduced_motion_to_its_drawer", async () => {
+    const app = createFakeApp();
+    app.opened.project = PROJECT;
+    const { container } = render(() => <App app={app} reducedMotion={() => true} clock={() => 0} />);
+
+    await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
+
+    expect(screen.getByLabelText("drawer").style.transition).toBe("none");
   });
 });
