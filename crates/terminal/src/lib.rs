@@ -5,7 +5,7 @@
 //! before the program starts so no output is missed.
 
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -13,9 +13,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use contracts::terminal::{ExitedEvent, OutputEvent, SpawnParams, TerminalId, TerminalInfo};
+use contracts::terminal::{
+    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, WriteParams,
+};
 use contracts::{Actor, EventData};
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -30,9 +32,17 @@ pub struct Spawned {
     pub events: broadcast::Receiver<EventData>,
 }
 
+/// What it takes to drive a running program. Dropped when the program exits.
+struct Handle {
+    master: Mutex<Box<dyn MasterPty + Send>>,
+    writer: Mutex<Box<dyn Write + Send>>,
+    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+}
+
 struct Entry {
     info: TerminalInfo,
     events: broadcast::Sender<EventData>,
+    handle: Option<Arc<Handle>>,
 }
 
 /// State shared with each Terminal's reader thread.
@@ -58,6 +68,7 @@ impl Shared {
         let id = number.to_string();
         if let Some(entry) = self.table().get_mut(&number) {
             entry.info.running = false;
+            entry.handle = None;
             entry.info.exit_code = code;
         }
         self.publish(number, EventData::TerminalExited(ExitedEvent { id, code }));
@@ -114,6 +125,11 @@ impl Terminals {
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
+        let handle = Handle {
+            writer: Mutex::new(pair.master.take_writer().map_err(RpcError::internal)?),
+            killer: Mutex::new(child.clone_killer()),
+            master: Mutex::new(pair.master),
+        };
 
         let number = self.next.fetch_add(1, Ordering::Relaxed);
         let (sender, events) = broadcast::channel(EVENT_BACKLOG);
@@ -128,17 +144,60 @@ impl Terminals {
                     exit_code: None,
                 },
                 events: sender,
+                handle: Some(Arc::new(handle)),
             },
         );
         let shared = Arc::clone(&self.shared);
         std::thread::Builder::new()
             .name(format!("terminal-{number}"))
-            .spawn(move || pump(&shared, number, reader, child, pair.master))
+            .spawn(move || pump(&shared, number, reader, child))
             .map_err(RpcError::internal)?;
         Ok(Spawned {
             id: number.to_string(),
             events,
         })
+    }
+
+    /// Type `bytes` into a running Terminal. `NOT_FOUND` if it is unknown or has exited.
+    pub async fn write(&self, id: &str, bytes: &[u8]) -> Result<(), RpcError> {
+        let handle = self.running(id)?;
+        let bytes = bytes.to_vec();
+        // A program that stops reading fills the PTY buffer and blocks the write.
+        tokio::task::spawn_blocking(move || {
+            let mut writer = handle.writer.lock().expect("terminal writer lock");
+            writer.write_all(&bytes).and_then(|()| writer.flush())
+        })
+        .await
+        .map_err(RpcError::internal)?
+        .map_err(RpcError::internal)
+    }
+
+    /// Tell a running Terminal its window is now `cols` x `rows`. `NOT_FOUND` as for [`Terminals::write`].
+    pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), RpcError> {
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let handle = self.running(id)?;
+        let master = handle.master.lock().expect("terminal master lock");
+        master.resize(size).map_err(RpcError::internal)
+    }
+
+    /// Stop a running Terminal's program. It stays listed as exited once `terminal.exited` is emitted.
+    /// `NOT_FOUND` as for [`Terminals::write`].
+    pub async fn kill(&self, id: &str) -> Result<(), RpcError> {
+        let handle = self.running(id)?;
+        let mut killer = handle.killer.lock().expect("terminal killer lock");
+        killer.kill().map_err(RpcError::internal)
+    }
+
+    fn running(&self, id: &str) -> Result<Arc<Handle>, RpcError> {
+        id.parse::<u64>()
+            .ok()
+            .and_then(|number| self.shared.table().get(&number)?.handle.clone())
+            .ok_or_else(|| RpcError::not_found(format!("running terminal {id}")))
     }
 
     /// Every Terminal, running or exited, oldest first.
@@ -152,13 +211,11 @@ impl Terminals {
 }
 
 /// Read until the program closes the PTY, publishing each chunk, then report how it ended.
-/// Owns `master` so the PTY outlives the program's last write.
 fn pump(
     shared: &Shared,
     number: u64,
     mut reader: Box<dyn Read + Send>,
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
-    master: Box<dyn portable_pty::MasterPty + Send>,
 ) {
     let id = number.to_string();
     let mut chunk = [0u8; READ_CHUNK];
@@ -181,7 +238,6 @@ fn pump(
         .ok()
         .filter(|status| status.signal().is_none())
         .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
-    drop(master);
     shared.finish(number, code);
 }
 
@@ -200,6 +256,21 @@ impl Module for Terminals {
             "terminal.spawn" => {
                 let spawned = self.spawn(params(value)?).await?;
                 reply(&TerminalId { id: spawned.id })
+            }
+            "terminal.write" => {
+                let WriteParams { id, data } = params(value)?;
+                let bytes = STANDARD
+                    .decode(data)
+                    .map_err(|err| invalid(format!("data is not base64: {err}")))?;
+                self.write(&id, &bytes).await.and(reply(&()))
+            }
+            "terminal.resize" => {
+                let ResizeParams { id, cols, rows } = params(value)?;
+                self.resize(&id, cols, rows).await.and(reply(&()))
+            }
+            "terminal.kill" => {
+                let TerminalId { id } = params(value)?;
+                self.kill(&id).await.and(reply(&()))
             }
             "terminal.list" => reply(&self.list()),
             _ => Err(RpcError::method_not_found(method)),
