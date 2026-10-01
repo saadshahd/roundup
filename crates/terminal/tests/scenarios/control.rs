@@ -89,6 +89,20 @@ async fn x6_kill_stops_the_program_and_keeps_it_listed() {
 }
 
 #[tokio::test]
+async fn x6_kill_stops_a_program_that_ignores_hangup() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), "trap '' HUP; echo ready; exec cat"))
+        .await
+        .unwrap();
+    until_printed(&mut spawned.events, "ready").await;
+    terminals.kill(&spawned.id).await.unwrap();
+    let (_, exit) = until_exit(&mut spawned.events).await;
+    assert_eq!(exit, None);
+}
+
+#[tokio::test]
 async fn x6_an_unknown_terminal_is_not_found() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
