@@ -10,13 +10,13 @@ caseless = "0.2"
 contracts = { path = "../contracts" }
 rpc = { path = "../rpc" }
 serde_json.workspace = true
+tempfile.workspace = true
 
 rusqlite.workspace = true
 unicode-normalization = "0.1"
 
 [dev-dependencies]
 provenance = { path = "../provenance" }
-tempfile.workspace = true
 tokio.workspace = true
 
 [lints]

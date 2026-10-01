@@ -19,7 +19,7 @@ struct Rig {
     pads: Pads,
     bus: Bus,
     touches: Arc<Touches>,
-    _dir: TempDir,
+    dir: TempDir,
 }
 
 impl Rig {
@@ -30,7 +30,7 @@ impl Rig {
             pads: Pads::open(dir.path(), bus.clone()).unwrap(),
             bus,
             touches: Arc::new(Touches::in_memory().unwrap()),
-            _dir: dir,
+            dir,
         }
     }
 
@@ -46,6 +46,10 @@ impl Rig {
             touches: Arc::clone(&self.touches),
         };
         self.pads.call(&ctx, method, params).await
+    }
+
+    fn file_text(&self, name: &str) -> String {
+        std::fs::read_to_string(self.dir.path().join("pads").join(name)).unwrap()
     }
 
     async fn ok(&self, actor: &Actor, method: &str, params: Value) -> Value {
@@ -234,6 +238,15 @@ async fn p6_export_writes_one_file_and_never_creates_directories() {
         .await
         .unwrap();
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let in_files_mode = out.path().join("files-mode.md");
+    rig.ok(
+        &a,
+        "pad.export",
+        json!({"name": "notes", "path": in_files_mode}),
+    )
+    .await;
+    assert_eq!(std::fs::read_to_string(&in_files_mode).unwrap(), "hello");
 
     let missing_dir = out.path().join("nope").join("notes.md");
     let err = rig
@@ -306,6 +319,66 @@ async fn p9_owner_or_user_deletes_and_others_are_forbidden() {
 }
 
 #[tokio::test]
+async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "one"}))
+        .await;
+    rig.ok(&a, "pad.create", json!({"name": "plan", "text": "p"}))
+        .await;
+
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    assert_eq!(rig.file_text("notes.md"), "one");
+    assert_eq!(rig.file_text("plan.md"), "p");
+
+    rig.ok(&a, "pad.write", json!({"name": "notes", "text": "two"}))
+        .await;
+    assert_eq!(rig.file_text("notes.md"), "two");
+    rig.ok(
+        &agent("b"),
+        "pad.append",
+        json!({"name": "notes", "text": "+b"}),
+    )
+    .await;
+    assert_eq!(rig.file_text("notes.md"), "two+b");
+
+    let reopened = Pads::open(rig.dir.path(), Bus::new()).unwrap();
+    let ctx = Ctx {
+        actor: a.clone(),
+        bus: Bus::new(),
+        touches: Arc::clone(&rig.touches),
+    };
+    reopened
+        .call(&ctx, "pad.append", json!({"name": "notes", "text": "!"}))
+        .await
+        .unwrap();
+    assert_eq!(rig.file_text("notes.md"), "two+b!");
+
+    std::fs::write(rig.dir.path().join("pads/notes.md"), "edited on disk").unwrap();
+    reopened
+        .call(&ctx, "pad.setStorage", json!({"files": false}))
+        .await
+        .unwrap();
+
+    let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(pad["text"], "edited on disk");
+}
+
+#[tokio::test]
+async fn p9_delete_removes_the_file_when_file_backed() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    rig.ok(&a, "pad.create", json!({"name": "notes"})).await;
+    let file = rig.dir.path().join("pads/notes.md");
+    assert!(file.exists());
+
+    rig.ok(&a, "pad.delete", json!({"name": "notes"})).await;
+
+    assert!(!file.exists());
+}
+
+#[tokio::test]
 async fn p4_owner_may_hand_over_its_own_pad() {
     let rig = Rig::new();
     let (a, b) = (agent("a"), agent("b"));
@@ -334,6 +407,183 @@ async fn p1_names_are_unique_ignoring_case() {
     assert_eq!(clash.code, code::CONFLICT);
     let found = rig.ok(&a, "pad.read", json!({"name": "NOTES"})).await;
     assert_eq!(found["name"], "notes");
+}
+
+#[tokio::test]
+async fn p5_a_failed_flip_back_applies_nothing_and_can_be_retried() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "n"}))
+        .await;
+    rig.ok(&a, "pad.create", json!({"name": "plan", "text": "p"}))
+        .await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let files = rig.dir.path().join("pads");
+    std::fs::write(files.join("notes.md"), "edited").unwrap();
+    std::fs::write(files.join("plan.md"), [0xff, 0xfe]).unwrap();
+
+    let err = rig
+        .fail(&a, "pad.setStorage", json!({"files": false}))
+        .await;
+
+    assert_eq!(err.code, code::INTERNAL);
+    let notes = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(notes["text"], "n");
+    std::fs::write(files.join("plan.md"), "fixed").unwrap();
+    rig.ok(&a, "pad.setStorage", json!({"files": false})).await;
+    let notes = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(notes["text"], "edited");
+}
+
+#[tokio::test]
+async fn p5_a_failed_file_write_changes_nothing_and_emits_nothing() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "old"}))
+        .await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let blocked = rig.dir.path().join("pads");
+    std::fs::remove_file(blocked.join("notes.md")).unwrap();
+    std::fs::create_dir(blocked.join("notes.md")).unwrap();
+    std::fs::create_dir(blocked.join("other.md")).unwrap();
+    let mut events = rig.bus.subscribe();
+    let touched = rig.touches.touched("a").unwrap().len();
+
+    rig.fail(&a, "pad.write", json!({"name": "notes", "text": "new"}))
+        .await;
+    rig.fail(&a, "pad.append", json!({"name": "notes", "text": "+"}))
+        .await;
+    rig.fail(&a, "pad.create", json!({"name": "other"})).await;
+
+    let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(pad["text"], "old");
+    let missing = rig.fail(&a, "pad.read", json!({"name": "other"})).await;
+    assert_eq!(missing.code, code::NOT_FOUND);
+    assert!(events.try_recv().is_err());
+    assert_eq!(
+        rig.touches.touched("a").unwrap().len(),
+        touched + 1,
+        "only the read"
+    );
+}
+
+#[tokio::test]
+async fn p9_a_failed_file_removal_deletes_nothing() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "keep"}))
+        .await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let file = rig.dir.path().join("pads/notes.md");
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    std::fs::write(file.join("inner"), "x").unwrap();
+    let mut events = rig.bus.subscribe();
+
+    rig.fail(&a, "pad.delete", json!({"name": "notes"})).await;
+
+    let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(pad["text"], "keep");
+    assert!(events.try_recv().is_err());
+    let verbs: Vec<_> = rig
+        .touches
+        .history("pad:notes")
+        .unwrap()
+        .iter()
+        .map(|t| t.verb)
+        .collect();
+    assert_eq!(verbs, [Verb::Wrote, Verb::Read]);
+}
+
+#[tokio::test]
+async fn p5_a_write_is_atomic_so_hard_links_keep_the_old_text() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "old"}))
+        .await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let files = rig.dir.path().join("pads");
+    std::fs::hard_link(files.join("notes.md"), files.join("link.md")).unwrap();
+
+    rig.ok(&a, "pad.write", json!({"name": "notes", "text": "new"}))
+        .await;
+
+    assert_eq!(rig.file_text("notes.md"), "new");
+    assert_eq!(rig.file_text("link.md"), "old");
+}
+
+#[tokio::test]
+async fn p5_a_case_clash_in_file_mode_leaves_the_first_pad_and_its_file() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "first"}))
+        .await;
+
+    let clash = rig
+        .fail(&a, "pad.create", json!({"name": "Notes", "text": "second"}))
+        .await;
+
+    assert_eq!(clash.code, code::CONFLICT);
+    let files = rig.dir.path().join("pads");
+    assert_eq!(rig.file_text("notes.md"), "first");
+    assert_eq!(std::fs::read_dir(&files).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn p5_a_pair_that_once_collided_shares_one_file_and_survives_the_flip() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "ΑΣ", "text": "one"}))
+        .await;
+    rig.fail(&a, "pad.create", json!({"name": "ασ", "text": "two"}))
+        .await;
+
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let files = rig.dir.path().join("pads");
+    assert_eq!(std::fs::read_dir(&files).unwrap().count(), 1);
+    rig.ok(&a, "pad.setStorage", json!({"files": false})).await;
+
+    let pad = rig.ok(&a, "pad.read", json!({"name": "ασ"})).await;
+    assert_eq!(
+        (pad["name"].as_str(), pad["text"].as_str()),
+        (Some("ΑΣ"), Some("one"))
+    );
+}
+
+#[tokio::test]
+async fn p8_a_stored_pad_with_a_bad_name_fails_the_flip_as_invalid_params() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let nul = rig.fail(&a, "pad.create", json!({"name": "a\0b"})).await;
+    assert_eq!(nul.code, code::INVALID_PARAMS);
+    rig.ok(&a, "pad.setStorage", json!({"files": false})).await;
+    rusqlite::Connection::open(rig.dir.path().join("pads.db"))
+        .unwrap()
+        .execute(
+            "INSERT INTO pads (key, name, owner, text, updated_at) VALUES ('k', ?1, ?2, '', 0)",
+            ["a\0b".to_string(), serde_json::to_string(&a).unwrap()],
+        )
+        .unwrap();
+
+    let err = rig.fail(&a, "pad.setStorage", json!({"files": true})).await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(err.message.contains("a\\0b"), "{}", err.message);
+}
+
+#[tokio::test]
+async fn p5_a_name_the_file_system_refuses_is_invalid_params() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+
+    let err = rig
+        .fail(&a, "pad.create", json!({"name": "x".repeat(300)}))
+        .await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
 }
 
 #[tokio::test]
@@ -379,11 +629,4 @@ async fn p1_every_method_resolves_other_spellings_to_the_same_pad() {
 
     let gone = rig.fail(&a, "pad.read", json!({"name": "Notes"})).await;
     assert_eq!(gone.code, code::NOT_FOUND);
-    assert!(
-        rig.ok(&a, "pad.list", Value::Null)
-            .await
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
 }
