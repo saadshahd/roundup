@@ -5,7 +5,7 @@ import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { layoutRail } from "./layout";
 import { RailRowView } from "./RailRow";
-import "./rail.css";
+import "./styles.css";
 
 const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
   new Set(set.has(member) ? [...set].filter((each) => each !== member) : [...set, member]);

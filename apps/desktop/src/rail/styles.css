@@ -39,7 +39,7 @@
   font: inherit;
 }
 
-/* Dimmed, not removed: each row still says what its Agent was doing when the Daemon went away. */
+/* Greyed, not faded: opacity would sink the Live lines under the 2:1 contrast U25 keeps; grayscale leaves their grey as it was. */
 .rail-tree [role="tree"][aria-disabled="true"] {
-  opacity: 0.45;
+  filter: grayscale(1);
 }

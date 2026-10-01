@@ -49,7 +49,7 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 
 **U12 typing.** Given the selected Terminal runs, when the user types into the pane, then each keystroke's bytes go to `terminal.write {id, data}` (base64), in order. An exited Terminal takes no input.
 
-**U13 size.** Given the pane shows a Terminal, then `terminal.resize {id, cols, rows}` is called with the emulator's fitted size: when that Terminal is first shown, and whenever the window resizes, at most once per animation frame. Opening a Drawer never resizes it. The WebGL renderer is used when the webview grants a WebGL context, else the DOM renderer, with one warning logged.
+**U13 size.** Given the pane shows a Terminal, then `terminal.resize {id, cols, rows}` is called with the emulator's fitted size: when that Terminal is first shown, and whenever the window resizes, at most once per animation frame, until `daemon-exited` (U25). Opening a Drawer never resizes it. The WebGL renderer is used when the webview grants a WebGL context, else the DOM renderer, with one warning logged.
 
 **U14 pane header.** The pane's top line depends on the selected row:
 
@@ -92,7 +92,7 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U22 drag.** Dragging a row shows a drop line whose left end is the depth the row lands at; moving sideways changes the depth. Release calls `rail.move {id, parent, index}`. A `CONFLICT` puts the row back and shows the message as in U9. The other rows make room as the pointer moves (motion.md, "Drag to reorder").
 
-**U25 Daemon gone.** Given an open Project, when `daemon-exited` arrives, then the header reads `roundup   <Project name>   ✕ daemon exited <code>`, or `✕ daemon exited by signal` when the code is `null`, the part after the name in Ink, and that is the only place the exit shows. The Pane sends no `terminal.write` and no `terminal.resize`; `stop`, `+ agent`, `+ terminal` and `+ group` are disabled. The Rail is dimmed, not emptied: each row keeps its Glyph, its name and its Live line, so the user still sees what each Agent was doing when the Daemon went away.
+**U25 Daemon gone.** Given an open Project, when `daemon-exited` arrives, then the header reads `roundup   <Project name>   ✕ daemon exited <code>`, or `✕ daemon exited by signal` when the code is `null`, the part after the name in Ink, and that is the only place the exit shows. The Pane sends no `terminal.write` and no `terminal.resize`; `stop`, `+ agent`, `+ terminal` and `+ group` are disabled. The Rail is greyed, not emptied or faded: each row keeps its Glyph, its name and its Live line, and every Live line keeps at least 2:1 contrast against its background, so the user still sees what each Agent was doing when the Daemon went away. Other controls (Todos, Pads, rename, promote) are not disabled: their calls fail with `INTERNAL` (S3) and show as the usual `✕ <message>` line.
 
 ## Deferred past the MVP
 

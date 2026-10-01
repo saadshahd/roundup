@@ -2,6 +2,7 @@ import { cleanup, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DaemonExit } from "../app/seam";
+import rail from "./styles.css?inline";
 import { agent, glyphOf, liveLineOf, mountRail, rowNames } from "./railFixture";
 
 afterEach(cleanup);
@@ -25,5 +26,12 @@ describe("u25 the Daemon is gone", () => {
     expect(tree.getAttribute("aria-disabled")).toBe("true");
     expect(rowNames()).toEqual(["a", "b"]);
     expect({ glyph: glyphOf("a").textContent, line: liveLineOf("a") }).toEqual(before);
+  });
+
+  it("u25_the_dim_is_a_grayscale_filter_and_never_an_opacity", () => {
+    const rule = /\[aria-disabled="true"\]\s*\{([^}]*)\}/.exec(rail)?.[1] ?? "";
+
+    expect(rule).toContain("filter: grayscale(1)");
+    expect(rule).not.toContain("opacity");
   });
 });
