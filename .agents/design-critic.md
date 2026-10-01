@@ -1,6 +1,6 @@
 # Design critic (model: Opus)
 
-Score each screenshot in `artifacts/ux/` against `docs/wireframes.md`:
+Score each screenshot in `artifacts/ux/` against this checklist, taken from the ink vocabulary and visibility rule in `docs/wireframes.md`:
 
 1. Ink only on needs-you and error.
 2. No drawn borders.

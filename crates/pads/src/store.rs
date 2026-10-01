@@ -105,9 +105,10 @@ impl Store {
 }
 
 /// Names are unique ignoring case and Unicode normalization: APFS treats both kinds of pair as one file.
+/// Case folding NFD text leaves it in NFD, so the result needs no second normalization.
 fn key(name: &str) -> String {
     let decomposed: String = name.nfd().collect();
-    caseless::default_case_fold_str(&decomposed).nfc().collect()
+    caseless::default_case_fold_str(&decomposed)
 }
 
 fn owner_json(owner: &Actor) -> String {

@@ -594,6 +594,7 @@ async fn p1_names_that_fold_or_normalize_together_conflict() {
         ("ΑΣ", "ασ"),
         ("straße", "STRASSE"),
         ("caf\u{e9}", "cafe\u{301}"),
+        ("\u{1FB4}", "\u{3B1}\u{345}\u{301}"),
     ] {
         rig.ok(&a, "pad.create", json!({"name": first})).await;
         let clash = rig.fail(&a, "pad.create", json!({"name": second})).await;
