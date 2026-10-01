@@ -68,6 +68,17 @@ export const Rail = () => {
     return selected?.kind === "group" ? selected.id : null;
   };
 
+  const spawnAgent = () =>
+    guarded(async () => {
+      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
+
+      setWanted(spawned.id);
+    });
+
+  const spawnTerminal = () => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }));
+
+  const canSpawn = () => !pending() && daemonExit() === null;
+
   const attention = createMemo(() => attentionCount(rail.nodes));
 
   createEffect(() => {
@@ -77,8 +88,24 @@ export const Rail = () => {
   onMount(() => {
     const clear = () => setFailure(null);
 
+    const chord = (press: KeyboardEvent) => {
+      if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+
+      const spawn = { n: spawnAgent, t: spawnTerminal }[press.key.toLowerCase()];
+
+      if (!spawn) return;
+
+      press.preventDefault();
+
+      if (canSpawn()) spawn();
+    };
+
     document.addEventListener("click", clear, true);
-    onCleanup(() => document.removeEventListener("click", clear, true));
+    document.addEventListener("keydown", chord);
+    onCleanup(() => {
+      document.removeEventListener("click", clear, true);
+      document.removeEventListener("keydown", chord);
+    });
   });
 
   /** A selection made elsewhere (the header's jump) may sit under a collapsed Group; its row is revealed and scrolled to. */
@@ -182,29 +209,19 @@ export const Rail = () => {
       </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <div class="rail-actions">
-        <button
-          class="word"
-          disabled={pending() || daemonExit() !== null}
-          onClick={() =>
-            guarded(async () => {
-              const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
-
-              setWanted(spawned.id);
-            })
-          }
-        >
+        <button class="word" disabled={!canSpawn()} onClick={spawnAgent}>
           + agent
         </button>
         <button
           class="word"
-          disabled={pending() || daemonExit() !== null}
-          onClick={() => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
+          disabled={!canSpawn()}
+          onClick={spawnTerminal}
         >
           + terminal
         </button>
         <button
           class="word"
-          disabled={pending() || daemonExit() !== null}
+          disabled={!canSpawn()}
           onClick={() => guarded(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
         >
           + group
