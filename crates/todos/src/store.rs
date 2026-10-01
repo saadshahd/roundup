@@ -1,5 +1,6 @@
 //! SQLite persistence for Todos. `blocked` is computed on read, never stored.
 
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -116,6 +117,53 @@ impl Store {
         self.get(id)
     }
 
+    pub(crate) fn complete(&self, id: u32) -> Result<Todo, RpcError> {
+        self.get(id)?;
+        self.db
+            .execute("UPDATE todos SET done = 1 WHERE id = ?1", [id])
+            .map_err(RpcError::internal)?;
+        self.get(id)
+    }
+
+    /// Replaces the whole blocker list. The caller has checked ids and cycles.
+    pub(crate) fn set_blockers(&self, id: u32, blockers: &[u32]) -> Result<Todo, RpcError> {
+        let tx = self
+            .db
+            .unchecked_transaction()
+            .map_err(RpcError::internal)?;
+        tx.execute("DELETE FROM blockers WHERE todo = ?1", [id])
+            .map_err(RpcError::internal)?;
+        self.insert_blockers(id, blockers)?;
+        tx.commit().map_err(RpcError::internal)?;
+        self.get(id)
+    }
+
+    /// Blockers pointing at `id` go with it (foreign keys cascade).
+    pub(crate) fn delete(&self, id: u32) -> Result<(), RpcError> {
+        self.get(id)?;
+        self.db
+            .execute("DELETE FROM todos WHERE id = ?1", [id])
+            .map_err(RpcError::internal)?;
+        Ok(())
+    }
+
+    pub(crate) fn blocked_ids(&self) -> Result<BTreeSet<u32>, RpcError> {
+        Ok(self
+            .list()?
+            .into_iter()
+            .filter(|t| t.blocked)
+            .map(|t| t.id)
+            .collect())
+    }
+
+    pub(crate) fn edges(&self) -> Result<HashMap<u32, Vec<u32>>, RpcError> {
+        Ok(self
+            .list()?
+            .into_iter()
+            .map(|t| (t.id, t.blockers))
+            .collect())
+    }
+
     fn blockers_of(&self, id: u32) -> Result<Vec<u32>, RpcError> {
         self.db
             .prepare("SELECT blocker FROM blockers WHERE todo = ?1 ORDER BY blocker")
@@ -135,7 +183,7 @@ impl Store {
         Ok(())
     }
 
-    fn require_all(&self, ids: &[u32]) -> Result<(), RpcError> {
+    pub(crate) fn require_all(&self, ids: &[u32]) -> Result<(), RpcError> {
         ids.iter().try_for_each(|id| self.get(*id).map(drop))
     }
 }
