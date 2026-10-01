@@ -6,15 +6,18 @@ version.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+caseless = "0.2"
 contracts = { path = "../contracts" }
 rpc = { path = "../rpc" }
 serde_json.workspace = true
+tempfile.workspace = true
 
 rusqlite.workspace = true
+unicode-normalization = "0.1"
 
-[package.metadata.cargo-machete]
-# Pre-declared by the Architect so Cargo.lock is resolved before Builders branch; delete this table when the crate uses them.
-ignored = ["contracts", "rusqlite"]
+[dev-dependencies]
+provenance = { path = "../provenance" }
+tokio.workspace = true
 
 [lints]
 workspace = true
