@@ -91,7 +91,7 @@ export const Rail = () => {
     const chord = (press: KeyboardEvent) => {
       if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
 
-      const spawn = { n: spawnAgent, t: spawnTerminal }[press.key];
+      const spawn = { n: spawnAgent, t: spawnTerminal }[press.key.toLowerCase()];
 
       if (!spawn) return;
 

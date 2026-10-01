@@ -47,7 +47,7 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 
 **U10 Dock badge.** The Dock badge shows how many Agents have Kind `needs-you` or `error`, and there is no badge at zero (decision 4). The badge is set through U1's adapter.
 
-**U32 spawn shortcuts and pinned actions.** Given an open Project, then `⌘N` does what `+ agent` does (U9) and `⌘T` does what `+ terminal` does, with the same parent rule and the same `✕ <message>` line on failure. A ⌘ chord is handled by the webview and never reaches a Terminal. Neither chord acts while a spawn call is in flight or after `daemon-exited`. The Rail's `+ agent  + terminal  + group` line stays at the bottom edge of the Rail while its rows scroll, so the actions are reachable with ten Agents.
+**U32 spawn shortcuts and pinned actions.** Given an open Project, then `⌘N` does what `+ agent` does (U9) and `⌘T` does what `+ terminal` does, with the same parent rule and the same `✕ <message>` line on failure. A ⌘ chord is handled by the webview and never reaches a Terminal, and Caps Lock does not change it; the same keys with Shift, Ctrl or Alt, or without ⌘, do nothing. Neither chord acts while a spawn call is in flight or after `daemon-exited`. The Rail's `+ agent  + terminal  + group` line stays at the bottom edge of the Rail while its rows scroll, so the actions are reachable with ten Agents.
 
 ## Terminal pane (U11 to U14)
 
