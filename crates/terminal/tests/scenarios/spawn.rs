@@ -157,6 +157,7 @@ async fn x10_an_id_that_is_not_canonical_is_invalid_params() {
     for id in ["nope", " 1", "-1", "1 ", "+1", "01", ""] {
         let err = terminals.write(id, b"x").await.unwrap_err();
         assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{id}");
+        assert!(err.message.contains(id), "{}", err.message);
         let err = terminals.subscribe(id).expect_err("subscribe fails");
         assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{id}");
     }

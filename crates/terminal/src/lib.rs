@@ -119,7 +119,8 @@ impl Terminals {
     }
 
     /// Start `params.command` (or the login shell) in a new PTY.
-    /// A missing cwd or an empty command is the caller's error; a failure to start is the Daemon's.
+    /// A missing cwd, an empty command, or a program that cannot be found or run is the caller's error;
+    /// any other failure to start is the Daemon's.
     pub async fn spawn(&self, params: SpawnParams) -> Result<Spawned, RpcError> {
         check_program(&params)?;
         // portable-pty silently falls back to $HOME when the cwd is unusable; refuse instead.
@@ -283,25 +284,17 @@ impl Terminals {
 #[derive(Default)]
 struct Titles(Vec<String>);
 
-impl Titles {
-    /// An empty title is "no title", not a title to show.
-    fn push(&mut self, title: &[u8]) {
-        if !title.is_empty() {
-            self.0.push(String::from_utf8_lossy(title).into_owned());
-        }
-    }
-}
-
 impl vt100::Callbacks for Titles {
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
-        self.push(title);
+        self.0.push(String::from_utf8_lossy(title).into_owned());
     }
 
     /// vt100 splits an OSC on every `;` and only reports a title that is a single piece, so a
     /// title containing `;` arrives here and would otherwise be dropped.
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
-        if let [b"0" | b"2", title @ ..] = params {
-            self.push(&title.join(&b';'));
+        if let [b"0" | b"2", pieces @ ..] = params {
+            self.0
+                .push(String::from_utf8_lossy(&pieces.join(&b';')).into_owned());
         }
     }
 }
@@ -410,7 +403,7 @@ fn parse_terminal_number(id: &str) -> Result<u64, RpcError> {
         .ok_or_else(|| invalid(format!("not a terminal id: {id:?}")))
 }
 
-/// portable-pty reports an argv[0] it cannot find or run as text that quotes the Daemon's `PATH`;
+/// portable-pty reports an argv[0] it cannot find or run as text that can quote the Daemon's `PATH`;
 /// that is the caller's error and must not leak `PATH`. Any other failure to start is the Daemon's.
 fn spawn_error(program: Option<&str>, err: &impl std::fmt::Display) -> RpcError {
     match program {

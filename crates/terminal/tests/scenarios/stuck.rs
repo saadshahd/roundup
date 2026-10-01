@@ -12,7 +12,7 @@ const CHUNK: usize = 1 << 16;
 /// A runtime whose blocking pool is as small as the scenario's "more writes than threads".
 fn small_pool<F: Future>(test: F) -> F::Output {
     tokio::runtime::Builder::new_multi_thread()
-        .max_blocking_threads(2)
+        .max_blocking_threads(1)
         .enable_all()
         .build()
         .unwrap()
