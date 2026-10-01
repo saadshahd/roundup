@@ -317,6 +317,49 @@ async fn p7_pads_survive_reopening_the_directory() {
 }
 
 #[tokio::test]
+async fn p7_every_pad_keeps_its_own_owner_and_text_after_reopening() {
+    let dir = TempDir::new().unwrap();
+    let (a, b) = (agent("a"), agent("b"));
+    let touches = Arc::new(Touches::in_memory().unwrap());
+    let call = |pads: Pads, actor: Actor, method: &'static str, params: Value| {
+        let ctx = Ctx {
+            actor,
+            bus: Bus::new(),
+            touches: Arc::clone(&touches),
+        };
+        async move { pads.call(&ctx, method, params).await.unwrap() }
+    };
+    call(
+        Pads::open(dir.path(), Bus::new()).unwrap(),
+        a.clone(),
+        "pad.create",
+        json!({"name": "notes", "text": "n1"}),
+    )
+    .await;
+    call(
+        Pads::open(dir.path(), Bus::new()).unwrap(),
+        b.clone(),
+        "pad.create",
+        json!({"name": "plan", "text": "n2"}),
+    )
+    .await;
+
+    let reopened = Pads::open(dir.path(), Bus::new()).unwrap();
+    let listed = call(reopened, a.clone(), "pad.list", Value::Null).await;
+
+    let pads = listed.as_array().unwrap();
+    let names: Vec<_> = pads.iter().map(|p| p["name"].as_str().unwrap()).collect();
+    let owners: Vec<_> = pads
+        .iter()
+        .map(|p| p["owner"]["id"].as_str().unwrap())
+        .collect();
+    let texts: Vec<_> = pads.iter().map(|p| p["text"].as_str().unwrap()).collect();
+    assert_eq!(names, ["notes", "plan"]);
+    assert_eq!(owners, ["a", "b"]);
+    assert_eq!(texts, ["n1", "n2"]);
+}
+
+#[tokio::test]
 async fn p9_owner_or_user_deletes_and_others_are_forbidden() {
     let rig = Rig::new();
     let (a, b) = (agent("a"), agent("b"));
