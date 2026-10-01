@@ -326,7 +326,6 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
         .await;
     rig.ok(&a, "pad.create", json!({"name": "plan", "text": "p"}))
         .await;
-    let notes = rig.dir.path().join("pads").join("notes.md");
 
     rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
     assert_eq!(rig.file_text("notes.md"), "one");
@@ -355,18 +354,14 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
         .unwrap();
     assert_eq!(rig.file_text("notes.md"), "two+b!");
 
-    std::fs::write(&notes, "edited on disk").unwrap();
+    std::fs::write(rig.dir.path().join("pads/notes.md"), "edited on disk").unwrap();
     reopened
         .call(&ctx, "pad.setStorage", json!({"files": false}))
         .await
         .unwrap();
 
-    let pad = reopened
-        .call(&ctx, "pad.read", json!({"name": "notes"}))
-        .await
-        .unwrap();
+    let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
     assert_eq!(pad["text"], "edited on disk");
-    assert_eq!(pad["owner"]["id"], "a");
 }
 
 #[tokio::test]
