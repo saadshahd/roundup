@@ -11,6 +11,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | File | Module | Ids |
 |---|---|---|
 | `todos.md` | `crates/todos` | T1–T7 |
-| `pads.md` | `crates/pads` | P1–P8 |
+| `pads.md` | `crates/pads` | P1–P9 |
 | `terminal.md` | `crates/terminal` | X1–X8 |
 | `agents.md` | `crates/agents` (+ the `rup hook` subcommand in `crates/rup`) | A1–A8 |
+| `loop.md` | `loop/` | L1–L8 |

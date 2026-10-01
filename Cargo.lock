@@ -414,6 +414,7 @@ name = "rupd"
 version = "0.0.0"
 dependencies = [
  "agents",
+ "async-trait",
  "contracts",
  "pads",
  "provenance",
