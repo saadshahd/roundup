@@ -15,3 +15,5 @@
 **P7 persistence.** Given app-stored Pads, when `Pads::open` is called again on the same directory, then every Pad, its owner and text are intact.
 
 **P8 names.** A Pad name containing `/`, `\`, `..`, a leading dot, or an empty string fails with `INVALID_PARAMS` for every method that takes a name.
+
+**P9 delete.** Given Pad `notes` owned by `a`, when `a` or the user calls `pad.delete {name}`, then the Pad is gone (`pad.read` is `NOT_FOUND`), its file is removed when file-backed, `pad.changed {name}` is emitted and a `wrote` Touch on `pad:notes` is logged; any other Actor gets `FORBIDDEN`; the name is validated like every other (P8).
