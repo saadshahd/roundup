@@ -1,6 +1,6 @@
 //! X1 output, X3 exit, X7 cwd and env.
 
-use crate::common::{ctx, decode, open, sh, until_exit};
+use crate::common::{PATIENCE, ctx, decode, open, sh, until_exit};
 use contracts::EventData;
 use contracts::terminal::{SpawnParams, TerminalId, TerminalInfo};
 use rpc::Module;
@@ -19,7 +19,7 @@ async fn x1_output_reaches_a_subscribed_client() {
     let id = serde_json::from_value::<TerminalId>(spawned).unwrap().id;
     let mut printed = String::new();
     while !printed.contains("hi") {
-        let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv())
+        let event = tokio::time::timeout(PATIENCE, events.recv())
             .await
             .expect("output in time")
             .unwrap();

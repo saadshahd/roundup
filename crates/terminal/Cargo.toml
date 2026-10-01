@@ -11,7 +11,6 @@ rpc = { path = "../rpc" }
 serde_json.workspace = true
 
 base64.workspace = true
-nix = { version = "0.28", features = ["signal"] }
 portable-pty.workspace = true
 vt100.workspace = true
 tokio.workspace = true

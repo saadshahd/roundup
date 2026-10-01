@@ -595,7 +595,6 @@ dependencies = [
  "async-trait",
  "base64",
  "contracts",
- "nix",
  "portable-pty",
  "provenance",
  "rpc",
