@@ -45,7 +45,7 @@ OTHER
 
 ## Screen 1 — Main workspace
 
-Three columns, no borders drawn. Rail left, terminal centre at full height, shelf right (about 24%, todos over pads), open by default.
+Three columns, no borders drawn. Rail left, terminal centre at full height, shelf right (todos over pads), open by default. Widths: Rail 20% (252 to 320 px), Shelf 14% (160 to 280 px), terminal at least 680 px; under 1100 px the shelf is hidden (U23, U24).
 
 ```
 roundup   payments-api                                                                     inbox 4

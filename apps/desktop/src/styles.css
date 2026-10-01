@@ -38,10 +38,20 @@ p {
 .columns {
   position: relative;
   display: grid;
-  grid-template-columns: 24% 1fr 24%;
+  grid-template-columns: clamp(252px, 20%, 320px) minmax(680px, 1fr) clamp(160px, 14%, 280px);
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+@media (max-width: 1099px) {
+  .columns {
+    grid-template-columns: clamp(252px, 20%, 320px) 1fr;
+  }
+
+  .shelf {
+    display: none;
+  }
 }
 
 .rail,
