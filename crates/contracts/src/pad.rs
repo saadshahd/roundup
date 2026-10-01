@@ -59,8 +59,8 @@ pub struct ExportParams {
     pub path: String,
 }
 
-/// Project-wide: store Pads as `.roundup/pads/<name>.md` (true) or in the app database (false).
-/// Flipping to false re-imports the files.
+/// Project-wide. `true` mirrors every Pad to `.roundup/pads/<name>.md`; the app database stays the source of truth.
+/// `false` stops mirroring and first imports edits made to those files.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "pad/")]
 pub struct SetStorageParams {
