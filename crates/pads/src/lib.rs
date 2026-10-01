@@ -1,15 +1,17 @@
 //! Pads: markdown notes, app-stored or as files. Owner: pads Builder.
 
+mod files;
 mod name;
 mod store;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::pad::{
-    AppendParams, CreateParams, ExportParams, Pad, PadName, SetOwnerParams, WriteParams,
+    AppendParams, CreateParams, ExportParams, Pad, PadName, SetOwnerParams, SetStorageParams,
+    WriteParams,
 };
 use contracts::{ActorKind, EventData, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
@@ -19,6 +21,7 @@ use store::Store;
 
 pub struct Pads {
     store: Mutex<Store>,
+    files_dir: PathBuf,
 }
 
 impl Pads {
@@ -26,6 +29,7 @@ impl Pads {
     pub fn open(dir: &Path, _bus: Bus) -> Result<Self, OpenError> {
         Ok(Self {
             store: Mutex::new(Store::open(&dir.join("pads.db"))?),
+            files_dir: dir.join("pads"),
         })
     }
 
@@ -37,9 +41,11 @@ impl Pads {
             text: p.text.unwrap_or_default(),
             updated_at: now_ms(),
         };
-        if !self.store()?.insert(&pad).map_err(RpcError::internal)? {
+        let store = self.store()?;
+        if !store.insert(&pad).map_err(RpcError::internal)? {
             return Err(RpcError::conflict(format!("pad exists: {}", pad.name)));
         }
+        self.mirror(&store, &pad)?;
         wrote(ctx, &pad.name)?;
         reply(&pad)
     }
@@ -81,8 +87,10 @@ impl Pads {
         store
             .set_text(&pad.name, &text, now_ms())
             .map_err(RpcError::internal)?;
+        let pad = Pad { text, ..pad };
+        self.mirror(&store, &pad)?;
         wrote(ctx, &pad.name)?;
-        reply(&Pad { text, ..pad })
+        reply(&pad)
     }
 
     fn set_owner(&self, ctx: &Ctx, p: SetOwnerParams) -> Result<Value, RpcError> {
@@ -122,6 +130,36 @@ impl Pads {
         Ok(Value::Null)
     }
 
+    fn set_storage(&self, ctx: &Ctx, p: SetStorageParams) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        if store.files().map_err(RpcError::internal)? == p.files {
+            return Ok(Value::Null);
+        }
+        store.set_files(p.files).map_err(RpcError::internal)?;
+        for pad in store.list().map_err(RpcError::internal)? {
+            if p.files {
+                self.mirror(&store, &pad)?;
+            } else if let Some(text) =
+                files::read(&self.files_dir, &pad.name).map_err(RpcError::internal)?
+                && text != pad.text
+            {
+                store
+                    .set_text(&pad.name, &text, now_ms())
+                    .map_err(RpcError::internal)?;
+                wrote(ctx, &pad.name)?;
+            }
+        }
+        Ok(Value::Null)
+    }
+
+    /// Keeps the file in step with the Pad while file storage is on.
+    fn mirror(&self, store: &Store, pad: &Pad) -> Result<(), RpcError> {
+        if store.files().map_err(RpcError::internal)? {
+            files::write(&self.files_dir, &pad.name, &pad.text).map_err(RpcError::internal)?;
+        }
+        Ok(())
+    }
+
     fn store(&self) -> Result<std::sync::MutexGuard<'_, Store>, RpcError> {
         self.store
             .lock()
@@ -144,6 +182,7 @@ impl Module for Pads {
             "pad.append" => self.append(ctx, params(value)?),
             "pad.setOwner" => self.set_owner(ctx, params(value)?),
             "pad.delete" => self.delete(ctx, params(value)?),
+            "pad.setStorage" => self.set_storage(ctx, params(value)?),
             "pad.export" => self.export(ctx, params(value)?),
             _ => Err(RpcError::method_not_found(method)),
         }

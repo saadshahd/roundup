@@ -19,7 +19,7 @@ struct Rig {
     pads: Pads,
     bus: Bus,
     touches: Arc<Touches>,
-    _dir: TempDir,
+    dir: TempDir,
 }
 
 impl Rig {
@@ -30,7 +30,7 @@ impl Rig {
             pads: Pads::open(dir.path(), bus.clone()).unwrap(),
             bus,
             touches: Arc::new(Touches::in_memory().unwrap()),
-            _dir: dir,
+            dir,
         }
     }
 
@@ -303,4 +303,63 @@ async fn p9_owner_or_user_deletes_and_others_are_forbidden() {
         .map(|t| t.verb)
         .collect();
     assert_eq!(verbs, [Verb::Wrote, Verb::Wrote]);
+}
+
+#[tokio::test]
+async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.call(&a, "pad.create", json!({"name": "notes", "text": "one"}))
+        .await
+        .unwrap();
+    rig.call(&a, "pad.create", json!({"name": "plan", "text": "p"}))
+        .await
+        .unwrap();
+    let notes = rig.dir.path().join("pads").join("notes.md");
+
+    rig.call(&a, "pad.setStorage", json!({"files": true}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "one");
+    assert_eq!(
+        std::fs::read_to_string(rig.dir.path().join("pads/plan.md")).unwrap(),
+        "p"
+    );
+
+    rig.call(&a, "pad.write", json!({"name": "notes", "text": "two"}))
+        .await
+        .unwrap();
+    rig.call(
+        &agent("b"),
+        "pad.append",
+        json!({"name": "notes", "text": "+b"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "two+b");
+
+    let reopened = Pads::open(rig.dir.path(), Bus::new()).unwrap();
+    let ctx = Ctx {
+        actor: a.clone(),
+        bus: Bus::new(),
+        touches: Arc::clone(&rig.touches),
+    };
+    reopened
+        .call(&ctx, "pad.append", json!({"name": "notes", "text": "!"}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "two+b!");
+
+    std::fs::write(&notes, "edited on disk").unwrap();
+    reopened
+        .call(&ctx, "pad.setStorage", json!({"files": false}))
+        .await
+        .unwrap();
+
+    let pad = reopened
+        .call(&ctx, "pad.read", json!({"name": "notes"}))
+        .await
+        .unwrap();
+    assert_eq!(pad["text"], "edited on disk");
+    assert_eq!(pad["owner"]["id"], "a");
 }

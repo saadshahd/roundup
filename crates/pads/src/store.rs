@@ -19,7 +19,8 @@ impl Store {
                 owner TEXT NOT NULL,
                 text TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
         Ok(Self { db })
     }
@@ -69,6 +70,27 @@ impl Store {
         self.db.execute(
             "UPDATE pads SET owner = ?2, updated_at = ?3 WHERE name = ?1",
             params![name, owner_json(owner), at],
+        )?;
+        Ok(())
+    }
+
+    pub fn files(&self) -> rusqlite::Result<bool> {
+        let value: Option<String> = self
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'files'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value.as_deref() == Some("true"))
+    }
+
+    pub fn set_files(&self, files: bool) -> rusqlite::Result<()> {
+        self.db.execute(
+            "INSERT INTO settings (key, value) VALUES ('files', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [files.to_string()],
         )?;
         Ok(())
     }
