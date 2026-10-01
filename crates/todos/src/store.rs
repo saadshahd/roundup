@@ -11,10 +11,6 @@ pub(crate) struct Store {
     db: Connection,
 }
 
-fn internal(err: rusqlite::Error) -> RpcError {
-    RpcError::internal(err)
-}
-
 impl Store {
     pub(crate) fn open(path: &Path) -> rusqlite::Result<Self> {
         let db = Connection::open(path)?;
@@ -52,14 +48,18 @@ impl Store {
                 .as_millis(),
         )
         .unwrap_or(i64::MAX);
-        self.db
-            .execute(
-                "INSERT INTO todos (title, body, created_at) VALUES (?1, ?2, ?3)",
-                params![title, body, created_at],
-            )
-            .map_err(internal)?;
-        let id = u32::try_from(self.db.last_insert_rowid()).map_err(RpcError::internal)?;
+        let tx = self
+            .db
+            .unchecked_transaction()
+            .map_err(RpcError::internal)?;
+        tx.execute(
+            "INSERT INTO todos (title, body, created_at) VALUES (?1, ?2, ?3)",
+            params![title, body, created_at],
+        )
+        .map_err(RpcError::internal)?;
+        let id = u32::try_from(tx.last_insert_rowid()).map_err(RpcError::internal)?;
         self.insert_blockers(id, blockers)?;
+        tx.commit().map_err(RpcError::internal)?;
         self.get(id)
     }
 
@@ -75,7 +75,7 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()
-            .map_err(internal)?;
+            .map_err(RpcError::internal)?;
         let (title, body, done, created_at, blocked) =
             row.ok_or_else(|| RpcError::not_found(format!("todo {id}")))?;
         Ok(Todo {
@@ -97,7 +97,7 @@ impl Store {
                 stmt.query_map([], |r| r.get::<_, u32>(0))?
                     .collect::<Result<Vec<_>, _>>()
             })
-            .map_err(internal)?;
+            .map_err(RpcError::internal)?;
         ids.into_iter().map(|id| self.get(id)).collect()
     }
 
@@ -112,7 +112,7 @@ impl Store {
                 "UPDATE todos SET title = COALESCE(?2, title), body = COALESCE(?3, body) WHERE id = ?1",
                 params![id, title, body],
             )
-            .map_err(internal)?;
+            .map_err(RpcError::internal)?;
         self.get(id)
     }
 
@@ -120,7 +120,7 @@ impl Store {
         self.db
             .prepare("SELECT blocker FROM blockers WHERE todo = ?1 ORDER BY blocker")
             .and_then(|mut stmt| stmt.query_map([id], |r| r.get(0))?.collect())
-            .map_err(internal)
+            .map_err(RpcError::internal)
     }
 
     fn insert_blockers(&self, id: u32, blockers: &[u32]) -> Result<(), RpcError> {
@@ -130,7 +130,7 @@ impl Store {
                     "INSERT OR IGNORE INTO blockers (todo, blocker) VALUES (?1, ?2)",
                     [id, *blocker],
                 )
-                .map_err(internal)?;
+                .map_err(RpcError::internal)?;
         }
         Ok(())
     }

@@ -236,7 +236,13 @@ mod tests {
             (Some("x"), Some("keep"))
         );
         assert_eq!(h.events(), ["todo.updated"]);
-        assert_eq!(h.touches(1).last(), Some(&(Verb::Wrote, "you".to_owned())));
+        assert_eq!(
+            h.touches(1),
+            [
+                (Verb::Wrote, "you".to_owned()),
+                (Verb::Wrote, "you".to_owned())
+            ]
+        );
         let err = h.call("todo.update", json!({"id": 1})).await.unwrap_err();
         assert_eq!(err.code, code::INVALID_PARAMS);
     }
