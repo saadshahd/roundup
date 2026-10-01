@@ -37,7 +37,9 @@ case "$1 $2" in
           limit) echo '{"is_error":true,"api_error_status":429,"result":"x"}'; exit 1 ;;
           *) echo '{"is_error":false,"result":"ok","num_turns":1,"duration_ms":1000,"total_cost_usd":0.1}' ;;
         esac ;;
-      *"just check"*) [ "${STUB_MODE:-}" != check-fails ] || exit 7 ;;
+      *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
+      *"just check"*)
+        case "${STUB_MODE:-}" in check-fails) exit 7 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -127,5 +129,78 @@ expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/s
 expect_log 'git tag base' "L9 base is tagged"
 expect_log '--auto-destroy-timeout 1800' "L5 VM has an auto-destroy timer"
 expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
+
+# L12: `check` merges on this machine and runs on an isolated VM. The origin lives beside the repo, not inside it.
+check_repo() {
+  new_repo
+  git init -q --bare "$dir-origin.git"
+  git remote add origin "$dir-origin.git"
+  git push -q origin HEAD:main HEAD:refs/pull/54/head HEAD:refs/heads/builder/x
+  git fetch -q origin
+  export STUB_GIT_LOG="$dir-git.log"
+  # shellcheck disable=SC2016 # the shim body expands when it runs
+  printf '#!/usr/bin/env bash\necho "$*" >>"$STUB_GIT_LOG"\nexec %s "$@"\n' "$(command -v git)" >bin/git
+  chmod +x bin/git
+}
+run_check_ref() { STUB_MODE=${STUB_MODE:-} loop/boxd.sh check "$1" >out 2>err; }
+
+check_repo; got=0; run_check_ref 54 || got=$?
+expect_true "L12 check of a PR number succeeds" test "$got" -eq 0
+expect_log 'machine new ru-chk-54 .*--isolated' "L12 the check VM is isolated"
+expect_log 'machine new ru-chk-54 .*--auto-destroy-timeout 1800' "L12 the check VM has an auto-destroy timer"
+expect_log 'machine remove ru-chk-54' "L12 VM destroyed after success"
+expect_true "L12 nothing is cloned or fetched on the VM" bash -c '! grep -qE "git (clone|fetch)" log'
+expect_true "L12 the check installs from the lockfile" grep -q -- '--frozen-lockfile' log
+expect_true "L12 the ref reaches git fetch after --" grep -q '^fetch -q origin -- +refs/heads/main:refs/boxd-check/54-base +pull/54/head:refs/boxd-check/54$' "$STUB_GIT_LOG"
+expect_true "L12 no ref is left behind by the fetch" test -z "$(git for-each-ref refs/boxd-check)"
+
+# The upload is origin/main as it is on origin now (not the local HEAD, not the stale tracking ref) plus the PR.
+check_repo; echo local >local-only; git add local-only; git commit -qm local-only
+git checkout -q -b pr-work origin/main; echo pr >pr-marker; git add pr-marker; git commit -qm pr; git push -q origin HEAD:refs/pull/54/head; git checkout -q main
+git clone -q "$dir-origin.git" "$dir-other"; (cd "$dir-other"; echo fresh >fresh-main; git add fresh-main; git -c user.email=t@t -c user.name=t commit -qm fresh; git push -q origin HEAD:main)
+got=0; run_check_ref 54 || got=$?
+expect_true "L12 check succeeds with a local HEAD that differs from origin/main" test "$got" -eq 0
+expect_true "L12 the upload holds the PR's change" bash -c 'tar tzf cp/src.tgz | grep -qx pr-marker'
+expect_true "L12 the upload holds origin/main as fetched now" bash -c 'tar tzf cp/src.tgz | grep -qx fresh-main'
+expect_true "L12 the upload leaves out local-only commits" bash -c '! tar tzf cp/src.tgz | grep -qx local-only'
+expect_true "L12 the base is origin/main without the PR" bash -c 'tar tzf cp/base.tgz | grep -qx fresh-main && ! tar tzf cp/base.tgz | grep -qx pr-marker'
+
+check_repo; got=0; STUB_MODE=check-fails run_check_ref builder/x || got=$?
+expect_true "L12 failed check keeps its exit code" test "$got" -eq 7
+expect_log 'machine remove ru-chk-builder-x' "L12 VM destroyed after a failed check"
+
+check_repo; got=0; STUB_MODE=token-output run_check_ref 54 || got=$?
+expect_true "L12 a GitHub token in the check output is masked" bash -c '! grep -rq gho_abcdefgh err loop/out/runs'
+
+check_repo; got=0; STUB_MODE=no-secret run_check_ref 54 || got=$?
+expect_true "L12 check needs no Claude secret" test "$got" -eq 0
+
+for bad_ref in 'x; rm -rf ~' -x --tags; do
+  check_repo; got=0; run_check_ref "$bad_ref" || got=$?
+  expect_true "L12 the ref '$bad_ref' is refused" test "$got" -eq 2
+  if grep -q 'machine new' log; then echo "FAIL: L12 VM created for '$bad_ref'"; failures=$((failures + 1)); fi
+done
+
+check_repo; git checkout -q -b clash origin/main; echo a >f; git commit -qam a; git push -q origin HEAD:refs/heads/builder/clash
+git checkout -q main; echo b >f; git commit -qam b; git push -q origin HEAD:main
+got=0; run_check_ref builder/clash || got=$?
+expect_true "L12 a PR that conflicts with main stops before any VM" test "$got" -ne 0
+if grep -q 'machine new' log; then echo "FAIL: L12 VM created for a conflicting PR"; failures=$((failures + 1)); else echo "ok:   L12 no VM for a conflicting PR"; fi
+
+check_repo; got=0; STUB_MODE=full run_check_ref 54 || got=$?
+expect_true "L12 cap of 4 refuses a check VM" test "$got" -eq 1
+
+# L12: `bake` runs isolated, warms from the lockfile and refuses to save a snapshot that holds a token.
+bake_repo() { new_repo; printf '[toolchain]\nchannel = "1.89"\n' >rust-toolchain.toml; echo '{"packageManager":"pnpm@10.0.0"}' >package.json; git add rust-toolchain.toml package.json; git commit -qm toolchain; }
+bake_repo; got=0; loop/boxd.sh bake >out 2>err || got=$?
+expect_true "L12 bake succeeds" test "$got" -eq 0
+expect_log 'snapshots save ru-bake ru-toolchain' "L12 bake saves the snapshot"
+expect_log 'machine new ru-bake --isolated .*--auto-destroy-timeout 7200' "L12 the bake VM is isolated and has a TTL"
+expect_log 'grep -rIlE .*gho_' "L12 the bake scan looks for GitHub OAuth tokens"
+expect_log '--frozen-lockfile' "L12 the bake warms dependencies from the lockfile"
+expect_log 'machine remove ru-bake' "L12 the bake VM is destroyed"
+bake_repo; got=0; STUB_MODE=bake-leak loop/boxd.sh bake >out 2>err || got=$?
+expect_true "L12 a token in the bake VM refuses the snapshot" test "$got" -eq 1
+if grep -q 'snapshots save' log; then echo "FAIL: L12 snapshot saved with a token"; failures=$((failures + 1)); else echo "ok:   L12 no snapshot saved with a token"; fi
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

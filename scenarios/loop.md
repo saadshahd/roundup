@@ -15,3 +15,6 @@
 **L7 isolation.** Given a Builder run, then its VM is created from the `ru-toolchain` snapshot with `--isolated`.
 
 **L8 cap.** Given four `ru-` VMs, or a held `loop/out/lock`, when `loop/boxd.sh build` runs, then no VM is created and it exits 1.
+
+**L12 check.** Given a PR number or a branch name, when `loop/boxd.sh check` runs, then it fetches `origin/main` and that ref, merges them in the object store on this machine, uploads that merged tree (tag `base` is `origin/main`) to a fresh `--isolated` VM with an auto-destroy timer (no GitHub login; nothing is cloned or fetched on the VM; no Claude secret is needed), runs `just check` there from the lockfile, shows the last 25 lines with GitHub token shapes masked, destroys the VM and exits with the check's exit code. A ref with shell syntax or a leading dash fails with exit 2, and a ref that conflicts with `origin/main` fails, both before any VM exists. At four `ru-` VMs it creates none. `loop/boxd.sh bake` runs on an isolated VM, warms the dependency build from the lockfile and refuses to save a snapshot when its scan finds a GitHub or Anthropic token.
+
