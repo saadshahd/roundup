@@ -1,7 +1,10 @@
 .rail-actions {
+  position: sticky;
+  bottom: 0;
   display: flex;
   gap: 16px;
   padding: 8px 0;
+  background: var(--ground);
 }
 
 .rail-row {
