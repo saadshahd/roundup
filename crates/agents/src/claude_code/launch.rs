@@ -2,8 +2,9 @@
 //! `rup signal <agent-id>`, and a pre-trusted working directory (no hook fires for the trust dialog).
 
 use std::ffi::OsString;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 
 use rpc::{OpenError, RpcError, code};
 use serde_json::{Map, Value, json};
@@ -21,6 +22,9 @@ const STATE_EVENTS: [&str; 9] = [
     "StopFailure",
     "SessionEnd",
 ];
+
+/// Claude's config is one file shared by every Agent and by Claude itself; edits to it take turns.
+static CONFIG_EDIT: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Launcher {
@@ -99,6 +103,7 @@ impl Launcher {
     /// read as a JSON object is an error, never overwritten. Trust is never withdrawn: an Agent
     /// ending says nothing about the folder, and the user may have trusted it before roundup did.
     fn trust(&self, cwd: &Path) -> Result<(), RpcError> {
+        let _editing = CONFIG_EDIT.lock().unwrap_or_else(PoisonError::into_inner);
         let mut config = match std::fs::read_to_string(&self.claude_json) {
             Ok(text) => serde_json::from_str(&text).map_err(|err| self.unreadable(err))?,
             Err(err) if err.kind() == ErrorKind::NotFound => json!({}),
@@ -140,18 +145,23 @@ fn shell_quote(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 
-/// Write beside `path`, then rename over it, keeping the old file's permissions (the config holds
-/// credentials), so a reader never sees half a file.
+/// Write to a fresh file beside `path`, then rename it over, so a reader never sees half a file
+/// and two writers never share a temp file. A symlink is written through and stays a symlink; the
+/// old permissions are kept (the config holds credentials).
 fn write_atomically(path: &Path, value: &Value) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    let target = match path.canonicalize() {
+        Ok(target) => target,
+        Err(err) if err.kind() == ErrorKind::NotFound => path.to_owned(),
+        Err(err) => return Err(err),
+    };
+    let parent = target.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    staged.write_all(&serde_json::to_vec_pretty(value)?)?;
+    staged.as_file().sync_all()?;
+    if let Ok(existing) = std::fs::metadata(&target) {
+        staged.as_file().set_permissions(existing.permissions())?;
     }
-    let mut staged = path.as_os_str().to_owned();
-    staged.push(".roundup-tmp");
-    let staged = PathBuf::from(staged);
-    std::fs::write(&staged, serde_json::to_vec_pretty(value)?)?;
-    if let Ok(existing) = std::fs::metadata(path) {
-        std::fs::set_permissions(&staged, existing.permissions())?;
-    }
-    std::fs::rename(&staged, path)
+    staged.persist(&target).map_err(|err| err.error)?;
+    Ok(())
 }

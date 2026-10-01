@@ -2,6 +2,7 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use agents::claude_code::Launcher;
 use rpc::code;
@@ -144,6 +145,68 @@ fn a4_a_symlinked_cwd_is_trusted_under_its_resolved_path() {
         .cloned()
         .collect();
     assert_eq!(keys, [s.real(&s.cwd)]);
+}
+
+#[test]
+fn a4_a_symlinked_config_is_written_through_and_stays_a_link() {
+    let s = setup();
+    let target = s.root.path().join("dotfiles-claude.json");
+    std::fs::write(&target, r#"{"theme": "dark"}"#).unwrap();
+    std::os::unix::fs::symlink(&target, &s.claude_json).unwrap();
+    s.prepare("1").unwrap();
+    assert!(
+        s.claude_json
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(read(&target)["theme"], "dark");
+    assert_eq!(
+        read(&target)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
+        true
+    );
+}
+
+#[test]
+fn a4_concurrent_spawns_each_get_their_cwd_trusted() {
+    let s = setup();
+    let launcher = Arc::new(s.launcher());
+    let gate = Arc::new(std::sync::Barrier::new(8));
+    let cwds: Vec<Vec<PathBuf>> = (0..8)
+        .map(|spawner| {
+            (0..5)
+                .map(|n| s.dir.parent().unwrap().join(format!("w{spawner}-{n}")))
+                .collect()
+        })
+        .collect();
+    cwds.iter()
+        .flatten()
+        .for_each(|cwd| std::fs::create_dir(cwd).unwrap());
+    let threads: Vec<_> = cwds
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(spawner, mine)| {
+            let (launcher, gate, dir) = (Arc::clone(&launcher), Arc::clone(&gate), s.dir.clone());
+            std::thread::spawn(move || {
+                gate.wait();
+                for (n, cwd) in mine.iter().enumerate() {
+                    launcher
+                        .prepare(&dir, &format!("{spawner}-{n}"), cwd)
+                        .unwrap();
+                }
+            })
+        })
+        .collect();
+    threads.into_iter().for_each(|t| t.join().unwrap());
+    let config = read(&s.claude_json);
+    for cwd in cwds.iter().flatten() {
+        assert_eq!(
+            config["projects"][&s.real(cwd)]["hasTrustDialogAccepted"],
+            true
+        );
+    }
 }
 
 #[test]
