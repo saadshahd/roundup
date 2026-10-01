@@ -7,9 +7,5 @@ export const ErrorLine = (props: { message: string }) => (
   </p>
 );
 
-/** For `ErrorBoundary`: a thrown Error becomes its `✕` line; anything else is a bug and escapes. */
-export const failureLine = (failure: Error) => {
-  if (!(failure instanceof Error)) throw failure;
-
-  return <ErrorLine message={failure.message} />;
-};
+/** For `ErrorBoundary`: Solid hands a fallback an Error even when something else was thrown (a string becomes its message; anything else reads "Unknown error", with the original as `cause`). */
+export const failureLine = (failure: Error) => <ErrorLine message={failure.message} />;

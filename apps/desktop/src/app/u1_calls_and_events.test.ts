@@ -276,4 +276,12 @@ describe("u1 calls and events", () => {
 
     await expect(createTauriApp().setDockBadge(2)).rejects.toMatchObject({ code: -32603, message: "no dock" });
   });
+
+  it("u1_a_malformed_project_answer_rejects_with_the_validation_message", async () => {
+    mockIPC(() => ({ name: 7, path: "/p" }));
+
+    await expect(createTauriApp().project()).rejects.toMatchObject({
+      message: "Invalid type: Expected string but received 7",
+    });
+  });
 });

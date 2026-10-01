@@ -16,7 +16,7 @@ type ProjectState = {
 export const createProjectState = (app: AppSeam): ProjectState => {
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading" });
 
-  // The adapter rejects as an RpcError; a rejection that is not an Error is a bug, and it escapes instead of becoming text.
+  // The adapter rejects as an RpcError; a rejection that is not an Error is a bug and is rethrown, which surfaces as an unhandled rejection rather than as text.
   const fail = (failure: Error) => setPhase({ kind: "empty", failure: failure.message });
 
   const load = async () => {
