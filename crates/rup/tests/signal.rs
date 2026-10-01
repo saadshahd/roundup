@@ -8,12 +8,14 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use contracts::{ActorKind, EventData, Kind};
 use serde_json::json;
 
 const SERVE_ENV: &str = "ROUNDUP_TEST_SERVE_DIR";
+/// Claude Code kills a command hook after this (the `timeout` roundup gives it in the settings).
+const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Not a test: with `SERVE_ENV` set this process becomes a Daemon until it is killed.
 #[tokio::test]
@@ -70,7 +72,8 @@ impl Served {
     }
 }
 
-/// Run `rup <args>` with `stdin` on its standard input, pointed at `socket`.
+/// Run `rup <args>` with `stdin` on its standard input, pointed at `socket`. A run that outlasts
+/// Claude Code's hook timeout fails the test.
 fn rup(socket: &Path, args: &[&str], stdin: &str) -> Output {
     let mut rup = Command::new(env!("CARGO_BIN_EXE_rup"))
         .args(args)
@@ -82,6 +85,14 @@ fn rup(socket: &Path, args: &[&str], stdin: &str) -> Output {
         .unwrap();
     // A rup that exits before reading (bad arguments) closes the pipe; that is not a test error.
     let _ = rup.stdin.take().unwrap().write_all(stdin.as_bytes());
+    let deadline = Instant::now() + HOOK_TIMEOUT;
+    while rup.try_wait().unwrap().is_none() {
+        if Instant::now() > deadline {
+            let _ = rup.kill();
+            panic!("rup {args:?} outlasted Claude Code's hook timeout");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
     rup.wait_with_output().unwrap()
 }
 
@@ -154,6 +165,26 @@ fn a4_signal_with_no_daemon_exits_1_with_a_message() {
     let out = rup(&nowhere, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
     assert_eq!(out.status.code(), Some(1));
     assert!(!out.stderr.is_empty());
+}
+
+#[test]
+fn a4_signal_to_a_daemon_that_never_answers_exits_1_in_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("silent.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        // Accepted and kept open, never answered.
+        let mut held = vec![];
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+
+    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("may or may not"), "{stderr}");
 }
 
 #[test]

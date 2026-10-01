@@ -1,9 +1,13 @@
 use std::io::Read;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use contracts::agent::SignalParams;
 use contracts::{Actor, ActorKind};
 use serde_json::{Value, json};
+
+/// How long `rup signal` waits for the Daemon: well inside the 5 s Claude Code gives a hook.
+const SIGNAL_DEADLINE: Duration = Duration::from_secs(1);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -58,7 +62,18 @@ async fn signal(agent_id: &str) -> Result<(), String> {
         .map_err(|err| format!("cannot read the payload: {err}"))?;
     let payload =
         serde_json::from_str(&input).map_err(|err| format!("the payload is not JSON: {err}"))?;
+    tokio::time::timeout(SIGNAL_DEADLINE, deliver(agent_id, payload))
+        .await
+        .map_err(|_| {
+            format!(
+                "rupd did not answer within {} s; the Signal may or may not have arrived",
+                SIGNAL_DEADLINE.as_secs()
+            )
+        })?
+}
 
+/// Identify as Agent `agent_id` and hand the Daemon its Signal.
+async fn deliver(agent_id: &str, payload: Value) -> Result<(), String> {
     let client = connect().await?;
     let actor = Actor {
         kind: ActorKind::Agent,
