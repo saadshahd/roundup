@@ -46,6 +46,7 @@ pub struct TerminalInfo {
     /// Latest OSC 0/2 window title, if any.
     pub title: Option<String>,
     pub running: bool,
+    /// `None` while running or when killed by a signal; `-1` when the Daemon could not read the exit status.
     pub exit_code: Option<i32>,
 }
 
@@ -68,6 +69,6 @@ pub struct TitleEvent {
 #[ts(export, export_to = "terminal/")]
 pub struct ExitedEvent {
     pub id: String,
-    /// `None` when the program was killed by a signal.
+    /// `None` when the program was killed by a signal; `-1` when the Daemon could not read the exit status.
     pub code: Option<i32>,
 }

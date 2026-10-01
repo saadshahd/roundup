@@ -2,6 +2,6 @@
 
 export type ExitedEvent = { id: string, 
 /**
- * `None` when the program was killed by a signal.
+ * `None` when the program was killed by a signal; `-1` when the Daemon could not read the exit status.
  */
 code: number | null, };

@@ -17,3 +17,5 @@ jobs:
       - run: loop/rules.sh size origin/${{ github.base_ref }}
       - run: loop/rules.sh trailers origin/${{ github.base_ref }}
       - run: loop/rules.sh vocab
+      - run: loop/rules.test.sh
+      - run: loop/boxd.test.sh
