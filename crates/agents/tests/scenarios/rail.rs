@@ -53,15 +53,9 @@ async fn a6_move_reorders_and_keeps_orders_contiguous_from_zero() {
     assert_eq!(children(&tree, None), ["c:0", "b:1"]);
     assert_eq!(children(&tree, Some(&b)), ["a:0"]);
     assert_eq!(f.changed(), 2);
-}
 
-#[tokio::test]
-async fn a6_move_to_the_root_with_parent_none() {
-    let f = Fixture::new();
-    let a = f.group("a", None).await;
-    let inner = f.group("inner", Some(&a)).await;
-    f.mv(&inner, None, 0).await.unwrap();
-    assert_eq!(children(&f.tree().await, None), ["inner:0", "a:1"]);
+    f.mv(&a, None, 0).await.unwrap();
+    assert_eq!(children(&f.tree().await, None), ["a:0", "c:1", "b:2"]);
 }
 
 #[tokio::test]
