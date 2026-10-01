@@ -1,5 +1,7 @@
 import { render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
+import type { Accessor } from "solid-js";
+import type { DaemonExit } from "../app/seam";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
@@ -11,13 +13,17 @@ export const exitedTerminal = (id: string, exit_code: number | null): TerminalIn
   info(`t-${id}`, { running: false, exit_code });
 
 /** The Rail on a fake Daemon whose tree is `tree` and whose clock is a signal the test can advance. */
-export const mountRail = async (tree: RailNode[], terminals: TerminalInfo[] = []) => {
+export const mountRail = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  daemonExit: Accessor<DaemonExit | null> = () => null,
+) => {
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => tree;
   app.handlers["terminal.list"] = () => terminals;
 
   const [now, setNow] = createSignal(NOW);
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now, daemonExit);
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>

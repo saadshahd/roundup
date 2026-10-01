@@ -1,4 +1,6 @@
 import { render } from "@solidjs/testing-library";
+import type { Accessor } from "solid-js";
+import type { DaemonExit } from "../app/seam";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
@@ -78,7 +80,12 @@ type Mounted = {
 };
 
 /** A Pane inside an open Project whose Rail holds `tree` and whose Daemon lists `terminals`. */
-export const mountPane = async (tree: RailNode[], terminals: TerminalInfo[] = [], now = 0): Promise<Mounted> => {
+export const mountPane = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  now = 0,
+  daemonExit: Accessor<DaemonExit | null> = () => null,
+): Promise<Mounted> => {
   const app = createFakeApp();
 
   app.handlers["rail.tree"] = () => tree;
@@ -86,7 +93,7 @@ export const mountPane = async (tree: RailNode[], terminals: TerminalInfo[] = []
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.resize"] = () => null;
 
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now, daemonExit);
   const { factory, made } = fakeEmulators();
 
   const { container } = render(() => (

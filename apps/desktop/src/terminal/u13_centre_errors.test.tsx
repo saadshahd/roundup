@@ -18,14 +18,6 @@ const openApp = async () => {
 afterEach(cleanup);
 
 describe("u13 the centre's error lines never move the screen", () => {
-  it("u13_the_daemon_exited_line_sits_in_the_panes_fixed_slot", async () => {
-    const app = await openApp();
-
-    app.exitDaemon({ code: 3 });
-
-    expect((await screen.findByText("✕ daemon exited 3")).closest(".pane-failure")).not.toBeNull();
-  });
-
   it("u13_a_failed_rail_refetch_line_sits_in_the_panes_fixed_slot", async () => {
     const app = await openApp();
 
@@ -36,21 +28,5 @@ describe("u13 the centre's error lines never move the screen", () => {
     app.emit({ actor: { kind: "user", id: "you", parent: null }, name: "rail.changed" });
 
     expect((await screen.findByText("✕ daemon is gone")).closest(".pane-failure")).not.toBeNull();
-  });
-
-  it("u13_the_daemon_exited_line_wins_over_a_failed_rail_refetch", async () => {
-    const app = await openApp();
-
-    app.handlers["rail.tree"] = () => {
-      throw new Error("daemon is gone");
-    };
-
-    app.emit({ actor: { kind: "user", id: "you", parent: null }, name: "rail.changed" });
-    await screen.findByText("✕ daemon is gone");
-    app.exitDaemon({ code: null });
-
-    expect((await screen.findByText("✕ daemon exited by signal")).closest(".pane-failure")?.textContent).toBe(
-      "✕ daemon exited by signal",
-    );
   });
 });
