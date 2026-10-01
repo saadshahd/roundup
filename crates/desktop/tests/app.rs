@@ -14,7 +14,9 @@ use desktop::{Config, Shell, build, handle_run_event};
 use rpc::code;
 use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody};
-use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::test::{
+    INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder, mock_context, noop_assets,
+};
 use tauri::webview::InvokeRequest;
 use tauri::{App, Listener, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tempfile::TempDir;
@@ -31,7 +33,7 @@ struct Fixture {
 
 impl Fixture {
     /// `body` is the fake `rupd`. `{link}` in it becomes a command that points the App's socket
-    /// at the real Daemon; `{dir}` is the fixture's directory.
+    /// at the real Daemon; `{dir}` is the fixture's directory; `read go < '{dir}/go'` waits for `release`.
     fn new(body: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let project = dir.path().join("my-project");
@@ -44,6 +46,8 @@ impl Fixture {
         let body = body
             .replace("{link}", &link)
             .replace("{dir}", &dir.path().display().to_string());
+        let go = dir.path().join("go");
+        assert!(Command::new("mkfifo").arg(&go).status().unwrap().success());
         std::fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         let config = Config::locate(
@@ -53,7 +57,16 @@ impl Fixture {
             std::process::id(),
         )
         .unwrap();
-        Self { dir, project, config }
+        Self {
+            dir,
+            project,
+            config,
+        }
+    }
+
+    /// Lets a fake `rupd` that is blocked on `read go < '{dir}/go'` continue.
+    fn release(&self) {
+        std::fs::write(self.dir.path().join("go"), "go\n").unwrap();
     }
 
     fn real_daemon_socket(&self) -> PathBuf {
@@ -87,7 +100,7 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
             cmd: cmd.into(),
             callback: tauri::ipc::CallbackFn(0),
             error: tauri::ipc::CallbackFn(1),
-            url: "http://tauri.localhost".parse().unwrap(),
+            url: "tauri://localhost".parse().unwrap(),
             body: InvokeBody::Json(args),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
@@ -107,21 +120,19 @@ fn open(webview: &WebviewWindow<MockRuntime>, project: &Path) -> Value {
 fn eventually(what: &str, condition: impl Fn() -> bool) {
     let start = Instant::now();
     while !condition() {
-        assert!(start.elapsed() < WAIT, "{what} did not happen within {WAIT:?}");
+        assert!(
+            start.elapsed() < WAIT,
+            "{what} did not happen within {WAIT:?}"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
-}
-
-fn fifo(dir: &Path) -> PathBuf {
-    let path = dir.join("go");
-    assert!(Command::new("mkfifo").arg(&path).status().unwrap().success());
-    path
 }
 
 fn daemon_exited(app: &App<MockRuntime>) -> mpsc::Receiver<Value> {
     let (tx, rx) = mpsc::channel();
     app.listen("daemon-exited", move |event| {
-        tx.send(serde_json::from_str(event.payload()).unwrap()).unwrap();
+        tx.send(serde_json::from_str(event.payload()).unwrap())
+            .unwrap();
     });
     rx
 }
@@ -138,7 +149,10 @@ fn s1_open_project_starts_rupd_attached_on_the_socket_the_app_chose() {
 
     let opened = open(&webview, &fx.project);
 
-    assert_eq!(opened, json!({ "name": "my-project", "path": fx.project.display().to_string() }));
+    assert_eq!(
+        opened,
+        json!({ "name": "my-project", "path": fx.project.display().to_string() })
+    );
     assert_eq!(
         std::fs::read_to_string(fx.dir.path().join("args")).unwrap(),
         format!("{}\n--attached\n", fx.project.display())
@@ -193,7 +207,12 @@ fn s1_a_path_that_is_not_a_directory_is_invalid_params_naming_it() {
     let error = invoke(&webview, "open_project", path_arg(&file)).unwrap_err();
 
     assert_eq!(error["code"], code::INVALID_PARAMS);
-    assert!(error["message"].as_str().unwrap().contains(&file.display().to_string()));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains(&file.display().to_string())
+    );
 }
 
 #[test]
@@ -204,7 +223,12 @@ fn s1_a_daemon_that_exits_is_internal_and_carries_its_stderr() {
     let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
 
     assert_eq!(error["code"], code::INTERNAL);
-    assert!(error["message"].as_str().unwrap().contains("boom: cannot open the database"));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("boom: cannot open the database")
+    );
 }
 
 #[test]
@@ -217,7 +241,12 @@ fn s1_a_daemon_silent_past_the_ready_bound_is_internal_and_carries_its_stderr() 
     let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
 
     assert_eq!(error["code"], code::INTERNAL);
-    assert!(error["message"].as_str().unwrap().contains("still starting"));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("still starting")
+    );
 }
 
 #[test]
@@ -237,7 +266,10 @@ fn s1_started_as_roundup_folder_opens_that_folder() {
     let fx = Fixture::new(SERVE_AND_WAIT);
     fx.serve_real_daemon();
 
-    let (_app, webview) = app(fx.config.clone(), Some(fx.project.clone()));
+    let (mut app, webview) = app(fx.config.clone(), Some(fx.project.clone()));
+    // Tauri runs the setup hook, where the folder is opened, when the event loop starts.
+    #[allow(deprecated)]
+    app.run_iteration(|_, _| {});
 
     assert_eq!(
         invoke(&webview, "project", json!({})),
@@ -262,9 +294,13 @@ fn s1_the_webview_is_granted_dialog_open_and_save_and_the_dock_badge_and_nothing
         })
         .collect();
 
-    let expected = ["dialog:allow-open", "dialog:allow-save", "core:window:allow-set-badge-count"]
-        .map(String::from)
-        .into();
+    let expected = [
+        "dialog:allow-open",
+        "dialog:allow-save",
+        "core:window:allow-set-badge-count",
+    ]
+    .map(String::from)
+    .into();
     assert_eq!(granted, expected);
 }
 
@@ -275,7 +311,11 @@ fn s2_rpc_ping_answers_pong() {
     let (_app, webview) = app(fx.config.clone(), None);
     open(&webview, &fx.project);
 
-    let reply = invoke(&webview, "rpc", json!({ "method": "daemon.ping", "params": null }));
+    let reply = invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "daemon.ping", "params": null }),
+    );
 
     assert_eq!(reply, Ok(json!({ "pong": true })));
 }
@@ -287,14 +327,26 @@ fn s2_a_call_that_fails_in_the_daemon_fails_with_the_daemons_code_and_message() 
     let (_app, webview) = app(fx.config.clone(), None);
     open(&webview, &fx.project);
     let direct = tauri::async_runtime::block_on(async {
-        let client = rpc::Client::connect(&fx.real_daemon_socket()).await.unwrap();
-        client.request("todo.get", json!({ "id": 99 })).await.unwrap_err()
+        let client = rpc::Client::connect(&fx.real_daemon_socket())
+            .await
+            .unwrap();
+        client
+            .request("todo.get", json!({ "id": 99 }))
+            .await
+            .unwrap_err()
     });
 
-    let error = invoke(&webview, "rpc", json!({ "method": "todo.get", "params": { "id": 99 } }))
-        .unwrap_err();
+    let error = invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "todo.get", "params": { "id": 99 } }),
+    )
+    .unwrap_err();
 
-    assert_eq!(error, json!({ "code": direct.code, "message": direct.message }));
+    assert_eq!(
+        error,
+        json!({ "code": direct.code, "message": direct.message })
+    );
     assert_eq!(error["code"], code::NOT_FOUND);
 }
 
@@ -306,15 +358,22 @@ fn s2_events_the_daemon_emits_arrive_on_the_channel_in_order() {
     open(&webview, &fx.project);
     let (tx, received) = mpsc::channel();
     let channel = Channel::<contracts::Event>::new(move |body| {
-        let InvokeResponseBody::Json(json) = body else { panic!("events are JSON") };
-        tx.send(serde_json::from_str::<Value>(&json).unwrap()).unwrap();
+        let InvokeResponseBody::Json(json) = body else {
+            panic!("events are JSON")
+        };
+        tx.send(serde_json::from_str::<Value>(&json).unwrap())
+            .unwrap();
         Ok(())
     });
     tauri::async_runtime::block_on(app.state::<Shell>().subscribe(channel)).unwrap();
 
     for title in ["first", "second", "third"] {
-        invoke(&webview, "rpc", json!({ "method": "todo.create", "params": { "title": title } }))
-            .unwrap();
+        invoke(
+            &webview,
+            "rpc",
+            json!({ "method": "todo.create", "params": { "title": title } }),
+        )
+        .unwrap();
     }
 
     let titles: Vec<_> = (0..3)
@@ -332,10 +391,16 @@ fn s2_before_a_project_is_open_rpc_and_subscribe_fail_at_once_with_conflict() {
     let fx = Fixture::new(SERVE_AND_WAIT);
     let (app, webview) = app(fx.config.clone(), None);
 
-    let call = invoke(&webview, "rpc", json!({ "method": "daemon.ping", "params": null }));
-    let subscribe = tauri::async_runtime::block_on(
-        app.state::<Shell>().subscribe(Channel::<contracts::Event>::new(|_| Ok(()))),
+    let call = invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "daemon.ping", "params": null }),
     );
+    let subscribe = tauri::async_runtime::block_on(app.state::<Shell>().subscribe(Channel::<
+        contracts::Event,
+    >::new(
+        |_| Ok(())
+    )));
 
     assert_eq!(call.unwrap_err()["code"], code::CONFLICT);
     let error = subscribe.unwrap_err();
@@ -359,45 +424,46 @@ fn s3_when_the_app_exits_the_daemons_stdin_closes() {
 
 #[test]
 fn s3_when_the_daemon_exits_on_its_own_the_webview_gets_daemon_exited_with_its_code() {
-    let go = fifo(tempfile::tempdir().unwrap().keep().as_path());
-    let fx = Fixture::new(&format!("{{link}}\nread go < '{}'\nexit 7", go.display()));
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 7");
     fx.serve_real_daemon();
     let (app, webview) = app(fx.config.clone(), None);
     let exited = daemon_exited(&app);
     open(&webview, &fx.project);
 
-    std::fs::write(&go, "go\n").unwrap();
+    fx.release();
 
     assert_eq!(exited.recv_timeout(WAIT).unwrap(), json!({ "code": 7 }));
 }
 
 #[test]
 fn s3_a_daemon_ended_by_a_signal_has_a_null_code() {
-    let go = fifo(tempfile::tempdir().unwrap().keep().as_path());
-    let fx = Fixture::new(&format!("{{link}}\nread go < '{}'\nkill -9 $$", go.display()));
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nkill -9 $$");
     fx.serve_real_daemon();
     let (app, webview) = app(fx.config.clone(), None);
     let exited = daemon_exited(&app);
     open(&webview, &fx.project);
 
-    std::fs::write(&go, "go\n").unwrap();
+    fx.release();
 
     assert_eq!(exited.recv_timeout(WAIT).unwrap(), json!({ "code": null }));
 }
 
 #[test]
 fn s3_after_the_daemon_exits_rpc_fails_with_internal() {
-    let go = fifo(tempfile::tempdir().unwrap().keep().as_path());
-    let fx = Fixture::new(&format!("{{link}}\nread go < '{}'\nexit 0", go.display()));
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
     fx.serve_real_daemon();
     let (app, webview) = app(fx.config.clone(), None);
     let exited = daemon_exited(&app);
     open(&webview, &fx.project);
-    std::fs::write(&go, "go\n").unwrap();
+    fx.release();
     exited.recv_timeout(WAIT).unwrap();
 
-    let error = invoke(&webview, "rpc", json!({ "method": "daemon.ping", "params": null }))
-        .unwrap_err();
+    let error = invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "daemon.ping", "params": null }),
+    )
+    .unwrap_err();
 
     assert_eq!(error["code"], code::INTERNAL);
 }

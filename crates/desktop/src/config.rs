@@ -29,11 +29,9 @@ impl Config {
         socket_dir: &Path,
         pid: u32,
     ) -> Result<Self, String> {
-        let rupd_bin = rupd_env.map(PathBuf::from).unwrap_or_else(|| {
-            exe.parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join("rupd")
-        });
+        let rupd_bin = rupd_env
+            .map(PathBuf::from)
+            .unwrap_or_else(|| exe.parent().unwrap_or_else(|| Path::new(".")).join("rupd"));
         let socket = socket_dir.join(format!("roundup-{pid}.sock"));
         let bytes = socket.as_os_str().len();
         if bytes >= SOCKET_PATH_LIMIT {
@@ -51,7 +49,8 @@ impl Config {
     }
 
     pub fn from_env() -> Result<Self, String> {
-        let exe = std::env::current_exe().map_err(|err| format!("cannot find the App's own executable: {err}"))?;
+        let exe = std::env::current_exe()
+            .map_err(|err| format!("cannot find the App's own executable: {err}"))?;
         Self::locate(
             std::env::var_os("ROUNDUP_RUPD_BIN"),
             &exe,
