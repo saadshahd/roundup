@@ -148,14 +148,46 @@ async fn m1_input_schemas_are_the_contract_schemas() {
     };
 
     let derived = |schema| serde_json::to_value(schema).unwrap();
-    assert_eq!(
-        schema("todo_create"),
-        derived(schemars::schema_for!(todo::CreateParams))
-    );
-    assert_eq!(
-        schema("pad_setOwner"),
-        derived(schemars::schema_for!(pad::SetOwnerParams))
-    );
+    let expected = [
+        (
+            "todo_create",
+            derived(schemars::schema_for!(todo::CreateParams)),
+        ),
+        ("todo_get", derived(schemars::schema_for!(todo::TodoId))),
+        (
+            "todo_update",
+            derived(schemars::schema_for!(todo::UpdateParams)),
+        ),
+        (
+            "todo_complete",
+            derived(schemars::schema_for!(todo::TodoId)),
+        ),
+        (
+            "todo_setBlockers",
+            derived(schemars::schema_for!(todo::SetBlockersParams)),
+        ),
+        (
+            "pad_create",
+            derived(schemars::schema_for!(pad::CreateParams)),
+        ),
+        ("pad_read", derived(schemars::schema_for!(pad::PadName))),
+        (
+            "pad_write",
+            derived(schemars::schema_for!(pad::WriteParams)),
+        ),
+        (
+            "pad_append",
+            derived(schemars::schema_for!(pad::AppendParams)),
+        ),
+        (
+            "pad_setOwner",
+            derived(schemars::schema_for!(pad::SetOwnerParams)),
+        ),
+        ("pad_delete", derived(schemars::schema_for!(pad::PadName))),
+    ];
+    for (name, contract_schema) in expected {
+        assert_eq!(schema(name), contract_schema, "{name}");
+    }
     assert_eq!(schema("todo_list"), json!({ "type": "object" }));
     assert_eq!(schema("pad_list"), json!({ "type": "object" }));
 }

@@ -103,24 +103,27 @@ struct Shim {
 
 impl Shim {
     async fn connect(&self) -> Result<rpc::Client, Gone> {
-        let client = rpc::Client::connect(&self.socket).await.map_err(|err| {
-            Gone::Unreachable(format!("no Daemon at {}: {err}", self.socket.display()))
-        })?;
-        client
-            .request(
-                "daemon.identify",
-                IdentifyParams {
-                    actor: self.actor.clone(),
-                },
-            )
+        let socket = self.socket.display();
+        let handshake = async {
+            let client = rpc::Client::connect(&self.socket)
+                .await
+                .map_err(|err| Gone::Unreachable(format!("no Daemon at {socket}: {err}")))?;
+            client
+                .request(
+                    "daemon.identify",
+                    IdentifyParams {
+                        actor: self.actor.clone(),
+                    },
+                )
+                .await
+                .map_err(|err| {
+                    Gone::Unreachable(format!("the Daemon at {socket} refused identify: {err}"))
+                })?;
+            Ok(client)
+        };
+        tokio::time::timeout(CALL_TIMEOUT, handshake)
             .await
-            .map_err(|err| {
-                Gone::Unreachable(format!(
-                    "the Daemon at {} refused identify: {err}",
-                    self.socket.display()
-                ))
-            })?;
-        Ok(client)
+            .map_err(|_| Gone::Silent)?
     }
 
     async fn call(
@@ -132,13 +135,10 @@ impl Shim {
             (true, arguments) => Value::Object(arguments.unwrap_or_default()),
             (false, _) => Value::Null,
         };
-        let exchange = async {
-            let client = self.connect().await?;
-            Ok(client.request(offer.method, params).await)
-        };
-        tokio::time::timeout(CALL_TIMEOUT, exchange)
+        let client = self.connect().await?;
+        tokio::time::timeout(CALL_TIMEOUT, client.request(offer.method, params))
             .await
-            .map_err(|_| Gone::Silent)?
+            .map_err(|_| Gone::Silent)
     }
 }
 
