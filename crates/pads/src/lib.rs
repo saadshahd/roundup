@@ -42,11 +42,14 @@ impl Pads {
             updated_at: now_ms(),
         };
         let store = self.store()?;
+        let exists = || RpcError::conflict(format!("pad exists: {}", pad.name));
         if store.get(&pad.name).map_err(RpcError::internal)?.is_some() {
-            return Err(RpcError::conflict(format!("pad exists: {}", pad.name)));
+            return Err(exists());
         }
         self.mirror(&store, &pad.name, &pad.text)?;
-        store.insert(&pad).map_err(RpcError::internal)?;
+        if !store.insert(&pad).map_err(RpcError::internal)? {
+            return Err(exists());
+        }
         wrote(ctx, &pad.name)?;
         reply(&pad)
     }
@@ -144,6 +147,7 @@ impl Pads {
         let mut imports = Vec::new();
         for pad in &pads {
             if p.files {
+                name::validate(&pad.name)?;
                 files::write(&self.files_dir, &pad.name, &pad.text)?;
             } else if let Some(text) = files::read(&self.files_dir, &pad.name)?
                 && text != pad.text
