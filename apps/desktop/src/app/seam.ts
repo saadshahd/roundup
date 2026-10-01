@@ -34,7 +34,7 @@ export type AppSeam = {
 
 export const INTERNAL_CODE = -32603;
 
-/** A failed call, carrying the Daemon's own `code` and `message`. */
+/** A failed call: the Daemon's own `code` and `message`, or INTERNAL when Tauri, a plugin or a malformed answer failed. */
 export class RpcError extends Error {
   readonly code: number;
 
