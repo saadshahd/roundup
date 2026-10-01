@@ -33,7 +33,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm slop
-      - run: cargo machete
+      - run: cargo machete crates
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"

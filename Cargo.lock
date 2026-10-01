@@ -132,7 +132,6 @@ version = "0.0.0"
 dependencies = [
  "rpc",
  "rupd",
- "serde_json",
  "tempfile",
  "tokio",
 ]
