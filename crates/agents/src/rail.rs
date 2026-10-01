@@ -4,18 +4,16 @@
 use std::path::Path;
 
 use contracts::agent::{NodeKind, RailNode};
-use contracts::{Kind, Status};
 use rpc::{OpenError, RpcError};
 use rusqlite::{Connection, Transaction, params};
 
+/// Structure only: a node's `status` is the Agents module's to fill in.
 pub struct Rail {
     db: Connection,
-    /// When this Rail was opened: since when an Agent without a Terminal has been `done`.
-    opened: i64,
 }
 
 impl Rail {
-    pub fn open(path: &Path, now: i64) -> Result<Self, OpenError> {
+    pub fn open(path: &Path) -> Result<Self, OpenError> {
         let db = Connection::open(path)?;
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.execute_batch(
@@ -31,12 +29,12 @@ impl Rail {
         )?;
         // Terminal ids restart at 1 with the Daemon, so a stored id could name an unrelated Terminal.
         db.execute("UPDATE nodes SET terminal_id = NULL", [])?;
-        Ok(Self { db, opened: now })
+        Ok(Self { db })
     }
 
     /// Every node, each parent before its children, siblings by `order`.
     pub fn tree(&self) -> Result<Vec<RailNode>, RpcError> {
-        let mut flat = load(&self.db, self.opened)?;
+        let mut flat = load(&self.db)?;
         flat.sort_by_key(|node| node.order);
         let mut out = Vec::with_capacity(flat.len());
         descend(&flat, None, &mut out);
@@ -52,7 +50,7 @@ impl Rail {
         terminal_id: Option<&str>,
     ) -> Result<RailNode, RpcError> {
         let tx = self.db.transaction().map_err(sql)?;
-        let nodes = load(&tx, self.opened)?;
+        let nodes = load(&tx)?;
         check_parent(&nodes, parent)?;
         let order = siblings(&nodes, parent).len() as i64;
         tx.execute(
@@ -85,7 +83,7 @@ impl Rail {
         index: u32,
     ) -> Result<(), RpcError> {
         let tx = self.db.transaction().map_err(sql)?;
-        let nodes = load(&tx, self.opened)?;
+        let nodes = load(&tx)?;
         let node = find(&nodes, id)?;
         check_parent(&nodes, parent)?;
         if parent.is_some_and(|parent| is_within(&nodes, parent, id)) {
@@ -109,8 +107,36 @@ impl Rail {
         tx.commit().map_err(sql)
     }
 
+    /// Record which Terminal runs the Agent `id`.
+    pub fn attach_terminal(&mut self, id: &str, terminal_id: &str) -> Result<(), RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE nodes SET terminal_id = ? WHERE id = ?",
+                params![terminal_id, id],
+            )
+            .map_err(sql)?;
+        if changed == 0 {
+            return Err(RpcError::not_found(format!("node {id}")));
+        }
+        Ok(())
+    }
+
+    /// Delete a node that has no children (an Agent never has any), closing the gap among its siblings.
+    pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {
+        let tx = self.db.transaction().map_err(sql)?;
+        let nodes = load(&tx)?;
+        let node = find(&nodes, id)?;
+        tx.execute("DELETE FROM nodes WHERE id = ?", params![id])
+            .map_err(sql)?;
+        let mut rest = siblings(&nodes, node.parent.as_deref());
+        rest.retain(|sibling| sibling != id);
+        place(&tx, node.parent.as_deref(), &rest)?;
+        tx.commit().map_err(sql)
+    }
+
     fn node(&self, id: &str) -> Result<RailNode, RpcError> {
-        find(&load(&self.db, self.opened)?, id).cloned()
+        find(&load(&self.db)?, id).cloned()
     }
 }
 
@@ -126,7 +152,7 @@ fn kind_name(kind: NodeKind) -> &'static str {
     }
 }
 
-fn load(db: &Connection, opened: i64) -> Result<Vec<RailNode>, RpcError> {
+fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let mut query = db
         .prepare("SELECT id, kind, name, parent, ord, meta, terminal_id FROM nodes")
         .map_err(sql)?;
@@ -143,12 +169,7 @@ fn load(db: &Connection, opened: i64) -> Result<Vec<RailNode>, RpcError> {
                 name: row.get(2)?,
                 parent: row.get::<_, Option<i64>>(3)?.map(|id| id.to_string()),
                 order: row.get(4)?,
-                // No Terminal outlives the Daemon, so a stored Agent is never alive.
-                status: (kind == NodeKind::Agent).then(|| Status {
-                    kind: Kind::Done,
-                    label: "terminal gone".into(),
-                    since: opened,
-                }),
+                status: None,
                 meta: row.get(5)?,
                 terminal_id: row.get(6)?,
             })
@@ -220,7 +241,6 @@ fn place(tx: &Transaction, parent: Option<&str>, ids: &[String]) -> Result<(), R
 
 #[cfg(test)]
 mod tests {
-    use contracts::Kind;
     use contracts::agent::NodeKind;
     use rpc::code;
 
@@ -228,7 +248,7 @@ mod tests {
 
     fn rail() -> (tempfile::TempDir, Rail) {
         let dir = tempfile::tempdir().unwrap();
-        let rail = Rail::open(&dir.path().join("agents.db"), 7).unwrap();
+        let rail = Rail::open(&dir.path().join("agents.db")).unwrap();
         (dir, rail)
     }
 
@@ -260,23 +280,28 @@ mod tests {
     }
 
     #[test]
-    fn a8_an_agent_whose_terminal_is_gone_comes_back_done_and_unlinked() {
+    fn a8_reopening_unlinks_every_terminal_id() {
         let (dir, mut rail) = rail();
         rail.insert(NodeKind::Agent, "claude", None, Some("1"))
             .unwrap();
+        rail.insert(NodeKind::Terminal, "shell", None, Some("2"))
+            .unwrap();
         drop(rail);
 
-        let mut reopened = Rail::open(&dir.path().join("agents.db"), 9).unwrap();
-        // A new, unrelated Terminal reuses id 1 after the restart.
-        reopened
-            .insert(NodeKind::Terminal, "shell", None, Some("1"))
-            .unwrap();
-        let tree = reopened.tree().unwrap();
+        let reopened = Rail::open(&dir.path().join("agents.db")).unwrap();
+        let ids: Vec<_> = reopened.tree().unwrap().into_iter().map(|n| n.terminal_id).collect();
+        assert_eq!(ids, [None, None]);
+    }
 
-        let agent = &tree[0];
-        let status = agent.status.as_ref().unwrap();
-        assert_eq!((status.kind, status.since), (Kind::Done, 9));
-        assert_eq!(agent.terminal_id, None);
-        assert_eq!(tree[1].terminal_id.as_deref(), Some("1"));
+    #[test]
+    fn a6_removing_a_node_closes_the_gap_among_its_siblings() {
+        let (_dir, mut rail) = rail();
+        let ids: Vec<_> = ["a", "b", "c"]
+            .map(|name| rail.insert(NodeKind::Group, name, None, None).unwrap().id)
+            .into();
+        rail.remove(&ids[1]).unwrap();
+        let tree = rail.tree().unwrap();
+        let rest: Vec<_> = tree.iter().map(|n| (n.name.as_str(), n.order)).collect();
+        assert_eq!(rest, [("a", 0), ("c", 1)]);
     }
 }

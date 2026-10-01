@@ -1,7 +1,11 @@
+//! Helpers shared by the scenario tests.
+
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
 use agents::Agents;
+use agents::claude_code::Launcher;
 use contracts::agent::RailNode;
 use contracts::{Actor, Event, EventData};
 use provenance::Touches;
@@ -17,19 +21,38 @@ pub struct Fixture {
     pub agents: Agents,
 }
 
-pub fn open_in(dir: &Path, bus: &Bus) -> Agents {
+/// An executable `sh` script standing in for `claude`.
+pub fn fake_claude(dir: &Path, body: &str) -> String {
+    let path = dir.join("fake-claude");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+/// Agents over a fresh Terminals, launching `bin` and keeping Claude's config inside `dir`.
+pub fn open_in(dir: &Path, bus: &Bus, bin: &str) -> Agents {
     let terminals = Arc::new(Terminals::open(dir, bus.clone()).unwrap());
-    Agents::open(dir, bus.clone(), terminals).unwrap()
+    let rup = dir.join("rup");
+    std::fs::write(&rup, "").unwrap();
+    let launcher = Launcher::new(bin, dir.join("claude.json"), rup);
+    Agents::open_with(dir, bus.clone(), terminals, launcher).unwrap()
 }
 
 impl Fixture {
     pub fn new() -> Self {
-        Self::over(tempfile::tempdir().unwrap(), Bus::new())
+        Self::running(":")
     }
 
-    fn over(dir: tempfile::TempDir, bus: Bus) -> Self {
+    /// A Fixture whose Agents run `script` as their `claude`.
+    pub fn running(script: &str) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake_claude(dir.path(), script);
+        Self::over(dir, Bus::new(), &bin)
+    }
+
+    fn over(dir: tempfile::TempDir, bus: Bus, bin: &str) -> Self {
         let events = bus.subscribe();
-        let agents = open_in(dir.path(), &bus);
+        let agents = open_in(dir.path(), &bus, bin);
         Self {
             dir,
             bus,
@@ -43,7 +66,12 @@ impl Fixture {
             dir, bus, agents, ..
         } = self;
         drop(agents);
-        Self::over(dir, bus)
+        let bin = dir
+            .path()
+            .join("fake-claude")
+            .to_string_lossy()
+            .into_owned();
+        Self::over(dir, bus, &bin)
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
