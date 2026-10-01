@@ -1,0 +1,5 @@
+{
+  "productName": "roundup",
+  "identifier": "dev.roundup.app",
+  "app": { "windows": [{ "title": "roundup" }] }
+}

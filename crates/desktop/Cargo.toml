@@ -1,0 +1,31 @@
+[package]
+name = "desktop"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "roundup"
+path = "src/main.rs"
+
+[dependencies]
+contracts = { path = "../contracts" }
+rpc = { path = "../rpc" }
+serde.workspace = true
+serde_json.workspace = true
+tauri = "2"
+tauri-plugin-dialog = "2"
+tokio.workspace = true
+
+[build-dependencies]
+tauri-build = "2"
+
+[dev-dependencies]
+rupd = { path = "../rupd" }
+tauri = { version = "2", features = ["test"] }
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
