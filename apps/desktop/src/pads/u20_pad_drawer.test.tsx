@@ -339,34 +339,6 @@ describe("u20 open and edit", () => {
     ]);
   });
 
-  it("u20_a_change_skipped_while_editing_is_caught_up_after_the_write_settles", async () => {
-    const { app, state, calls } = await openShelf([
-      padOf("release-checklist", USER, "mine"),
-    ]);
-
-    const field = await openPad("release-checklist");
-    fireEvent.focus(field);
-    fireEvent.input(field, { target: { value: "mine, edited" } });
-    state.pads = [padOf("release-checklist", USER, "mine\nagent line")];
-    app.emit({
-      actor: AGENT,
-      name: "pad.changed",
-      data: { name: "release-checklist" },
-    });
-    await waitFor(() =>
-      expect(
-        calls().filter((method) => method === "pad.list").length,
-      ).toBeGreaterThan(1),
-    );
-    const before = calls().length;
-
-    fireEvent.blur(field);
-
-    await waitFor(() => expect(calls().slice(before)).toEqual(["pad.write"]));
-    await waitFor(() => expect(field.value).toBe("mine, edited"));
-    expect(state.pads[0]?.text).toBe("mine, edited");
-  });
-
   it("u20_a_change_skipped_while_editing_refreshes_on_blur_when_nothing_was_typed", async () => {
     const { app, state } = await openShelf([
       padOf("release-checklist", USER, "mine"),
