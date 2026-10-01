@@ -137,8 +137,8 @@ impl Terminals {
         for (name, value) in &params.env {
             command.env(name, value);
         }
-        // The reader thread starts before the program and receives the child over a channel, so
-        // no later failure can leave a program that nobody waits for.
+        // The reader and input threads start before the program (the reader receives the child over a
+        // channel), so no later failure can leave a program that nobody waits for.
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
         let writer = pair.master.take_writer().map_err(RpcError::internal)?;
         let number = self.next.fetch_add(1, Ordering::Relaxed);
@@ -153,6 +153,11 @@ impl Terminals {
                 }
             })
             .map_err(RpcError::internal)?;
+        let (input, queued) = mpsc::sync_channel(WRITE_BACKLOG);
+        std::thread::Builder::new()
+            .name(format!("terminal-{number}-input"))
+            .spawn(move || type_queued(number, queued, writer))
+            .map_err(RpcError::internal)?;
         let argv0 = params
             .command
             .as_deref()
@@ -165,11 +170,6 @@ impl Terminals {
         ));
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
-        let (input, queued) = mpsc::sync_channel(WRITE_BACKLOG);
-        std::thread::Builder::new()
-            .name(format!("terminal-{number}-input"))
-            .spawn(move || type_queued(queued, writer))
-            .map_err(RpcError::internal)?;
         let handle = Handle {
             input,
             program: Arc::clone(&program),
@@ -245,7 +245,7 @@ impl Terminals {
     }
 
     fn running(&self, id: &str) -> Result<Arc<Handle>, RpcError> {
-        let number = terminal_number(id)?;
+        let number = parse_terminal_number(id)?;
         self.shared
             .table()
             .get(&number)
@@ -260,7 +260,7 @@ impl Terminals {
     /// it never slows the PTY reader. For output from the first byte and a guaranteed exit event,
     /// use [`Spawned::events`] instead.
     pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<EventData>, RpcError> {
-        let number = terminal_number(id)?;
+        let number = parse_terminal_number(id)?;
         let table = self.shared.table();
         table
             .get(&number)
@@ -283,27 +283,35 @@ impl Terminals {
 #[derive(Default)]
 struct Titles(Vec<String>);
 
+impl Titles {
+    /// An empty title is "no title", not a title to show.
+    fn push(&mut self, title: &[u8]) {
+        if !title.is_empty() {
+            self.0.push(String::from_utf8_lossy(title).into_owned());
+        }
+    }
+}
+
 impl vt100::Callbacks for Titles {
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
-        self.0.push(String::from_utf8_lossy(title).into_owned());
+        self.push(title);
     }
 
     /// vt100 splits an OSC on every `;` and only reports a title that is a single piece, so a
     /// title containing `;` arrives here and would otherwise be dropped.
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
         if let [b"0" | b"2", title @ ..] = params {
-            self.0
-                .push(String::from_utf8_lossy(&title.join(&b';')).into_owned());
+            self.push(&title.join(&b';'));
         }
     }
 }
 
 /// Feed queued writes to the PTY. It blocks on a program that does not read, which is why it has a
 /// thread of its own instead of one from the pool `kill` also needs.
-fn type_queued(queued: mpsc::Receiver<Vec<u8>>, mut writer: Box<dyn Write + Send>) {
+fn type_queued(number: u64, queued: mpsc::Receiver<Vec<u8>>, mut writer: Box<dyn Write + Send>) {
     for bytes in queued {
         if let Err(err) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
-            eprintln!("terminal input stopped: {err}");
+            eprintln!("terminal {number}: input stopped: {err}");
             return;
         }
     }
@@ -393,17 +401,13 @@ fn check_program(params: &SpawnParams) -> Result<(), RpcError> {
     Ok(())
 }
 
-/// The number a Terminal id names. Text that is no number names no Terminal; a number in any form
-/// but the one `spawn` hands out (`+5`, `05`) is a malformed id, not a second spelling of Terminal 5.
-fn terminal_number(id: &str) -> Result<u64, RpcError> {
-    let number = id
-        .parse::<u64>()
-        .map_err(|_| RpcError::not_found(format!("terminal {id}")))?;
-    if number.to_string() == id {
-        Ok(number)
-    } else {
-        Err(invalid(format!("not a terminal id: {id}")))
-    }
+/// The number a Terminal id names. Only the form `spawn` hands out is an id: `+5`, `05` and `nope`
+/// are malformed, never a second spelling of an existing Terminal.
+fn parse_terminal_number(id: &str) -> Result<u64, RpcError> {
+    id.parse::<u64>()
+        .ok()
+        .filter(|number| number.to_string() == id)
+        .ok_or_else(|| invalid(format!("not a terminal id: {id:?}")))
 }
 
 /// portable-pty reports an argv[0] it cannot find or run as text that quotes the Daemon's `PATH`;

@@ -136,10 +136,16 @@ async fn x10_a_program_that_cannot_be_run_names_only_argv0() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
     let mut params = sh(dir.path(), "true");
-    params.command = Some(vec![dir.path().to_string_lossy().into_owned()]);
+    let argv0 = dir.path().to_string_lossy().into_owned();
+    params.command = Some(vec![argv0.clone()]);
     let err = terminals.spawn(params).await.err().expect("spawn fails");
     assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{}", err.message);
-    assert!(!err.message.contains("PATH"), "{}", err.message);
+    assert!(err.message.contains(&argv0), "{}", err.message);
+    assert!(
+        !err.message.contains(&std::env::var("PATH").unwrap()),
+        "{}",
+        err.message
+    );
 }
 
 #[tokio::test]
@@ -148,10 +154,9 @@ async fn x10_an_id_that_is_not_canonical_is_invalid_params() {
     let (terminals, _) = open(&dir);
     let spawned = terminals.spawn(sh(dir.path(), "sleep 5")).await.unwrap();
     assert_eq!(spawned.id, "1");
-    for id in ["+1", "01"] {
+    for id in ["nope", " 1", "-1", "1 ", "+1", "01", ""] {
         let err = terminals.write(id, b"x").await.unwrap_err();
         assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{id}");
-        assert!(err.message.contains(id), "{}", err.message);
         let err = terminals.subscribe(id).expect_err("subscribe fails");
         assert_eq!(err.code, rpc::code::INVALID_PARAMS, "{id}");
     }

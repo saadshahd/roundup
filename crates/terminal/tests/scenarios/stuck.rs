@@ -5,7 +5,7 @@ use std::future::Future;
 use crate::common::{PATIENCE, open, sh, until_printed};
 use rpc::code;
 
-const STUCK: &str = "stty raw -echo; echo ready; exec sleep 300";
+const STUCK: &str = "stty raw -echo; echo ready; exec sleep 60";
 /// Larger than a PTY's input buffer, so one write never completes against a program that does not read.
 const CHUNK: usize = 1 << 16;
 

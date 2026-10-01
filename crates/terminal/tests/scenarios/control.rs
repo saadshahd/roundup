@@ -122,7 +122,7 @@ async fn x5_a_zero_sized_window_is_the_callers_error() {
 async fn x6_an_unknown_terminal_is_not_found() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
-    for id in ["999", "nope"] {
+    for id in ["999"] {
         assert_eq!(terminals.kill(id).await.unwrap_err().code, code::NOT_FOUND);
         assert_eq!(
             terminals.write(id, b"x").await.unwrap_err().code,

@@ -66,3 +66,10 @@ async fn x10_a_title_with_a_semicolon_is_whole() {
     let (titles, _) = titles_until_exit(r"printf '\033]0;build; test\007'").await;
     assert_eq!(titles, ["build; test"]);
 }
+
+#[tokio::test]
+async fn x10_an_empty_title_is_not_emitted() {
+    let (titles, listed) = titles_until_exit(r"printf '\033]0;\007'").await;
+    assert!(titles.is_empty(), "{titles:?}");
+    assert_eq!(listed, [None]);
+}
