@@ -25,6 +25,8 @@ app project:
     #!/usr/bin/env bash
     set -euo pipefail
     path=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(project)}})
+    # Anything already on :5173 would answer the wait below in place of our Vite and the window would open on the wrong webview.
+    ! curl -sf -o /dev/null http://localhost:5173 || { echo "something already answers on :5173; stop it first" >&2; exit 1; }
     cargo build -p rupd -p rup
     set -m
     pnpm --filter "./apps/*" --if-present dev &
@@ -33,8 +35,8 @@ app project:
     trap 'kill -- -"$dev" 2>/dev/null || true' EXIT
     # The window loads devUrl once and does not retry, so it must not open before Vite answers.
     for _ in $(seq 150); do
-        curl -sf -o /dev/null http://localhost:5173 && break
         kill -0 "$dev" 2>/dev/null || { echo "dev server exited before answering on :5173" >&2; exit 1; }
+        curl -sf -o /dev/null http://localhost:5173 && break
         sleep 0.2
     done
     curl -sf -o /dev/null http://localhost:5173 || { echo "dev server did not answer on :5173 within 30 s" >&2; exit 1; }

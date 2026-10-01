@@ -356,6 +356,32 @@ fn s4_the_dev_window_loads_the_dev_server_on_the_port_vite_is_pinned_to() {
 }
 
 #[test]
+fn s4_just_app_refuses_to_start_when_something_already_answers_on_the_dev_port() {
+    // A bind failure means another server already holds the port, which is the condition under test.
+    let _occupant = std::net::TcpListener::bind("[::1]:5173")
+        .ok()
+        .inspect(|listener| {
+            let listener = listener.try_clone().unwrap();
+            std::thread::spawn(move || {
+                for mut stream in listener.incoming().flatten() {
+                    use std::io::Write;
+                    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+                }
+            });
+        });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let out = Command::new("just")
+        .args(["app", "."])
+        .current_dir(root)
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("already answers on :5173"));
+}
+
+#[test]
 fn s4_the_built_app_embeds_the_directory_vite_builds_into() {
     assert_eq!(
         tauri_config()["build"]["frontendDist"],
