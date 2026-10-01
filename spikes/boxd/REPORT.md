@@ -22,3 +22,15 @@ Implication: for Linux CI-parity runs, install Rust once, snapshot, then fork pe
 - cargo build and test time on 2 vCPU.
 - Fork from a snapshot with Rust preinstalled.
 - Behaviour above 3 concurrent VMs.
+
+## Quota-burn attempt (blocked)
+
+The token I extracted from a PTY capture of `claude setup-token` was rejected: `Failed to authenticate. API Error: 401 OAuth access token is invalid.` It failed the same way on the laptop, so boxd is not the cause. The extracted string was 128 characters; the terminal had re-rendered and wrapped the output, so it was most likely corrupted when I reassembled it. Nothing past authentication ran, so burn, rate limits and automation-terms behaviour are still unmeasured.
+
+Findings that do hold:
+
+- `boxd env set NAME value --secret` injects intact and lists as `(sealed)`.
+- Those secrets are account-wide, so every machine would receive the token. For concurrent Builders, pass it per machine (`exec -e` or `env push`).
+- The VM and secret were removed afterwards. Credit stayed at about 29.997 EUR.
+
+To redo: generate the token in a real terminal, copy it, and save it with `pbpaste > ~/.roundup-spike-token; chmod 600 ~/.roundup-spike-token`.
