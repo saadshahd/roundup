@@ -158,3 +158,23 @@ pub fn status_of<'a>(tree: &'a [RailNode], id: &str) -> &'a Status {
         .and_then(|node| node.status.as_ref())
         .expect("an Agent has a Status")
 }
+
+/// Hold every start of an Agent at its first read of Claude's config, until the returned path
+/// is written to.
+pub fn hold_starts(f: &Fixture) -> std::path::PathBuf {
+    let config = f.dir.path().join("claude.json");
+    let _ = std::fs::remove_file(&config);
+    let made = std::process::Command::new("mkfifo")
+        .arg(&config)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    config
+}
+
+pub async fn release(config: std::path::PathBuf) {
+    tokio::task::spawn_blocking(move || std::fs::write(config, "{}"))
+        .await
+        .unwrap()
+        .unwrap();
+}

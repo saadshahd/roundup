@@ -52,6 +52,7 @@ const fakeEmulators = () => {
 
         return emulator.size;
       },
+      focus: () => {},
       dispose: () => {
         emulator.disposed = true;
       },

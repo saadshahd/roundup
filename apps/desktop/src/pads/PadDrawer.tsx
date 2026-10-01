@@ -5,6 +5,7 @@ import { ItemDrawer } from "../drawer/ItemDrawer";
 import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
+import { cutName, markedLine, wholeWord } from "./nameLine";
 import { ownerMark } from "./owner";
 
 const PadBody = (props: {
@@ -99,9 +100,12 @@ const PadBody = (props: {
 
   return (
     <>
-      <p>
-        {ownerMark(pad().owner)} {name}{" "}
-        <span class="light">
+      <p style={markedLine}>
+        <span style={wholeWord}>{ownerMark(pad().owner)}</span>{" "}
+        <span title={name} style={cutName}>
+          {name}
+        </span>{" "}
+        <span class="light" style={wholeWord}>
           owned by {connected.rail.nameOf(pad().owner)}
         </span>
       </p>

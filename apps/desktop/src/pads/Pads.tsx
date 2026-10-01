@@ -5,6 +5,7 @@ import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
 import { PadDrawer } from "./PadDrawer";
+import { cutName, markedLine, wholeWord } from "./nameLine";
 import { ownerMark, USER } from "./owner";
 
 /** The Shelf's `pads` list; `pad.list` logs no Touch, so refetching it on every `pad.changed` leaves no trace in Provenance. One fetch serves the list and any open Drawer. */
@@ -94,13 +95,14 @@ const PadRows = (props: {
   return (
     <For each={props.pads()}>
       {(pad) => (
-        <p>
+        <p style={markedLine}>
           <Show
             when={pad.owner.kind === "user"}
             fallback={
               <button
                 type="button"
                 class="word"
+                style={wholeWord}
                 aria-label={`make ${pad.name} yours`}
                 onClick={() => props.onMakeYours(pad.name)}
               >
@@ -108,11 +110,14 @@ const PadRows = (props: {
               </button>
             }
           >
-            <span class="light">{ownerMark(pad.owner)}</span>
-          </Show>{" "}
+            <span class="light" style={wholeWord}>
+              {ownerMark(pad.owner)}
+            </span>
+          </Show>
           <button
             type="button"
-            style={{ all: "unset", cursor: "pointer" }}
+            title={pad.name}
+            style={{ all: "unset", cursor: "pointer", ...cutName }}
             onClick={() =>
               connected.drawer.open(() => (
                 <PadDrawer

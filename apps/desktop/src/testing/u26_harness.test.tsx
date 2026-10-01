@@ -182,6 +182,18 @@ describe("u26 the Daemon's rail methods", () => {
     expect([moved?.parent, moved?.order]).toEqual(["auth", 0]);
   });
 
+  it("u26_moving_a_node_to_a_later_index_puts_it_after_the_siblings_before_that_index", async () => {
+    const { app } = await daemon();
+
+    await app.rpc("rail.move", { id: "docs", parent: "backend", index: 2 });
+    const order = (await app.rpc("rail.tree", null))
+      .filter((node) => node.parent === "backend")
+      .sort((left, right) => left.order - right.order)
+      .map((node) => node.id);
+
+    expect(order).toEqual(["auth", "migrate", "docs", "shell"]);
+  });
+
   it("u26_killing_a_terminal_marks_it_exited_and_sends_terminal_exited", async () => {
     const { app, seen } = await daemon();
 

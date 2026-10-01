@@ -17,13 +17,14 @@ export const mountRail = async (
   tree: RailNode[],
   terminals: TerminalInfo[] = [],
   daemonExit: Accessor<DaemonExit | null> = () => null,
+  reducedMotion: () => boolean = () => false,
 ) => {
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => tree;
   app.handlers["terminal.list"] = () => terminals;
 
   const [now, setNow] = createSignal(NOW);
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now, daemonExit);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, reducedMotion, now, daemonExit);
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>
