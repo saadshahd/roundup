@@ -566,6 +566,21 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn a2_a_second_star_during_a_hold_keeps_the_first_stars_deadline() {
+        let mut w = Watched::start();
+        w.signal("PreToolUse");
+        assert_eq!(w.next_kind().await, Kind::Working);
+        let star = Instant::now();
+        w.star();
+        tokio::time::sleep(HOLD / 2).await;
+
+        w.star();
+
+        assert_eq!(w.next_kind().await, Kind::Idle);
+        assert_eq!(star.elapsed().as_millis(), HOLD.as_millis());
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn a2_an_exit_ends_the_watch_without_waiting_out_a_held_star() {
         let w = Watched::start();
         w.signal("PreToolUse");
