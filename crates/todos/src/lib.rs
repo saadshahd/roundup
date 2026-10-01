@@ -1,12 +1,14 @@
 //! Todos: items with blockers, in SQLite. Owner: todos Builder.
 
+mod cycle;
 mod store;
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use contracts::todo::{CreateParams, TodoId, UpdateParams};
+use contracts::todo::{CreateParams, SetBlockersParams, TodoId, UpdateParams};
 use contracts::{EventData, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
@@ -60,10 +62,55 @@ impl Todos {
         reply(&todo)
     }
 
+    fn complete(&self, ctx: &Ctx, p: TodoId) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let was_blocked = store.blocked_ids()?;
+        let todo = store.complete(p.id)?;
+        ctx.touch(Verb::Wrote, &item(p.id))?;
+        ctx.emit(EventData::TodoUpdated(todo.clone()));
+        emit_unblocked(ctx, &was_blocked, &store.blocked_ids()?);
+        reply(&todo)
+    }
+
+    fn set_blockers(&self, ctx: &Ctx, p: SetBlockersParams) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let was_blocked = store.blocked_ids()?;
+        store.get(p.id)?;
+        store.require_all(&p.blockers)?;
+        if cycle::creates_cycle(&store.edges()?, p.id, &p.blockers) {
+            return Err(RpcError::conflict(format!(
+                "blockers {:?} would make todo {} block itself",
+                p.blockers, p.id
+            )));
+        }
+        let todo = store.set_blockers(p.id, &p.blockers)?;
+        ctx.touch(Verb::Wrote, &item(p.id))?;
+        ctx.emit(EventData::TodoUpdated(todo.clone()));
+        emit_unblocked(ctx, &was_blocked, &store.blocked_ids()?);
+        reply(&todo)
+    }
+
+    fn delete(&self, ctx: &Ctx, p: TodoId) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let was_blocked = store.blocked_ids()?;
+        store.delete(p.id)?;
+        ctx.touch(Verb::Wrote, &item(p.id))?;
+        ctx.emit(EventData::TodoDeleted(p.clone()));
+        emit_unblocked(ctx, &was_blocked, &store.blocked_ids()?);
+        reply(&p)
+    }
+
     fn store(&self) -> Result<std::sync::MutexGuard<'_, Store>, RpcError> {
         self.store
             .lock()
             .map_err(|_| RpcError::internal("todo store poisoned"))
+    }
+}
+
+/// Emit `todo.unblocked` for every Todo that was blocked before and is not now.
+fn emit_unblocked(ctx: &Ctx, before: &BTreeSet<u32>, after: &BTreeSet<u32>) {
+    for id in before.difference(after) {
+        ctx.emit(EventData::TodoUnblocked(TodoId { id: *id }));
     }
 }
 
@@ -83,6 +130,9 @@ impl Module for Todos {
             "todo.list" => self.list(),
             "todo.get" => self.get(ctx, params(value)?),
             "todo.update" => self.update(ctx, params(value)?),
+            "todo.complete" => self.complete(ctx, params(value)?),
+            "todo.setBlockers" => self.set_blockers(ctx, params(value)?),
+            "todo.delete" => self.delete(ctx, params(value)?),
             _ => Err(RpcError::method_not_found(method)),
         }
     }
@@ -245,5 +295,104 @@ mod tests {
         );
         let err = h.call("todo.update", json!({"id": 1})).await.unwrap_err();
         assert_eq!(err.code, code::INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn t3_completing_a_blocker_unblocks_the_todo() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path());
+        h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        let two = h
+            .call("todo.create", json!({"title": "b", "blockers": [1]}))
+            .await
+            .unwrap();
+        assert_eq!(two["blocked"], true);
+        h.events();
+        h.call("todo.complete", json!({"id": 1})).await.unwrap();
+        assert_eq!(h.events(), ["todo.updated", "todo.unblocked"]);
+        assert_eq!(
+            h.call("todo.get", json!({"id": 2})).await.unwrap()["blocked"],
+            false
+        );
+        h.call("todo.complete", json!({"id": 1})).await.unwrap();
+        assert_eq!(h.events(), ["todo.updated"]);
+    }
+
+    #[tokio::test]
+    async fn t4_bad_blockers_are_rejected_and_change_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path());
+        h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        h.call("todo.create", json!({"title": "b", "blockers": [1]}))
+            .await
+            .unwrap();
+        let cycle = h
+            .call("todo.setBlockers", json!({"id": 1, "blockers": [2]}))
+            .await
+            .unwrap_err();
+        let own = h
+            .call("todo.setBlockers", json!({"id": 1, "blockers": [1]}))
+            .await
+            .unwrap_err();
+        let unknown = h
+            .call("todo.setBlockers", json!({"id": 2, "blockers": [9]}))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            (cycle.code, own.code, unknown.code),
+            (code::CONFLICT, code::CONFLICT, code::NOT_FOUND)
+        );
+        assert_eq!(
+            h.call("todo.get", json!({"id": 1})).await.unwrap()["blockers"],
+            json!([])
+        );
+        assert_eq!(
+            h.call("todo.get", json!({"id": 2})).await.unwrap()["blockers"],
+            json!([1])
+        );
+    }
+
+    #[tokio::test]
+    async fn t4_set_blockers_replaces_the_whole_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path());
+        for title in ["a", "b", "c"] {
+            h.call("todo.create", json!({"title": title}))
+                .await
+                .unwrap();
+        }
+        h.call("todo.setBlockers", json!({"id": 3, "blockers": [1]}))
+            .await
+            .unwrap();
+        let todo = h
+            .call("todo.setBlockers", json!({"id": 3, "blockers": [2]}))
+            .await
+            .unwrap();
+        assert_eq!(todo["blockers"], json!([2]));
+    }
+
+    #[tokio::test]
+    async fn t6_deleting_a_blocker_unblocks_the_todo() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path());
+        h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        h.call("todo.create", json!({"title": "b", "blockers": [1]}))
+            .await
+            .unwrap();
+        h.events();
+        h.call("todo.delete", json!({"id": 1})).await.unwrap();
+        assert_eq!(h.events(), ["todo.deleted", "todo.unblocked"]);
+        let two = h.call("todo.get", json!({"id": 2})).await.unwrap();
+        assert_eq!(
+            (two["blockers"].clone(), two["blocked"].clone()),
+            (json!([]), json!(false))
+        );
+        assert_eq!(
+            h.call("todo.delete", json!({"id": 1}))
+                .await
+                .unwrap_err()
+                .code,
+            code::NOT_FOUND
+        );
     }
 }
