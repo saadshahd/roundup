@@ -35,16 +35,19 @@ Every row points at a PR number; `gh pr list` is the truth when this file and it
 | #58 | swarm board and UX scenarios | none (docs) | `.work`, `scenarios` | reviewer approval; `loop/rules.sh vocab` | open, this PR |
 | #59 | boxd `review` subcommand | L-series (`loop.md`) | `loop/` | `just check`; the `l<n>_` tests it names | open |
 | none yet | `daemon-e2e` | D2–D4 | `crates/rup` (`tests/e2e*`) | `d2_`…`d4_` pass; D4 prints the measured MB | in flight; needs #55 merged to run |
-| none yet | `app-dev` | S1 (the `just app` dev window) | `crates/desktop` / `justfile` | `just app <project>` opens a working window | in flight (builder-app-dev) |
-| none yet | `harness` | the Chrome fake-Daemon harness (no scenario yet) | `apps/desktop` | QA can drive a fake Daemon in Chrome | in flight (builder-harness); needs a scenario before it is ready |
-| none yet | `ux-drawer`, `ux-pads`, `ux-daemon`, `ux-layout` | not yet mapped to V ids | `apps/desktop` | to be named by the Architect | in flight (builders builder-ux-drawer, builder-ux-pads, builder-ux-daemon, builder-ux-layout); their scenarios must be in `ux.md` before they merge |
+| none yet | `app-dev` | S1 (the `just app` dev window) | `crates/desktop` / `justfile` | `just app <project>` opens a working window | in flight (builder-app-dev), no PR open |
+| #60 | `ux-layout` | U23–U24 | `apps/desktop` | `u23_`, `u24_` tests pass | open |
+| #61 | `ux-daemon` | U25 | `apps/desktop` | `u25_` test passes | open |
+| #62 | `chrome-harness` | U26 | `apps/desktop` | `u26_` test passes; QA can drive the real App on a fake Daemon in Chrome | open |
+| none yet | `ux-drawer` | U27–U28 | `apps/desktop` | `u27_`, `u28_` tests pass | in flight (builder-ux-drawer), no PR open; ids reserved |
+| none yet | `ux-pads` | U29 | `apps/desktop` | `u29_` test passes | in flight (builder-ux-pads), no PR open; ids reserved |
 | none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | after #54, #55 and `daemon-e2e` (`ui-drag` excluded) |
 
 Critical path: #54 → #55 → `daemon-e2e` → MVP gate.
 
 ## UX enhancements (`scenarios/ux.md`)
 
-Start after the MVP gate unless the Architect says otherwise; ordered by expected value. Observer for every row: `just check` green, the `v<n>_` tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. Every row is a candidate: the Architect confirms it before it is dispatched. V6 amends U14 in `scenarios/ui.md`, in the `ux-empty` PR together with U14's test and code, so main never disagrees with its scenarios.
+Start after the MVP gate unless the Architect says otherwise; ordered by expected value. Observer for every row: `just check` green, the `v<n>_` tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. Every row is a candidate: the Architect confirms it before it is dispatched. V6 also edits U14 in the `ux-empty` PR, with the test `u14_with_nothing_selected_the_pane_is_empty` and the code, so main never disagrees with its scenarios.
 
 | Order | PR key | Scenarios | Module | Owns | Est. lines | Merge after | Extra observer |
 |---|---|---|---|---|---|---|---|
