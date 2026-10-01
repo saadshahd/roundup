@@ -1,0 +1,97 @@
+//! X1 output, X3 exit, X7 cwd and env.
+
+mod common;
+
+use std::sync::Arc;
+
+use common::{decode, sh, until_exit};
+use contracts::terminal::{SpawnParams, TerminalId, TerminalInfo};
+use contracts::{Actor, EventData};
+use provenance::Touches;
+use rpc::{Bus, Ctx, Module};
+use terminal::Terminals;
+
+fn open(dir: &tempfile::TempDir) -> (Terminals, Bus) {
+    let bus = Bus::new();
+    (Terminals::open(dir.path(), bus.clone()).unwrap(), bus)
+}
+
+#[tokio::test]
+async fn x1_output_reaches_a_subscribed_client() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, bus) = open(&dir);
+    let mut events = bus.subscribe();
+    let ctx = Ctx {
+        actor: Actor::user(),
+        bus: bus.clone(),
+        touches: Arc::new(Touches::open(&dir.path().join("provenance.db")).unwrap()),
+    };
+    let params = serde_json::to_value(sh(dir.path(), "echo hi")).unwrap();
+    let spawned = terminals
+        .call(&ctx, "terminal.spawn", params)
+        .await
+        .unwrap();
+    let id = serde_json::from_value::<TerminalId>(spawned).unwrap().id;
+    let mut printed = String::new();
+    while !printed.contains("hi") {
+        let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv())
+            .await
+            .expect("output in time")
+            .unwrap();
+        if let EventData::TerminalOutput(out) = event.data {
+            assert_eq!(out.id, id);
+            printed.push_str(&decode(&out.data));
+        }
+    }
+}
+
+#[tokio::test]
+async fn x3_exit_code_is_reported_and_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals.spawn(sh(dir.path(), "exit 3")).await.unwrap();
+    let (_, code) = until_exit(&mut spawned.events).await;
+    assert_eq!(code, Some(3));
+    let listed = terminals.list();
+    let info: &TerminalInfo = listed.iter().find(|t| t.id == spawned.id).unwrap();
+    assert!(!info.running);
+    assert_eq!(info.exit_code, Some(3));
+}
+
+#[tokio::test]
+async fn x3_a_program_killed_by_a_signal_has_no_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals.spawn(sh(dir.path(), "kill -9 $$")).await.unwrap();
+    let (_, code) = until_exit(&mut spawned.events).await;
+    assert_eq!(code, None);
+}
+
+#[tokio::test]
+async fn x7_program_runs_in_cwd_with_env_and_inherits_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut params: SpawnParams = sh(
+        dir.path(),
+        "pwd -P; printf 'v=%s\\n' \"$ROUNDUP_X7\"; printf 'p=%s\\n' \"$PATH\"",
+    );
+    params.env.insert("ROUNDUP_X7".into(), "set".into());
+    let mut spawned = terminals.spawn(params).await.unwrap();
+    let (printed, _) = until_exit(&mut spawned.events).await;
+    let cwd = dir.path().canonicalize().unwrap();
+    assert!(printed.contains(cwd.to_str().unwrap()), "{printed}");
+    assert!(printed.contains("v=set"), "{printed}");
+    assert!(
+        printed.contains(&format!("p={}", std::env::var("PATH").unwrap())),
+        "{printed}"
+    );
+}
+
+#[tokio::test]
+async fn x7_a_missing_cwd_is_the_callers_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let params = sh(&dir.path().join("absent"), "true");
+    let err = terminals.spawn(params).await.err().expect("spawn fails");
+    assert_eq!(err.code, rpc::code::INVALID_PARAMS);
+}

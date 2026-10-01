@@ -596,8 +596,10 @@ dependencies = [
  "base64",
  "contracts",
  "portable-pty",
+ "provenance",
  "rpc",
  "serde_json",
+ "tempfile",
  "tokio",
  "vt100",
 ]
