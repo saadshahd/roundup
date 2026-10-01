@@ -2,12 +2,9 @@ import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { ExitState } from "../state/rail";
 import { elapsed } from "../ink/elapsed";
+import { exitText } from "../ink/exitText";
 
 const UNPROMPTED: readonly Kind[] = ["blocked", "needs-you", "error"];
-
-/** U7's wording for a program that ended; also what U14's pane header repeats. */
-const exitText = (exit: ExitState): string =>
-  exit.kind === "code" ? `exited ${exit.code}` : exit.kind === "signal" ? "exited by signal" : "exited";
 
 /** The second line under a row: an Agent's label and age, an exited Terminal's ending, nothing for a running Terminal or a Group. */
 export const liveLineOf = (node: RailNode, exit: ExitState | null, now: number): string | null => {
