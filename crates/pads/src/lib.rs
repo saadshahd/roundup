@@ -1,17 +1,92 @@
 //! Pads: markdown notes, app-stored or as files. Owner: pads Builder.
 
+mod name;
+mod store;
+
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use rpc::{Bus, Ctx, Module, OpenError, RpcError};
+use contracts::pad::{AppendParams, CreateParams, Pad, PadName, WriteParams};
+use contracts::{EventData, Verb};
+use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
 
-pub struct Pads;
+use store::Store;
+
+pub struct Pads {
+    store: Mutex<Store>,
+}
 
 impl Pads {
     /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    pub fn open(_dir: &Path, _bus: Bus) -> Result<Self, OpenError> {
-        Ok(Self)
+    pub fn open(dir: &Path, _bus: Bus) -> Result<Self, OpenError> {
+        Ok(Self {
+            store: Mutex::new(Store::open(&dir.join("pads.db"))?),
+        })
+    }
+
+    fn create(&self, ctx: &Ctx, p: CreateParams) -> Result<Value, RpcError> {
+        name::validate(&p.name)?;
+        let pad = Pad {
+            name: p.name,
+            owner: ctx.actor.clone(),
+            text: p.text.unwrap_or_default(),
+            updated_at: now_ms(),
+        };
+        if !self.store()?.insert(&pad).map_err(RpcError::internal)? {
+            return Err(RpcError::conflict(format!("pad exists: {}", pad.name)));
+        }
+        wrote(ctx, &pad.name)?;
+        reply(&pad)
+    }
+
+    fn read(&self, ctx: &Ctx, p: PadName) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let pad = get(&store, &p.name)?;
+        ctx.touch(Verb::Read, &item(&pad.name))?;
+        reply(&pad)
+    }
+
+    fn list(&self) -> Result<Value, RpcError> {
+        reply(&self.store()?.list().map_err(RpcError::internal)?)
+    }
+
+    fn write(&self, ctx: &Ctx, p: WriteParams) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let pad = get(&store, &p.name)?;
+        if pad.owner != ctx.actor {
+            return Err(RpcError::forbidden(format!(
+                "only {} may rewrite pad {}",
+                pad.owner.id, pad.name
+            )));
+        }
+        store
+            .set_text(&pad.name, &p.text, now_ms())
+            .map_err(RpcError::internal)?;
+        wrote(ctx, &pad.name)?;
+        reply(&Pad {
+            text: p.text,
+            ..pad
+        })
+    }
+
+    fn append(&self, ctx: &Ctx, p: AppendParams) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let pad = get(&store, &p.name)?;
+        let text = pad.text + &p.text;
+        store
+            .set_text(&pad.name, &text, now_ms())
+            .map_err(RpcError::internal)?;
+        wrote(ctx, &pad.name)?;
+        reply(&Pad { text, ..pad })
+    }
+
+    fn store(&self) -> Result<std::sync::MutexGuard<'_, Store>, RpcError> {
+        self.store
+            .lock()
+            .map_err(|_| RpcError::internal("pad store poisoned"))
     }
 }
 
@@ -21,7 +96,43 @@ impl Module for Pads {
         &["pad"]
     }
 
-    async fn call(&self, _ctx: &Ctx, method: &str, _params: Value) -> Result<Value, RpcError> {
-        Err(RpcError::method_not_found(method))
+    async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
+        match method {
+            "pad.create" => self.create(ctx, params(value)?),
+            "pad.read" => self.read(ctx, params(value)?),
+            "pad.list" => self.list(),
+            "pad.write" => self.write(ctx, params(value)?),
+            "pad.append" => self.append(ctx, params(value)?),
+            _ => Err(RpcError::method_not_found(method)),
+        }
     }
+}
+
+/// Validates the name, then looks the Pad up.
+fn get(store: &Store, name: &str) -> Result<Pad, RpcError> {
+    name::validate(name)?;
+    store
+        .get(name)
+        .map_err(RpcError::internal)?
+        .ok_or_else(|| RpcError::not_found(format!("pad {name}")))
+}
+
+fn wrote(ctx: &Ctx, name: &str) -> Result<(), RpcError> {
+    ctx.touch(Verb::Wrote, &item(name))?;
+    ctx.emit(EventData::PadChanged(PadName { name: name.into() }));
+    Ok(())
+}
+
+fn item(name: &str) -> String {
+    format!("pad:{name}")
+}
+
+fn now_ms() -> i64 {
+    i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    )
+    .unwrap_or(i64::MAX)
 }
