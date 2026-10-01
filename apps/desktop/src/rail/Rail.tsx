@@ -3,7 +3,9 @@ import { ErrorLine } from "../ink/ErrorLine";
 import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
+import { createRailDrag } from "./drag";
 import { layoutRail } from "./layout";
+import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
 import "./rail.css";
 
@@ -11,7 +13,7 @@ const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
   new Set(set.has(member) ? [...set].filter((each) => each !== member) : [...set, member]);
 
 export const Rail = () => {
-  const { app, project, rail, now } = useConnectedProject();
+  const { app, project, rail, now, reducedMotion } = useConnectedProject();
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());
@@ -20,6 +22,7 @@ export const Rail = () => {
   const [wanted, setWanted] = createSignal<string | null>(null);
 
   const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now() }));
+  const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
 
@@ -32,6 +35,15 @@ export const Rail = () => {
       setFailure(error.message);
     }
   };
+
+  const [container, setContainer] = createSignal<HTMLElement>();
+
+  const drag = createRailDrag({
+    container,
+    nodes: () => rail.nodes,
+    rows: nodeRows,
+    onDrop: (id, { parent, index }) => void attempt(() => app.rpc("rail.move", { id, parent, index })),
+  });
 
   const [pending, setPending] = createSignal(false);
 
@@ -70,7 +82,11 @@ export const Rail = () => {
   });
 
   return (
-    <div class="rail-tree">
+    <div class="rail-tree" ref={setContainer} style={{
+        "--room": `${drag.state()?.room ?? 0}px`,
+        "--lift": `${drag.state()?.lift ?? 0}px`,
+        "--shift-ms": reducedMotion() ? "0ms" : "120ms",
+      }}>
       <div role="tree" aria-label="rail">
         <For each={keys()}>
           {(key) => (
@@ -103,6 +119,10 @@ export const Rail = () => {
                             void attempt(() => app.rpc("rail.rename", { id: view().node.id, name }))
                           }
                           onPromote={() => void attempt(() => app.rpc("rail.promote", { id: view().node.id }))}
+                          dragging={drag.active()}
+                          lifted={drag.state()?.lifted.has(view().node.id) ?? false}
+                          shift={drag.state()?.shifts.get(view().node.id) ?? 0}
+                          onPointerDown={(press) => drag.start(view().node.id, press)}
                         />
                       )}
                     </Show>
@@ -126,6 +146,15 @@ export const Rail = () => {
           )}
         </For>
       </div>
+      <Show when={drag.state()}>
+        {(dragging) => (
+          <div
+            class="drop-line"
+            aria-hidden="true"
+            style={{ top: `${dragging().top}px`, "--depth": dragging().drop.depth }}
+          />
+        )}
+      </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <div class="rail-actions">
         <button

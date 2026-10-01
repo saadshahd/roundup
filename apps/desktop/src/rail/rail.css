@@ -38,3 +38,36 @@
   min-width: 0;
   font: inherit;
 }
+
+.rail-tree {
+  position: relative;
+}
+
+.rail-row {
+  user-select: none;
+}
+
+.rail-row[data-lifted="true"] {
+  opacity: 0.4;
+  transform: translateY(var(--lift));
+  pointer-events: none;
+}
+
+.rail-row[data-shift="1"] {
+  transform: translateY(var(--room));
+  transition: transform var(--shift-ms) ease-out;
+}
+
+.rail-row[data-shift="-1"] {
+  transform: translateY(calc(-1 * var(--room)));
+  transition: transform var(--shift-ms) ease-out;
+}
+
+.drop-line {
+  position: absolute;
+  left: calc(var(--depth) * 2ch);
+  right: 0;
+  height: 2px;
+  background: var(--grey);
+  pointer-events: none;
+}

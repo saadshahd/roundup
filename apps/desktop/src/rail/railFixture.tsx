@@ -67,13 +67,17 @@ export const exitedTerminal = (id: string, exit_code: number | null): TerminalIn
 });
 
 /** The Rail on a fake Daemon whose tree is `tree` and whose clock is a signal the test can advance. */
-export const mountRail = async (tree: RailNode[], terminals: TerminalInfo[] = []) => {
+export const mountRail = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  reducedMotion: () => boolean = () => false,
+) => {
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => tree;
   app.handlers["terminal.list"] = () => terminals;
 
   const [now, setNow] = createSignal(NOW);
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, reducedMotion, now);
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>
