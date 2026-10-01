@@ -3,6 +3,7 @@ import type { Event as DaemonEvent } from "@contracts/Event";
 import type { OutputEvent } from "@contracts/terminal/OutputEvent";
 import { connectEvents } from "../app/events";
 import { createFakeApp } from "../testing/fakeApp";
+import { connectProject } from "./connectedProject";
 import { createOutputFeed, MAX_HELD_CHARS } from "./output";
 
 const output = (id: string, data: string): DaemonEvent => ({
@@ -81,5 +82,46 @@ describe("u11 output before the Pane mounts", () => {
     outputFeed.subscribe((event) => heard.push(event));
 
     expect(heard.map((event) => event.data.slice(-1))).toEqual(["2", "3", "="]);
+  });
+
+  it("u11_replayed_output_is_cleared_so_a_remount_does_not_replay_it_again", async () => {
+    const { app, output: outputFeed } = await feed();
+    app.emit(output("t1", "YQ=="));
+    outputFeed.subscribe(() => {})();
+    const remounted: string[] = [];
+
+    outputFeed.subscribe((event) => remounted.push(event.data));
+
+    expect(remounted).toEqual([]);
+  });
+
+  it("u11_the_bound_drops_the_oldest_of_the_terminal_that_overflowed_not_of_another", async () => {
+    const { app, output: outputFeed } = await feed();
+    const chunk = "A".repeat(MAX_HELD_CHARS / 2 - 1);
+    const heard: OutputEvent[] = [];
+
+    app.emit(output("t2", "Yg=="));
+    app.emit(output("t1", `${chunk}1`));
+    app.emit(output("t1", `${chunk}2`));
+    app.emit(output("t1", `${chunk}3`));
+    outputFeed.subscribe((event) => heard.push(event));
+
+    expect(heard.map((event) => `${event.id}${event.data.slice(-1)}`)).toEqual(["t2=", "t12", "t13"]);
+  });
+
+  it("u11_output_that_arrives_during_the_first_fetches_reaches_the_pane_that_mounts_later", async () => {
+    const app = createFakeApp();
+    app.handlers["rail.tree"] = () => {
+      app.emit(output("t1", "YQ=="));
+
+      return [];
+    };
+
+    const heard: string[] = [];
+
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+    connected.output.subscribe((event) => heard.push(event.data));
+
+    expect(heard).toEqual(["YQ=="]);
   });
 });

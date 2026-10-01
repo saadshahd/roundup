@@ -6,6 +6,7 @@ import type { Actor } from "@contracts/Actor";
 import type { Touch } from "@contracts/Touch";
 import type { Todo } from "@contracts/todo/Todo";
 import { Layout } from "../app/Layout";
+import { RpcError } from "../app/seam";
 import { createFakeApp } from "../testing/fakeApp";
 import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
 import { createDrawer } from "./drawer";
@@ -217,5 +218,25 @@ describe("u5 Drawer and last touch", () => {
     sheet.remove();
 
     expect(positions).toEqual(["absolute", "static"]);
+  });
+
+  it("u5_a_failed_read_shows_its_message_in_the_drawer_and_keeps_the_window", async () => {
+    const app = createFakeApp();
+    app.handlers["todo.get"] = () => Promise.reject(new RpcError(-32001, "no todo 3"));
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+
+    render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
+        <p>window</p>
+        <ItemDrawer item="todo:3" read={() => connected.app.rpc("todo.get", { id: 3 })}>
+          {(todo) => <p>{todo.title}</p>}
+        </ItemDrawer>
+      </ConnectedProjectContext.Provider>
+    ));
+
+    expect([(await screen.findByText("✕ no todo 3")).className, screen.getByText("window").textContent]).toEqual([
+      "ink",
+      "window",
+    ]);
   });
 });
