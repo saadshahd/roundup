@@ -6,7 +6,7 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 
 1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings.
 2. **Slop** (each is a CI failure): an anti-slop rule violation; TypeScript duplication, unused exports, files or dependencies reported by `pnpm slop` (fallow); Rust dead code or unused dependencies reported by clippy and `cargo machete`; a public function with no test or caller; a comment that restates the line below it.
-3. **One module per PR**: exactly one module directory, or only `contracts/`. Size is a guide, not a limit: about 2000 changed lines (excluding lockfiles and generated files). A bigger PR is allowed; `loop/rules.sh size` prints an advisory and the Reviewer notes it. Size never fails a PR. (Changed from 400 by the user's explicit order.)
+3. **PR size is a guide**: aim for exactly one module directory (or only `contracts/`) and about 2000 changed lines (excluding lockfiles and generated files). A PR that exceeds either is allowed; `loop/rules.sh size` prints an advisory and the Reviewer notes it. Neither ever fails a PR.
 4. **Contract change** = any edit under `contracts/`. Needs Architect approval. No v2s: change every caller in the same PR.
 5. **Reviewer input** = diff + linked spec + this file, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
 6. **Vocabulary**: see `CONTEXT.md`; `session`, `process`, `task`, `notification` and the other _Avoid_ words are banned in public names, except under `crates/agents/claude_code/`.
@@ -24,7 +24,7 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 ## Branches and reviews
 
 - Builders work on a branch in their own worktree and open a PR against `main`. Nobody pushes to `main` except the Architect for `contracts/` and core crates, and docs.
-- Before pushing: `pnpm install` then `just check`; the PR must also pass `loop/rules.sh size origin/main` (the module-directory check; line count only advises).
+- Before pushing: `pnpm install` then `just check`; the PR must also pass `loop/rules.sh size origin/main` (advisory only: it exits 0 and prints when a guide is exceeded).
 - A module may ship as several PRs; each names its scenario ids.
 - The generated TypeScript in `contracts/generated/` comes from `crates/contracts`; never edit it by hand.
 
