@@ -14,7 +14,8 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use contracts::terminal::{
-    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, WriteParams,
+    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, TitleEvent,
+    WriteParams,
 };
 use contracts::{Actor, EventData};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -64,6 +65,14 @@ impl Shared {
         self.bus.emit(Actor::daemon(), data);
     }
 
+    fn retitle(&self, number: u64, title: String) {
+        let id = number.to_string();
+        if let Some(entry) = self.table().get_mut(&number) {
+            entry.info.title = Some(title.clone());
+        }
+        self.publish(number, EventData::TerminalTitle(TitleEvent { id, title }));
+    }
+
     fn finish(&self, number: u64, code: Option<i32>) {
         let id = number.to_string();
         if let Some(entry) = self.table().get_mut(&number) {
@@ -102,6 +111,7 @@ impl Terminals {
         if !Path::new(&params.cwd).is_dir() {
             return Err(invalid(format!("cwd is not a directory: {}", params.cwd)));
         }
+        let size = (params.rows, params.cols);
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: params.rows,
@@ -150,7 +160,7 @@ impl Terminals {
         let shared = Arc::clone(&self.shared);
         std::thread::Builder::new()
             .name(format!("terminal-{number}"))
-            .spawn(move || pump(&shared, number, reader, child))
+            .spawn(move || pump(&shared, number, reader, child, size))
             .map_err(RpcError::internal)?;
         Ok(Spawned {
             id: number.to_string(),
@@ -210,14 +220,26 @@ impl Terminals {
     }
 }
 
+/// Collects the window titles (OSC 0 and 2) the parser sees; vt100 stitches sequences split across reads.
+#[derive(Default)]
+struct Titles(Vec<String>);
+
+impl vt100::Callbacks for Titles {
+    fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
+        self.0.push(String::from_utf8_lossy(title).into_owned());
+    }
+}
+
 /// Read until the program closes the PTY, publishing each chunk, then report how it ended.
 fn pump(
     shared: &Shared,
     number: u64,
     mut reader: Box<dyn Read + Send>,
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
+    (rows, cols): (u16, u16),
 ) {
     let id = number.to_string();
+    let mut parser = vt100::Parser::new_with_callbacks(rows, cols, 0, Titles::default());
     let mut chunk = [0u8; READ_CHUNK];
     // Linux reports the closed PTY as an error, macOS as end of file: both mean "no more output".
     while let Ok(read) = reader.read(&mut chunk) {
@@ -232,6 +254,10 @@ fn pump(
                 data,
             }),
         );
+        parser.process(&chunk[..read]);
+        for title in std::mem::take(&mut parser.callbacks_mut().0) {
+            shared.retitle(number, title);
+        }
     }
     let code = child
         .wait()

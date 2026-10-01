@@ -3,3 +3,4 @@
 mod common;
 mod control;
 mod spawn;
+mod title;
