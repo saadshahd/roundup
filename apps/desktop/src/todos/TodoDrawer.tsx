@@ -53,8 +53,12 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
         setAnswered(await app.rpc("todo.setBlockers", { id: props.id, blockers: [...base.blockers, blocker] }));
       });
 
-    // A bug that rejects one pick must surface, and must not silently skip the picks behind it.
-    picks = picks.then(pick, pick);
+    // A bug that rejects one pick is reported, and the picks behind it still run.
+    picks = picks.then(pick, (bug) => {
+      reportError(bug);
+
+      return pick();
+    });
   };
 
   return (

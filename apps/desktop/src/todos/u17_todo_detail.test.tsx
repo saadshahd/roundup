@@ -1,9 +1,12 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
 import { callsTo, mountTodos, todo, todoEvent, USER } from "./testHarness";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const blocked = () => todo(5, { title: "session store", body: "Move the cache.", blocked: true, blockers: [4] });
 
@@ -329,5 +332,30 @@ describe("u17 Todo detail", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /#5/ })).toBeNull());
 
     expect(within(drawer()).queryByText(/was deleted/)).toBeNull();
+  });
+
+  it("u17_a_pick_that_fails_with_a_bug_is_reported_and_the_next_pick_still_runs", async () => {
+    const { app } = await openDrawerOf(/#5/);
+    const reportError = vi.fn();
+
+    vi.stubGlobal("reportError", reportError);
+    app.handlers["todo.setBlockers"] = (() => {
+      let calls = 0;
+
+      return async ({ blockers }) => {
+        calls += 1;
+
+        if (calls === 1) throw "boom";
+
+        return { ...blocked(), blockers };
+      };
+    })();
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
+
+    await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
+    expect(reportError).toHaveBeenCalledWith("boom");
   });
 });

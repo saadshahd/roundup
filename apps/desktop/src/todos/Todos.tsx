@@ -9,8 +9,6 @@ import { createTodosState } from "./state";
 import { TodoDrawer } from "./TodoDrawer";
 import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
 
-type CreateField = { kind: "closed" } | { kind: "typing" } | { kind: "failed"; message: string };
-
 const OpenRow = (props: { todo: Todo; known: ReadonlyMap<number, Todo>; onOpen: (todo: Todo) => void }) => {
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
 
@@ -32,21 +30,20 @@ const OpenRow = (props: { todo: Todo; known: ReadonlyMap<number, Todo>; onOpen: 
 export const Todos = () => {
   const connected = useConnectedProject();
   const todos = createTodosState(connected.app, connected.events);
-  const [field, setField] = createSignal<CreateField>({ kind: "closed" });
+  const [typing, setTyping] = createSignal(false);
+  const [createFailure, setCreateFailure] = createSignal<string | null>(null);
   const [unfolded, setUnfolded] = createSignal(false);
   const open = createMemo(() => openTodos(todos.all()));
   const done = createMemo(() => doneTodos(todos.all()));
 
   // The field closes before the call so a second Enter cannot create the Todo twice.
   const create = async (title: string) => {
-    setField({ kind: "closed" });
+    setTyping(false);
+    setCreateFailure(null);
 
     if (title === "") return;
 
-    const message = await failureOf(() => connected.app.rpc("todo.create", { title, body: null, blockers: null }));
-
-    // A field the user opened since must keep its typed text.
-    if (message !== null) setField((current) => (current.kind === "closed" ? { kind: "failed", message } : current));
+    setCreateFailure(await failureOf(() => connected.app.rpc("todo.create", { title, body: null, blockers: null })));
   };
 
   const show = (todo: Todo) => connected.drawer.open(() => <TodoDrawer id={todo.id} todos={todos} />);
@@ -55,26 +52,27 @@ export const Todos = () => {
     <section aria-label="todos">
       <p>
         todos{" "}
-        <button type="button" class="word" onClick={() => setField((current) => (current.kind === "typing" ? current : { kind: "typing" }))}>
+        <button type="button" class="word" onClick={() => {
+            setCreateFailure(null);
+            setTyping(true);
+          }}>
           +
         </button>
       </p>
       <Show when={todos.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
-      <Show when={field()} keyed>
-        {(current) =>
-          current.kind === "typing" ? (
-            <input
-              aria-label="new todo title"
-              ref={(input) => queueMicrotask(() => input.focus())}
-              onKeyDown={(key) => {
-                if (key.key === "Enter") void create(key.currentTarget.value.trim());
-                else if (key.key === "Escape") setField({ kind: "closed" });
-              }}
-            />
-          ) : current.kind === "failed" ? (
-            <ErrorLine message={current.message} />
-          ) : null
-        }
+      <Show when={createFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <Show when={typing()}>
+        <input
+          aria-label="new todo title"
+          ref={(input) => queueMicrotask(() => input.focus())}
+          onKeyDown={(key) => {
+            if (key.key === "Enter") void create(key.currentTarget.value.trim());
+            else if (key.key === "Escape") {
+              setTyping(false);
+              setCreateFailure(null);
+            }
+          }}
+        />
       </Show>
       <For each={open()}>
         {(todo) => (
