@@ -24,7 +24,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | Role | Does | Never |
 |---|---|---|
 | Architect | Owns `contracts/`, `CONTEXT.md`, ADRs. Approves contract changes. Turns recurring failures into new rules (see Loop on the loop). | Writes feature code. |
-| Builder | Failing test first, then code, in one worktree, one module. Opens a small PR. | Reviews its own PR. |
+| Builder | Failing test first, then code, in one worktree, one module where you can. Opens a PR. | Reviews its own PR. |
 | Reviewer | Reads the diff, the linked scenario and `AGENTS.md`, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
 | Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
 | QA | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
@@ -38,7 +38,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 |---|---|---|---|---|
 | 1 | Pick the next scenario | Driver | laptop | the scenario file exists |
 | 2 | Write the failing test, then the code | Builder | local worktree, or a boxd VM when unattended (`loop/boxd.sh build`) | `just check` passes. That the test failed first is not machine-checked (gap) |
-| 3 | Open a small PR with commit trailers `Author-Agent: <id>` | Builder | laptop | `loop/rules.sh size` (rule 3) |
+| 3 | Open a PR (one module, about 2000 lines) with commit trailers `Author-Agent: <id>` | Builder | laptop | `loop/rules.sh size` (rule 3) |
 | 4 | CI | GitHub | macOS runner | `check` job (`just check`: fmt, clippy, nextest, machete, oxlint + anti-slop, tsc, fallow) |
 | 5 | Review | Reviewer, a different id | laptop | an empty commit carrying only `Reviewed-by-Agent: <id>`; `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities) |
 | 6 | Merge when rule 1 holds | Driver | laptop | all checks green |
@@ -51,7 +51,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 |---|---|---|
 | 1 Done | `check` green (CI); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml` (not a required check, so it does not yet block a merge); anti-slop via `pnpm lint` | e2e scenarios do not exist yet |
 | 2 Slop | `pnpm lint` (anti-slop), `pnpm slop` (fallow), `cargo machete crates`, clippy | "public function with no test or caller" and "comment restates the line below" have no machine check beyond anti-slop's own rules |
-| 3 Small PR | `loop/rules.sh size` | "generated files" means `*.lock`, `pnpm-lock.yaml`, `*/generated/*`; extend as generators appear |
+| 3 PR size guide | `loop/rules.sh size` (advisory only: prints when a PR spans more than one module directory or exceeds about 2000 changed lines; exits 0 whatever the size; an unknown base ref still fails) | "generated files" means `*.lock`, `pnpm-lock.yaml`, `*/generated/*`; extend as generators appear |
 | 4 Contract change | none | needs CODEOWNERS plus a required review. That is a GitHub setting; ask the user first |
 | 5 Reviewer input | by construction in `.agents/reviewer.md` and the Driver's invocation | not machine-checkable |
 | 6 Vocabulary | `loop/rules.sh vocab`: Avoid words from `CONTEXT.md` against public Rust items, TS exports and `contracts/` text | UI strings and RPC names outside `contracts/` are not scanned; enum variants are not scanned |
