@@ -6,9 +6,11 @@
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, mpsc};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -18,6 +20,8 @@ use contracts::terminal::{
     WriteParams,
 };
 use contracts::{Actor, EventData};
+use nix::sys::signal::{Signal, kill};
+use nix::unistd::Pid;
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
@@ -25,6 +29,11 @@ use tokio::sync::broadcast;
 
 /// Events a slow subscriber may fall behind by before it is told it lagged (it never blocks the reader).
 const EVENT_BACKLOG: usize = 1024;
+/// How long a program gets to act on SIGHUP before `kill` sends SIGKILL.
+const HANGUP_GRACE: Duration = Duration::from_millis(500);
+/// The parser only listens for titles, so its screen is small and fixed however big the window is.
+const TITLE_ROWS: u16 = 24;
+const TITLE_COLS: u16 = 80;
 const READ_CHUNK: usize = 8192;
 
 /// A freshly spawned Terminal: its id and every event it emits, from the first byte of output.
@@ -38,6 +47,7 @@ struct Handle {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    pid: Option<u32>,
 }
 
 struct Entry {
@@ -111,14 +121,8 @@ impl Terminals {
         if !Path::new(&params.cwd).is_dir() {
             return Err(invalid(format!("cwd is not a directory: {}", params.cwd)));
         }
-        let size = (params.rows, params.cols);
         let pair = native_pty_system()
-            .openpty(PtySize {
-                rows: params.rows,
-                cols: params.cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
+            .openpty(window(params.cols, params.rows)?)
             .map_err(RpcError::internal)?;
         let mut command = match &params.command {
             Some(argv) => CommandBuilder::from_argv(argv.iter().map(Into::into).collect()),
@@ -128,22 +132,35 @@ impl Terminals {
         for (name, value) in &params.env {
             command.env(name, value);
         }
-        // Everything fallible that needs no program comes first, so a failure leaves nothing running.
+        // The reader thread starts before the program and receives the child over a channel, so
+        // no later failure can leave a program that nobody waits for.
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
+        let writer = pair.master.take_writer().map_err(RpcError::internal)?;
+        let number = self.next.fetch_add(1, Ordering::Relaxed);
+        let (arrival, child_arrives) = mpsc::channel();
+        let shared = Arc::clone(&self.shared);
+        std::thread::Builder::new()
+            .name(format!("terminal-{number}"))
+            .spawn(move || {
+                // No child means the program never started: nothing to report.
+                if let Ok(child) = child_arrives.recv() {
+                    pump(&shared, number, reader, child);
+                }
+            })
+            .map_err(RpcError::internal)?;
         let child = pair
             .slave
             .spawn_command(command)
             .map_err(RpcError::internal)?;
-        let mut killer = child.clone_killer();
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
         let handle = Handle {
-            writer: Mutex::new(pair.master.take_writer().map_err(RpcError::internal)?),
+            writer: Mutex::new(writer),
             killer: Mutex::new(child.clone_killer()),
+            pid: child.process_id(),
             master: Mutex::new(pair.master),
         };
 
-        let number = self.next.fetch_add(1, Ordering::Relaxed);
         let (sender, events) = broadcast::channel(EVENT_BACKLOG);
         self.shared.table().insert(
             number,
@@ -159,17 +176,9 @@ impl Terminals {
                 handle: Some(Arc::new(handle)),
             },
         );
-        let shared = Arc::clone(&self.shared);
-        let pump = std::thread::Builder::new()
-            .name(format!("terminal-{number}"))
-            .spawn(move || pump(&shared, number, reader, child, size));
-        if let Err(err) = pump {
-            self.shared.table().remove(&number);
-            if let Err(kill) = killer.kill() {
-                eprintln!("terminal {number}: cannot stop program after failed start: {kill}");
-            }
-            return Err(RpcError::internal(err));
-        }
+        arrival
+            .send(child)
+            .expect("the reader thread waits for its child");
         Ok(Spawned {
             id: number.to_string(),
             events,
@@ -192,23 +201,36 @@ impl Terminals {
 
     /// Tell a running Terminal its window is now `cols` x `rows`. `NOT_FOUND` as for [`Terminals::write`].
     pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), RpcError> {
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
+        let size = window(cols, rows)?;
         let handle = self.running(id)?;
         let master = handle.master.lock().expect("terminal master lock");
         master.resize(size).map_err(RpcError::internal)
     }
 
-    /// Stop a running Terminal's program. It stays listed as exited once `terminal.exited` is emitted.
+    /// Stop a running Terminal's program: SIGHUP, then SIGKILL if it is still running after a grace
+    /// period. It stays listed as exited once `terminal.exited` is emitted.
     /// `NOT_FOUND` as for [`Terminals::write`].
     pub async fn kill(&self, id: &str) -> Result<(), RpcError> {
         let handle = self.running(id)?;
-        let mut killer = handle.killer.lock().expect("terminal killer lock");
-        killer.kill().map_err(RpcError::internal)
+        handle
+            .killer
+            .lock()
+            .expect("terminal killer lock")
+            .kill()
+            .map_err(RpcError::internal)?;
+        if let Some(pid) = handle.pid.and_then(|pid| i32::try_from(pid).ok()) {
+            // The Terminal drops its handle when the program is reaped, so a dead handle means done.
+            let alive = Arc::downgrade(&handle);
+            tokio::spawn(async move {
+                tokio::time::sleep(HANGUP_GRACE).await;
+                if alive.upgrade().is_some()
+                    && let Err(err) = kill(Pid::from_raw(pid), Signal::SIGKILL)
+                {
+                    eprintln!("terminal: cannot SIGKILL program {pid}: {err}");
+                }
+            });
+        }
+        Ok(())
     }
 
     fn running(&self, id: &str) -> Result<Arc<Handle>, RpcError> {
@@ -244,10 +266,14 @@ fn pump(
     number: u64,
     mut reader: Box<dyn Read + Send>,
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
-    (rows, cols): (u16, u16),
 ) {
     let id = number.to_string();
-    let mut parser = vt100::Parser::new_with_callbacks(rows, cols, 0, Titles::default());
+    let mut parser = Some(vt100::Parser::new_with_callbacks(
+        TITLE_ROWS,
+        TITLE_COLS,
+        0,
+        Titles::default(),
+    ));
     let mut chunk = [0u8; READ_CHUNK];
     // Linux reports the closed PTY as an error, macOS as end of file: both mean "no more output".
     while let Ok(read) = reader.read(&mut chunk) {
@@ -262,9 +288,22 @@ fn pump(
                 data,
             }),
         );
-        parser.process(&chunk[..read]);
-        for title in std::mem::take(&mut parser.callbacks_mut().0) {
-            shared.retitle(number, title);
+        // A parser bug must cost titles, never the reader: the Terminal has to report its exit.
+        let parsed = parser.as_mut().map(|parser| {
+            catch_unwind(AssertUnwindSafe(|| {
+                parser.process(&chunk[..read]);
+                std::mem::take(&mut parser.callbacks_mut().0)
+            }))
+        });
+        match parsed {
+            Some(Ok(titles)) => titles
+                .into_iter()
+                .for_each(|title| shared.retitle(number, title)),
+            Some(Err(_)) => {
+                eprintln!("terminal {number}: title parser panicked; titles are off");
+                parser = None;
+            }
+            None => {}
         }
     }
     let code = match child.wait() {
@@ -277,6 +316,18 @@ fn pump(
         }
     };
     shared.finish(number, code);
+}
+
+fn window(cols: u16, rows: u16) -> Result<PtySize, RpcError> {
+    if cols == 0 || rows == 0 {
+        return Err(invalid("cols and rows must be at least 1"));
+    }
+    Ok(PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    })
 }
 
 fn invalid(message: impl Into<String>) -> RpcError {
