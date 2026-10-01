@@ -81,12 +81,16 @@ impl Fixture {
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
-        let ctx = Ctx {
+        self.agents.call(&self.ctx(), method, params).await
+    }
+
+    /// A call from the user.
+    pub fn ctx(&self) -> Ctx {
+        Ctx {
             actor: Actor::user(),
             bus: self.bus.clone(),
             touches: Arc::new(Touches::in_memory().unwrap()),
-        };
-        self.agents.call(&ctx, method, params).await
+        }
     }
 
     pub async fn spawn(

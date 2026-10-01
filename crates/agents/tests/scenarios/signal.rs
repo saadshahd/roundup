@@ -2,7 +2,7 @@
 
 use contracts::agent::StatusEvent;
 use contracts::{EventData, Kind};
-use rpc::code;
+use rpc::{Module, code};
 use serde_json::{Value, json};
 
 use crate::common::{Fixture, status_of, until_file};
@@ -41,6 +41,61 @@ async fn a5_a_signal_updates_the_status_and_announces_it_once() {
     );
     assert_eq!(status_of(&f.tree().await, &node.id).kind, Kind::Idle);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a5_status_events_arrive_in_the_order_the_status_changed() {
+    let f = std::sync::Arc::new(Fixture::running("sleep 30"));
+    let node = f.spawn(None, None).await.unwrap();
+    let mut events = f.bus.subscribe();
+    // A thread of its own: a signalling task never yields, so a reader task could starve and lag.
+    let reader = std::thread::spawn(move || {
+        let mut kinds = vec![];
+        loop {
+            match events.blocking_recv().expect("the reader keeps up").data {
+                EventData::AgentStatus(status) => kinds.push(status.status.kind),
+                EventData::RailChanged => return kinds,
+                _ => {}
+            }
+        }
+    });
+    let signallers: Vec<_> = (0..4)
+        .map(|_| {
+            let (f, id) = (std::sync::Arc::clone(&f), node.id.clone());
+            tokio::spawn(async move {
+                // One call context per task keeps each call short, so the tasks contend.
+                let ctx = f.ctx();
+                for event in ["Stop", "UserPromptSubmit"].repeat(SIGNALS / 2) {
+                    let payload = json!({"hook_event_name": event});
+                    let params = json!({"id": id, "payload": payload});
+                    f.agents.call(&ctx, "agent.signal", params).await.unwrap();
+                }
+            })
+        })
+        .collect();
+    for signaller in signallers {
+        signaller.await.unwrap();
+    }
+    f.bus.emit(contracts::Actor::user(), EventData::RailChanged);
+
+    let kinds = reader.join().unwrap();
+    // Every announced change alternates idle and working, so two equal neighbours mean two
+    // announcements crossed.
+    let crossed = kinds.windows(2).filter(|pair| pair[0] == pair[1]).count();
+    assert_eq!(
+        crossed,
+        0,
+        "{crossed} crossed pairs in {} events",
+        kinds.len()
+    );
+    assert_eq!(
+        kinds.last(),
+        Some(&status_of(&f.tree().await, &node.id).kind)
+    );
+}
+
+/// Per signalling task in the ordering test: with the announcement made after the lock, every one
+/// of 20 runs crossed 24 to 146 pairs.
+const SIGNALS: usize = 1000;
 
 #[tokio::test]
 async fn a5_a_payload_the_adapter_does_not_recognise_is_ignored() {

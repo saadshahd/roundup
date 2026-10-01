@@ -99,7 +99,7 @@ impl Shared {
         id: &str,
         observation: Observation,
     ) -> Result<Option<i64>, RpcError> {
-        let (changed, prompt, tick_at) = {
+        let (prompt, tick_at) = {
             let mut runs = self.runs();
             let run = runs
                 .get_mut(id)
@@ -109,20 +109,21 @@ impl Shared {
             let idle = changed
                 .as_ref()
                 .is_some_and(|status| status.kind == Kind::Idle);
+            // Announced while `runs` is held, so announcements leave in the order the Status
+            // changed; `emit` never blocks.
+            if let Some(status) = changed {
+                let event = StatusEvent {
+                    id: id.to_owned(),
+                    status,
+                };
+                self.bus.emit(actor, EventData::AgentStatus(event));
+            }
             let prompt = run.prompt.take_if(|_| idle);
             (
-                changed,
                 prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
                 run.adapter.tick_at(),
             )
         };
-        if let Some(status) = changed {
-            let event = StatusEvent {
-                id: id.to_owned(),
-                status,
-            };
-            self.bus.emit(actor, EventData::AgentStatus(event));
-        }
         if let Some((terminal_id, prompt)) = prompt {
             tokio::spawn(type_prompt(
                 Arc::clone(&self.terminals),
