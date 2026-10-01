@@ -9,6 +9,9 @@ use serde_json::{Value, json};
 /// How long `rup signal` waits for the Daemon: well inside the 5 s Claude Code gives a hook.
 const SIGNAL_DEADLINE: Duration = Duration::from_secs(1);
 
+/// What `rup signal` says when it cannot know whether the Daemon took the Signal.
+const MAYBE_ARRIVED: &str = "the Signal may or may not have arrived";
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -66,7 +69,7 @@ async fn signal(agent_id: &str) -> Result<(), String> {
         .await
         .map_err(|_| {
             format!(
-                "rupd did not answer within {} s; the Signal may or may not have arrived",
+                "rupd did not answer within {} s; {MAYBE_ARRIVED}",
                 SIGNAL_DEADLINE.as_secs()
             )
         })?
@@ -92,5 +95,10 @@ async fn deliver(agent_id: &str, payload: Value) -> Result<(), String> {
         .request("agent.signal", signal)
         .await
         .map(drop)
-        .map_err(|err| err.to_string())
+        .map_err(|err| match err.code {
+            // A connection that closed mid-call, or a Daemon that failed inside: either way the
+            // Signal may have been applied.
+            rpc::code::INTERNAL => format!("{err}; {MAYBE_ARRIVED}"),
+            _ => err.to_string(),
+        })
 }

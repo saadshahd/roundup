@@ -93,9 +93,9 @@ async fn a5_status_events_arrive_in_the_order_the_status_changed() {
     );
 }
 
-/// Per signalling task in the ordering test: with the announcement made after the lock, every one
-/// of 20 runs crossed 24 to 146 pairs.
-const SIGNALS: usize = 1000;
+/// Per signalling task in the ordering test. Four tasks announce at most 4 x 250 = 1000 changes,
+/// fewer than the Bus holds (1024), so the reader cannot lag however late it is scheduled.
+const SIGNALS: usize = 250;
 
 #[tokio::test]
 async fn a5_a_payload_the_adapter_does_not_recognise_is_ignored() {

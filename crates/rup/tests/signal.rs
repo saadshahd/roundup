@@ -180,11 +180,44 @@ fn a4_signal_to_a_daemon_that_never_answers_exits_1_in_time() {
         }
     });
 
+    let started = Instant::now();
     let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("may or may not"), "{stderr}");
+    // Well inside the hook timeout, so a slow Daemon never costs Claude Code its hook.
+    assert!(
+        started.elapsed() < HOOK_TIMEOUT / 2,
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arrived() {
+    use std::io::{BufRead, BufReader};
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("closing.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut lines = BufReader::new(&stream).lines();
+        let identify: serde_json::Value =
+            serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+        let reply = json!({"jsonrpc": "2.0", "id": identify["id"], "result": null});
+        (&stream)
+            .write_all(format!("{reply}\n").as_bytes())
+            .unwrap();
+        // The agent.signal request is read, then the connection drops unanswered.
+        lines.next().unwrap().unwrap();
+    });
+
+    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("may or may not have arrived"), "{stderr}");
 }
 
 #[test]
