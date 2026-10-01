@@ -45,8 +45,9 @@ expect_stderr advisory "L1 size: above the guide prints an advisory" rules size
 new_repo; seq 1 2000 >crates/big.txt; commit x
 expect pass "L1 size: at the guide passes" rules size
 expect_stderr quiet "L1 size: at the guide prints nothing" rules size
-new_repo; mkdir -p a/b; seq 1 900 >a/b/pnpm-lock.yaml; echo x >crates/x.txt; commit x
+new_repo; mkdir -p a/b; seq 1 2100 >a/b/pnpm-lock.yaml; echo x >crates/x.txt; commit x
 expect pass "L1 size: nested lockfile is excluded" rules size
+expect_stderr quiet "L1 size: nested lockfile is excluded and silent" rules size
 new_repo; echo x >crates/x.txt; echo y >contracts/y.txt; commit x
 expect pass "L1 size: two module directories" rules size
 expect_stderr advisory "L1 size: two module directories prints an advisory" rules size
@@ -56,7 +57,7 @@ expect_stderr advisory "L1 size: binary in a second module prints an advisory" r
 new_repo; mkdir -p docs; echo hello >docs/x.md; git add -A; git commit -qm docs; git checkout -q main; git merge -q work 2>/dev/null || true; git checkout -q -b work2; git mv docs/x.md crates/x.md; commit mv
 expect pass "L1 size: rename across modules counts both" rules size
 expect_stderr advisory "L1 size: rename across modules counts both prints an advisory" rules size
-new_repo; mkdir -p crates/m/tests; seq 1 300 >crates/m/tests/a.rs; git add -A; git commit -qm base; git checkout -q main; git merge -q work 2>/dev/null || true; git checkout -q -b work3; mkdir -p crates/m/tests/scenarios; git mv crates/m/tests/a.rs crates/m/tests/scenarios/a.rs; seq 1 40 >crates/m/new.rs; commit mv
+new_repo; mkdir -p crates/m/tests; seq 1 1100 >crates/m/tests/a.rs; git add -A; git commit -qm base; git checkout -q main; git merge -q work 2>/dev/null || true; git checkout -q -b work3; mkdir -p crates/m/tests/scenarios; git mv crates/m/tests/a.rs crates/m/tests/scenarios/a.rs; seq 1 40 >crates/m/new.rs; commit mv
 expect pass "L1 size: a move inside one module counts only its new lines" rules size
 expect_stderr quiet "L1 size: a move inside one module is silent" rules size
 new_repo
