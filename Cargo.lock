@@ -311,6 +311,7 @@ dependencies = [
  "async-trait",
  "caseless",
  "contracts",
+ "libc",
  "provenance",
  "rpc",
  "rusqlite",
