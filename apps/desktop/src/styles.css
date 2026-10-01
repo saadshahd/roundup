@@ -107,3 +107,7 @@ p {
   top: 8px;
   right: 16px;
 }
+
+.header .ink {
+  display: inline;
+}
