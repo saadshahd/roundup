@@ -3,17 +3,20 @@ import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Actor } from "@contracts/Actor";
 import type { Touch } from "@contracts/Touch";
+import type { Todo } from "@contracts/todo/Todo";
 import { Layout } from "../app/Layout";
 import { createFakeApp } from "../testing/fakeApp";
 import { WorkspaceContext, openWorkspace } from "../state/workspace";
 import { createDrawer } from "./drawer";
 import { DrawerHost } from "./DrawerHost";
-import { LastTouch } from "./LastTouch";
+import { ItemDrawer } from "./ItemDrawer";
 import { lastTouchLine } from "./touchLine";
 
 const USER: Actor = { kind: "user", id: "you", parent: null };
 
 const AGENT: Actor = { kind: "agent", id: "a", parent: null };
+
+const TODO: Todo = { id: 3, title: "refresh tokens", body: "", done: false, blockers: [], blocked: false, created_at: 0 };
 
 const names = (actor: Actor) => (actor.kind === "agent" ? "auth-refactor" : "you");
 
@@ -148,22 +151,48 @@ describe("u5 Drawer and last touch", () => {
     expect(lastTouchLine([], names)).toBeNull();
   });
 
-  it("u5_the_last_touch_component_reads_provenance_history_for_its_item", async () => {
+  it("u5_an_item_drawer_calls_provenance_history_before_its_own_read", async () => {
     const app = createFakeApp();
     app.handlers["rail.tree"] = () => [];
     app.handlers["terminal.list"] = () => [];
-    app.handlers["provenance.history"] = () => [touch(USER, "wrote", at(8, 7))];
+    app.handlers["provenance.history"] = () => [];
+    app.handlers["todo.get"] = () => TODO;
     const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
 
     render(() => (
       <WorkspaceContext.Provider value={workspace}>
-        <LastTouch item="todo:3" />
+        <ItemDrawer item="todo:3" read={() => workspace.app.rpc("todo.get", { id: 3 })}>
+          {(todo) => <p>{todo.title}</p>}
+        </ItemDrawer>
+      </WorkspaceContext.Provider>
+    ));
+    await screen.findByText(TODO.title);
+
+    expect(app.calls.map((call) => call.method)).toEqual(["rail.tree", "terminal.list", "provenance.history", "todo.get"]);
+  });
+
+  it("u5_the_last_touch_line_is_from_the_history_fetched_before_the_read", async () => {
+    const app = createFakeApp();
+    app.handlers["rail.tree"] = () => [];
+    app.handlers["terminal.list"] = () => [];
+    const history = [touch(AGENT, "wrote", at(8, 7))];
+    app.handlers["provenance.history"] = () => [...history];
+    app.handlers["todo.get"] = () => {
+      history.push(touch(USER, "read", at(23, 59)));
+
+      return TODO;
+    };
+
+    const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
+
+    render(() => (
+      <WorkspaceContext.Provider value={workspace}>
+        <ItemDrawer item="todo:3" read={() => workspace.app.rpc("todo.get", { id: 3 })}>
+          {(todo) => <p>{todo.title}</p>}
+        </ItemDrawer>
       </WorkspaceContext.Provider>
     ));
 
-    expect((await screen.findByText(/^last/)).textContent).toBe("last  you wrote 08:07");
-    expect(app.calls.filter((call) => call.method === "provenance.history")).toEqual([
-      { method: "provenance.history", params: { item: "todo:3" } },
-    ]);
+    expect((await screen.findByText(/^last/)).textContent).toBe("last  a wrote 08:07");
   });
 });

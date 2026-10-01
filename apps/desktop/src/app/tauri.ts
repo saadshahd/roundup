@@ -1,7 +1,8 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import * as v from "valibot";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import { INTERNAL_CODE, RpcError } from "./seam";
@@ -30,6 +31,8 @@ export const createTauriApp = (): AppSeam => ({
   project: () => command<Project | null>("project", {}),
   openProject: (path) => command<Project>("open_project", { path }),
   chooseProjectPath: () => open({ directory: true, multiple: false }),
+  chooseSavePath: (suggestedName) => save({ defaultPath: suggestedName }),
+  setDockBadge: (count) => getCurrentWindow().setBadgeCount(count === 0 ? undefined : count),
   rpc: (method, params) => command("rpc", { method, params }),
   subscribe: async (onEvent) => {
     await command("subscribe", { channel: new Channel<DaemonEvent>(onEvent) });

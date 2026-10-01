@@ -18,7 +18,9 @@ export type FakeApp = AppSeam & {
   emit(event: DaemonEvent): void;
   exitDaemon(exit: DaemonExit): void;
   /** What the macOS chooser answers; `null` is a cancel. */
-  chooser: { path: string | null };
+  chooser: { path: string | null; savePath: string | null; suggestedNames: string[] };
+  /** Every Dock badge count set so far, in order. */
+  badges: number[];
   /** What `project` and `open_project` answer, or the error `open_project` fails with. */
   opened: { project: Project | null; failure: RpcError | null };
 };
@@ -30,7 +32,8 @@ export const createFakeApp = (): FakeApp => {
   const app: FakeApp = {
     calls: [],
     handlers: {},
-    chooser: { path: null },
+    chooser: { path: null, savePath: null, suggestedNames: [] },
+    badges: [],
     opened: { project: null, failure: null },
     emit: (event) => {
       if (!onEvent) throw new Error("the webview has not subscribed yet");
@@ -49,6 +52,14 @@ export const createFakeApp = (): FakeApp => {
       return app.opened.project;
     },
     chooseProjectPath: async () => app.chooser.path,
+    chooseSavePath: async (suggestedName) => {
+      app.chooser.suggestedNames.push(suggestedName);
+
+      return app.chooser.savePath;
+    },
+    setDockBadge: async (count) => {
+      app.badges.push(count);
+    },
     rpc: async (method, params) => {
       app.calls.push({ method, params });
 

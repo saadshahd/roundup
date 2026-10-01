@@ -130,4 +130,15 @@ describe("u2 first run", () => {
 
     expect(within(region("centre")).getByText("✕ daemon exited 3").className).toBe("ink");
   });
+
+  it("u2_when_a_signal_ended_the_daemon_the_centre_says_by_signal", async () => {
+    const app = createFakeApp();
+    app.opened.project = PROJECT;
+    const { container } = renderApp(app);
+    await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
+
+    app.exitDaemon({ code: null });
+
+    expect(within(region("centre")).getByText("✕ daemon exited by signal").className).toBe("ink");
+  });
 });

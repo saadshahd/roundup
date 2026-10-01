@@ -92,6 +92,14 @@ describe("u3 Rail state", () => {
     expect([rail.exitOf(node("a")), rail.exitOf(node("b"))]).toEqual([null, { code: 3 }]);
   });
 
+  it("u3_terminal_exited_keeps_a_null_code_when_a_signal_ended_the_program", async () => {
+    const { app, rail } = await open([node("a")]);
+
+    app.emit(event({ name: "terminal.exited", data: { id: "t-a", code: null } }));
+
+    expect(rail.exitOf(node("a"))).toEqual({ code: null });
+  });
+
   it("u3_a_node_with_no_terminal_id_counts_as_exited", async () => {
     const { rail } = await open([]);
 

@@ -13,7 +13,7 @@ import { Pane } from "./terminal/Pane";
 import { Todos } from "./todos/Todos";
 
 const daemonExitText = ({ code }: DaemonExit): string =>
-  code === null ? "daemon exited" : `daemon exited ${code}`;
+  code === null ? "daemon exited by signal" : `daemon exited ${code}`;
 
 const OpenProject = (props: {
   app: AppSeam;

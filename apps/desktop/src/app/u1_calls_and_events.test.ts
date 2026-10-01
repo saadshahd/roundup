@@ -1,5 +1,6 @@
 import { Channel } from "@tauri-apps/api/core";
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
+import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
@@ -19,7 +20,12 @@ const created = (id: number): DaemonEvent => ({
   data: { ...TODO, id },
 });
 
-afterEach(clearMocks);
+const calls: unknown[] = [];
+
+afterEach(() => {
+  clearMocks();
+  calls.length = 0;
+});
 
 describe("u1 calls and events", () => {
   it("u1_a_call_is_typed_from_the_method_table", async () => {
@@ -107,5 +113,82 @@ describe("u1 calls and events", () => {
     app.emit(created(2));
 
     expect(heard).toEqual([created(1)]);
+  });
+
+  it("u1_the_adapter_listens_for_daemon_exited", async () => {
+    mockIPC(() => null, { shouldMockEvents: true });
+    const exits: unknown[] = [];
+
+    await createTauriApp().onDaemonExited((exit) => exits.push(exit));
+    await emit("daemon-exited", { code: null });
+
+    expect(exits).toEqual([{ code: null }]);
+  });
+
+  it("u1_the_adapter_stops_listening_once_unsubscribed", async () => {
+    mockIPC(() => null, { shouldMockEvents: true });
+    const exits: unknown[] = [];
+
+    const unsubscribe = await createTauriApp().onDaemonExited((exit) => exits.push(exit));
+    unsubscribe();
+    await emit("daemon-exited", { code: 1 });
+
+    expect(exits).toEqual([]);
+  });
+
+  it("u1_the_adapter_opens_the_macos_folder_chooser_for_a_directory", async () => {
+    mockIPC((command, args) => {
+      if (command === "plugin:dialog|open") calls.push(args);
+
+      return "/Users/me/p";
+    });
+
+    const path = await createTauriApp().chooseProjectPath();
+
+    expect([path, calls]).toEqual(["/Users/me/p", [{ options: { directory: true, multiple: false } }]]);
+  });
+
+  it("u1_the_adapter_opens_the_save_chooser_with_the_suggested_file_name", async () => {
+    mockIPC((command, args) => {
+      if (command === "plugin:dialog|save") calls.push(args);
+
+      return "/tmp/auth-notes.md";
+    });
+
+    const path = await createTauriApp().chooseSavePath("auth-notes.md");
+
+    expect([path, calls]).toEqual(["/tmp/auth-notes.md", [{ options: { defaultPath: "auth-notes.md" } }]]);
+  });
+
+  it("u1_a_cancelled_chooser_answers_null", async () => {
+    mockIPC(() => null);
+
+    expect(await createTauriApp().chooseSavePath("x.md")).toBeNull();
+  });
+
+  it("u1_the_adapter_sets_the_dock_badge_count", async () => {
+    mockWindows("main");
+    mockIPC((command, args) => {
+      if (command === "plugin:window|set_badge_count") calls.push(args);
+
+      return null;
+    });
+
+    await createTauriApp().setDockBadge(3);
+
+    expect(calls).toEqual([{ label: "main", value: 3 }]);
+  });
+
+  it("u1_a_dock_badge_count_of_zero_clears_the_badge", async () => {
+    mockWindows("main");
+    mockIPC((command, args) => {
+      if (command === "plugin:window|set_badge_count") calls.push(args);
+
+      return null;
+    });
+
+    await createTauriApp().setDockBadge(0);
+
+    expect(calls).toEqual([{ label: "main", value: undefined }]);
   });
 });

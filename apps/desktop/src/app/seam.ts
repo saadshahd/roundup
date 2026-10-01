@@ -13,6 +13,10 @@ export type AppSeam = {
   openProject(path: string): Promise<Project>;
   /** Resolves `null` when the user cancels the macOS chooser. */
   chooseProjectPath(): Promise<string | null>;
+  /** The macOS save chooser, with `suggestedName` filled in; resolves `null` on cancel. */
+  chooseSavePath(suggestedName: string): Promise<string | null>;
+  /** Shows `count` on the Dock icon; zero clears the badge. */
+  setDockBadge(count: number): Promise<void>;
   rpc<M extends RpcMethodName>(
     method: M,
     params: RpcMethods[M]["params"],
