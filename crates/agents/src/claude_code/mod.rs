@@ -1,0 +1,91 @@
+//! The Claude Code adapter. Hook payloads and the exit status become a Status (ADR 0006);
+//! `session`, `hook` and `transcript` are Claude Code's own words, so they must not leak out of
+//! this module into public names.
+
+use contracts::{Kind, Status};
+use serde_json::Value;
+
+use crate::{AgentAdapter, Observation};
+
+pub struct ClaudeCode {
+    status: Option<Status>,
+    exited: bool,
+    clock: Box<dyn Fn() -> i64 + Send>,
+}
+
+impl ClaudeCode {
+    /// `clock` returns milliseconds since the Unix epoch; it stamps every Status `since`.
+    pub fn new(clock: impl Fn() -> i64 + Send + 'static) -> Self {
+        Self {
+            status: None,
+            exited: false,
+            clock: Box::new(clock),
+        }
+    }
+
+    /// Adopt `kind` and `label`. `since` moves only when the Kind does.
+    fn settle(&mut self, kind: Kind, label: String) -> Option<Status> {
+        let since = match &self.status {
+            Some(current) if current.kind == kind => current.since,
+            _ => (self.clock)(),
+        };
+        let next = Status { kind, label, since };
+        if self.status.as_ref() == Some(&next) {
+            return None;
+        }
+        self.status = Some(next.clone());
+        Some(next)
+    }
+
+    fn exit(&mut self, code: Option<i32>) -> Option<Status> {
+        self.exited = true;
+        match code {
+            Some(0) if self.status.as_ref().is_some_and(|s| s.kind == Kind::Done) => None,
+            Some(0) => self.settle(Kind::Done, "exited 0".into()),
+            Some(code) => self.settle(Kind::Error, format!("exited {code}")),
+            None => self.settle(Kind::Error, "exited by signal".into()),
+        }
+    }
+}
+
+impl AgentAdapter for ClaudeCode {
+    fn observe(&mut self, observation: Observation) -> Option<Status> {
+        match observation {
+            Observation::Exit { code } => self.exit(code),
+            Observation::Signal(_) if self.exited => None,
+            Observation::Signal(payload) => {
+                let (kind, label) = hook_status(&payload)?;
+                self.settle(kind, label)
+            }
+        }
+    }
+}
+
+/// What one hook payload says about the Agent. `None` for events that say nothing: the late
+/// permission Notification, the spurious `SubagentStop`, display noise and anything unknown.
+fn hook_status(payload: &Value) -> Option<(Kind, String)> {
+    let text = |field: &str| payload[field].as_str().map(str::to_owned);
+    match payload["hook_event_name"].as_str()? {
+        "SessionStart" | "Stop" => Some((Kind::Idle, "idle".into())),
+        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => {
+            Some((Kind::Working, "working".into()))
+        }
+        "PermissionRequest" => Some((Kind::NeedsYou, permission_label(payload))),
+        "StopFailure" => Some((Kind::Error, text("error").unwrap_or_else(|| "error".into()))),
+        "SessionEnd" => Some((Kind::Done, text("reason").unwrap_or_else(|| "done".into()))),
+        _ => None,
+    }
+}
+
+/// The question being asked; else the tool name, with its command when it has one.
+fn permission_label(payload: &Value) -> String {
+    let tool = payload["tool_name"].as_str().unwrap_or("tool");
+    let input = &payload["tool_input"];
+    if let Some(question) = input["questions"][0]["question"].as_str() {
+        return question.to_owned();
+    }
+    match input["command"].as_str() {
+        Some(command) => format!("{tool}: {command}"),
+        None => tool.to_owned(),
+    }
+}
