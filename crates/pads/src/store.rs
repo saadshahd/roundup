@@ -15,7 +15,8 @@ impl Store {
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS pads (
-                name TEXT PRIMARY KEY,
+                key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
                 owner TEXT NOT NULL,
                 text TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -27,8 +28,14 @@ impl Store {
     /// False when a Pad with this name already exists.
     pub fn insert(&self, pad: &Pad) -> rusqlite::Result<bool> {
         let changed = self.db.execute(
-            "INSERT OR IGNORE INTO pads (name, owner, text, updated_at) VALUES (?1, ?2, ?3, ?4)",
-            params![pad.name, owner_json(&pad.owner), pad.text, pad.updated_at],
+            "INSERT OR IGNORE INTO pads (key, name, owner, text, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                key(&pad.name),
+                pad.name,
+                owner_json(&pad.owner),
+                pad.text,
+                pad.updated_at
+            ],
         )?;
         Ok(changed == 1)
     }
@@ -36,8 +43,8 @@ impl Store {
     pub fn get(&self, name: &str) -> rusqlite::Result<Option<Pad>> {
         self.db
             .query_row(
-                "SELECT name, owner, text, updated_at FROM pads WHERE name = ?1",
-                [name],
+                "SELECT name, owner, text, updated_at FROM pads WHERE key = ?1",
+                [key(name)],
                 row_to_pad,
             )
             .optional()
@@ -53,25 +60,30 @@ impl Store {
 
     pub fn set_text(&self, name: &str, text: &str, at: i64) -> rusqlite::Result<()> {
         self.db.execute(
-            "UPDATE pads SET text = ?2, updated_at = ?3 WHERE name = ?1",
-            params![name, text, at],
+            "UPDATE pads SET text = ?2, updated_at = ?3 WHERE key = ?1",
+            params![key(name), text, at],
         )?;
         Ok(())
     }
 
     pub fn delete(&self, name: &str) -> rusqlite::Result<()> {
         self.db
-            .execute("DELETE FROM pads WHERE name = ?1", [name])?;
+            .execute("DELETE FROM pads WHERE key = ?1", [key(name)])?;
         Ok(())
     }
 
     pub fn set_owner(&self, name: &str, owner: &Actor, at: i64) -> rusqlite::Result<()> {
         self.db.execute(
-            "UPDATE pads SET owner = ?2, updated_at = ?3 WHERE name = ?1",
-            params![name, owner_json(owner), at],
+            "UPDATE pads SET owner = ?2, updated_at = ?3 WHERE key = ?1",
+            params![key(name), owner_json(owner), at],
         )?;
         Ok(())
     }
+}
+
+/// Names are unique ignoring case: the macOS file system would map two spellings to one file.
+fn key(name: &str) -> String {
+    name.to_lowercase()
 }
 
 fn owner_json(owner: &Actor) -> String {
