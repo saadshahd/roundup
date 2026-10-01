@@ -1,9 +1,13 @@
 //! X8 in-process API: subscribe to one Terminal, in order, without a socket.
 
-use crate::common::{open, sh, until_exit};
+use std::time::Duration;
+
+use crate::common::{PATIENCE, open, sh, until_exit};
 use contracts::EventData;
 use rpc::code;
 use tokio::sync::broadcast::error::RecvError;
+
+const LIST_POLL: Duration = Duration::from_millis(20);
 
 #[tokio::test]
 async fn x8_a_late_subscriber_sees_output_in_order() {
@@ -32,6 +36,16 @@ async fn x8_subscribing_to_an_unknown_terminal_is_not_found() {
 }
 
 #[tokio::test]
+async fn x8_subscribing_to_an_exited_terminal_is_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals.spawn(sh(dir.path(), "true")).await.unwrap();
+    until_exit(&mut spawned.events).await;
+    let err = terminals.subscribe(&spawned.id).unwrap_err();
+    assert_eq!(err.code, code::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn x8_a_slow_subscriber_never_blocks_the_reader() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
@@ -40,14 +54,13 @@ async fn x8_a_slow_subscriber_never_blocks_the_reader() {
         .await
         .unwrap();
     // `slow` is not read until the program has finished and been listed as exited.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while terminals.list().iter().any(|t| t.running) {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the reader was blocked"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
+    tokio::time::timeout(PATIENCE, async {
+        while terminals.list().iter().any(|t| t.running) {
+            tokio::time::sleep(LIST_POLL).await;
+        }
+    })
+    .await
+    .expect("the reader was blocked");
     assert!(matches!(
         slow.events.recv().await,
         Err(RecvError::Lagged(_))
