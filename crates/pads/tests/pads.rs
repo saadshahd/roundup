@@ -234,6 +234,15 @@ async fn p6_export_writes_one_file_and_never_creates_directories() {
         .await
         .unwrap();
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let in_files_mode = out.path().join("files-mode.md");
+    rig.ok(
+        &a,
+        "pad.export",
+        json!({"name": "notes", "path": in_files_mode}),
+    )
+    .await;
+    assert_eq!(std::fs::read_to_string(&in_files_mode).unwrap(), "hello");
 
     let missing_dir = out.path().join("nope").join("notes.md");
     let err = rig
@@ -329,6 +338,7 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
     rig.call(&a, "pad.write", json!({"name": "notes", "text": "two"}))
         .await
         .unwrap();
+    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "two");
     rig.call(
         &agent("b"),
         "pad.append",
@@ -407,4 +417,72 @@ async fn p1_names_are_unique_ignoring_case() {
     assert_eq!(clash.code, code::CONFLICT);
     let found = rig.ok(&a, "pad.read", json!({"name": "NOTES"})).await;
     assert_eq!(found["name"], "notes");
+}
+
+#[tokio::test]
+async fn p5_a_failed_flip_back_applies_nothing_and_can_be_retried() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "n"}))
+        .await;
+    rig.ok(&a, "pad.create", json!({"name": "plan", "text": "p"}))
+        .await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let files = rig.dir.path().join("pads");
+    std::fs::write(files.join("notes.md"), "edited").unwrap();
+    std::fs::write(files.join("plan.md"), [0xff, 0xfe]).unwrap();
+
+    let err = rig
+        .fail(&a, "pad.setStorage", json!({"files": false}))
+        .await;
+
+    assert_eq!(err.code, code::INTERNAL);
+    let notes = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(notes["text"], "n");
+    std::fs::write(files.join("plan.md"), "fixed").unwrap();
+    rig.ok(&a, "pad.setStorage", json!({"files": false})).await;
+    let notes = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(notes["text"], "edited");
+}
+
+#[tokio::test]
+async fn p5_a_failed_file_write_leaves_the_pad_unchanged() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "old"}))
+        .await;
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    let file = rig.dir.path().join("pads/notes.md");
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+
+    rig.fail(&a, "pad.write", json!({"name": "notes", "text": "new"}))
+        .await;
+    rig.fail(&a, "pad.append", json!({"name": "notes", "text": "+"}))
+        .await;
+    rig.fail(&a, "pad.create", json!({"name": "Notes", "text": "x"}))
+        .await;
+
+    let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(pad["text"], "old");
+}
+
+#[tokio::test]
+async fn p5_a_name_the_file_system_refuses_is_invalid_params() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+
+    let err = rig
+        .fail(&a, "pad.create", json!({"name": "x".repeat(300)}))
+        .await;
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(
+        rig.ok(&a, "pad.list", Value::Null)
+            .await
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }

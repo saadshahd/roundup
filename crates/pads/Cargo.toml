@@ -9,12 +9,12 @@ async-trait.workspace = true
 contracts = { path = "../contracts" }
 rpc = { path = "../rpc" }
 serde_json.workspace = true
+tempfile.workspace = true
 
 rusqlite.workspace = true
 
 [dev-dependencies]
 provenance = { path = "../provenance" }
-tempfile.workspace = true
 tokio.workspace = true
 
 [lints]

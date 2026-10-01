@@ -42,10 +42,11 @@ impl Pads {
             updated_at: now_ms(),
         };
         let store = self.store()?;
-        if !store.insert(&pad).map_err(RpcError::internal)? {
+        if store.get(&pad.name).map_err(RpcError::internal)?.is_some() {
             return Err(RpcError::conflict(format!("pad exists: {}", pad.name)));
         }
-        self.mirror(&store, &pad)?;
+        self.mirror(&store, &pad.name, &pad.text)?;
+        store.insert(&pad).map_err(RpcError::internal)?;
         wrote(ctx, &pad.name)?;
         reply(&pad)
     }
@@ -70,6 +71,7 @@ impl Pads {
                 pad.owner.id, pad.name
             )));
         }
+        self.mirror(&store, &pad.name, &p.text)?;
         store
             .set_text(&pad.name, &p.text, now_ms())
             .map_err(RpcError::internal)?;
@@ -84,11 +86,11 @@ impl Pads {
         let store = self.store()?;
         let pad = get(&store, &p.name)?;
         let text = pad.text + &p.text;
+        self.mirror(&store, &pad.name, &text)?;
         store
             .set_text(&pad.name, &text, now_ms())
             .map_err(RpcError::internal)?;
         let pad = Pad { text, ..pad };
-        self.mirror(&store, &pad)?;
         wrote(ctx, &pad.name)?;
         reply(&pad)
     }
@@ -111,10 +113,10 @@ impl Pads {
         let store = self.store()?;
         let pad = get(&store, &p.name)?;
         require_owner_or_user(ctx, &pad, "delete")?;
-        store.delete(&pad.name).map_err(RpcError::internal)?;
         if store.files().map_err(RpcError::internal)? {
-            files::remove(&self.files_dir, &pad.name).map_err(RpcError::internal)?;
+            files::remove(&self.files_dir, &pad.name)?;
         }
+        store.delete(&pad.name).map_err(RpcError::internal)?;
         wrote(ctx, &pad.name)?;
         Ok(Value::Null)
     }
@@ -138,27 +140,31 @@ impl Pads {
         if store.files().map_err(RpcError::internal)? == p.files {
             return Ok(Value::Null);
         }
-        store.set_files(p.files).map_err(RpcError::internal)?;
-        for pad in store.list().map_err(RpcError::internal)? {
+        let pads = store.list().map_err(RpcError::internal)?;
+        let mut imports = Vec::new();
+        for pad in &pads {
             if p.files {
-                self.mirror(&store, &pad)?;
-            } else if let Some(text) =
-                files::read(&self.files_dir, &pad.name).map_err(RpcError::internal)?
+                files::write(&self.files_dir, &pad.name, &pad.text)?;
+            } else if let Some(text) = files::read(&self.files_dir, &pad.name)?
                 && text != pad.text
             {
-                store
-                    .set_text(&pad.name, &text, now_ms())
-                    .map_err(RpcError::internal)?;
-                wrote(ctx, &pad.name)?;
+                imports.push((&pad.name, text));
             }
         }
+        for (name, text) in imports {
+            store
+                .set_text(name, &text, now_ms())
+                .map_err(RpcError::internal)?;
+            wrote(ctx, name)?;
+        }
+        store.set_files(p.files).map_err(RpcError::internal)?;
         Ok(Value::Null)
     }
 
-    /// Keeps the file in step with the Pad while file storage is on.
-    fn mirror(&self, store: &Store, pad: &Pad) -> Result<(), RpcError> {
+    /// Writes the file while file storage is on. Callers do this before changing the database.
+    fn mirror(&self, store: &Store, name: &str, text: &str) -> Result<(), RpcError> {
         if store.files().map_err(RpcError::internal)? {
-            files::write(&self.files_dir, &pad.name, &pad.text).map_err(RpcError::internal)?;
+            files::write(&self.files_dir, name, text)?;
         }
         Ok(())
     }
