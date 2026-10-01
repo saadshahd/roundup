@@ -11,7 +11,7 @@ const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
   new Set(set.has(member) ? [...set].filter((each) => each !== member) : [...set, member]);
 
 export const Rail = () => {
-  const { app, project, rail, now } = useConnectedProject();
+  const { app, project, rail, now, daemonExit } = useConnectedProject();
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());
@@ -71,7 +71,7 @@ export const Rail = () => {
 
   return (
     <div class="rail-tree">
-      <div role="tree" aria-label="rail">
+      <div role="tree" aria-label="rail" aria-disabled={daemonExit() !== null ? true : undefined}>
         <For each={keys()}>
           {(key) => (
             <Show when={byKey().get(key)}>
@@ -130,7 +130,7 @@ export const Rail = () => {
       <div class="rail-actions">
         <button
           class="word"
-          disabled={pending()}
+          disabled={pending() || daemonExit() !== null}
           onClick={() =>
             guarded(async () => {
               const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
@@ -143,14 +143,14 @@ export const Rail = () => {
         </button>
         <button
           class="word"
-          disabled={pending()}
+          disabled={pending() || daemonExit() !== null}
           onClick={() => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
         >
           + terminal
         </button>
         <button
           class="word"
-          disabled={pending()}
+          disabled={pending() || daemonExit() !== null}
           onClick={() => guarded(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
         >
           + group

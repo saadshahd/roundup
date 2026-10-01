@@ -38,3 +38,8 @@
   min-width: 0;
   font: inherit;
 }
+
+/* Dimmed, not removed: each row still says what its Agent was doing when the Daemon went away. */
+.rail-tree [role="tree"][aria-disabled="true"] {
+  opacity: 0.45;
+}

@@ -2,7 +2,7 @@ import { createContext, useContext } from "solid-js";
 import type { Accessor } from "solid-js";
 import { connectEvents } from "../app/events";
 import type { Events } from "../app/events";
-import type { AppSeam, Project } from "../app/seam";
+import type { AppSeam, DaemonExit, Project } from "../app/seam";
 import { createDrawer } from "../drawer/drawer";
 import type { DrawerState } from "../drawer/drawer";
 import { createOutputFeed } from "./output";
@@ -22,6 +22,8 @@ export type ConnectedProject = {
   reducedMotion: Accessor<boolean>;
   /** Milliseconds since the epoch, refreshed on a coarse tick; for elapsed times. */
   now: Accessor<number>;
+  /** How the Daemon ended, once it has; from then on every call fails, so no region sends one. */
+  daemonExit: Accessor<DaemonExit | null>;
 };
 
 export const connectProject = async (
@@ -29,6 +31,7 @@ export const connectProject = async (
   project: Project,
   reducedMotion: Accessor<boolean>,
   now: Accessor<number>,
+  daemonExit: Accessor<DaemonExit | null> = () => null,
 ): Promise<ConnectedProject> => {
   const events = await connectEvents(app);
   const output = createOutputFeed(events);
@@ -36,7 +39,7 @@ export const connectProject = async (
 
   await rail.settled();
 
-  return { project, app, events, rail, output, drawer: createDrawer(), reducedMotion, now };
+  return { project, app, events, rail, output, drawer: createDrawer(), reducedMotion, now, daemonExit };
 };
 
 export const ConnectedProjectContext = createContext<ConnectedProject>();
