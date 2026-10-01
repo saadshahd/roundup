@@ -86,7 +86,7 @@ async fn wait_for_output(events: &mut Client, terminal: &str) -> io::Result<Inst
     }
 }
 
-/// From the write call to the `terminal.output` event it causes; a tty echoes a typed byte at once.
+/// From the write call to the `terminal.output` event it causes; the program is `cat` on a raw tty with echo off, so a byte only comes back if `cat` read and rewrote it.
 async fn write_to_output(
     writer: &Client,
     events: &mut Client,
@@ -211,12 +211,15 @@ pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
     let echo = ask(
         &client,
         "terminal.spawn",
-        json!({ "cwd": cwd, "command": ["/bin/cat"], "env": {}, "cols": 80, "rows": 24 }),
+        json!({ "cwd": cwd, "command": ["/bin/sh", "-c", "stty raw -echo; exec cat"], "env": {}, "cols": 80, "rows": 24 }),
     )
     .await?;
     let terminal = echo["id"]
         .as_str()
         .ok_or_else(|| io::Error::other("terminal.spawn returned no id"))?;
+
+    // `stty` must have run before the first write, and the echoes of the writes below must have drained before the subscription.
+    tokio::time::sleep(SETTLE).await;
 
     sample.insert(
         "terminal_write_p95_ms".into(),
@@ -231,6 +234,8 @@ pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
             0.95,
         ),
     );
+
+    tokio::time::sleep(SETTLE).await;
 
     let mut events = Client::connect(&socket).await?;
 
