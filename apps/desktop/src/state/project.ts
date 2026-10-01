@@ -16,9 +16,22 @@ export type ProjectState = {
 export const createProjectState = (app: AppSeam): ProjectState => {
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading" });
 
-  void app.project().then((project) => {
-    setPhase(project ? { kind: "open", project, daemonExit: null } : { kind: "empty", failure: null });
-  });
+  // An adapter rejects with an Error; anything else is a bug and escapes instead of becoming text.
+  const fail = (failure: Error) => setPhase({ kind: "empty", failure: failure.message });
+
+  const load = async () => {
+    try {
+      const project = await app.project();
+
+      setPhase(project ? { kind: "open", project, daemonExit: null } : { kind: "empty", failure: null });
+    } catch (failure) {
+      if (!(failure instanceof Error)) throw failure;
+
+      fail(failure);
+    }
+  };
+
+  void load();
 
   void app.onDaemonExited((daemonExit) => {
     const current = phase();
@@ -29,16 +42,16 @@ export const createProjectState = (app: AppSeam): ProjectState => {
   return {
     phase,
     choose: async () => {
-      const path = await app.chooseProjectPath();
-
-      if (path === null) return;
-
       try {
+        const path = await app.chooseProjectPath();
+
+        if (path === null) return;
+
         setPhase({ kind: "open", project: await app.openProject(path), daemonExit: null });
       } catch (failure) {
         if (!(failure instanceof Error)) throw failure;
 
-        setPhase({ kind: "empty", failure: failure.message });
+        fail(failure);
       }
     },
   };

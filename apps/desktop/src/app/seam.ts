@@ -1,9 +1,15 @@
+import * as v from "valibot";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RpcMethodName, RpcMethods } from "@contracts/methods";
 
-export type Project = { name: string; path: string };
+/** Hand-written App seam types (`scenarios/app.md`), not generated from Rust, so the adapter parses them. */
+export const projectSchema = v.object({ name: v.string(), path: v.string() });
 
-export type DaemonExit = { code: number | null };
+export const daemonExitSchema = v.object({ code: v.nullable(v.number()) });
+
+export type Project = v.InferOutput<typeof projectSchema>;
+
+export type DaemonExit = v.InferOutput<typeof daemonExitSchema>;
 
 export type Unsubscribe = () => void;
 

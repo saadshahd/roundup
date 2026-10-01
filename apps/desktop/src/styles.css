@@ -70,6 +70,18 @@ p {
   color: var(--light);
 }
 
+.glyph[data-tone="grey"] {
+  color: var(--grey);
+}
+
+.glyph[data-tone="light"] {
+  color: var(--light);
+}
+
+.glyph[data-tone="lightest"] {
+  color: var(--lightest);
+}
+
 .ink {
   font-weight: 700;
 }

@@ -8,10 +8,7 @@ import { RpcError } from "./seam";
 const PROJECT = { name: "payments-api", path: "/Users/me/repos/payments-api" };
 
 const renderApp = (app: FakeApp) => {
-  app.handlers["rail.tree"] = () => [];
-  app.handlers["terminal.list"] = () => [];
-
-  return render(() => <App app={app} reducedMotion={() => false} />);
+  return render(() => <App app={app} reducedMotion={() => false} clock={() => 0} />);
 };
 
 const headerOf = (container: HTMLElement) => container.querySelector("header")?.textContent;
@@ -91,7 +88,25 @@ describe("u2 first run", () => {
 
     await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
 
-    expect([region("rail"), region("centre"), region("shelf")].map((each) => each.textContent)).toEqual(["", "", ""]);
+    expect(container.textContent).not.toMatch(/agents and terminals|open a folder to start|agents add them as they/);
+  });
+
+  it("u2_a_failed_project_call_shows_the_message_in_ink", async () => {
+    const app = createFakeApp();
+    app.project = () => Promise.reject(new RpcError(-32603, "app is not ready"));
+    renderApp(app);
+
+    expect((await screen.findByText("✕ app is not ready")).className).toBe("ink");
+  });
+
+  it("u2_a_failed_chooser_shows_the_message_in_ink", async () => {
+    const app = createFakeApp();
+    app.chooseProjectPath = () => Promise.reject(new Error("the chooser could not open"));
+    renderApp(app);
+
+    fireEvent.click(await screen.findByText("choose folder…"));
+
+    expect((await screen.findByText("✕ the chooser could not open")).className).toBe("ink");
   });
 
   it("u2_a_failed_open_project_shows_the_message_in_ink_in_place_of_the_prompt", async () => {
@@ -140,5 +155,17 @@ describe("u2 first run", () => {
     app.exitDaemon({ code: null });
 
     expect(within(region("centre")).getByText("✕ daemon exited by signal").className).toBe("ink");
+  });
+
+  it("u3_a_failed_rail_refetch_shows_the_message_in_ink_in_the_centre", async () => {
+    const app = createFakeApp();
+    app.opened.project = PROJECT;
+    const { container } = renderApp(app);
+    await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
+    app.handlers["rail.tree"] = () => Promise.reject(new RpcError(-32603, "daemon is gone"));
+
+    app.emit({ actor: { kind: "user", id: "you", parent: null }, name: "rail.changed" });
+
+    expect((await within(region("centre")).findByText("✕ daemon is gone")).className).toBe("ink");
   });
 });

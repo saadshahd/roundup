@@ -11,6 +11,16 @@ type Handlers = {
   ) => RpcMethods[M]["result"] | Promise<RpcMethods[M]["result"]>;
 };
 
+/** Every read the MVP UI makes when a Project opens answers empty; any other method fails until a test installs a handler. */
+const emptyReads: Handlers = {
+  "rail.tree": () => [],
+  "terminal.list": () => [],
+  "todo.list": () => [],
+  "pad.list": () => [],
+  "provenance.history": () => [],
+  "provenance.touched": () => [],
+};
+
 export type FakeApp = AppSeam & {
   /** Every `rpc` call so far, in call order. */
   calls: { method: RpcMethodName; params: unknown }[];
@@ -31,7 +41,7 @@ export const createFakeApp = (): FakeApp => {
 
   const app: FakeApp = {
     calls: [],
-    handlers: {},
+    handlers: { ...emptyReads },
     chooser: { path: null, savePath: null, suggestedNames: [] },
     badges: [],
     opened: { project: null, failure: null },

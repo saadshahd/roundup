@@ -6,7 +6,7 @@ import type { Touch } from "@contracts/Touch";
 import type { Todo } from "@contracts/todo/Todo";
 import { Layout } from "../app/Layout";
 import { createFakeApp } from "../testing/fakeApp";
-import { WorkspaceContext, openWorkspace } from "../state/workspace";
+import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
 import { createDrawer } from "./drawer";
 import { DrawerHost } from "./DrawerHost";
 import { ItemDrawer } from "./ItemDrawer";
@@ -97,48 +97,49 @@ describe("u5 Drawer and last touch", () => {
     expect(screen.queryByText("detail")).toBeNull();
   });
 
-  it("u5_opening_a_drawer_never_resizes_the_terminal_pane", async () => {
-    const reports: string[] = [];
-    const observed: Element[] = [];
-    globalThis.ResizeObserver = class implements ResizeObserver {
-      observe(element: Element) {
-        observed.push(element);
-      }
-      unobserve() {}
-      disconnect() {}
-    };
-    const app = createFakeApp();
-    app.handlers["rail.tree"] = () => [];
-    app.handlers["terminal.list"] = () => [];
-    const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
-    render(() => (
-      <WorkspaceContext.Provider value={workspace}>
+  it("u5_opening_a_drawer_changes_no_box_of_the_layout", async () => {
+    const connected = await connectProject(createFakeApp(), { name: "p", path: "/p" }, () => false, () => 0);
+
+    const { container } = render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
         <Layout
           header="roundup"
           rail={null}
-          centre={
-            <div
-              data-testid="pane"
-              ref={(pane) => new ResizeObserver(() => reports.push("resized")).observe(pane)}
-            />
-          }
+          centre={<div data-testid="pane" />}
           shelf={null}
-          overlay={<DrawerHost drawer={workspace.drawer} reducedMotion={() => false} />}
+          overlay={<DrawerHost drawer={connected.drawer} reducedMotion={() => false} />}
         />
-      </WorkspaceContext.Provider>
+      </ConnectedProjectContext.Provider>
     ));
-    const pane = screen.getByTestId("pane");
-    const before = pane.parentElement?.outerHTML;
 
-    workspace.drawer.open(() => <p>detail</p>);
+    const columns = container.querySelector(".columns");
 
-    expect([reports, observed, screen.getByLabelText("drawer").style.position, pane.parentElement?.outerHTML]).toEqual([
-      [],
-      [pane],
-      "absolute",
-      before,
-    ]);
-    expect(pane.closest("[aria-label=drawer]")).toBeNull();
+    const boxes = () =>
+      [columns, ...(columns?.children ?? [])].slice(0, 4).map((box) => [box?.className, box?.getAttribute("style")]);
+
+    const before = boxes();
+
+    connected.drawer.open(() => <p>detail</p>);
+
+    expect(boxes()).toEqual(before);
+  });
+
+  it("u5_the_drawer_overlays_the_layout_instead_of_sitting_in_a_column", async () => {
+    const connected = await connectProject(createFakeApp(), { name: "p", path: "/p" }, () => false, () => 0);
+    render(() => (
+      <Layout
+        header="roundup"
+        rail={null}
+        centre={<div data-testid="pane" />}
+        shelf={null}
+        overlay={<DrawerHost drawer={connected.drawer} reducedMotion={() => false} />}
+      />
+    ));
+
+    expect([
+      screen.getByLabelText("drawer").style.position,
+      screen.getByLabelText("centre").contains(screen.getByLabelText("drawer")),
+    ]).toEqual(["absolute", false]);
   });
 
   it("u5_the_last_touch_line_reads_the_newest_touch_in_the_history", () => {
@@ -151,30 +152,32 @@ describe("u5 Drawer and last touch", () => {
     expect(lastTouchLine([], names)).toBeNull();
   });
 
-  it("u5_an_item_drawer_calls_provenance_history_before_its_own_read", async () => {
+  it("u5_an_item_drawer_does_not_read_until_provenance_history_has_answered", async () => {
     const app = createFakeApp();
-    app.handlers["rail.tree"] = () => [];
-    app.handlers["terminal.list"] = () => [];
-    app.handlers["provenance.history"] = () => [];
+    const history = Promise.withResolvers<Touch[]>();
+    app.handlers["provenance.history"] = () => history.promise;
     app.handlers["todo.get"] = () => TODO;
-    const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
 
     render(() => (
-      <WorkspaceContext.Provider value={workspace}>
-        <ItemDrawer item="todo:3" read={() => workspace.app.rpc("todo.get", { id: 3 })}>
+      <ConnectedProjectContext.Provider value={connected}>
+        <ItemDrawer item="todo:3" read={() => connected.app.rpc("todo.get", { id: 3 })}>
           {(todo) => <p>{todo.title}</p>}
         </ItemDrawer>
-      </WorkspaceContext.Provider>
+      </ConnectedProjectContext.Provider>
     ));
+    const waiting = app.calls.map((call) => call.method);
+    history.resolve([]);
     await screen.findByText(TODO.title);
 
-    expect(app.calls.map((call) => call.method)).toEqual(["rail.tree", "terminal.list", "provenance.history", "todo.get"]);
+    expect([waiting, app.calls.map((call) => call.method)]).toEqual([
+      ["rail.tree", "terminal.list", "provenance.history"],
+      ["rail.tree", "terminal.list", "provenance.history", "todo.get"],
+    ]);
   });
 
   it("u5_the_last_touch_line_is_from_the_history_fetched_before_the_read", async () => {
     const app = createFakeApp();
-    app.handlers["rail.tree"] = () => [];
-    app.handlers["terminal.list"] = () => [];
     const history = [touch(AGENT, "wrote", at(8, 7))];
     app.handlers["provenance.history"] = () => [...history];
     app.handlers["todo.get"] = () => {
@@ -183,14 +186,14 @@ describe("u5 Drawer and last touch", () => {
       return TODO;
     };
 
-    const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
 
     render(() => (
-      <WorkspaceContext.Provider value={workspace}>
-        <ItemDrawer item="todo:3" read={() => workspace.app.rpc("todo.get", { id: 3 })}>
+      <ConnectedProjectContext.Provider value={connected}>
+        <ItemDrawer item="todo:3" read={() => connected.app.rpc("todo.get", { id: 3 })}>
           {(todo) => <p>{todo.title}</p>}
         </ItemDrawer>
-      </WorkspaceContext.Provider>
+      </ConnectedProjectContext.Provider>
     ));
 
     expect((await screen.findByText(/^last/)).textContent).toBe("last  a wrote 08:07");
