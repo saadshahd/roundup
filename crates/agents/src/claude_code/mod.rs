@@ -1,10 +1,14 @@
 //! The Claude Code adapter. Hook payloads, the terminal title and the exit status become a Status
 //! (ADR 0006); `session`, `hook` and `transcript` are Claude Code's own words and stay in here.
 
+mod launch;
+
 use contracts::{Kind, Status};
 use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
+
+pub use launch::Launcher;
 
 pub struct ClaudeCode {
     status: Option<Status>,
