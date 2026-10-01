@@ -8,9 +8,6 @@ import { RpcError } from "./seam";
 const PROJECT = { name: "payments-api", path: "/Users/me/repos/payments-api" };
 
 const renderApp = (app: FakeApp) => {
-  app.handlers["rail.tree"] = () => [];
-  app.handlers["terminal.list"] = () => [];
-
   return render(() => <App app={app} reducedMotion={() => false} />);
 };
 
