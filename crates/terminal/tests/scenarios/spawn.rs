@@ -44,6 +44,21 @@ async fn x3_exit_code_is_reported_and_listed() {
 }
 
 #[tokio::test]
+async fn x3_terminal_list_over_rpc_shows_the_exit_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, bus) = open(&dir);
+    let ctx = ctx(&dir, &bus);
+    let mut spawned = terminals.spawn(sh(dir.path(), "exit 3")).await.unwrap();
+    until_exit(&mut spawned.events).await;
+    let listed = terminals
+        .call(&ctx, "terminal.list", serde_json::Value::Null)
+        .await
+        .unwrap();
+    let listed: Vec<TerminalInfo> = serde_json::from_value(listed).unwrap();
+    assert_eq!((listed[0].running, listed[0].exit_code), (false, Some(3)));
+}
+
+#[tokio::test]
 async fn x3_a_program_killed_by_a_signal_has_no_code() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);

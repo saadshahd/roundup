@@ -102,12 +102,12 @@ impl Terminals {
     }
 
     /// Start `params.command` (or the login shell) in a new PTY.
-    /// A program that cannot start (missing cwd or command) is the caller's error.
+    /// A missing cwd or an empty command is the caller's error; a failure to start is the Daemon's.
     pub async fn spawn(&self, params: SpawnParams) -> Result<Spawned, RpcError> {
         if params.command.as_ref().is_some_and(Vec::is_empty) {
             return Err(invalid("command must not be empty"));
         }
-        // The forked child cannot report a bad cwd, so it would exit silently; check here.
+        // portable-pty silently falls back to $HOME when the cwd is unusable; refuse instead.
         if !Path::new(&params.cwd).is_dir() {
             return Err(invalid(format!("cwd is not a directory: {}", params.cwd)));
         }
@@ -128,13 +128,15 @@ impl Terminals {
         for (name, value) in &params.env {
             command.env(name, value);
         }
+        // Everything fallible that needs no program comes first, so a failure leaves nothing running.
+        let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
         let child = pair
             .slave
             .spawn_command(command)
-            .map_err(|err| invalid(format!("cannot start program: {err}")))?;
+            .map_err(RpcError::internal)?;
+        let mut killer = child.clone_killer();
         // Only the program may hold the slave end, or reading never sees it close.
         drop(pair.slave);
-        let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
         let handle = Handle {
             writer: Mutex::new(pair.master.take_writer().map_err(RpcError::internal)?),
             killer: Mutex::new(child.clone_killer()),
@@ -158,10 +160,16 @@ impl Terminals {
             },
         );
         let shared = Arc::clone(&self.shared);
-        std::thread::Builder::new()
+        let pump = std::thread::Builder::new()
             .name(format!("terminal-{number}"))
-            .spawn(move || pump(&shared, number, reader, child, size))
-            .map_err(RpcError::internal)?;
+            .spawn(move || pump(&shared, number, reader, child, size));
+        if let Err(err) = pump {
+            self.shared.table().remove(&number);
+            if let Err(kill) = killer.kill() {
+                eprintln!("terminal {number}: cannot stop program after failed start: {kill}");
+            }
+            return Err(RpcError::internal(err));
+        }
         Ok(Spawned {
             id: number.to_string(),
             events,
@@ -269,11 +277,15 @@ fn pump(
             shared.retitle(number, title);
         }
     }
-    let code = child
-        .wait()
-        .ok()
-        .filter(|status| status.signal().is_none())
-        .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+    let code = match child.wait() {
+        Ok(status) if status.signal().is_some() => None,
+        Ok(status) => Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX)),
+        Err(err) => {
+            // `None` means "killed by a signal"; an unknown ending must not look like one.
+            eprintln!("terminal {number}: cannot wait for program: {err}");
+            Some(-1)
+        }
+    };
     shared.finish(number, code);
 }
 
