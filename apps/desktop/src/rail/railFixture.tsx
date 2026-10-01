@@ -1,5 +1,7 @@
 import { render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
+import type { Accessor } from "solid-js";
+import type { DaemonExit } from "../app/seam";
 import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { EventData } from "@contracts/EventData";
@@ -70,6 +72,7 @@ export const exitedTerminal = (id: string, exit_code: number | null): TerminalIn
 export const mountRail = async (
   tree: RailNode[],
   terminals: TerminalInfo[] = [],
+  daemonExit: Accessor<DaemonExit | null> = () => null,
   reducedMotion: () => boolean = () => false,
 ) => {
   const app = createFakeApp();
@@ -77,7 +80,7 @@ export const mountRail = async (
   app.handlers["terminal.list"] = () => terminals;
 
   const [now, setNow] = createSignal(NOW);
-  const connected = await connectProject(app, { name: "p", path: "/p" }, reducedMotion, now);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, reducedMotion, now, daemonExit);
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>

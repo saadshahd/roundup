@@ -4,7 +4,7 @@ import { ChooseProject, EmptyRail, EmptyShelf } from "./app/FirstRun";
 import { Layout } from "./app/Layout";
 import type { AppSeam, DaemonExit, Project } from "./app/seam";
 import { DrawerHost } from "./drawer/DrawerHost";
-import { failureLine } from "./ink/ErrorLine";
+import { ErrorLine, failureLine } from "./ink/ErrorLine";
 import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { Rail } from "./rail/Rail";
@@ -26,7 +26,7 @@ const OpenProject = (props: {
   now: Accessor<number>;
 }) => {
   const [connected] = createResource(() =>
-    connectProject(props.app, props.project, props.reducedMotion, props.now),
+    connectProject(props.app, props.project, props.reducedMotion, props.now, () => props.daemonExit),
   );
 
   return (
@@ -35,12 +35,22 @@ const OpenProject = (props: {
         {(open) => (
           <ConnectedProjectContext.Provider value={open()}>
             <Layout
-              header={`roundup   ${open().project.name}`}
+              header={
+                <>
+                  {`roundup   ${open().project.name}`}
+                  <Show when={props.daemonExit}>
+                    {(exit) => (
+                      <>
+                        {"   "}
+                        <ErrorLine message={daemonExitText(exit())} />
+                      </>
+                    )}
+                  </Show>
+                </>
+              }
               rail={<Rail />}
               centre={
-                <>
-                  <Pane notice={props.daemonExit ? daemonExitText(props.daemonExit) : open().rail.failure()} />
-                </>
+                <Pane notice={open().rail.failure()} />
               }
               shelf={
                 <>

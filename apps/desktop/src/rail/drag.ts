@@ -110,6 +110,8 @@ export const createRailDrag = (source: {
   rows: () => readonly NodeRow[];
   /** The id from the first move past a click until release, then `null`; the Rail lays its rows out for the drag in between, before they are measured. */
   onDragging: (id: string | null) => void;
+  /** A drag cannot start while this is false, and a release while it is false drops nothing. */
+  enabled: () => boolean;
   onDrop: (id: string, drop: Drop) => void;
 }): RailDrag => {
   const [state, setState] = createSignal<DragState | null>(null);
@@ -121,7 +123,7 @@ export const createRailDrag = (source: {
   const start = (id: string, press: PointerEvent): void => {
     const container = source.container();
 
-    if (!container || press.button !== 0) return;
+    if (!container || press.button !== 0 || !source.enabled()) return;
 
     stop();
 
@@ -146,7 +148,7 @@ export const createRailDrag = (source: {
 
       if (landed) forgetClick = swallowNextClick();
 
-      if (landed && !isInPlace(nodes, id, landed.drop)) source.onDrop(id, landed.drop);
+      if (landed && source.enabled() && !isInPlace(nodes, id, landed.drop)) source.onDrop(id, landed.drop);
     };
 
     const cancelOnEscape = (key: KeyboardEvent) => {

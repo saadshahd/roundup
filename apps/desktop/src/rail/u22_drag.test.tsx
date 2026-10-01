@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
+import type { DaemonExit } from "../app/seam";
 import { dragFrom, pointerAt, release, stubLayout } from "./dragFixture";
 import { agent, callsTo, group, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
 
@@ -203,7 +205,7 @@ describe("u22 drag", () => {
   });
 
   it("u22_reduced_motion_turns_the_shift_transition_off", async () => {
-    await mountRail(TREE, [], () => true);
+    await mountRail(TREE, [], () => null, () => true);
 
     dragFrom("b", pointerAt(1, 0));
 
@@ -252,6 +254,26 @@ describe("u22 drag", () => {
     release(pointerAt(3, 0));
 
     expect([callsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
+  });
+
+  it("u22_no_drag_starts_once_the_daemon_has_exited", async () => {
+    const mounted = await mountRail(TREE, [], () => ({ code: 1 }));
+
+    dragFrom("b", pointerAt(0, 0));
+    release(pointerAt(0, 0));
+
+    expect([callsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
+  });
+
+  it("u22_a_drag_under_way_when_the_daemon_exits_drops_nothing", async () => {
+    const [exit, setExit] = createSignal<DaemonExit | null>(null);
+    const mounted = await mountRail(TREE, [], exit);
+
+    dragFrom("b", pointerAt(0, 0));
+    setExit({ code: 1 });
+    release(pointerAt(0, 0));
+
+    expect(callsTo(mounted.app, "rail.move")).toEqual([]);
   });
 
   it("u22_escape_cancels_the_drag_and_calls_nothing", async () => {

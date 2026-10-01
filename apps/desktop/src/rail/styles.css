@@ -71,3 +71,8 @@
   background: var(--grey);
   pointer-events: none;
 }
+
+/* Greyed, not faded: opacity would sink the Live lines under the 2:1 contrast U25 keeps; grayscale leaves their grey as it was. */
+.rail-tree [role="tree"][aria-disabled="true"] {
+  filter: grayscale(1);
+}
