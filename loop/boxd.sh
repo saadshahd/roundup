@@ -6,7 +6,7 @@
 #                                           # writes the Reviewer's answer to loop/out/verdicts/<name>.md. The checkout is a
 #                                           # git repo with tag `base`, so the Reviewer can run `loop/rules.sh size base`.
 #   loop/boxd.sh check <pr-number|branch>   # merge it into origin/main here, run `just check` on a fresh isolated VM
-# BOXD_MODEL overrides the model (build: sonnet, review: opus).
+# BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_MODEL overrides the model (build: sonnet, review: opus).
 # Auth is the boxd secret CLAUDE_CODE_OAUTH_TOKEN (sealed, host-scoped): each VM sees only a placeholder, boxd swaps in the real token for *.anthropic.com, *.claude.com and claude.ai.
 # Exit codes: 0 ok, 1 failure, 75 paused (limit hit, or loop/out/PAUSED exists).
 set -euo pipefail
@@ -16,7 +16,7 @@ SNAPSHOT=ru-toolchain
 OUT=loop/out
 PAUSED=$OUT/PAUSED
 EX_PAUSED=75
-MAX_VMS=4
+MAX_VMS=${BOXD_MAX_VMS:-12}
 VM=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
@@ -103,6 +103,7 @@ release_lock() {
 
 # <name> becomes a VM name and a file name; <prompt-file> is passed to `boxd machine cp` as a positional argument.
 validate_args() {
+  [[ $MAX_VMS =~ ^[0-9]+$ ]] || { echo "boxd.sh: BOXD_MAX_VMS must be a number, got: $MAX_VMS" >&2; exit 2; }
   local name=$1 prompt=$2
   [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: name must match ^[a-z0-9][a-z0-9-]*\$, got: $name" >&2; exit 2; }
   [[ $prompt != -* ]] || { echo "boxd.sh: prompt file must not start with '-': $prompt" >&2; exit 2; }
