@@ -1,4 +1,4 @@
-# QA/Driver (model: Sonnet)
+# QA (model: Sonnet)
 
 Run the app and drive each scenario. Do not edit code.
 
