@@ -121,50 +121,57 @@ struct Step {
     kind: Option<Kind>,
 }
 
-/// Replay a run; whenever the adapter has asked for a Tick that falls before the next observation,
-/// deliver it first, as the Agents module does.
-fn replay(run: Run) -> Vec<Step> {
-    let mut clocked = Clocked::new();
-    let mut steps = vec![];
-    let mut current = None;
-    let mut deliver = |clocked: &mut Clocked, ts: f64, event: String, observation: Observation| {
-        let ms = (ts * 1000.0).round() as i64;
-        current = clocked.at(ms, observation).or(current);
-        steps.push(Step {
+fn millis(seconds: f64) -> i64 {
+    (seconds * 1000.0).round() as i64
+}
+
+/// The steps of a replay so far, and the clock-driven adapter they came from.
+struct Replay {
+    clocked: Clocked,
+    steps: Vec<Step>,
+    current: Option<Kind>,
+}
+
+impl Replay {
+    fn deliver(&mut self, ts: f64, event: String, observation: Observation) {
+        self.current = self.clocked.at(millis(ts), observation).or(self.current);
+        self.steps.push(Step {
             ts,
             event,
-            kind: current,
+            kind: self.current,
         });
-    };
-    for (ts, observation) in timeline(run) {
-        while let Some(due) = clocked
-            .adapter
-            .tick_at()
-            .filter(|due| *due <= (ts * 1000.0) as i64)
-        {
-            deliver(
-                &mut clocked,
-                due as f64 / 1000.0,
-                "Tick".into(),
-                Observation::Tick,
+    }
+
+    fn deliver_due_ticks(&mut self, until: i64) {
+        while let Some(due) = self.clocked.adapter.tick_at().filter(|due| *due <= until) {
+            self.deliver(due as f64 / 1000.0, "Tick".into(), Observation::Tick);
+            assert!(
+                self.clocked.adapter.tick_at() != Some(due),
+                "a Tick at {due} ms left the hold stuck"
             );
         }
+    }
+}
+
+/// Replay a run. The code driving the adapter must deliver a Tick at `tick_at()`, so whenever one
+/// falls before the next observation (or after the last) it is delivered first.
+fn replay(run: Run) -> Vec<Step> {
+    let mut replay = Replay {
+        clocked: Clocked::new(),
+        steps: vec![],
+        current: None,
+    };
+    for (ts, observation) in timeline(run) {
+        replay.deliver_due_ticks(millis(ts));
         let event = match &observation {
             Observation::Signal(payload) => payload["hook_event_name"].as_str().unwrap().to_owned(),
             Observation::Title(title) => format!("title {title}"),
             _ => unreachable!(),
         };
-        deliver(&mut clocked, ts, event, observation);
+        replay.deliver(ts, event, observation);
     }
-    while let Some(due) = clocked.adapter.tick_at() {
-        deliver(
-            &mut clocked,
-            due as f64 / 1000.0,
-            "Tick".into(),
-            Observation::Tick,
-        );
-    }
-    steps
+    replay.deliver_due_ticks(i64::MAX);
+    replay.steps
 }
 
 /// The Kinds the Agent changed to, in order, between `from` and `to` (seconds).
