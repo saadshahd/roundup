@@ -38,10 +38,29 @@ p {
 .columns {
   position: relative;
   display: grid;
-  grid-template-columns: 24% 1fr 24%;
+  grid-template-columns: clamp(252px, 20%, 320px) minmax(690px, 1fr) clamp(160px, 14%, 280px);
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+@media (max-width: 1101px) {
+  .columns {
+    grid-template-columns: 252px 1fr;
+    grid-template-rows: minmax(0, 65fr) minmax(0, 35fr);
+  }
+
+  .rail {
+    grid-area: 1 / 1;
+  }
+
+  .shelf {
+    grid-area: 2 / 1;
+  }
+
+  .centre {
+    grid-area: 1 / 2 / span 2;
+  }
 }
 
 .rail,
@@ -95,11 +114,14 @@ p {
 }
 
 .drawer {
-  width: min(560px, 70%);
+  width: min(560px, 70%, calc(100% - 252px));
   padding: 16px 72px 16px 16px;
   box-sizing: border-box;
   overflow: auto;
   background: var(--ground);
+  border-left-width: 1px;
+  border-left-style: solid;
+  border-left-color: var(--lightest);
 }
 
 .drawer > .close {

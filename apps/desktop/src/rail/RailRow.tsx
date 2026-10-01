@@ -6,10 +6,8 @@ import { glyphOf, hasInk } from "../ink/glyph";
 import { KindGlyph } from "../ink/KindGlyph";
 import type { ExitState } from "../state/rail";
 import { isPlainGroup } from "./layout";
-import type { RailRow } from "./layout";
+import type { NodeRow } from "./layout";
 import { isUnprompted, liveLineOf } from "./liveLine";
-
-type NodeRow = Extract<RailRow, { kind: "node" }>;
 
 /** A Kind's mark, or a bare mark for a plain Group, which has no Kind. */
 type Mark = { kind: Kind } | { bare: string };
@@ -64,6 +62,12 @@ export const RailRowView = (props: {
   onToggle: () => void;
   onRename: (name: string) => void;
   onPromote: () => void;
+  /** A drag is under way: live lines are hidden so the rows keep the heights the drag measured. */
+  dragging: boolean;
+  lifted: boolean;
+  /** `1` or `-1` while a drag moves the row into the room it opened, `0` otherwise. */
+  shift: number;
+  onPointerDown: (press: PointerEvent) => void;
 }) => {
   const [hovered, setHovered] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
@@ -83,7 +87,7 @@ export const RailRowView = (props: {
   };
 
   const liveLine = () => liveLineOf(props.row.node, props.exit, props.now());
-  const showsLiveLine = () => props.selected || hovered() || isUnprompted(props.row.node);
+  const showsLiveLine = () => !props.dragging && (props.selected || hovered() || isUnprompted(props.row.node));
 
   return (
     <div
@@ -93,8 +97,14 @@ export const RailRowView = (props: {
       aria-selected={props.selected}
       aria-expanded={isPlainGroup(props.row.node) ? props.row.collapsed === null : undefined}
       data-selected={props.selected}
+      data-id={props.row.node.id}
+      data-lifted={props.lifted}
+      data-shift={props.shift}
       style={{ "padding-left": `${props.row.depth * 2}ch` }}
       onClick={props.onSelect}
+      onPointerDown={(press) => {
+        if (!(press.target instanceof Element) || !press.target.closest("button, input")) props.onPointerDown(press);
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

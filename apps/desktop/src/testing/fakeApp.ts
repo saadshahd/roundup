@@ -5,7 +5,7 @@ import type { AppSeam, DaemonExit, Project } from "../app/seam";
 
 const METHOD_NOT_FOUND = -32601;
 
-type Handlers = {
+export type Handlers = {
   [M in RpcMethodName]?: (
     params: RpcMethods[M]["params"],
   ) => RpcMethods[M]["result"] | Promise<RpcMethods[M]["result"]>;

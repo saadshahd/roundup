@@ -1,7 +1,10 @@
 .rail-actions {
+  position: sticky;
+  bottom: 0;
   display: flex;
   gap: 16px;
   padding: 8px 0;
+  background: var(--ground);
 }
 
 .rail-row {
@@ -37,6 +40,39 @@
   flex: 1;
   min-width: 0;
   font: inherit;
+}
+
+.rail-tree {
+  position: relative;
+}
+
+.rail-row {
+  user-select: none;
+}
+
+.rail-row[data-lifted="true"] {
+  opacity: 0.4;
+  transform: translateY(var(--lift));
+  pointer-events: none;
+}
+
+.rail-row[data-shift="1"] {
+  transform: translateY(var(--room));
+  transition: transform var(--shift-ms) ease-out;
+}
+
+.rail-row[data-shift="-1"] {
+  transform: translateY(calc(-1 * var(--room)));
+  transition: transform var(--shift-ms) ease-out;
+}
+
+.drop-line {
+  position: absolute;
+  left: calc(var(--depth) * 2ch);
+  right: 0;
+  height: 2px;
+  background: var(--grey);
+  pointer-events: none;
 }
 
 /* Greyed, not faded: opacity would sink the Live lines under the 2:1 contrast U25 keeps; grayscale leaves their grey as it was. */

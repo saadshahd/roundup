@@ -45,6 +45,28 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | 7 | UX observers: screenshots, snapshot diff, critic score | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
 | 8 | Red main | Triage | laptop | `gh run list` shows failure; revert, never fix forward |
 
+## Driving the App in a browser
+
+For QA and Reviewers who need the real App without a Daemon, Tauri or a display. `just harness <seed> <port>` (defaults `tree-40`, `5199`; the port is strict, so pass another when it is taken) serves it on a fake Daemon at `http://localhost:<port>/harness.html?seed=<seed>`, which `agent-browser` opens like any page. Scenario U26 defines the seeds.
+
+| Seed | Starts with |
+|---|---|
+| `first-run` | no open Project |
+| `agents-10` | ten Agents, one per Kind in turn |
+| `tree-40` | forty nodes (nested Groups, a Meta-agent, Terminals), eight Todos, four Pads |
+| `daemon-exits` | `agents-10`, then `daemon-exited` with code 1 once loaded |
+| `conflict` | `agents-10`, where the first call after loading fails with `CONFLICT` |
+
+The page exposes `window.__fake`, so `agent-browser eval` can drive it:
+
+- `__fake.setStatus("agent-3", "needs-you", "asks: keep v1?")` sends `agent.status`.
+- `__fake.writeOutput("t-agent-3", "hello\r\n")` sends `terminal.output` to that Terminal. Nothing shows until that Agent is selected in the Rail, because the centre pane shows the selected node's Terminal.
+- `__fake.emit({actor: {kind: "user", id: "you", parent: null}, name: "rail.changed"})` sends any Event.
+- `__fake.failNext(-32003, "name already taken")` makes the next call of any method reject.
+- `__fake.app.exitDaemon({code: 1})` sends `daemon-exited`; `__fake.app.calls` lists every call made.
+
+Every write the App can make (spawn, create Group, rename, promote, move, stop, kill, and the Todo and Pad writes) changes the fake Daemon and sends the Events the real one sends, so the Rail and Shelf refresh. It is a fake: it checks no Route, Block or Provenance, and it says nothing about macOS rendering or timing. Read the DOM, never the numbers.
+
 ## Rules and what enforces them today
 
 | Rule | Enforced by | Gap |
@@ -71,7 +93,7 @@ After the daemon and modules demo (Phase 2), the UI screenshot pack (Phase 3), a
 
 ## Where boxd fits
 
-Optional, never required to merge. Use it for unattended Builders (the VM is the sandbox for `--dangerously-skip-permissions`), for parallel Builders up to 4, and for web-UI QA runs. See `docs/boxd.md`. The rules for agents using it are in `AGENTS.md`.
+Optional, never required to merge. Use it for unattended Builders (the VM is the sandbox for `--dangerously-skip-permissions`), for parallel Builders (up to `BOXD_MAX_VMS`, default 12), and for web-UI QA runs. See `docs/boxd.md`. The rules for agents using it are in `AGENTS.md`.
 
 ## Loop on the loop
 

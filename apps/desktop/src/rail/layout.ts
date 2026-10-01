@@ -11,37 +11,52 @@ export type RailRow =
   | { kind: "node"; key: string; depth: number; node: RailNode; collapsed: Collapsed | null }
   | { kind: "fold"; key: string; depth: number; parent: string | null; count: number };
 
+export type NodeRow = Extract<RailRow, { kind: "node" }>;
+
 export type RailView = {
   collapsed: ReadonlySet<string>;
   /** Parents whose `✓ n done` line has been clicked open; `null` is the top level. */
   unfolded: ReadonlySet<string | null>;
   now: number;
+  /** The row being dragged: shown at its place in `order` whatever its age, and every `✓ n done` line is closed, so no row is out of `order` while the drop line is placed. */
+  dragged: string | null;
 };
 
 export const isPlainGroup = (node: RailNode): boolean => node.kind === "group" && !node.meta;
 
-const isFoldedAgent = (node: RailNode, now: number): boolean =>
+/** The children of `parent` (`null` is the top level) by `order`. */
+export const siblingsOf = (nodes: readonly RailNode[], parent: string | null): RailNode[] =>
+  nodes.filter((node) => node.parent === parent).toSorted((a, b) => a.order - b.order);
+
+/** The ids of every node above `id`, nearest first. */
+export const ancestorsOf = (nodes: readonly RailNode[], id: string): string[] => {
+  const parent = nodes.find((node) => node.id === id)?.parent ?? null;
+
+  return parent === null ? [] : [parent, ...ancestorsOf(nodes, parent)];
+};
+
+/** Every node below `id`, each parent before its children. */
+export const descendantsOf = (nodes: readonly RailNode[], id: string): RailNode[] =>
+  siblingsOf(nodes, id).flatMap((child) => [child, ...descendantsOf(nodes, child.id)]);
+
+const isFoldedAgent = (node: RailNode, view: RailView): boolean =>
+  node.id !== view.dragged &&
   node.kind === "agent" &&
   node.status !== null &&
   node.status.kind === "done" &&
-  now - node.status.since >= DONE_FOLD_MS;
+  view.now - node.status.since >= DONE_FOLD_MS;
 
 /** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Group without its descendants. */
 export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[] => {
-  const childrenOf = new Map<string | null, RailNode[]>();
-
-  for (const node of nodes) childrenOf.set(node.parent, [...(childrenOf.get(node.parent) ?? []), node]);
-
-  const under = (parent: string | null): RailNode[] =>
-    (childrenOf.get(parent) ?? []).toSorted((a, b) => a.order - b.order);
+  const under = (parent: string | null): RailNode[] => siblingsOf(nodes, parent);
 
   const kindsBelow = (parent: string): Kind[] =>
-    under(parent).flatMap((child) => [...(child.status ? [child.status.kind] : []), ...kindsBelow(child.id)]);
+    descendantsOf(nodes, parent).flatMap((child) => (child.status ? [child.status.kind] : []));
 
   const rowsOf = (parent: string | null, depth: number): RailRow[] => {
     const siblings = under(parent);
-    const folded = siblings.filter((node) => isFoldedAgent(node, view.now));
-    const unfolded = view.unfolded.has(parent);
+    const folded = siblings.filter((node) => isFoldedAgent(node, view));
+    const unfolded = view.dragged === null && view.unfolded.has(parent);
 
     const shown = [
       ...siblings.filter((node) => !folded.includes(node)),

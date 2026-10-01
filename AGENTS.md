@@ -10,7 +10,7 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 4. **Contract change** = any edit under `contracts/`. Needs Architect approval. No v2s: change every caller in the same PR.
 5. **Reviewer input** = diff + linked spec + this file, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
 6. **Vocabulary**: see `CONTEXT.md`; `session`, `process`, `task`, `notification` and the other _Avoid_ words are banned in public names, except under `crates/agents/claude_code/`.
-7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails.
+7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails, enforced for five metrics on Linux; cold start and the 10-Group `rail.tree` are limit-only, and macOS has limits only until a baseline is recorded (`docs/perf.md`).
 
 ## Workflow
 
@@ -34,8 +34,8 @@ boxd is optional. Read `docs/boxd.md` before touching it; it says what a VM can 
 
 - Start boxd Builders only with `loop/boxd.sh build <name> <prompt-file>`. It creates an `--isolated` VM from the `ru-toolchain` snapshot with an auto-destroy timer, uploads `git archive HEAD`, runs `just check` as the observer, returns a patch, and destroys the VM.
 - Name every VM `ru-<something>`. Create QA VMs with `--auto-destroy-timeout` and `--auto-suspend-timeout 0`, and use `--isolated` for any VM that runs code you did not write.
-- The Claude token goes in per call as `CLAUDE_CODE_OAUTH_TOKEN` via `boxd machine exec -e`. Never use `boxd env set` (it is account-wide), never write the token to a file in the repo or on a VM, never print it. `loop/boxd.sh` deletes any artifact that contains it.
+- Claude authenticates through the boxd secret `CLAUDE_CODE_OAUTH_TOKEN` (sealed, scoped to `*.anthropic.com`, `*.claude.com`, `claude.ai`): a VM sees only a placeholder and boxd substitutes the real token on those hosts. Never print or write the real token, and do not widen the secret's hosts.
 - Never push GitHub credentials to a VM. Results come back as a patch and are pushed from the laptop.
-- At most 4 `ru-` VMs at once (`loop/boxd.sh` enforces it). If `loop/out/PAUSED` exists, a limit was hit: stop and tell the user.
+- At most `BOXD_MAX_VMS` `ru-` VMs at once, default 12 (`loop/boxd.sh` enforces it). If `loop/out/PAUSED` exists, a limit was hit: stop and tell the user.
 - A VM cannot show macOS behaviour: perf numbers, WKWebView rendering and the macOS gate come from the laptop and CI.
 - After any session, `boxd machine list` must show no `ru-` machines.

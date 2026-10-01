@@ -4,7 +4,7 @@ The webview in `apps/desktop`: Solid, Vite and xterm.js with the WebGL addon (AD
 
 Methods and events are the ones in `contracts/generated/methods.ts` and `Event.ts`. The text a scenario quotes is what the screen shows; capitals in the wireframes stand for ink, and the app never uppercases.
 
-## Shell (U1 to U5)
+## Shell (U1 to U5, U23, U24)
 
 **U1 calls and events.** Given the App seam, when the webview calls a method named in `RpcMethods`, then its params and its result are typed from `contracts/generated/methods.ts`. A failed call rejects with the Daemon's `code` and `message`. Every Event reaches every subscriber in the order the Daemon sent it.
 
@@ -26,7 +26,11 @@ Each has a fake and a test here. U2, U10 and U21 use them, so no later PR edits 
 
 For an item (`todo:<id>` or `pad:<name>`), the Drawer calls `provenance.history {item}` before its own read of the item. The last-touch line then reads `last  <name> <read|wrote> <hh:mm>`, from the newest Touch in that first fetch. Opening the Drawer is itself a read Touch by the user, and fetching history first keeps that read out of the line, so it never reads "you read" at the moment of opening.
 
-## Rail (U6 to U10)
+**U23 column widths.** Given the main workspace, then the Rail is 20% of the window wide, never under 252px (its three action words fit on one line) nor over 320px, the Shelf is 14%, never under 160px nor over 280px, and the terminal is never under 690px. That floor is 80 text columns of the system monospace face at 13px (8px each: 80 x 8, plus the 14px xterm scrollbar and 32px of padding is 686px); the app's font stack resolves to that face in WKWebView. From 1102px wide the terminal therefore shows at least 80 columns. A name too long for the Rail ends in `…`.
+
+**U24 narrow window.** Given a window under 1102px, then the Shelf moves under the Rail in the left column (the Rail takes the upper 65% of the height, the Shelf the lower 35%, each scrolling on its own) and the terminal takes the full height on the right, so the Shelf's lists, its `+` words and the Todo and Pad Drawers stay reachable. Under 942px the terminal gives width and the Rail stays at 252px. A Drawer never covers the Rail: it is at most the window width minus 252px.
+
+## Rail (U6 to U10, U32)
 
 **U6 rows.** Given a Rail tree, then each node is one row, indented 2 per depth under its parent, in `order`. An Agent or a Meta-agent shows its Status Glyph. A plain Group shows `▾`. A Terminal shows `○` while it runs and `✓` once it has exited. The selected row has a faint band. Rows never reorder when a Status changes. Clicking a row selects it.
 
@@ -42,6 +46,10 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 **U9 actions.** `+ agent` calls `agent.spawn {cwd: <Project path>, prompt: null, parent}`. `parent` is the selected Group or Meta-agent, else `null`, and the new row becomes selected, so its terminal shows. `+ terminal` calls `rail.spawnTerminal {cwd: <Project path>, parent}` with the same parent rule. `+ group` calls `rail.createGroup {name: "group", parent}`. Double-clicking a name edits it in place: Enter calls `rail.rename`; Esc or an empty name keeps the old one. Hovering a plain Group shows a light `promote`, which calls `rail.promote`. A failed call shows one line `✕ <message>` in Ink above `+ agent  + terminal  + group` until the next click. Rows come only from `rail.tree`; the webview never adds one itself.
 
 **U10 Dock badge.** The Dock badge shows how many Agents have Kind `needs-you` or `error`, and there is no badge at zero (decision 4). The badge is set through U1's adapter.
+
+**U32 spawn shortcuts and pinned actions.** Given an open Project, then `⌘N` does what `+ agent` does (U9) and `⌘T` does what `+ terminal` does, with the same parent rule and the same `✕ <message>` line on failure. A ⌘ chord is handled by the webview and never reaches a Terminal, and Caps Lock does not change it; the same keys with Shift, Ctrl or Alt, or without ⌘, do nothing, except `⇧⌘N`, which is U33; `⇧⌘T` still does nothing. Neither chord acts while a spawn call is in flight or after `daemon-exited`. The Rail's `+ agent  + terminal  + group` line stays at the bottom edge of the Rail while its rows scroll, so the actions are reachable with ten Agents.
+
+**U33 spawn with a prompt.** Given an open Project, when the user presses `⇧⌘N`, then an inline prompt field opens at the top of the Rail, focused. Enter calls `agent.spawn {cwd: <Project path>, prompt: <text>, parent}` with U9's parent rule, and an empty field calls it with `prompt: null`. The new row becomes selected and focus goes to the pane, so the user can type at once. Esc closes the field and calls nothing. A failed call shows U9's `✕ <message>` line and keeps the field's text. This narrows U32: its test case "cmd and shift" in `apps/desktop/src/rail/u32_spawn_shortcuts.test.tsx` must exclude `⇧⌘N` (and keep `⇧⌘T` doing nothing) in the same PR. As in U32, the chord is handled by the webview and never reaches a Terminal, Caps Lock does not change it, other modifier sets do nothing, and it does not act while a spawn call is in flight or after `daemon-exited`. `⌘N` is unchanged: it still spawns with no prompt and no field (U32).
 
 ## Terminal pane (U11 to U14)
 
@@ -78,7 +86,7 @@ While the program runs, a light `stop` sits at the right: for an Agent it calls 
 
 Double-clicking the title or the body edits it, and leaving the field calls `todo.update` once if the text changed. Opening the Drawer calls `provenance.history {item: "todo:<id>"}` and then `todo.get` once; that `todo.get` is the one read Touch. Background refreshes never call `todo.get`.
 
-## Pads (U18 to U21)
+## Pads (U18 to U21, U29)
 
 **U18 list and ownership.** Given Pads, then the Shelf's `pads` list shows each by name with an owner mark: `◈` when an Agent owns it, `◇` when the user does. The owner mark is not a Glyph; Glyphs mark Kinds. Clicking `◈` calls `pad.setOwner {name, owner: <user>}`, and the mark becomes `◇`. On `pad.changed`, the list refetches `pad.list`, which logs no Touch.
 
@@ -88,11 +96,27 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U21 export.** `export .md` opens the macOS save chooser, through U1's adapter, with `<name>.md` filled in. Choosing a path calls `pad.export {name, path}`, and cancelling calls nothing. An error shows `✕ <message>` in the Drawer.
 
+**U29 long names.** A Pad whose name is longer than its column still keeps one line in the Shelf's `pads` list: its owner mark and name stay together on that line, and the name is cut with `…` and carries its full name as a tooltip. The Drawer's first line does the same, and `export .md`, `close` and the name never overlap.
+
+## Drawer keys (U27 to U28)
+
+**U27 focus returns.** Given a selected Agent or Terminal whose pane had the keyboard, when its Drawer closes (U5), keyboard focus goes back to that Terminal, so typing reaches it without a click. With no Terminal shown, or with focus already in another field, focus is left alone.
+
+**U28 Esc closes.** While a Drawer is open, Esc closes it. Esc inside an inline field or a Pad's text field is that field's own key (U16, U19) and the Drawer stays open; Esc inside a Terminal goes to the program, and a closed Drawer does nothing with it.
+
+## Jump to what needs you (U30)
+
+**U30 jump.** Given a Rail with Agents or Meta-agents of Kind `needs-you` or `error`, then the header reads `<n> need you` after the Project name, where `<n>` is the count U10 puts on the Dock badge, and nothing is shown at zero. Pressing `⌘J`, or clicking that text, selects the most urgent of them: Kind `error` before `needs-you`, and within a Kind the one whose Status `since` is oldest, ties in the Daemon's order. Its row scrolls into view and its Terminal shows; any selection that lands under a collapsed Group expands that Group, so the row is never hidden. Doing it again selects the next in that order and wraps after the last, and from a selection outside that order it selects the first. With none, `⌘J` changes nothing. Terminals never count and the Rail never reorders (wireframes decision 3). This is V1 of `ux.md`.
+
 ## Stretch
 
 **U22 drag.** Dragging a row shows a drop line whose left end is the depth the row lands at; moving sideways changes the depth. Release calls `rail.move {id, parent, index}`. A `CONFLICT` puts the row back and shows the message as in U9. The other rows make room as the pointer moves (motion.md, "Drag to reorder").
 
 **U25 Daemon gone.** Given an open Project, when `daemon-exited` arrives, then the header reads `roundup   <Project name>   ✕ daemon exited <code>`, or `✕ daemon exited by signal` when the code is `null`, the part after the name in Ink, and that is the only place the exit shows. The Pane sends no `terminal.write` and no `terminal.resize`; `stop`, `+ agent`, `+ terminal` and `+ group` are disabled. The Rail is greyed, not emptied or faded: each row keeps its Glyph, its name and its Live line, and every Live line keeps at least 2:1 contrast against its background, so the user still sees what each Agent was doing when the Daemon went away. Other controls (Todos, Pads, rename, promote) are not disabled: their calls fail with `INTERNAL` (S3) and show as the usual `✕ <message>` line.
+
+## Dev harness
+
+**U26 harness seeds.** Given a seed name (`first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`), when the App mounts on a fake Daemon holding that seed, then the Rail region shows what the seed describes. `first-run` has no open Project (U2). `agents-10` has ten Agents of every Kind. `tree-40` has forty nodes: Groups nested two deep, a Meta-agent with children and Terminals; with eight Todos and four Pads. `daemon-exits` sends `daemon-exited` with code `1` once the App has loaded (U2). `conflict` makes the next call after the App has loaded fail with `CONFLICT` and the one after succeed. Every Rail, Todo and Pad write the App can make changes the fake Daemon and sends the Events the real one sends. `just harness <seed>` serves the same App in a browser, and the page can send Events and failures to it (`docs/development-loop.md`).
 
 ## Deferred past the MVP
 

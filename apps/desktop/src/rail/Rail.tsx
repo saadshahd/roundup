@@ -1,9 +1,11 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
-import { layoutRail } from "./layout";
+import { createRailDrag } from "./drag";
+import { ancestorsOf, layoutRail } from "./layout";
+import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
 import "./styles.css";
 
@@ -11,7 +13,7 @@ const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
   new Set(set.has(member) ? [...set].filter((each) => each !== member) : [...set, member]);
 
 export const Rail = () => {
-  const { app, project, rail, now, daemonExit } = useConnectedProject();
+  const { app, project, rail, now, reducedMotion, daemonExit } = useConnectedProject();
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());
@@ -19,7 +21,14 @@ export const Rail = () => {
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
 
-  const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now() }));
+  const [dragged, setDragged] = createSignal<string | null>(null);
+
+  const rows = createMemo(() =>
+    layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now(), dragged: dragged() }),
+  );
+
+  const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
+  const layoutKey = createMemo(() => nodeRows().map((row) => `${row.key}@${row.depth}`).join());
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
 
@@ -32,6 +41,18 @@ export const Rail = () => {
       setFailure(error.message);
     }
   };
+
+  const [container, setContainer] = createSignal<HTMLElement>();
+
+  const drag = createRailDrag({
+    container,
+    nodes: () => rail.nodes,
+    rows: nodeRows,
+    layoutKey,
+    onDragging: setDragged,
+    enabled: () => daemonExit() === null,
+    onDrop: (id, { parent, index }) => void attempt(() => app.rpc("rail.move", { id, parent, index })),
+  });
 
   const [pending, setPending] = createSignal(false);
 
@@ -47,6 +68,17 @@ export const Rail = () => {
     return selected?.kind === "group" ? selected.id : null;
   };
 
+  const spawnAgent = () =>
+    guarded(async () => {
+      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
+
+      setWanted(spawned.id);
+    });
+
+  const spawnTerminal = () => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }));
+
+  const canSpawn = () => !pending() && daemonExit() === null;
+
   const attention = createMemo(() => attentionCount(rail.nodes));
 
   createEffect(() => {
@@ -56,9 +88,37 @@ export const Rail = () => {
   onMount(() => {
     const clear = () => setFailure(null);
 
+    const chord = (press: KeyboardEvent) => {
+      if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+
+      const spawn = { n: spawnAgent, t: spawnTerminal }[press.key.toLowerCase()];
+
+      if (!spawn) return;
+
+      press.preventDefault();
+
+      if (canSpawn()) spawn();
+    };
+
     document.addEventListener("click", clear, true);
-    onCleanup(() => document.removeEventListener("click", clear, true));
+    document.addEventListener("keydown", chord);
+    onCleanup(() => {
+      document.removeEventListener("click", clear, true);
+      document.removeEventListener("keydown", chord);
+    });
   });
+
+  /** A selection made elsewhere (the header's jump) may sit under a collapsed Group; its row is revealed and scrolled to. */
+  createEffect(
+    on(rail.selected, (id) => {
+      if (id === null) return;
+
+      const above = new Set(untrack(() => ancestorsOf(rail.nodes, id)));
+
+      setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
+      queueMicrotask(() => container()?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" }));
+    }),
+  );
 
   createEffect(() => {
     const id = wanted();
@@ -70,7 +130,15 @@ export const Rail = () => {
   });
 
   return (
-    <div class="rail-tree">
+    <div
+      class="rail-tree"
+      ref={setContainer}
+      style={{
+        "--room": `${drag.state()?.room ?? 0}px`,
+        "--lift": `${drag.state()?.lift ?? 0}px`,
+        "--shift-ms": reducedMotion() ? "0ms" : "120ms",
+      }}
+    >
       <div role="tree" aria-label="rail" aria-disabled={daemonExit() !== null ? true : undefined}>
         <For each={keys()}>
           {(key) => (
@@ -103,6 +171,10 @@ export const Rail = () => {
                             void attempt(() => app.rpc("rail.rename", { id: view().node.id, name }))
                           }
                           onPromote={() => void attempt(() => app.rpc("rail.promote", { id: view().node.id }))}
+                          dragging={dragged() !== null}
+                          lifted={drag.state()?.lifted.has(view().node.id) ?? false}
+                          shift={drag.state()?.shifts.get(view().node.id) ?? 0}
+                          onPointerDown={(press) => drag.start(view().node.id, press)}
                         />
                       )}
                     </Show>
@@ -126,31 +198,30 @@ export const Rail = () => {
           )}
         </For>
       </div>
+      <Show when={drag.state()}>
+        {(dragging) => (
+          <div
+            class="drop-line"
+            aria-hidden="true"
+            style={{ top: `${dragging().top}px`, "--depth": dragging().drop.depth }}
+          />
+        )}
+      </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <div class="rail-actions">
-        <button
-          class="word"
-          disabled={pending() || daemonExit() !== null}
-          onClick={() =>
-            guarded(async () => {
-              const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
-
-              setWanted(spawned.id);
-            })
-          }
-        >
+        <button class="word" disabled={!canSpawn()} onClick={spawnAgent}>
           + agent
         </button>
         <button
           class="word"
-          disabled={pending() || daemonExit() !== null}
-          onClick={() => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
+          disabled={!canSpawn()}
+          onClick={spawnTerminal}
         >
           + terminal
         </button>
         <button
           class="word"
-          disabled={pending() || daemonExit() !== null}
+          disabled={!canSpawn()}
           onClick={() => guarded(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
         >
           + group
