@@ -19,6 +19,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `daemon.md` | `crates/rupd` (D1); end-to-end tests in `crates/rup/tests` (D2–D4) | D1–D4 |
 | `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | S1–S3 |
 | `ui.md` | `apps/desktop` (the webview) | U1–U22 |
+| `ux.md` | `apps/desktop` (the webview; V4 also `crates/desktop`): UX enhancements after the MVP | V1–V9 |
 | `workspace.md` | root files | W1 |
 
 The order of work, the PR each scenario belongs to and what can start now are in `.work/queue.md`.
