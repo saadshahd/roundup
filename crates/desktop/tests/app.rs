@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
@@ -336,6 +337,81 @@ fn s1_the_webview_is_granted_dialogs_the_dock_badge_and_hearing_events_and_nothi
     .map(String::from)
     .into();
     assert_eq!(granted, expected);
+}
+
+fn tauri_config() -> Value {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn s4_the_dev_window_loads_the_dev_server_on_the_port_vite_is_pinned_to() {
+    let vite = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/vite.config.ts");
+    let vite = std::fs::read_to_string(vite).unwrap();
+
+    assert_eq!(tauri_config()["build"]["devUrl"], "http://localhost:5173");
+    assert!(
+        vite.contains("port: 5173") && vite.contains("strictPort: true"),
+        "vite must fail rather than move off the port devUrl names"
+    );
+}
+
+#[test]
+fn s4_just_app_refuses_to_start_when_something_already_answers_on_the_dev_port() {
+    // A bind failure means another server already holds the port, which is the condition under test.
+    let _occupant = std::net::TcpListener::bind("[::1]:5173")
+        .ok()
+        .inspect(|listener| {
+            let listener = listener.try_clone().unwrap();
+            std::thread::spawn(move || {
+                for mut stream in listener.incoming().flatten() {
+                    use std::io::Write;
+                    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+                }
+            });
+        });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project = TempDir::new().unwrap();
+    let mut just = Command::new("just")
+        .arg("app")
+        .arg(project.path())
+        .current_dir(root)
+        .process_group(0)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(status) = just.try_wait().unwrap() {
+            break Some(status);
+        }
+        if Instant::now() > deadline {
+            // Without the guard the recipe goes on to open a real window; take its whole group down.
+            let _ = Command::new("kill")
+                .arg("--")
+                .arg(format!("-{}", just.id()))
+                .status();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let mut stderr = String::new();
+    std::io::Read::read_to_string(&mut just.stderr.take().unwrap(), &mut stderr).unwrap();
+
+    assert!(
+        status.is_some_and(|status| !status.success()),
+        "just app did not refuse within 10 s"
+    );
+    assert!(stderr.contains("already answers on :5173"));
+}
+
+#[test]
+fn s4_the_built_app_embeds_the_directory_vite_builds_into() {
+    assert_eq!(
+        tauri_config()["build"]["frontendDist"],
+        "../../apps/desktop/dist"
+    );
 }
 
 #[test]
