@@ -267,7 +267,7 @@ describe("u20 open and edit", () => {
     await waitFor(() => expect(replies.length).toBeGreaterThanOrEqual(3));
     const newest = replies.length - 1;
 
-    replies[newest].resolve([padOf("auth-notes", AGENT, "newest")]);
+    replies.at(-1)?.resolve([padOf("auth-notes", AGENT, "newest")]);
     await screen.findByDisplayValue("newest");
     replies.slice(0, newest).forEach((older) => older.resolve([padOf("auth-notes", AGENT, "older")]));
     await Promise.resolve();

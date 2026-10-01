@@ -83,7 +83,7 @@ describe("u18 list and ownership", () => {
     await waitFor(() => expect(replies.length).toBeGreaterThanOrEqual(1));
     const newest = replies.length - 1;
 
-    replies[newest].resolve([padOf("newest", AGENT)]);
+    replies.at(-1)?.resolve([padOf("newest", AGENT)]);
     await screen.findByText("newest");
     replies.slice(0, newest).forEach((older) => older.resolve([padOf("older", AGENT)]));
     await Promise.resolve();
