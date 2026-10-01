@@ -25,12 +25,19 @@ module_of() {
 
 size() {
   local numstat lines=0 modules="" file add del
-  numstat=$(git diff --numstat --no-renames "$base"...HEAD)
+  # Lines come from a rename-aware diff (a moved file is not delete plus add); modules from a
+  # rename-blind one (a move across modules touches both).
+  numstat=$(git diff --numstat -M "$base"...HEAD)
   while read -r add del file; do
     [ -n "$file" ] || continue
     is_generated "$file" && continue
-    modules="$modules$(module_of "$file")"$'\n'
     [ "$add" = - ] || lines=$((lines + add + del))
+  done <<<"$numstat"
+  numstat=$(git diff --numstat --no-renames "$base"...HEAD)
+  while read -r _ _ file; do
+    [ -n "$file" ] || continue
+    is_generated "$file" && continue
+    modules="$modules$(module_of "$file")"$'\n'
   done <<<"$numstat"
   local distinct
   distinct=$(printf '%s' "$modules" | sort -u | g -c .)
