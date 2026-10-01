@@ -33,11 +33,15 @@ app project:
     trap 'kill -- -"$dev" 2>/dev/null || true' EXIT
     cargo run -p desktop -- "$path"
 
-# Builds the webview files, then rupd, rup and the App in release mode, and runs the App on them with no dev server. No bundling or signing.
+# Builds the webview files, then rupd, rup and the App (custom-protocol, serving apps/desktop/dist) in release mode, and runs the App on them with no dev server. No bundling or signing.
 app-release project:
     #!/usr/bin/env bash
     set -euo pipefail
     path=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(project)}})
+    dist={{quote(justfile_directory())}}/apps/desktop/dist
+    TAURI_CONFIG=$(jq -nc --arg dist "$dist" '{build: {frontendDist: $dist}}')
+    export TAURI_CONFIG
     pnpm -r --if-present build
-    cargo build --release -p rupd -p rup -p desktop
-    cargo run --release -p desktop -- "$path"
+    cargo build --release -p rupd -p rup
+    cargo build --release -p desktop --features custom-protocol
+    cargo run --release -p desktop --features custom-protocol -- "$path"
