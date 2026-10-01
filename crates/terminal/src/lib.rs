@@ -210,6 +210,16 @@ impl Terminals {
             .ok_or_else(|| RpcError::not_found(format!("running terminal {id}")))
     }
 
+    /// Every event this Terminal emits from now on, in order. `NOT_FOUND` if it is unknown.
+    /// A subscriber that falls more than 1024 events behind gets `RecvError::Lagged` and then the
+    /// newest events; it never slows the PTY reader. Use [`Spawned::events`] to see output from the start.
+    pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<EventData>, RpcError> {
+        id.parse::<u64>()
+            .ok()
+            .and_then(|number| Some(self.shared.table().get(&number)?.events.subscribe()))
+            .ok_or_else(|| RpcError::not_found(format!("terminal {id}")))
+    }
+
     /// Every Terminal, running or exited, oldest first.
     pub fn list(&self) -> Vec<TerminalInfo> {
         self.shared
