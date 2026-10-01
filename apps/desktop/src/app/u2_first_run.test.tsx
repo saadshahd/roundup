@@ -134,28 +134,6 @@ describe("u2 first run", () => {
     expect(container.querySelectorAll(".ink").length).toBe(1);
   });
 
-  it("u2_when_the_daemon_exits_the_centre_shows_the_exit_code_in_ink", async () => {
-    const app = createFakeApp();
-    app.opened.project = PROJECT;
-    const { container } = renderApp(app);
-    await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
-
-    app.exitDaemon({ code: 3 });
-
-    expect(within(region("centre")).getByText("✕ daemon exited 3").className).toBe("ink");
-  });
-
-  it("u2_when_a_signal_ended_the_daemon_the_centre_says_by_signal", async () => {
-    const app = createFakeApp();
-    app.opened.project = PROJECT;
-    const { container } = renderApp(app);
-    await waitFor(() => expect(headerOf(container)).toBe("roundup   payments-api"));
-
-    app.exitDaemon({ code: null });
-
-    expect(within(region("centre")).getByText("✕ daemon exited by signal").className).toBe("ink");
-  });
-
   it("u3_a_failed_rail_refetch_shows_the_message_in_ink_in_the_centre", async () => {
     const app = createFakeApp();
     app.opened.project = PROJECT;

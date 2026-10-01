@@ -66,7 +66,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
             <>
               <span class="pane-title">{paneHeader(node(), rail.exitOf(node()), connected.now())}</span>
               <Show when={isStoppable(node(), rail.exitOf(node()))}>
-                <button type="button" class="word" onClick={() => screens.stop(node())}>
+                <button type="button" class="word" disabled={connected.daemonExit() !== null} onClick={() => screens.stop(node())}>
                   stop
                 </button>
               </Show>
