@@ -40,6 +40,14 @@ pub struct SpawnParams {
     pub parent: Option<String>,
 }
 
+/// Start the user's login shell in a new Terminal and place its node last under `parent`.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct SpawnTerminalParams {
+    pub cwd: String,
+    pub parent: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
 pub struct NodeId {

@@ -1,5 +1,6 @@
 //! Pads: markdown notes owned by an Agent or the user. The owner may rewrite; everyone else may only append.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -16,21 +17,21 @@ pub struct Pad {
 }
 
 /// The owner is the calling Actor.
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "pad/")]
 pub struct CreateParams {
     pub name: String,
     pub text: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "pad/")]
 pub struct PadName {
     pub name: String,
 }
 
 /// Rewrite the whole text. Owner only.
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "pad/")]
 pub struct WriteParams {
     pub name: String,
@@ -38,14 +39,14 @@ pub struct WriteParams {
 }
 
 /// Add to the end. Anyone; counts as a write in Provenance.
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "pad/")]
 pub struct AppendParams {
     pub name: String,
     pub text: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "pad/")]
 pub struct SetOwnerParams {
     pub name: String,
