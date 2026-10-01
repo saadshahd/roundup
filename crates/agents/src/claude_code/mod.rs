@@ -1,11 +1,15 @@
-//! The Claude Code adapter. Hook payloads and the exit status become a Status (ADR 0006);
-//! `session`, `hook` and `transcript` are Claude Code's own words, so they must not leak out of
-//! this module into public names.
+//! The Claude Code adapter. Hook payloads, the terminal title and the exit status become a Status
+//! (ADR 0006); `session`, `hook` and `transcript` are Claude Code's own words, so they must not
+//! leak out of this module into public names.
+
+mod launch;
 
 use contracts::{Kind, Status};
 use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
+
+pub use launch::Launcher;
 
 /// How long a star right after `PreToolUse` waits for its `PermissionRequest`, in milliseconds,
 /// measured from the star. Across 9 dialogs the star precedes its `PermissionRequest` by 18-79 ms;
