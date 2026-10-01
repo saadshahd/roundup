@@ -47,6 +47,14 @@ impl Rig {
         };
         self.pads.call(&ctx, method, params).await
     }
+
+    async fn ok(&self, actor: &Actor, method: &str, params: Value) -> Value {
+        self.call(actor, method, params).await.unwrap()
+    }
+
+    async fn fail(&self, actor: &Actor, method: &str, params: Value) -> rpc::RpcError {
+        self.call(actor, method, params).await.unwrap_err()
+    }
 }
 
 #[tokio::test]
@@ -56,14 +64,13 @@ async fn p1_create_makes_the_caller_owner_and_logs_a_write() {
     let a = agent("a");
 
     let pad = rig
-        .call(&a, "pad.create", json!({"name": "notes", "text": "hi"}))
-        .await
-        .unwrap();
+        .ok(&a, "pad.create", json!({"name": "notes", "text": "hi"}))
+        .await;
 
     assert_eq!(pad["owner"]["id"], "a");
     assert_eq!(pad["text"], "hi");
     let duplicate = rig
-        .call(&a, "pad.create", json!({"name": "notes"}))
+        .ok(&a, "pad.create", json!({"name": "notes"}))
         .await
         .unwrap_err();
     assert_eq!(duplicate.code, code::CONFLICT);
@@ -80,28 +87,21 @@ async fn p1_create_makes_the_caller_owner_and_logs_a_write() {
 async fn p2_owner_rewrites_and_others_only_append() {
     let rig = Rig::new();
     let (a, b) = (agent("a"), agent("b"));
-    rig.call(&a, "pad.create", json!({"name": "notes", "text": "one"}))
-        .await
-        .unwrap();
+    rig.fail(&a, "pad.create", json!({"name": "notes", "text": "one"}))
+        .await;
 
-    rig.call(&a, "pad.write", json!({"name": "notes", "text": "two"}))
-        .await
-        .unwrap();
+    rig.ok(&a, "pad.write", json!({"name": "notes", "text": "two"}))
+        .await;
     let mut events = rig.bus.subscribe();
     let denied = rig
-        .call(&b, "pad.write", json!({"name": "notes", "text": "x"}))
-        .await
-        .unwrap_err();
+        .ok(&b, "pad.write", json!({"name": "notes", "text": "x"}))
+        .await;
     assert_eq!(denied.code, code::FORBIDDEN);
     assert!(events.try_recv().is_err());
-    rig.call(&b, "pad.append", json!({"name": "notes", "text": "+b"}))
-        .await
-        .unwrap();
+    rig.fail(&b, "pad.append", json!({"name": "notes", "text": "+b"}))
+        .await;
 
-    let pad = rig
-        .call(&a, "pad.read", json!({"name": "notes"}))
-        .await
-        .unwrap();
+    let pad = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
     assert_eq!(pad["text"], "two+b");
     assert!(matches!(
         events.try_recv().unwrap().data,
@@ -117,12 +117,11 @@ async fn p3_list_is_ordered_and_read_is_logged() {
     let rig = Rig::new();
     let a = agent("a");
     for name in ["c", "a", "b"] {
-        rig.call(&a, "pad.create", json!({"name": name, "text": name}))
-            .await
-            .unwrap();
+        rig.ok(&a, "pad.create", json!({"name": name, "text": name}))
+            .await;
     }
 
-    let listed = rig.call(&a, "pad.list", Value::Null).await.unwrap();
+    let listed = rig.ok(&a, "pad.list", Value::Null).await;
     let names: Vec<_> = listed
         .as_array()
         .unwrap()
@@ -130,17 +129,12 @@ async fn p3_list_is_ordered_and_read_is_logged() {
         .map(|p| p["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, ["a", "b", "c"]);
-    let read = rig
-        .call(&a, "pad.read", json!({"name": "b"}))
-        .await
-        .unwrap();
+    let read = rig.ok(&a, "pad.read", json!({"name": "b"})).await;
     assert_eq!(
         (read["name"].as_str(), read["text"].as_str()),
         (Some("b"), Some("b"))
     );
-    rig.call(&a, "pad.read", json!({"name": "a"}))
-        .await
-        .unwrap();
+    rig.ok(&a, "pad.read", json!({"name": "a"})).await;
     let verbs: Vec<_> = rig
         .touches
         .history("pad:a")
@@ -149,10 +143,7 @@ async fn p3_list_is_ordered_and_read_is_logged() {
         .map(|t| t.verb)
         .collect();
     assert_eq!(verbs, [Verb::Wrote, Verb::Read]);
-    let missing = rig
-        .call(&a, "pad.read", json!({"name": "zzz"}))
-        .await
-        .unwrap_err();
+    let missing = rig.call(&a, "pad.read", json!({"name": "zzz"})).await;
     assert_eq!(missing.code, code::NOT_FOUND);
 }
 
@@ -163,9 +154,8 @@ async fn p8_bad_names_are_invalid_params_for_every_method() {
     for method in ["pad.create", "pad.read", "pad.write", "pad.append"] {
         for name in ["", "a/b", "a\\b", "..", ".hidden", "a..b"] {
             let err = rig
-                .call(&a, method, json!({"name": name, "text": "x"}))
-                .await
-                .unwrap_err();
+                .fail(&a, method, json!({"name": name, "text": "x"}))
+                .await;
             assert_eq!(err.code, code::INVALID_PARAMS, "{method} {name:?}");
         }
     }
