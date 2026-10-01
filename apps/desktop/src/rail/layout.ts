@@ -8,15 +8,7 @@ const DONE_FOLD_MS = 10 * 60_000;
 export type Collapsed = { kind: Kind | null; children: number };
 
 export type RailRow =
-  | {
-      kind: "node";
-      key: string;
-      depth: number;
-      node: RailNode;
-      collapsed: Collapsed | null;
-      /** An Agent shown only because its `✓ n done` line is open: it sits after its live siblings whatever its `order`. */
-      folded: boolean;
-    }
+  | { kind: "node"; key: string; depth: number; node: RailNode; collapsed: Collapsed | null }
   | { kind: "fold"; key: string; depth: number; parent: string | null; count: number };
 
 export type NodeRow = Extract<RailRow, { kind: "node" }>;
@@ -26,6 +18,8 @@ export type RailView = {
   /** Parents whose `✓ n done` line has been clicked open; `null` is the top level. */
   unfolded: ReadonlySet<string | null>;
   now: number;
+  /** The row being dragged: shown at its place in `order` whatever its age, and every `✓ n done` line is closed, so no row is out of `order` while the drop line is placed. */
+  dragged: string | null;
 };
 
 export const isPlainGroup = (node: RailNode): boolean => node.kind === "group" && !node.meta;
@@ -38,11 +32,12 @@ export const siblingsOf = (nodes: readonly RailNode[], parent: string | null): R
 export const descendantsOf = (nodes: readonly RailNode[], id: string): RailNode[] =>
   siblingsOf(nodes, id).flatMap((child) => [child, ...descendantsOf(nodes, child.id)]);
 
-const isFoldedAgent = (node: RailNode, now: number): boolean =>
+const isFoldedAgent = (node: RailNode, view: RailView): boolean =>
+  node.id !== view.dragged &&
   node.kind === "agent" &&
   node.status !== null &&
   node.status.kind === "done" &&
-  now - node.status.since >= DONE_FOLD_MS;
+  view.now - node.status.since >= DONE_FOLD_MS;
 
 /** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Group without its descendants. */
 export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[] => {
@@ -53,8 +48,8 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
 
   const rowsOf = (parent: string | null, depth: number): RailRow[] => {
     const siblings = under(parent);
-    const folded = siblings.filter((node) => isFoldedAgent(node, view.now));
-    const unfolded = view.unfolded.has(parent);
+    const folded = siblings.filter((node) => isFoldedAgent(node, view));
+    const unfolded = view.dragged === null && view.unfolded.has(parent);
 
     const shown = [
       ...siblings.filter((node) => !folded.includes(node)),
@@ -69,7 +64,6 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
         key: `node:${node.id}`,
         depth,
         node,
-        folded: folded.includes(node),
         collapsed: collapsed ? { kind: mostUrgent(kindsBelow(node.id)), children: under(node.id).length } : null,
       };
 

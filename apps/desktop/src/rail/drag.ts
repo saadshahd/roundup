@@ -28,12 +28,8 @@ type Snapshot = {
   rows: readonly NodeRow[];
   bounds: readonly { top: number; bottom: number }[];
   lifted: ReadonlySet<string>;
-  /** Every row that stays put, folded ones too: the rows that shift into the room. */
-  movable: readonly NodeRow[];
-  /** The gap the dragged row came from, in the numbering of `movable`. */
+  /** The gap the dragged row came from, in the numbering of `rows`. */
   origin: number;
-  /** Where gap `slot` of `rows` falls in the numbering of `movable`. */
-  gaps: readonly number[];
   room: number;
   /** One indent step (2ch) in pixels. */
   step: number;
@@ -43,7 +39,6 @@ const measured = (container: HTMLElement, nodes: readonly RailNode[], rows: read
   const base = container.getBoundingClientRect().top;
   const remaining = remainingRows(nodes, rows, id);
   const moving = movingWith(nodes, id);
-  const movable = rows.filter((row) => !moving.has(row.node.id));
 
   const boundsOf = (rowId: string) => {
     const row = container.querySelector(`[data-id="${CSS.escape(rowId)}"]`);
@@ -71,9 +66,7 @@ const measured = (container: HTMLElement, nodes: readonly RailNode[], rows: read
     rows: remaining,
     bounds: remaining.map((row) => boundsOf(row.node.id)),
     lifted: new Set(lifted),
-    movable,
     origin: rows.findIndex((row) => row.node.id === id),
-    gaps: [0, ...remaining.map((row) => movable.indexOf(row) + 1)],
     room: Math.max(...liftedBounds.map((bounds) => bounds.bottom)) - Math.min(...liftedBounds.map((bounds) => bounds.top)),
     step,
   };
@@ -82,27 +75,21 @@ const measured = (container: HTMLElement, nodes: readonly RailNode[], rows: read
 const stateAt = (snapshot: Snapshot, id: string, base: DOMRect, pointer: { x: number; y: number }, lift: number): DragState => {
   const slot = snapshot.bounds.filter((bounds) => (bounds.top + bounds.bottom) / 2 < pointer.y - base.top).length;
 
-  const gap = snapshot.gaps[slot] ?? 0;
-
   return {
     drop: dropAt(snapshot.nodes, snapshot.rows, id, slot, Math.round((pointer.x - base.left) / snapshot.step)),
-    top: (snapshot.bounds[slot - 1]?.bottom ?? 0) - (gap > snapshot.origin ? snapshot.room : 0),
+    top: (snapshot.bounds[slot - 1]?.bottom ?? 0) - (slot > snapshot.origin ? snapshot.room : 0),
     room: snapshot.room,
     lift,
     lifted: snapshot.lifted,
     shifts: new Map(
-      gap < snapshot.origin
-        ? snapshot.movable.slice(gap, snapshot.origin).map((row) => [row.node.id, 1] as const)
-        : snapshot.movable.slice(snapshot.origin, gap).map((row) => [row.node.id, -1] as const),
+      slot < snapshot.origin
+        ? snapshot.rows.slice(slot, snapshot.origin).map((row) => [row.node.id, 1] as const)
+        : snapshot.rows.slice(snapshot.origin, slot).map((row) => [row.node.id, -1] as const),
     ),
   };
 };
 
-export type RailDrag = {
-  /** True from the first move past a click until release; set before the rows are measured, so rows can settle into their drag layout first. */
-  active: Accessor<boolean>;
-  state: Accessor<DragState | null>; start: (id: string, press: PointerEvent) => void;
-};
+export type RailDrag = { state: Accessor<DragState | null>; start: (id: string, press: PointerEvent) => void };
 
 /** The click the browser sends after a release would clear the failure line a rejected `rail.move` has already shown. */
 const swallowNextClick = (): (() => void) => {
@@ -119,10 +106,12 @@ const swallowNextClick = (): (() => void) => {
 export const createRailDrag = (source: {
   container: () => HTMLElement | undefined;
   nodes: () => readonly RailNode[];
+  /** Read after `onDragging(id)` has run, so the rows are the ones laid out for the drag. */
   rows: () => readonly NodeRow[];
+  /** The id from the first move past a click until release, then `null`; the Rail lays its rows out for the drag in between, before they are measured. */
+  onDragging: (id: string | null) => void;
   onDrop: (id: string, drop: Drop) => void;
 }): RailDrag => {
-  const [active, setActive] = createSignal(false);
   const [state, setState] = createSignal<DragState | null>(null);
 
   let stop: () => void = () => {};
@@ -137,15 +126,14 @@ export const createRailDrag = (source: {
     stop();
 
     const nodes = [...source.nodes()];
-    const rows = source.rows();
     let snapshot: Snapshot | null = null;
 
     const follow = (move: PointerEvent) => {
       if (!snapshot && Math.hypot(move.clientX - press.clientX, move.clientY - press.clientY) < THRESHOLD_PX) return;
 
-      if (!snapshot) setActive(true);
+      if (!snapshot) source.onDragging(id);
 
-      snapshot ??= measured(container, nodes, rows, id);
+      snapshot ??= measured(container, nodes, source.rows(), id);
       setState(
         stateAt(snapshot, id, container.getBoundingClientRect(), { x: move.clientX, y: move.clientY }, move.clientY - press.clientY),
       );
@@ -171,7 +159,7 @@ export const createRailDrag = (source: {
       window.removeEventListener("pointercancel", stop);
       window.removeEventListener("keydown", cancelOnEscape);
       setState(null);
-      setActive(false);
+      source.onDragging(null);
     };
 
     window.addEventListener("pointermove", follow);
@@ -185,5 +173,5 @@ export const createRailDrag = (source: {
     forgetClick();
   });
 
-  return { active, state, start };
+  return { state, start };
 };

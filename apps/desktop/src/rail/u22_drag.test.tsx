@@ -22,6 +22,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const doneAgent = (id: string, order: number, over: Partial<RailNode> = {}): RailNode =>
+  agent(id, "done", "finished", { order, status: { kind: "done", label: "finished", since: NOW - 60 * MINUTE }, ...over });
+
 const shiftsOf = () =>
   Object.fromEntries(
     screen
@@ -87,13 +90,8 @@ describe("u22 drag", () => {
   });
 
   it("u22_a_drop_below_an_opened_done_line_lands_where_the_line_is_drawn", async () => {
-    const done = agent("d", "done", "finished", {
-      order: 0,
-      status: { kind: "done", label: "finished", since: NOW - 60 * MINUTE },
-    });
-
     const mounted = await mountRail([
-      done,
+      doneAgent("d", 0),
       agent("a", "idle", "i", { order: 1 }),
       agent("b", "idle", "i", { order: 2 }),
       agent("c", "idle", "i", { order: 3 }),
@@ -103,9 +101,67 @@ describe("u22 drag", () => {
     fireEvent.click(screen.getByText("✓ 1 done"));
 
     dragFrom("a", pointerAt(4, 0));
+
+    expect(dropLine()?.style.top).toBe("40px");
+
     release(pointerAt(4, 0));
 
     await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "a", parent: null, index: 3 }]));
+  });
+
+  it("u22_a_drop_below_a_done_line_opened_inside_a_group_lands_where_the_line_is_drawn", async () => {
+    const mounted = await mountRail([
+      agent("a", "idle", "i", { order: 0 }),
+      agent("b", "idle", "i", { order: 1 }),
+      agent("c", "idle", "i", { order: 2 }),
+      group("g", { order: 3 }),
+      agent("x", "idle", "i", { parent: "g", order: 0 }),
+      doneAgent("e", 1, { parent: "g" }),
+      doneAgent("d", 4),
+    ]);
+
+    mounted.app.handlers["rail.move"] = () => null;
+    screen.getAllByText("✓ 1 done").forEach((line) => fireEvent.click(line));
+
+    dragFrom("c", pointerAt(6, 0));
+
+    expect(dropLine()?.style.top).toBe("80px");
+
+    release(pointerAt(6, 0));
+
+    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "c", parent: null, index: 3 }]));
+  });
+
+  it("u22_a_done_row_can_itself_be_dragged", async () => {
+    const mounted = await mountRail([
+      agent("a", "idle", "i", { order: 0 }),
+      doneAgent("d", 1),
+      agent("b", "idle", "i", { order: 2 }),
+    ]);
+
+    mounted.app.handlers["rail.move"] = () => null;
+    fireEvent.click(screen.getByText("✓ 1 done"));
+
+    dragFrom("d", pointerAt(0, 0));
+    release(pointerAt(0, 0));
+
+    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "d", parent: null, index: 0 }]));
+  });
+
+  it("u22_the_drop_line_sits_where_the_pointer_is_when_the_row_moves_up", async () => {
+    await mountRail(TREE);
+
+    dragFrom("b", pointerAt(1, 0));
+
+    expect(dropLine()?.style.top).toBe("20px");
+  });
+
+  it("u22_the_drop_line_sits_at_the_dragged_rows_own_place_when_the_pointer_has_not_left_it", async () => {
+    await mountRail(TREE);
+
+    dragFrom("b", pointerAt(3, 0));
+
+    expect(dropLine()?.style.top).toBe("60px");
   });
 
   it("u22_a_pointer_just_below_a_rows_middle_lands_below_it", async () => {

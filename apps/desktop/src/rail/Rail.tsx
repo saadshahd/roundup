@@ -21,7 +21,12 @@ export const Rail = () => {
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
 
-  const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now() }));
+  const [dragged, setDragged] = createSignal<string | null>(null);
+
+  const rows = createMemo(() =>
+    layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now(), dragged: dragged() }),
+  );
+
   const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
@@ -42,6 +47,7 @@ export const Rail = () => {
     container,
     nodes: () => rail.nodes,
     rows: nodeRows,
+    onDragging: setDragged,
     onDrop: (id, { parent, index }) => void attempt(() => app.rpc("rail.move", { id, parent, index })),
   });
 
@@ -119,7 +125,7 @@ export const Rail = () => {
                             void attempt(() => app.rpc("rail.rename", { id: view().node.id, name }))
                           }
                           onPromote={() => void attempt(() => app.rpc("rail.promote", { id: view().node.id }))}
-                          dragging={drag.active()}
+                          dragging={dragged() !== null}
                           lifted={drag.state()?.lifted.has(view().node.id) ?? false}
                           shift={drag.state()?.shifts.get(view().node.id) ?? 0}
                           onPointerDown={(press) => drag.start(view().node.id, press)}

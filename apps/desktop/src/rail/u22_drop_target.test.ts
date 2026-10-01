@@ -14,8 +14,8 @@ const TREE: RailNode[] = [
   agent("b", "idle", "i", { order: 2 }),
 ];
 
-const rowsOf = (nodes: RailNode[], collapsed: string[] = [], unfolded: (string | null)[] = []): NodeRow[] =>
-  layoutRail(nodes, { collapsed: new Set(collapsed), unfolded: new Set(unfolded), now: NOW }).filter(
+const rowsOf = (nodes: RailNode[], collapsed: string[] = [], unfolded: (string | null)[] = [], dragged: string | null = null): NodeRow[] =>
+  layoutRail(nodes, { collapsed: new Set(collapsed), unfolded: new Set(unfolded), now: NOW, dragged }).filter(
     (row): row is NodeRow => row.kind === "node",
   );
 
@@ -31,14 +31,18 @@ const WITH_DONE: RailNode[] = [
 ];
 
 describe("u22 drop target", () => {
-  it("u22_a_row_shown_out_of_order_after_an_opened_done_line_is_not_a_place_to_drop", () => {
-    const rows = rowsOf(WITH_DONE, [], [null]);
+  it("u22_an_opened_done_line_is_closed_while_a_row_is_dragged", () => {
+    const rows = rowsOf(WITH_DONE, [], [null], "a");
 
     expect(remainingRows(WITH_DONE, rows, "a").map((row) => row.node.id)).toEqual(["b", "c"]);
   });
 
+  it("u22_a_dragged_done_row_is_shown_at_its_place_in_order", () => {
+    expect(rowsOf(WITH_DONE, [], [null], "d").map((row) => row.node.id)).toEqual(["d", "a", "b", "c"]);
+  });
+
   it("u22_below_the_last_live_row_a_drop_counts_the_done_rows_in_the_index", () => {
-    const rows = remainingRows(WITH_DONE, rowsOf(WITH_DONE, [], [null]), "a");
+    const rows = remainingRows(WITH_DONE, rowsOf(WITH_DONE, [], [null], "a"), "a");
 
     expect(dropAt(WITH_DONE, rows, "a", 2, 0)).toEqual({ parent: null, index: 3, depth: 0 });
   });

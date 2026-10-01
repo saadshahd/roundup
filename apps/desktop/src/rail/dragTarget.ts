@@ -9,11 +9,11 @@ export type Drop = { parent: string | null; index: number; depth: number };
 export const movingWith = (nodes: readonly RailNode[], dragged: string): Set<string> =>
   new Set([dragged, ...descendantsOf(nodes, dragged).map((node) => node.id)]);
 
-/** The rows a dragged row can land between. Not itself or what moves with it (a Group cannot move into its own descendant), and not a row shown out of `order` after an opened `✓ n done` line: the Daemon orders by `order` alone, so a drop below one would land elsewhere than the line. */
+/** The rows a dragged row can land between: not itself or what moves with it, since a Group cannot move into its own descendant. */
 export const remainingRows = (nodes: readonly RailNode[], rows: readonly NodeRow[], dragged: string): NodeRow[] => {
   const moving = movingWith(nodes, dragged);
 
-  return rows.filter((row) => !moving.has(row.node.id) && !row.folded);
+  return rows.filter((row) => !moving.has(row.node.id));
 };
 
 /** Where the dragged row lands in gap `slot` (0 is above the first row) of `rows`, with the pointer at `depth`, clamped to the depths the gap allows. `index` counts siblings without the dragged row. */
