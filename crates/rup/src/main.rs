@@ -1,11 +1,17 @@
 use std::process::ExitCode;
 
+mod mcp;
+
 #[tokio::main]
 async fn main() -> ExitCode {
-    let Some(command) = std::env::args().nth(1) else {
-        eprintln!("usage: rup ping");
+    let mut args = std::env::args().skip(1);
+    let Some(command) = args.next() else {
+        eprintln!("usage: rup ping | rup mcp <agent-id>");
         return ExitCode::from(2);
     };
+    if command == "mcp" {
+        return mcp::run(args.next()).await;
+    }
     let method = match command.as_str() {
         "ping" => "daemon.ping",
         other => {
