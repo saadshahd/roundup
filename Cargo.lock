@@ -669,9 +669,12 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "contracts",
+ "provenance",
  "rpc",
  "rusqlite",
  "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
