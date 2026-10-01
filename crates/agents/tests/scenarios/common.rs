@@ -8,7 +8,7 @@ use std::time::Duration;
 use agents::Agents;
 use agents::claude_code::Launcher;
 use contracts::agent::RailNode;
-use contracts::{Actor, Event, EventData};
+use contracts::{Actor, Event, EventData, Status};
 use provenance::Touches;
 use rpc::{Bus, Ctx, Module, RpcError};
 use serde_json::{Value, json};
@@ -86,6 +86,17 @@ impl Fixture {
         self.agents.call(&ctx, method, params).await
     }
 
+    pub async fn spawn(
+        &self,
+        parent: Option<&str>,
+        prompt: Option<&str>,
+    ) -> Result<RailNode, RpcError> {
+        let cwd = self.dir.path().to_string_lossy().into_owned();
+        let params = json!({"cwd": cwd, "prompt": prompt, "parent": parent});
+        let node = self.call("agent.spawn", params).await?;
+        Ok(serde_json::from_value(node).unwrap())
+    }
+
     pub async fn group(&self, name: &str, parent: Option<&str>) -> String {
         let node = self
             .call("rail.createGroup", json!({"name": name, "parent": parent}))
@@ -120,4 +131,23 @@ impl Fixture {
         .await
         .expect("the tree reaches the expected state in time")
     }
+}
+
+pub async fn until_file(path: &Path) -> String {
+    for _ in 0..500 {
+        if let Ok(text) = std::fs::read_to_string(path)
+            && !text.is_empty()
+        {
+            return text;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("{} was never written", path.display());
+}
+
+pub fn status_of<'a>(tree: &'a [RailNode], id: &str) -> &'a Status {
+    tree.iter()
+        .find(|node| node.id == id)
+        .and_then(|node| node.status.as_ref())
+        .expect("an Agent has a Status")
 }
