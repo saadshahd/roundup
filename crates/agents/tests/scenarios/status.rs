@@ -8,9 +8,9 @@ use agents::{AgentAdapter, Observation};
 use contracts::{Kind, Status};
 use serde_json::Value;
 
-const RUN1: &str = include_str!("../../../spikes/hooks-state/log.run1.jsonl");
-const RUN2: &str = include_str!("../../../spikes/hooks-state/log.run2.jsonl");
-const FAILURE: &str = include_str!("../../../spikes/hooks-state/log.jsonl");
+const RUN1: &str = include_str!("../../../../spikes/hooks-state/log.run1.jsonl");
+const RUN2: &str = include_str!("../../../../spikes/hooks-state/log.run2.jsonl");
+const FAILURE: &str = include_str!("../../../../spikes/hooks-state/log.jsonl");
 
 /// An adapter whose clock the test winds by hand.
 fn adapter() -> (ClaudeCode, Arc<AtomicI64>) {

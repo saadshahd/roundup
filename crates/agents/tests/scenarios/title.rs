@@ -5,8 +5,8 @@ use agents::{AgentAdapter, Observation};
 use contracts::Kind;
 use serde_json::{Value, json};
 
-const INTERRUPT_AND_DENY: &str = include_str!("../../../spikes/hooks-state/screen2.jsonl");
-const DIALOG_ESCAPED: &str = include_str!("../../../spikes/hooks-state/screen3.jsonl");
+const INTERRUPT_AND_DENY: &str = include_str!("../../../../spikes/hooks-state/screen2.jsonl");
+const DIALOG_ESCAPED: &str = include_str!("../../../../spikes/hooks-state/screen3.jsonl");
 
 fn adapter() -> ClaudeCode {
     ClaudeCode::new(|| 0)
