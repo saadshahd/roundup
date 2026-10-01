@@ -15,13 +15,14 @@ Superseded in part by `docs/boxd.md`, which holds the current use cases and reci
 |---|---|
 | Default VM | 2 vCPU / 8G, x86_64, Ubuntu 24.04; node 24, claude 2.1.283, `agent-browser` 0.34.0 preinstalled; no Rust |
 | Fresh VM | boot reported 8 ms, about 1.0 s wall; first exec about 0.9 s |
+| Builder + `just check` on a snapshot VM | 29–37 s wall with Rust 1.89; 56 s with Rust 1.99 and the larger workspace (`loop/boxd.sh build`) |
 | From snapshot | boot reported 4–5 ms; about 2.2 s wall; toolchain, Desktop URL and `agent-browser` all present |
 | Fork of a running VM | reported 222 ms, about 2.4 s wall |
 | Exit codes | propagate through `boxd machine exec` |
 | Rust via rustup (minimal profile) | about 12 s; `exec` runs `sh -c`, so source `~/.cargo/env` |
 | `--isolated` | boots about 1.5 s; egress is `unrestricted`; `claude -p` and `agent-browser` work; inbound isolation untested |
 | Snapshot `ru-toolchain` | about 11.5 GB; 2.5 min to bake with Rust, nextest, cargo-machete, just, pnpm |
-| Credit | EUR 30.00 before and after everything |
+| Credit | about EUR 30 before and after everything (29.997 on one reading, 30.00 after rounding) |
 
 ## Builder runs (Max token passed per call with `exec -e`)
 
@@ -30,13 +31,13 @@ Superseded in part by `docs/boxd.md`, which holds the current use cases and reci
 | Ping, laptop / VM | 1 | 1.7 s / 1.5 s | $0.105 / $0.092 |
 | Sonnet: add a unit test and run the check | 3–8 | 13–19 s | $0.08–0.14 |
 | Opus: one-line review | 2 | 5.2 s | $0.170 |
-| 4 Sonnet Builders in parallel, distinct tasks | 3–6 each | 21–27 s total wall | $0.08–0.11 each |
+| 4 Sonnet Builders in parallel, distinct tasks | 3–6 each | 21–27 s wall each (model time 19–25 s) | $0.08–0.11 each |
 
 No 401, 429 or terms error appeared in any run. The JSON has no quota field. `sonnet` and `opus` resolve to claude-sonnet-5-5 and claude-opus-5-5.
 
 ## Secrets
 
-After a Builder run, a search of the VM's home, `/tmp` and `/etc` found no copy of the token, and `~/.claude/.credentials.json` did not exist. `boxd env list` was empty. `boxd env set --secret` is account-wide and was not used.
+After a Builder run, a search of the VM's home, `/tmp` and `/etc` found no copy of the token, and `~/.claude/.credentials.json` did not exist. `boxd env list` was empty. The first, failed attempt did use `boxd env set --secret` (account-wide) and removed it afterwards; every later run passed the token per call with `exec -e`.
 
 ## QA pipeline proof
 
