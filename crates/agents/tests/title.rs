@@ -201,9 +201,15 @@ fn first_after(steps: &[Step], from: f64, event: &str) -> f64 {
 
 #[test]
 fn a2_a_spinner_title_gives_working() {
-    let mut a = Clocked::new();
-    a.signal(0, "Stop");
-    assert_eq!(a.title(1, "◐ Say hi in 3 words"), Some(Kind::Working));
+    for glyph in ['◐', '◑'] {
+        let mut a = Clocked::new();
+        a.signal(0, "Stop");
+        assert_eq!(
+            a.title(1, &format!("{glyph} Say hi in 3 words")),
+            Some(Kind::Working),
+            "{glyph}"
+        );
+    }
 }
 
 #[test]

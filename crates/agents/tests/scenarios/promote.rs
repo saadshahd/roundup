@@ -231,6 +231,48 @@ async fn a7_stopping_a_meta_agent_that_is_still_starting_is_a_conflict_and_moves
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a7_a_group_being_promoted_reads_working_starting_not_done() {
+    let f = std::sync::Arc::new(Fixture::running("sleep 30"));
+    let team = f.group("team", None).await;
+    let config = hold_starts(&f);
+    let promoting = {
+        let (f, team) = (std::sync::Arc::clone(&f), team.clone());
+        tokio::spawn(async move { f.promote(&team).await })
+    };
+    let tree = f.until(|t| t.iter().any(|n| n.id == team && n.meta)).await;
+
+    let status = status_of(&tree, &team);
+
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Working, "starting")
+    );
+    release(config).await;
+    promoting.await.unwrap().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a7_an_agent_that_is_still_starting_reads_working_starting_not_done() {
+    let f = std::sync::Arc::new(Fixture::running("sleep 30"));
+    let config = hold_starts(&f);
+    let spawning = {
+        let f = std::sync::Arc::clone(&f);
+        tokio::spawn(async move { f.spawn(None, None).await })
+    };
+    let tree = f.until(|t| !t.is_empty()).await;
+
+    let status = status_of(&tree, &tree[0].id);
+
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Working, "starting")
+    );
+    assert!(status.since > 0, "since is when it was marked");
+    release(config).await;
+    spawning.await.unwrap().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a7_stopping_an_agent_that_is_still_starting_is_a_conflict() {
     let f = std::sync::Arc::new(Fixture::running("sleep 30"));
     let config = hold_starts(&f);
@@ -246,6 +288,22 @@ async fn a7_stopping_an_agent_that_is_still_starting_is_a_conflict() {
     release(config).await;
     let agent = spawning.await.unwrap().unwrap();
     assert_eq!(status_of(&f.tree().await, &agent.id).kind, Kind::Working);
+}
+
+#[tokio::test]
+async fn a7_stopping_an_agent_whose_program_already_failed_keeps_its_error() {
+    let f = Fixture::running("exit 3");
+    let agent = f.spawn(None, None).await.unwrap();
+    f.until(|t| status_of(t, &agent.id).kind == Kind::Error)
+        .await;
+
+    f.stop(&agent.id).await.unwrap();
+
+    let status = status_of(&f.tree().await, &agent.id).clone();
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Error, "exited 3")
+    );
 }
 
 #[tokio::test]
