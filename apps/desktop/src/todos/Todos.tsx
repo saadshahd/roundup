@@ -45,7 +45,8 @@ export const Todos = () => {
 
     const message = await failureOf(() => connected.app.rpc("todo.create", { title, body: null, blockers: null }));
 
-    if (message !== null) setField({ kind: "failed", message });
+    // A field the user opened since must keep its typed text.
+    if (message !== null) setField((current) => (current.kind === "closed" ? { kind: "failed", message } : current));
   };
 
   const show = (todo: Todo) => connected.drawer.open(() => <TodoDrawer id={todo.id} todos={todos} />);

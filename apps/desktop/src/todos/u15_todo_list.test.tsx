@@ -87,6 +87,7 @@ describe("u15 Todo list", () => {
     await screen.findByText(/todo 1/);
 
     app.emit({ actor: USER, name: "rail.changed" });
+    app.emit({ actor: USER, name: "pad.changed", data: { name: "notes" } });
 
     expect(callsTo(app, "todo.list")).toHaveLength(1);
   });
@@ -151,27 +152,31 @@ describe("u15 Todo list", () => {
     expect(screen.getByRole("button", { name: /#2/ })).toBe(before);
   });
 
-  it("u15_listing_blocked_todos_reads_each_ones_blockers_a_constant_number_of_times", async () => {
+  it("u15_listing_blocked_todos_does_a_constant_amount_of_work_per_todo", async () => {
     const count = 120;
     let reads = 0;
+
+    const counting = <Value,>(value: Value) => ({
+      enumerable: true,
+      get: () => {
+        reads += 1;
+
+        return value;
+      },
+    });
 
     const counted = (id: number) => {
       const row = todo(id, { blocked: true });
 
-      return Object.defineProperty(row, "blockers", {
-        enumerable: true,
-        get: () => {
-          reads += 1;
+      Object.defineProperty(row, "id", counting(id));
 
-          return [(id % count) + 1];
-        },
-      });
+      return Object.defineProperty(row, "blockers", counting([(id % count) + 1]));
     };
 
     await mountTodos(Array.from({ length: count }, (_, index) => counted(index + 1)));
     await screen.findByRole("button", { name: /#120 todo 120/ });
 
-    expect(reads).toBeLessThan(count * 10);
+    expect(reads).toBeLessThan(count * 40);
   });
 
   it("u15_a_row_wraps_under_its_id_not_under_its_glyph", async () => {

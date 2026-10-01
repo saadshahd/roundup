@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, on, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -21,6 +21,8 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
   const { app, drawer } = useConnectedProject();
   const [failure, setFailure] = createSignal<string | null>(null);
   const [offering, setOffering] = createSignal(false);
+  const [read, setRead] = createSignal(false);
+  const [removedByMe, setRemovedByMe] = createSignal(false);
 
   const attempt = async <Result,>(call: () => Promise<Result>) => {
     const message = await failureOf(call);
@@ -36,28 +38,43 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
   const [answered, setAnswered] = createSignal<Todo | null>(null);
   let picks: Promise<unknown> = Promise.resolve();
 
-  createEffect(() => {
-    todo();
-    setAnswered(null);
-  });
+  // The list state does not refire when only this Todo's fields change, so the cache watches the blockers itself.
+  createEffect(on(() => todo()?.blockers.join(","), () => setAnswered(null), { defer: true }));
+
+  const blockerBase = () => answered() ?? todo();
 
   const addBlocker = (blocker: number) => {
-    picks = picks.then(() =>
+    const pick = () =>
       attempt(async () => {
-        const base = answered() ?? todo();
+        const base = blockerBase();
 
         if (!base) return;
 
         setAnswered(await app.rpc("todo.setBlockers", { id: props.id, blockers: [...base.blockers, blocker] }));
-      }),
-    );
+      });
+
+    // A bug that rejects one pick must surface, and must not silently skip the picks behind it.
+    picks = picks.then(pick, pick);
   };
 
   return (
     <>
-      <ItemDrawer item={`todo:${props.id}`} read={() => app.rpc("todo.get", { id: props.id })}>
+      <ItemDrawer item={`todo:${props.id}`} read={async () => {
+          const fetched = await app.rpc("todo.get", { id: props.id });
+
+          setRead(true);
+
+          return fetched;
+        }}>
         {() => (
-          <Show when={todo()} fallback={<ErrorLine message={`#${props.id} was deleted`} />}>
+          <Show
+            when={todo()}
+            fallback={
+              <Show when={!removedByMe()}>
+                <ErrorLine message={`#${props.id} was deleted`} />
+              </Show>
+            }
+          >
             {(current) => (
               <>
                 <div style={{ display: "flex", "white-space": "pre" }}>
@@ -82,7 +99,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   + blocker
                 </button>
                 <Show when={offering()}>
-                  <For each={offeredAsBlockers(current(), props.todos.all())}>
+                  <For each={offeredAsBlockers(answered() ?? current(), props.todos.all())}>
                     {(other) => (
                       <RowButton
                         onClick={() => {
@@ -106,7 +123,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
           </Show>
         )}
       </ItemDrawer>
-      <Show when={todo()}>
+      <Show when={read() && todo()}>
         <p>
           <button type="button" class="word" onClick={() => void attempt(() => app.rpc("todo.complete", { id: props.id }))}>
             complete
@@ -117,6 +134,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
             onClick={() =>
               void attempt(async () => {
                 await app.rpc("todo.delete", { id: props.id });
+                setRemovedByMe(true);
                 drawer.close();
               })
             }

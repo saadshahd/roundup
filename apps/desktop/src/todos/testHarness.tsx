@@ -28,7 +28,7 @@ export const todoEvent = (name: "todo.created" | "todo.updated", data: Todo): Da
 });
 
 /** The Shelf's Todos and the Drawer host over a fake Daemon whose `todo.list` answers `store.todos`. */
-export const mountTodos = async (initial: Todo[]) => {
+export const mountTodos = async (initial: Todo[], reducedMotion = true) => {
   const app = createFakeApp();
   const store = { todos: initial };
   app.handlers["todo.list"] = () => store.todos;
@@ -43,7 +43,7 @@ export const mountTodos = async (initial: Todo[]) => {
         rail={null}
         centre={null}
         shelf={<Todos />}
-        overlay={<DrawerHost drawer={connected.drawer} reducedMotion={() => true} />}
+        overlay={<DrawerHost drawer={connected.drawer} reducedMotion={() => reducedMotion} />}
       />
     </ConnectedProjectContext.Provider>
   ));

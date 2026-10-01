@@ -12,8 +12,8 @@ const shelf = () => [todo(4, { title: "migrate users" }), blocked(), todo(10, { 
 
 const drawer = () => screen.getByRole("complementary", { name: "drawer" });
 
-const openDrawerOf = async (title: RegExp, todos = shelf()) => {
-  const mounted = await mountTodos(todos);
+const openDrawerOf = async (title: RegExp, todos = shelf(), reducedMotion = true) => {
+  const mounted = await mountTodos(todos, reducedMotion);
   fireEvent.click(await screen.findByRole("button", { name: title }));
   await within(drawer()).findByText("+ blocker");
 
@@ -275,5 +275,59 @@ describe("u17 Todo detail", () => {
       { id: 5, blockers: [4, 7] },
       { id: 5, blockers: [4, 7, 10] },
     ]);
+  });
+
+  it("u17_a_blocker_change_by_another_actor_between_two_picks_is_not_undone_by_the_second", async () => {
+    const { app, store } = await openDrawerOf(/#5/);
+    app.handlers["todo.setBlockers"] = async ({ blockers }) => ({ ...blocked(), blockers });
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
+    await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(1));
+    store.todos = shelf().map((each) => (each.id === 5 ? { ...each, blockers: [], blocked: false } : each));
+    app.emit(todoEvent("todo.updated", todo(5)));
+    await waitFor(() => expect(within(drawer()).queryByText("waits on")).toBeNull());
+
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
+
+    await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
+    expect(callsTo(app, "todo.setBlockers")[1]?.params).toEqual({ id: 5, blockers: [10] });
+  });
+
+  it("u17_a_todo_just_picked_is_not_offered_again_before_the_event_arrives", async () => {
+    const { app } = await openDrawerOf(/#5/);
+    app.handlers["todo.setBlockers"] = async ({ blockers }) => ({ ...blocked(), blockers });
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
+    await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(1));
+
+    fireEvent.click(within(drawer()).getByText("+ blocker"));
+
+    expect(within(drawer()).queryByRole("button", { name: /#7/ })).toBeNull();
+  });
+
+  it("u17_a_failed_todo_get_offers_no_complete_or_delete", async () => {
+    const { app } = await mountTodos(shelf());
+    app.handlers["todo.get"] = () => Promise.reject(new RpcError(-32001, "gone"));
+
+    fireEvent.click(await screen.findByRole("button", { name: /#5/ }));
+
+    await within(drawer()).findByText(/gone/);
+    expect([within(drawer()).queryByText("complete"), within(drawer()).queryByText("delete")]).toEqual([null, null]);
+  });
+
+  it("u17_deleting_your_own_todo_while_the_drawer_slides_out_shows_no_deleted_message", async () => {
+    const { app, store } = await openDrawerOf(/#5/, shelf(), false);
+    app.handlers["todo.delete"] = async () => {
+      store.todos = shelf().filter((each) => each.id !== 5);
+
+      return null;
+    };
+
+    fireEvent.click(within(drawer()).getByText("delete"));
+    app.emit({ actor: USER, name: "todo.deleted", data: { id: 5 } });
+    await waitFor(() => expect(screen.queryByRole("button", { name: /#5/ })).toBeNull());
+
+    expect(within(drawer()).queryByText(/was deleted/)).toBeNull();
   });
 });

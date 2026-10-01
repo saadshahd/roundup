@@ -115,4 +115,25 @@ describe("u16 create a Todo", () => {
 
     expect([screen.queryByText(/title is empty/), screen.getAllByRole("textbox")]).toEqual([null, [expect.anything()]]);
   });
+
+  it("u16_a_create_that_fails_after_a_second_field_was_opened_leaves_that_field_and_its_text", async () => {
+    const { app } = await mountTodos([]);
+    let reject = (_failure: Error) => {};
+
+    app.handlers["todo.create"] = () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      });
+
+    const first = await openField();
+    type(first, "x");
+    fireEvent.keyDown(first, { key: "Enter" });
+    type(await openField(), "second thought");
+
+    reject(new RpcError(-32602, "title is empty"));
+
+    await waitFor(() => expect(callsTo(app, "todo.create")).toHaveLength(1));
+    await new Promise((settle) => setTimeout(settle));
+    expect(screen.getByRole("textbox", { name: "new todo title" })).toHaveProperty("value", "second thought");
+  });
 });
