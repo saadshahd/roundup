@@ -18,7 +18,7 @@ impl Fixture {
     }
 }
 
-/// `name:order` of each node under `parent`, in order; Agents are named after their folder, so `agent`.
+/// `name:order` of each node under `parent`, in order; an Agent shows as `agent` whatever its name.
 fn names(tree: &[RailNode], parent: Option<&str>) -> Vec<String> {
     let mut kids: Vec<_> = tree
         .iter()

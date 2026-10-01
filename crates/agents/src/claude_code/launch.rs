@@ -1,5 +1,6 @@
 //! What an Agent's Claude Code is started with: a per-Agent settings file whose command hook is
-//! `rup signal <agent-id>`, and a pre-trusted working directory (no hook fires for the trust dialog).
+//! `rup signal <agent-id>`, a per-Agent MCP config that runs `rup mcp <agent-id>`, and a pre-trusted
+//! working directory (no hook fires for the trust dialog).
 
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
@@ -73,14 +74,17 @@ impl Launcher {
         let Some(id) = parse_id(id) else {
             return Ok(());
         };
-        match std::fs::remove_file(settings_path(dir, id)) {
-            Err(err) if err.kind() != ErrorKind::NotFound => Err(err),
-            _ => Ok(()),
+        for file in [settings_path(dir, id), mcp_config_path(dir, id)] {
+            match std::fs::remove_file(file) {
+                Err(err) if err.kind() != ErrorKind::NotFound => return Err(err),
+                _ => {}
+            }
         }
+        Ok(())
     }
 
-    /// Write Agent `id`'s settings under `dir` (the Project's `.roundup/`), trust `cwd`, and return
-    /// the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
+    /// Write Agent `id`'s settings and MCP config under `dir` (the Project's `.roundup/`), trust
+    /// `cwd`, and return the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
     /// is the user's, and this is the only grant roundup makes in it.
     pub fn prepare(&self, dir: &Path, id: &str, cwd: &Path) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
@@ -112,12 +116,17 @@ impl Launcher {
             )));
         }
         let settings = settings_path(&dir, id);
+        let mcp_config = mcp_config_path(&dir, id);
         write_atomically(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
+        write_atomically(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
+        // No `--strict-mcp-config`: the Agent keeps the user's own servers.
         Ok(vec![
             self.bin.clone(),
             "--settings".into(),
             settings.to_string_lossy().into_owned(),
+            "--mcp-config".into(),
+            mcp_config.to_string_lossy().into_owned(),
         ])
     }
 
@@ -154,7 +163,17 @@ impl Launcher {
             .iter()
             .map(|event| ((*event).to_owned(), hook.clone()))
             .collect();
-        json!({ "hooks": hooks })
+        // Allowed here so a roundup tool never raises a permission dialog.
+        json!({ "hooks": hooks, "permissions": { "allow": ["mcp__roundup__*"] } })
+    }
+
+    /// `RUPD_SOCKET` is left out: Claude Code's environment, which the server inherits, has it.
+    fn mcp_json(&self, id: u64) -> Value {
+        json!({ "mcpServers": { "roundup": {
+            "type": "stdio",
+            "command": self.rup.to_string_lossy(),
+            "args": ["mcp", id.to_string()],
+        } } })
     }
 
     fn unreadable(&self, err: impl std::fmt::Display) -> RpcError {
@@ -278,4 +297,8 @@ fn landing(path: &Path) -> std::io::Result<PathBuf> {
 
 fn settings_path(dir: &Path, id: u64) -> PathBuf {
     dir.join("agents").join(format!("{id}.settings.json"))
+}
+
+fn mcp_config_path(dir: &Path, id: u64) -> PathBuf {
+    dir.join("agents").join(format!("{id}.mcp.json"))
 }

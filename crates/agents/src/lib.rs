@@ -1,6 +1,7 @@
 //! Agents, the Rail tree and the Claude Code adapter. Owner: agents Builder.
 
 use std::collections::{BTreeMap, HashMap};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -8,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use contracts::agent::{
     CreateGroupParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
-    SpawnParams, StatusEvent,
+    SpawnParams, SpawnTerminalParams, StatusEvent,
 };
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
@@ -20,6 +21,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::time::{Instant, sleep_until};
 
 pub mod claude_code;
+mod name;
 mod rail;
 
 use claude_code::{ClaudeCode, Launcher};
@@ -99,6 +101,14 @@ impl Shared {
         id: &str,
         observation: Observation,
     ) -> Result<Option<i64>, RpcError> {
+        let first_prompt = match &observation {
+            Observation::Signal(payload) => {
+                claude_code::submitted_prompt(payload).map(name::from_prompt)
+            }
+            _ => None,
+        };
+        // Taken before `runs`, as every other path does, so a rename and a prompt cannot deadlock.
+        let mut rail = first_prompt.is_some().then(|| self.rail());
         let (prompt, tick_at) = {
             let mut runs = self.runs();
             let run = runs
@@ -116,7 +126,15 @@ impl Shared {
                     id: id.to_owned(),
                     status,
                 };
-                self.bus.emit(actor, EventData::AgentStatus(event));
+                self.bus.emit(actor.clone(), EventData::AgentStatus(event));
+            }
+            if let (Some(rail), Some(name)) = (rail.as_mut(), first_prompt)
+                && !std::mem::replace(&mut run.named, true)
+                && let Some(name) = name
+                && !rail.node(id)?.meta
+            {
+                rail.rename(id, &name)?;
+                self.bus.emit(actor.clone(), EventData::RailChanged);
             }
             let prompt = run.prompt.take_if(|_| idle);
             (
@@ -140,6 +158,9 @@ struct Run {
     adapter: ClaudeCode,
     /// Typed into the Terminal at the first idle, then gone.
     prompt: Option<String>,
+    /// The first prompt has been submitted, or a `rail.rename` came first: either way the name
+    /// is settled and no prompt renames the node.
+    named: bool,
     terminal_id: String,
 }
 
@@ -226,12 +247,14 @@ impl Agents {
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
     async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
         let cwd = Path::new(&params.cwd);
-        let name = cwd
-            .file_name()
-            .map_or_else(|| "claude".into(), |n| n.to_string_lossy().into_owned());
         let node = {
             let mut rail = self.shared.rail();
-            let node = rail.insert(NodeKind::Agent, &name, params.parent.as_deref(), None)?;
+            let node = rail.insert(
+                NodeKind::Agent,
+                name::UNNAMED,
+                params.parent.as_deref(),
+                None,
+            )?;
             self.shared.runs().insert(node.id.clone(), None);
             node
         };
@@ -249,6 +272,38 @@ impl Agents {
             terminal_id: Some(terminal_id),
             ..node
         }))
+    }
+
+    /// Put a Terminal running the user's login shell in the Rail, last under `parent`.
+    async fn spawn_terminal(
+        &self,
+        ctx: &Ctx,
+        params: SpawnTerminalParams,
+    ) -> Result<RailNode, RpcError> {
+        let node = self.shared.rail().insert(
+            NodeKind::Terminal,
+            &shell_name(std::env::var_os("SHELL").as_deref()),
+            params.parent.as_deref(),
+            None,
+        )?;
+        let spawned = match self
+            .spawn_behind(&node.id, Path::new(&params.cwd), None)
+            .await
+        {
+            Ok(spawned) => spawned,
+            Err(err) => {
+                report_undo(
+                    "remove the Terminal from the Rail",
+                    self.shared.rail().remove(&node.id),
+                );
+                return Err(err);
+            }
+        };
+        ctx.emit(EventData::RailChanged);
+        Ok(RailNode {
+            terminal_id: Some(spawned.id),
+            ..node
+        })
     }
 
     /// Make a Group a Meta-agent: start a live Agent that sits at it, in the Project's folder.
@@ -328,6 +383,7 @@ impl Agents {
         let run = Run {
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
+            named: false,
             terminal_id: spawned.id.clone(),
         };
         self.shared.runs().insert(id.to_owned(), Some(run));
@@ -350,12 +406,23 @@ impl Agents {
         let argv = tokio::task::spawn_blocking(move || launcher.prepare(&dir, &node, &folder))
             .await
             .map_err(RpcError::internal)??;
+        self.spawn_behind(id, cwd, Some(argv)).await
+    }
+
+    /// Start `command` (the login shell when `None`) in a Terminal and record it as the one behind
+    /// node `id`.
+    async fn spawn_behind(
+        &self,
+        id: &str,
+        cwd: &Path,
+        command: Option<Vec<String>>,
+    ) -> Result<terminal::Spawned, RpcError> {
         let spawned = self
             .shared
             .terminals
             .spawn(TerminalSpawn {
                 cwd: cwd.to_string_lossy().into_owned(),
-                command: Some(argv),
+                command,
                 env: BTreeMap::new(),
                 cols: 80,
                 rows: 24,
@@ -379,6 +446,16 @@ fn report_undo<E: std::fmt::Display>(what: &str, undone: Result<(), E>) {
     if let Err(err) = undone {
         eprintln!("agents: could not {what}: {err}");
     }
+}
+
+/// The login shell's file name, as the Rail shows it; `shell` when `$SHELL` names none.
+fn shell_name(shell: Option<&OsStr>) -> String {
+    shell
+        .and_then(|shell| Path::new(shell).file_name())
+        .map_or_else(
+            || "shell".into(),
+            |name| name.to_string_lossy().into_owned(),
+        )
 }
 
 /// Milliseconds since the Unix epoch.
@@ -432,10 +509,18 @@ impl Module for Agents {
             }
             "rail.rename" => {
                 let RenameParams { id, name } = params(value)?;
-                let node = shared.rail().rename(&id, &name)?;
+                let node = {
+                    let mut rail = shared.rail();
+                    let node = rail.rename(&id, &name)?;
+                    if let Some(Some(run)) = shared.runs().get_mut(&id) {
+                        run.named = true;
+                    }
+                    node
+                };
                 ctx.emit(EventData::RailChanged);
                 reply(&shared.present(node))
             }
+            "rail.spawnTerminal" => reply(&self.spawn_terminal(ctx, params(value)?).await?),
             "rail.move" => {
                 let MoveParams { id, parent, index } = params(value)?;
                 shared.rail().move_node(&id, parent.as_deref(), index)?;
@@ -463,7 +548,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::claude_code::{ClaudeCode, STAR_HOLD};
-    use super::{Clock, Observation, Run, Shared, rail, watch};
+    use super::{Clock, Observation, Run, Shared, rail, shell_name, watch};
 
     const PATIENCE: Duration = Duration::from_secs(60);
     const HOLD: Duration = Duration::from_millis(STAR_HOLD as u64);
@@ -496,6 +581,7 @@ mod tests {
             let run = Run {
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
+                named: false,
                 terminal_id: "1".into(),
             };
             shared.runs().insert("1".into(), Some(run));
@@ -597,5 +683,14 @@ mod tests {
             .expect("the watch ends")
             .unwrap();
         assert!(star.elapsed() < HOLD);
+    }
+
+    #[test]
+    fn a10_the_node_is_named_for_the_shell_and_shell_when_there_is_none() {
+        let name = |shell: Option<&str>| shell_name(shell.map(std::ffi::OsStr::new));
+        assert_eq!(name(Some("/bin/zsh")), "zsh");
+        assert_eq!(name(Some("fish")), "fish");
+        assert_eq!(name(Some("")), "shell");
+        assert_eq!(name(None), "shell");
     }
 }
