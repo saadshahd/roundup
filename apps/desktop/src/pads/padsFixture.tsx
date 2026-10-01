@@ -5,7 +5,7 @@ import type { Pad } from "@contracts/pad/Pad";
 import { RpcError } from "../app/seam";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { createFakeApp } from "../testing/fakeApp";
-import { openWorkspace, WorkspaceContext } from "../state/workspace";
+import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import { Pads } from "./Pads";
 
 export const AGENT: Actor = { kind: "agent", id: "auth-refactor", parent: null };
@@ -23,8 +23,6 @@ export const openShelf = async (pads: Pad[]) => {
   const history: Touch[] = [];
   const state = { pads, history };
   const app = createFakeApp();
-  app.handlers["rail.tree"] = () => [];
-  app.handlers["terminal.list"] = () => [];
   app.handlers["pad.list"] = () => state.pads.map((pad) => ({ ...pad }));
   app.handlers["pad.read"] = ({ name }) => {
     const found = state.pads.find((pad) => pad.name === name);
@@ -36,14 +34,14 @@ export const openShelf = async (pads: Pad[]) => {
 
   app.handlers["provenance.history"] = () => state.history;
 
-  const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
 
   render(() => (
-    <WorkspaceContext.Provider value={workspace}>
+    <ConnectedProjectContext.Provider value={connected}>
       <Pads />
-      <DrawerHost drawer={workspace.drawer} reducedMotion={() => true} />
-    </WorkspaceContext.Provider>
+      <DrawerHost drawer={connected.drawer} reducedMotion={() => true} />
+    </ConnectedProjectContext.Provider>
   ));
 
-  return { app, state, workspace, calls: () => app.calls.map((call) => call.method) };
+  return { app, state, connected, calls: () => app.calls.map((call) => call.method) };
 };

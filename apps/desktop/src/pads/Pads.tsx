@@ -1,20 +1,20 @@
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import type { Pad } from "@contracts/pad/Pad";
 import { ErrorLine } from "../ink/ErrorLine";
-import { useWorkspace } from "../state/workspace";
+import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
 import { PadDrawer } from "./PadDrawer";
 import { ownerMark, USER } from "./owner";
 
 /** The Shelf's `pads` list; `pad.list` logs no Touch, so refetching it on every `pad.changed` leaves no trace in Provenance. */
 export const Pads = () => {
-  const workspace = useWorkspace();
-  const [pads, { refetch }] = createResource(() => workspace.app.rpc("pad.list", null));
+  const connected = useConnectedProject();
+  const [pads, { refetch }] = createResource(() => connected.app.rpc("pad.list", null));
   const [naming, setNaming] = createSignal(false);
   const failure = createFailure();
 
   onCleanup(
-    workspace.events.subscribe((event) => {
+    connected.events.subscribe((event) => {
       if (event.name === "pad.changed") void refetch();
     }),
   );
@@ -22,12 +22,12 @@ export const Pads = () => {
   const create = (name: string) =>
     failure.run(async () => {
       setNaming(false);
-      await workspace.app.rpc("pad.create", { name, text: null });
+      await connected.app.rpc("pad.create", { name, text: null });
     });
 
   const makeYours = (name: string) =>
     failure.run(async () => {
-      await workspace.app.rpc("pad.setOwner", { name, owner: USER });
+      await connected.app.rpc("pad.setOwner", { name, owner: USER });
       await refetch();
     });
 
@@ -57,7 +57,7 @@ export const Pads = () => {
 };
 
 const PadRows = (props: { pads: readonly Pad[]; onMakeYours: (name: string) => void }) => {
-  const workspace = useWorkspace();
+  const connected = useConnectedProject();
 
   return (
     <For each={props.pads}>
@@ -73,7 +73,7 @@ const PadRows = (props: { pads: readonly Pad[]; onMakeYours: (name: string) => v
           >
             <span class="light">{ownerMark(pad.owner)}</span>
           </Show>{" "}
-          <button type="button" class="word" onClick={() => workspace.drawer.open(() => <PadDrawer name={pad.name} />)}>
+          <button type="button" class="word" onClick={() => connected.drawer.open(() => <PadDrawer name={pad.name} />)}>
             {pad.name}
           </button>
         </p>
