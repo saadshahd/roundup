@@ -104,32 +104,26 @@ async fn a4_the_prompt_is_typed_at_the_first_idle_and_only_then() {
 
 #[tokio::test]
 async fn a4_the_prompt_and_enter_arrive_as_separate_reads_a_pause_apart() {
-    let script = r#"D=$(dirname "$0"); stty raw -echo
-dd bs=100 count=1 of="$D/first" 2>/dev/null
-t1=$(perl -MTime::HiRes=time -e 'print time')
-dd bs=100 count=1 of="$D/second" 2>/dev/null
-t2=$(perl -MTime::HiRes=time -e 'print time')
-echo "$t1 $t2" > "$D/times"; sleep 30"#;
+    // One process makes both reads, so nothing but the Daemon's own pause sits between them.
+    let script = r#"stty raw -echo; echo 1 > "$(dirname "$0")/ready"
+perl -MTime::HiRes=time -e 'sysread(STDIN, $a, 100); $t = time; sysread(STDIN, $b, 100);
+  open(F, ">", "$ARGV[0]/typed"); print F join("|", $a, $b, time - $t)' "$(dirname "$0")"
+sleep 30"#;
     let f = Fixture::running(script);
     let node = f.spawn(None, Some("hello there")).await.unwrap();
+    // Typing before the terminal is raw would be line-edited, not read as it arrives.
+    until_file(&f.dir.path().join("ready")).await;
     f.signal(&node.id, "SessionStart").await.unwrap();
 
-    let times = until_file(&f.dir.path().join("times")).await;
-    let [t1, t2]: [f64; 2] = times
-        .split_whitespace()
-        .map(|t| t.parse().unwrap())
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-    assert_eq!(
-        std::fs::read_to_string(f.dir.path().join("first")).unwrap(),
-        "hello there"
+    let typed = until_file(&f.dir.path().join("typed")).await;
+    let [first, second, gap] = typed.split('|').collect::<Vec<_>>()[..] else {
+        panic!("unexpected {typed:?}");
+    };
+    assert_eq!((first, second), ("hello there", "\r"));
+    assert!(
+        gap.parse::<f64>().unwrap() >= 0.5,
+        "Enter followed after only {gap}s"
     );
-    assert_eq!(
-        std::fs::read_to_string(f.dir.path().join("second")).unwrap(),
-        "\r"
-    );
-    assert!(t2 - t1 >= 0.5, "Enter followed after only {}s", t2 - t1);
 }
 
 const NOISY_CHILD: &str = "ROUNDUP_TEST_NOISY_CHILD";
