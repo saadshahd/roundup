@@ -5,32 +5,35 @@ This is the queue until roundup can hold its own Todos (`docs/development-loop.m
 - **now**: can start today.
 - **stacked**: start now on top of the named branch, and merge after it.
 - **after X**: start once X is merged.
+- **Agents stack:** #17–#37 are being folded into one PR on `builder/agents-stack`. Read "the agents stack" as that PR, and its head as `builder/agents-stack` once it exists (`builder/agents-11` until then).
+- **#39:** every PR estimated above 400 lines merges after #39, because rule 3 stays at 400 lines until #39 is on main.
+- **Lockfiles:** `Cargo.lock` and `pnpm-lock.yaml` count as owned by every PR that adds a package. When two such PRs collide there, the one that merges second regenerates the lockfile (`cargo update -w` or `pnpm install`) and never hand-merges it.
 
 ## PRs
 
 | PR | Module | Scenarios | Owns | Est. lines | Merge after | Start |
 |---|---|---|---|---|---|---|
-| `contract-spawn-terminal` (#43) | `crates/contracts` | serves A10, U9 | `agent.rs`, `methods.rs` | ~40 | none | now (architect-1 authors; a different id approves, rule 4) |
-| `contract-schemas` (#44) | `crates/contracts` | serves M1 | `Cargo.toml`, `todo.rs`, `pad.rs`, `common.rs` | ~40 | none | now (same) |
-| `workspace` | root | W1 | `package.json`, `justfile`, `.fallowrc.json` | ~40 | none | now |
-| `daemon-attached` | `crates/rupd` | D1 | `crates/rupd/**` | ~200 | none | now |
-| `app` | `crates/desktop` | S1–S3 | `crates/desktop/**` (new crate; `crates/*` already globs it) | 1000–1400 | none | now |
-| `ui-shell` | `apps/desktop` | U1–U5 | package and build files, `src/main.tsx`, `src/App.tsx`, `src/app/**` (App seam adapter, typed calls), `src/state/**`, `src/ink/**`, `src/drawer/**`, and one placeholder per region: `src/rail/Rail.tsx`, `src/terminal/Pane.tsx`, `src/todos/Todos.tsx`, `src/pads/Pads.tsx` | 1500–1900 | `workspace` | now |
-| `ui-rail` | `apps/desktop` | U6–U10 | `src/rail/**` | 1400–1800 | `ui-shell`, `contract-spawn-terminal` | after `ui-shell` |
-| `ui-terminal` | `apps/desktop` | U11–U14 | `src/terminal/**`; also `package.json` and `pnpm-lock.yaml` to add the xterm packages. It is the only parallel UI PR that touches those two files | 1000–1400 | `ui-shell` | after `ui-shell` |
-| `ui-todos` | `apps/desktop` | U15–U17 | `src/todos/**` | 1200–1600 | `ui-shell` | after `ui-shell` |
-| `ui-pads` | `apps/desktop` | U18–U21 | `src/pads/**` | 1000–1400 | `ui-shell` | after `ui-shell` |
-| `agents-mvp` | `crates/agents` | A9–A12 | `crates/agents/**` | 800–1100 | agents stack #17–#37, `contract-spawn-terminal` | stacked on `builder/agents-11` |
-| `mcp` | `crates/rup` | M1–M3 | `crates/rup/src/**`, `crates/rup/Cargo.toml`, `crates/rup/tests/mcp*` | 700–1000 | `contract-schemas`, #34 (it rewrites `crates/rup/src/main.rs`) | after `contract-schemas`; branch from `builder/agents-11` until #34 merges |
-| `daemon-e2e` | `crates/rup` | D2–D4 | `crates/rup/tests/e2e*` | 600–900 | `agents-mvp`, `mcp` | after both |
-| `ui-drag` (stretch) | `apps/desktop` | U22 | `src/rail/drag*` | 600–900 | `ui-rail` | after `ui-rail`, only if drag is in the MVP |
+| `contract-spawn-terminal` (#43) | `crates/contracts` | serves A10, U9 | `agent.rs`, `methods.rs` | ~40 | #42 | approved by architect-2 |
+| `contract-schemas` (#44) | `crates/contracts` | serves M1 | `Cargo.toml`, `todo.rs`, `pad.rs`, `common.rs`, `Cargo.lock` | ~40 | #42 | approved by architect-2 |
+| `workspace` (#45) | root | W1 | `package.json`, `justfile`, `.fallowrc.json` | ~60 | #42 | running |
+| `daemon-attached` (#46) | `crates/rupd` | D1 | `crates/rupd/**` | ~200 | #42 | running |
+| `app` (#48) | `crates/desktop` | S1–S3 | `crates/desktop/**` (new crate; `crates/*` already globs it), `Cargo.lock` | 1000–1400 | #42, #39 | running |
+| `ui-shell` (#47) | `apps/desktop` | U1–U5 | `package.json`, `pnpm-lock.yaml`, build files, `src/main.tsx`, `src/App.tsx`, `src/app/**` (the one Tauri adapter: calls, events, `daemon-exited`, folder and save choosers, Dock badge), `src/state/**`, `src/ink/**`, `src/drawer/**`, and one placeholder per region: `src/rail/Rail.tsx`, `src/terminal/Pane.tsx`, `src/todos/Todos.tsx`, `src/pads/Pads.tsx` | 1500–1900 | `workspace`, #39 | running |
+| `ui-rail` | `apps/desktop` | U6–U10 | `src/rail/**` | 1400–1800 | `ui-shell`, `contract-spawn-terminal`, #39 | after `ui-shell` |
+| `ui-terminal` | `apps/desktop` | U11–U14 | `src/terminal/**`; plus, as the one exception below, the xterm packages in `package.json` and `pnpm-lock.yaml` | 1000–1400 | `ui-shell`, #39 | after `ui-shell` |
+| `ui-todos` | `apps/desktop` | U15–U17 | `src/todos/**` | 1200–1600 | `ui-shell`, #39 | after `ui-shell` |
+| `ui-pads` | `apps/desktop` | U18–U21 | `src/pads/**` | 1000–1400 | `ui-shell`, #39 | after `ui-shell` |
+| `agents-mvp` | `crates/agents` | A9–A12 | `crates/agents/**` | 800–1100 | the agents stack, `contract-spawn-terminal`, #39 | stacked on the agents stack's head |
+| `mcp` | `crates/rup` | M1–M3 | `crates/rup/src/**`, `crates/rup/Cargo.toml`, `crates/rup/tests/mcp*`, `Cargo.lock` | 700–1000 | `contract-schemas`, the agents stack (it rewrites `crates/rup/src/main.rs`), #39 | after `contract-schemas`; branch from the agents stack's head until it merges |
+| `daemon-e2e` | `crates/rup` | D2–D4 | `crates/rup/tests/e2e*` | 600–900 | `agents-mvp`, `mcp`, #39 | after both |
+| `ui-drag` (stretch) | `apps/desktop` | U22 | `src/rail/drag*` | 600–900 | `ui-rail`, #39 | after `ui-rail`, only if drag is in the MVP |
 
-Shared webview files (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.tsx`, `package.json`) belong to `ui-shell`. A feature PR that needs to change one stops and reports it; the change becomes a `ui-shell` follow-up, never an edit inside the feature PR. That rule is what lets four UI Builders run at once.
+Shared webview files belong to `ui-shell`: `src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.tsx`, `package.json` and `pnpm-lock.yaml`. There is one exception: `ui-terminal` adds the xterm packages to `package.json` and `pnpm-lock.yaml`. A feature PR that needs any other change to a shared file stops and reports it. That change becomes a `ui-shell` follow-up, never an edit inside the feature PR. This rule is what lets four UI Builders run at once.
 
 ## Scenarios
 
-- [ ] contract `rail.spawnTerminal` · `crates/contracts` · `contract-spawn-terminal` · none · now · architect-1
-- [ ] contract JSON schemas for Todo and Pad params · `crates/contracts` · `contract-schemas` · none · now · architect-1
+- [ ] contract `rail.spawnTerminal` · `crates/contracts` · `contract-spawn-terminal` · #42 · approved · architect-1
+- [ ] contract JSON schemas for Todo and Pad params · `crates/contracts` · `contract-schemas` · #42 · approved · architect-1
 - [ ] W1 the check covers the App · root · `workspace` · none · now · —
 - [ ] D1 attached · `crates/rupd` · `daemon-attached` · none · now · —
 - [ ] S1 open a Project · `crates/desktop` · `app` · none · now · —
@@ -57,13 +60,13 @@ Shared webview files (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.
 - [ ] U19 create a Pad · `apps/desktop` · `ui-pads` · `ui-shell` · after `ui-shell` · —
 - [ ] U20 open and edit a Pad · `apps/desktop` · `ui-pads` · `ui-shell` · after `ui-shell` · —
 - [ ] U21 export a Pad · `apps/desktop` · `ui-pads` · `ui-shell` · after `ui-shell` · —
-- [ ] A9 name from the first prompt · `crates/agents` · `agents-mvp` · #17–#37 · stacked on `builder/agents-11` · —
-- [ ] A10 a Terminal in the Rail · `crates/agents` · `agents-mvp` · #17–#37, `contract-spawn-terminal` · stacked on `builder/agents-11` · —
-- [ ] A11 Todos and Pads over MCP · `crates/agents` · `agents-mvp` · #17–#37 · stacked on `builder/agents-11` · —
-- [ ] A12 a reopened Rail never names another run's Terminal · `crates/agents` · `agents-mvp` · #17–#37 · stacked on `builder/agents-11` · —
-- [ ] M1 tools · `crates/rup` · `mcp` · `contract-schemas`, #34 · after `contract-schemas` · —
-- [ ] M2 a call is a Touch by that Agent · `crates/rup` · `mcp` · `contract-schemas`, #34 · after `contract-schemas` · —
-- [ ] M3 no Daemon, no hang · `crates/rup` · `mcp` · `contract-schemas`, #34 · after `contract-schemas` · —
+- [ ] A9 name from the first prompt · `crates/agents` · `agents-mvp` · the agents stack · stacked on its head · —
+- [ ] A10 a Terminal in the Rail · `crates/agents` · `agents-mvp` · the agents stack, `contract-spawn-terminal` · stacked on its head · —
+- [ ] A11 Todos and Pads over MCP · `crates/agents` · `agents-mvp` · the agents stack · stacked on its head · —
+- [ ] A12 a reopened Rail never names another run's Terminal · `crates/agents` · `agents-mvp` · the agents stack · stacked on its head · —
+- [ ] M1 tools · `crates/rup` · `mcp` · `contract-schemas`, the agents stack · after `contract-schemas` · —
+- [ ] M2 a call is a Touch by that Agent · `crates/rup` · `mcp` · `contract-schemas`, the agents stack · after `contract-schemas` · —
+- [ ] M3 no Daemon, no hang · `crates/rup` · `mcp` · `contract-schemas`, the agents stack · after `contract-schemas` · —
 - [ ] D2 Status end to end · `crates/rup` · `daemon-e2e` · `agents-mvp` · after `agents-mvp` and `mcp` · —
 - [ ] D3 Todos over MCP end to end · `crates/rup` · `daemon-e2e` · `agents-mvp`, `mcp` · after `agents-mvp` and `mcp` · —
 - [ ] D4 ten idle Agents · `crates/rup` · `daemon-e2e` · `agents-mvp` · after `agents-mvp` and `mcp` · —
@@ -71,19 +74,30 @@ Shared webview files (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.
 
 ## In flight elsewhere (reviewed by others; listed for the dependencies above)
 
-- #17–#37: the agents stack (A1–A8). `agents-mvp` stacks on its top, `builder/agents-11`. Open defect (reported on #28): the stack persists `terminal_id`, but Terminal ids restart with every Daemon run, so a reopened Rail can point at a new, unrelated Terminal. A12 specifies the fix if the stack does not take it.
+- #17–#37: the agents stack (A1–A8), being folded into one PR on `builder/agents-stack`. `agents-mvp` stacks on its head. Open defect (reported on #28): the stack persists `terminal_id`, but Terminal ids restart with every Daemon run, so a reopened Rail can point at a new, unrelated Terminal. A12 specifies the fix if the stack does not take it, and replaces the stack's two assertions that the old `terminal_id` survives reopening.
 - #36 pads-4 (P5, P8, P9). #40 terminal-6 (X9, X10). #39 makes PR size a guide.
+
+## Deferred past the MVP (no scenario yet)
+
+- motion.md rows other than the Drawer slide and drag;
+- Terminals named from their first command;
+- Screen 11's recent folders and its `claude` version / not-found line;
+- the `● 1 below` line, provenance letters, the Todo `on` field and the Pad storage switch;
+- Inbox, Messages, Routes, Extensions and history;
+- packaging (a signed `.app`).
 
 ## Parallelism
 
-- **Start now:** `contract-spawn-terminal` and `contract-schemas` (Architect), plus five Builders: `workspace`, `daemon-attached`, `app`, `ui-shell` (rebase after `workspace` merges) and `agents-mvp` (stacked). `mcp` joins as soon as `contract-schemas` merges.
+- **Running:** `workspace` (#45), `daemon-attached` (#46), `ui-shell` (#47) and `app` (#48).
+- **Can start now:** `agents-mvp`, stacked on the agents stack.
+- **Next:** `mcp` joins as soon as #44 merges, and #43 and #44 merge after #42.
 - **Peak:** once `ui-shell` merges, `ui-rail`, `ui-terminal`, `ui-todos` and `ui-pads` run at once, alongside `mcp` and `agents-mvp`: six Builders.
 - **Critical path:** `workspace` → `ui-shell` → the four UI PRs → MVP gate. In parallel: agents stack → `agents-mvp` → `daemon-e2e`.
 
 ## Branching notes
 
-- `agents-mvp` stacks on `builder/agents-11`, which predates #43. Merge `origin/main` into the branch once #43 is on main; A10 needs `SpawnTerminalParams`. The stack already merges main into its branches this way.
-- `mcp` needs the `JsonSchema` derives from #44. Branch from main once #44 is merged. If #34 is still open then, branch from `builder/agents-11` and merge `origin/main` into it.
+- `agents-mvp` stacks on the agents stack's head, which predates #43. Merge `origin/main` into the branch once #43 is on main; A10 needs `SpawnTerminalParams`. The stack already merges main into its branches this way.
+- `mcp` needs the `JsonSchema` derives from #44. Branch from main once #44 is merged. If the agents stack is still open then, branch from its head and merge `origin/main` into it.
 - `app` must pass `just check` on a fresh clone with no webview build. Do not commit a `dist/`, and do not add a root build step to satisfy Tauri's `frontendDist` or its icons.
 
 ## Linux VMs and CI after `app` merges
@@ -99,9 +113,9 @@ Default until the user decides (open question): run `app` and every later PR in 
 
 Once every PR above except `ui-drag` is merged:
 
-1. QA runs `just app <folder>` on macOS with real `claude`, drives U2–U21, and saves `artifacts/ux/<scenario>/<step>.png`. This is the Phase 3 screenshot pack.
+1. QA runs `just app <project>` on macOS with real `claude`, drives U2–U21, and saves `artifacts/ux/<scenario>/<step>.png`. This is the Phase 3 screenshot pack.
 2. QA measures on the laptop:
-   - cold start;
+   - cold start, measured on `just app-release <project>` (W1), because the dev server says nothing about the 300 ms budget;
    - keystroke-to-render p95 under bursty Agent output (the ADR 0001 caveat);
    - RSS with 10 idle real Agents.
 3. The Driver writes the gate report (`docs/development-loop.md`, "Human gates").
