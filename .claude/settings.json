@@ -1,5 +1,8 @@
 {
   "permissions": {
     "deny": ["Bash(boxd env set:*)"]
+  },
+  "enabledPlugins": {
+    "sound@moo.md": true
   }
 }
