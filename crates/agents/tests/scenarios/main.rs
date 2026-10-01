@@ -2,6 +2,7 @@
 
 mod common;
 mod launch;
+mod promote;
 mod rail;
 mod signal;
 mod spawn;

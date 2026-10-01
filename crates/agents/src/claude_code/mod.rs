@@ -13,6 +13,8 @@ pub use launch::Launcher;
 pub struct ClaudeCode {
     status: Option<Status>,
     exited: bool,
+    /// Roundup killed it on purpose, so the exit that follows is not an error.
+    stopped: bool,
     clock: Box<dyn Fn() -> i64 + Send>,
 }
 
@@ -22,6 +24,7 @@ impl ClaudeCode {
         Self {
             status: None,
             exited: false,
+            stopped: false,
             clock: Box::new(clock),
         }
     }
@@ -71,6 +74,9 @@ impl ClaudeCode {
 
     fn exit(&mut self, code: Option<i32>) -> Option<Status> {
         self.exited = true;
+        if self.stopped {
+            return None;
+        }
         match code {
             Some(0) if self.status.as_ref().is_some_and(|s| s.kind == Kind::Done) => None,
             Some(0) => self.settle(Kind::Done, "exited 0".into()),
@@ -84,6 +90,12 @@ impl AgentAdapter for ClaudeCode {
     fn observe(&mut self, observation: Observation) -> Option<Status> {
         match observation {
             Observation::Exit { code } => self.exit(code),
+            Observation::Stopped if self.exited => None,
+            Observation::Stopped => {
+                self.exited = true;
+                self.stopped = true;
+                self.settle(Kind::Done, "stopped".into())
+            }
             Observation::Signal(_) | Observation::Title(_) if self.exited => None,
             Observation::Signal(payload) => {
                 let (kind, label) = hook_status(&payload)?;

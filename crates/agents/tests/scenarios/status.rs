@@ -211,3 +211,14 @@ fn a3_exit_after_a_clean_session_end_stays_done() {
     signal(&mut adapter, event(RUN1, "SessionEnd"));
     assert_eq!(adapter.observe(Observation::Exit { code: Some(0) }), None);
 }
+
+#[test]
+fn a7_a_stopped_agent_stays_done_when_its_program_dies_by_signal() {
+    let (mut adapter, _) = adapter();
+    let status = adapter.observe(Observation::Stopped).unwrap();
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Done, "stopped")
+    );
+    assert_eq!(adapter.observe(Observation::Exit { code: None }), None);
+}

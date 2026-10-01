@@ -105,6 +105,36 @@ impl Rail {
         self.node(id)
     }
 
+    /// Make Group `id` a Meta-agent whose live Agent runs in Terminal `terminal_id`.
+    pub fn promote(&mut self, id: &str, terminal_id: &str) -> Result<RailNode, RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE nodes SET meta = 1, terminal_id = ? WHERE id = ? AND kind = 'group'",
+                params![terminal_id, id],
+            )
+            .map_err(sql)?;
+        if changed == 0 {
+            return Err(RpcError::not_found(format!("group {id}")));
+        }
+        self.node(id)
+    }
+
+    /// Move the children of `id` up into its parent, in order, where `id` stood; `id` follows them.
+    pub fn lift_children(&mut self, id: &str) -> Result<(), RpcError> {
+        let tx = self.db.transaction().map_err(sql)?;
+        let nodes = load(&tx)?;
+        let parent = find(&nodes, id)?.parent.as_deref();
+        let mut ids = siblings(&nodes, parent);
+        let at = ids
+            .iter()
+            .position(|sibling| sibling == id)
+            .unwrap_or(ids.len());
+        ids.splice(at..at, siblings(&nodes, Some(id)));
+        place(&tx, parent, &ids)?;
+        tx.commit().map_err(sql)
+    }
+
     /// Record which Terminal runs the Agent `id`.
     pub fn attach_terminal(&mut self, id: &str, terminal_id: &str) -> Result<(), RpcError> {
         let changed = self
@@ -133,7 +163,7 @@ impl Rail {
         tx.commit().map_err(sql)
     }
 
-    fn node(&self, id: &str) -> Result<RailNode, RpcError> {
+    pub fn node(&self, id: &str) -> Result<RailNode, RpcError> {
         find(&load(&self.db)?, id).cloned()
     }
 }
