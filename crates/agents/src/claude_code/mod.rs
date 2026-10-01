@@ -77,7 +77,7 @@ fn hook_status(payload: &Value) -> Option<(Kind, String)> {
     }
 }
 
-/// The question being asked, or the tool and what it is about to do.
+/// The question being asked; else the tool name, with its command when it has one.
 fn permission_label(payload: &Value) -> String {
     let tool = payload["tool_name"].as_str().unwrap_or("tool");
     let input = &payload["tool_input"];
