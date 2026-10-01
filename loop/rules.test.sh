@@ -44,6 +44,8 @@ new_repo; mkdir -p crates/b; printf '\x00\x01' >crates/b/bin.dat; echo x >contra
 expect fail "L1 size: binary in a second module" rules size
 new_repo; mkdir -p docs; echo hello >docs/x.md; git add -A; git commit -qm docs; git checkout -q main; git merge -q work 2>/dev/null || true; git checkout -q -b work2; git mv docs/x.md crates/x.md; commit mv
 expect fail "L1 size: rename across modules counts both" rules size
+new_repo; mkdir -p crates/m/tests; seq 1 300 >crates/m/tests/a.rs; git add -A; git commit -qm base; git checkout -q main; git merge -q work 2>/dev/null || true; git checkout -q -b work3; mkdir -p crates/m/tests/scenarios; git mv crates/m/tests/a.rs crates/m/tests/scenarios/a.rs; seq 1 40 >crates/m/new.rs; commit mv
+expect pass "L1 size: a move inside one module counts only its new lines" rules size
 new_repo
 expect fail "L1 size: unknown base ref fails loudly" loop/rules.sh size no-such-ref
 
