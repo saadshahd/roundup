@@ -96,7 +96,7 @@ p {
 
 .drawer {
   width: min(560px, 70%);
-  padding: 16px;
+  padding: 16px 72px 16px 16px;
   box-sizing: border-box;
   overflow: auto;
   background: var(--ground);

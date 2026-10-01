@@ -204,16 +204,29 @@ describe("u1 calls and events", () => {
     expect(await createTauriApp().project()).toBeNull();
   });
 
-  it("u1_an_open_project_answer_that_is_not_a_project_is_rejected", async () => {
-    mockIPC(() => ({ name: 7 }));
+  it.each([{ name: 7, path: "/p" }, { name: "p", path: 7 }, { name: "p" }, { path: "/p" }])(
+    "u1_a_project_answer_of_%j_is_rejected_as_internal_by_project_and_open_project",
+    async (answer) => {
+      mockIPC(() => answer);
+      const app = createTauriApp();
 
-    await expect(createTauriApp().openProject("/p")).rejects.toThrow();
-  });
+      await expect(app.project()).rejects.toMatchObject({ name: "RpcError", code: -32603 });
+      await expect(app.openProject("/p")).rejects.toMatchObject({ name: "RpcError", code: -32603 });
+    },
+  );
 
-  it("u1_a_project_answer_that_is_not_a_project_is_rejected_by_the_project_call", async () => {
-    mockIPC(() => ({ name: 7 }));
+  it("u1_a_daemon_exited_listener_that_cannot_attach_rejects_with_internal_and_the_string", async () => {
+    mockIPC((command) => {
+      if (command === "plugin:event|listen") throw "no event channel";
 
-    await expect(createTauriApp().project()).rejects.toThrow();
+      return null;
+    });
+
+    await expect(createTauriApp().onDaemonExited(() => {})).rejects.toMatchObject({
+      name: "RpcError",
+      code: -32603,
+      message: "no event channel",
+    });
   });
 
   it("u1_a_daemon_exited_payload_that_is_not_a_code_never_reaches_the_listener", async () => {
@@ -262,5 +275,13 @@ describe("u1 calls and events", () => {
     });
 
     await expect(createTauriApp().setDockBadge(2)).rejects.toMatchObject({ code: -32603, message: "no dock" });
+  });
+
+  it("u1_a_malformed_project_answer_rejects_with_the_validation_message", async () => {
+    mockIPC(() => ({ name: 7, path: "/p" }));
+
+    await expect(createTauriApp().project()).rejects.toMatchObject({
+      message: "Invalid type: Expected string but received 7",
+    });
   });
 });

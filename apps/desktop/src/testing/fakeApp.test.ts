@@ -9,6 +9,10 @@ describe("u1 the fake App", () => {
     },
   );
 
+  it("u1_the_fake_answers_provenance_history_with_an_empty_list_by_default", async () => {
+    expect(await createFakeApp().rpc("provenance.history", { item: "todo:1" })).toEqual([]);
+  });
+
   it("u1_the_fake_fails_a_method_no_test_opted_into", async () => {
     await expect(createFakeApp().rpc("todo.get", { id: 1 })).rejects.toMatchObject({
       code: -32601,

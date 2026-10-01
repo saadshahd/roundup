@@ -6,3 +6,6 @@ export const ErrorLine = (props: { message: string }) => (
     {glyphOf("error").mark} {props.message}
   </p>
 );
+
+/** For `ErrorBoundary`: Solid hands a fallback an Error even when something else was thrown (a string becomes its message; anything else reads "Unknown error", with the original as `cause`). */
+export const failureLine = (failure: Error) => <ErrorLine message={failure.message} />;

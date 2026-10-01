@@ -4,7 +4,7 @@ import { ChooseProject, EmptyRail, EmptyShelf } from "./app/FirstRun";
 import { Layout } from "./app/Layout";
 import type { AppSeam, DaemonExit, Project } from "./app/seam";
 import { DrawerHost } from "./drawer/DrawerHost";
-import { ErrorLine } from "./ink/ErrorLine";
+import { ErrorLine, failureLine } from "./ink/ErrorLine";
 import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { Rail } from "./rail/Rail";
@@ -30,7 +30,7 @@ const OpenProject = (props: {
   );
 
   return (
-    <ErrorBoundary fallback={(failure) => <ErrorLine message={failure instanceof Error ? failure.message : String(failure)} />}>
+    <ErrorBoundary fallback={failureLine}>
       <Show when={connected()}>
         {(open) => (
           <ConnectedProjectContext.Provider value={open()}>
