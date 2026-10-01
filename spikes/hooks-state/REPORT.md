@@ -59,3 +59,26 @@ Two inputs merged into one reducer, last-writer-wins by timestamp:
 
 Cautions: payload field names differ from docs summary (StopFailure `error`, UserPromptSubmit `prompt`); keep parsing tolerant and log unknowns. Caveat: typing into the PTY while a dialog is open is read as dialog input; when no dialog is open it submits as a prompt (UserPromptSubmit prompt "4" seen).
 Sample size: one run per scenario; Esc/deny gap observed twice each (run2, run3).
+
+## Addendum: Esc during tool run / dialog, Yes-approval timing
+
+Driver `drive4.py <n> <esc-allowed|esc-dialog|approve3>` (per-run `--settings` file written to the tmp dir, hooks -> `logger2.py <log>`, throwaway cwd; trust dialog accepted via the driver as before, not skipped). Raw: `log.run{4..7}.jsonl` (hooks + `MARK` lines, same clock), `screen.run{4..7}.jsonl` (PTY output + parsed `title` records + marks). `analyze.py N...` prints the merged timeline. Notes: a standalone `sleep 30` is blocked by Claude Code itself ("use Monitor/run_in_background"), and `sleep` in a plain prompt gets backgrounded, so the long tool is `python3 -c "import time; time.sleep(30)"` with `permissions.allow ["Bash(python3:*)"]`.
+
+| Scenario | Runs | Result |
+|---|---|---|
+| 1. Esc 3 s into an auto-allowed Bash tool (no dialog) | run4, run5 | **No hook after Esc** in a 12 s window: no PostToolUseFailure (so no `is_interrupt`), no PostToolUse, no Stop, no SubagentStop. Title: ◐/◑ until Esc, then a single `✳` frame **+70 ms** (run4) / **+64 ms** (run5) after Esc, no further frames. |
+| 2. Esc on an open PermissionRequest dialog | run6 | Dialog ✳ at PreToolUse+48 ms, PermissionRequest +19 ms later. After Esc (2.5 s later): **no hook and no title frame** for 12 s (title was already ✳). Matches the earlier finding. |
+| 3. Dialog approved with Yes (Enter) | run7 (3 dialogs) | See below. |
+
+Yes-approval ordering is always PreToolUse -> title `✳` -> PermissionRequest; after the Yes keypress: title `◑/◐` +~10 ms, PostToolUse +50-400 ms, Stop ~1 s later.
+
+| Dialog (all 9 captured) | PreToolUse -> `✳` title | `✳` title -> PermissionRequest |
+|---|---|---|
+| old runs (5) | 80, 60, 14, 23, 49 ms | 50, 79, 38, 45, 63 ms |
+| run6 (Esc) | 48 ms | 19 ms |
+| run7 (Yes x3) | 14, 14, 9 ms | 19, 18, 18 ms |
+| **min / max over 9** | **9 / 80 ms** | **18 / 79 ms** |
+
+PreToolUse -> PermissionRequest is therefore 59-130 ms total; the star precedes PermissionRequest by at most ~80 ms (no ~200 ms window observed). The `✳` stays through the whole dialog until the user answers (2.5 s in these runs).
+
+Implication: Esc during a running tool is signalled ONLY by the `✳` title (~65 ms later); hooks stay silent, so hook-state remains "working" until the title rule fires.
