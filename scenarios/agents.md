@@ -6,7 +6,7 @@ Read `spikes/hooks-state/REPORT.md` and ADR 0006 first: they define how hook Sig
 
 **A2 title closes the silent gaps.** Given the title Observations in `spikes/hooks-state/screen.jsonl`, then a ◐/◑ title gives `working`; an ✳ title after an Esc interrupt gives `idle`; an ✳ title that follows a `PreToolUse` Signal and precedes its `PermissionRequest` is ignored (the dialog's star lands 40–80 ms before the Signal), so no `idle` appears between them; and a ◐/◑ title never clears `needs-you`. A denied dialog gives a spinner, not a star, in the fixtures, so `needs-you` holds until the next `UserPromptSubmit` or Esc interrupt. A replay of the real deny in `screen3` with its own hooks must not read `working` while Claude waits at its prompt.
 
-**A3 exit.** Given a Terminal behind an Agent, when it exits with code 0 the Status is `done`; with a non-zero code or a signal it is `error` with label `exited <code>`. A Signal arriving after exit is ignored.
+**A3 exit.** Given a Terminal behind an Agent, when it exits with code 0 the Status is `done`; with a non-zero code it is `error` with label `exited <code>`; killed by a signal it is `error` with label `exited by signal`. A Signal arriving after exit is ignored.
 
 **A4 spawn.** Given `agent.spawn {cwd, prompt}` with `ROUNDUP_CLAUDE_BIN` pointing at a fake `claude` script (tests never run the real one), then a Terminal starts running it with a per-Agent `--settings` file whose one command hook runs `rup hook <agent-id>`, the working directory is pre-trusted, the Agent appears in `rail.tree` with `kind: agent`, and the prompt is typed into the Terminal at the first idle. `rup hook <agent-id>` reads one hook payload from stdin, identifies as that Agent, and calls `agent.signal`.
 
