@@ -25,7 +25,7 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 
 ## Defaults for every VM
 
-- Name prefix `ru-`, so a sweep can find them: `boxd machine list | grep '^ru-'`. `loop/boxd.sh build` refuses to start when 4 `ru-` VMs exist.
+- Name prefix `ru-`, so a sweep can find them: `boxd machine list | grep '^ru-'`. `loop/boxd.sh build` refuses to start when `BOXD_MAX_VMS` (default 12) `ru-` VMs exist.
 - `--auto-destroy-timeout 1800` (leak guard; `bake` uses 3600) and `--auto-suspend-timeout 0`, because CPU-only builds look idle and would be suspended mid-run. Both confirmed with `boxd machine get`. Auto-hibernate defaults to 14400 s of no network traffic; a job longer than 4 hours needs it set to 0.
 - Create from the `ru-toolchain` snapshot (Rust from `rust-toolchain.toml`, clippy, rustfmt, nextest, cargo-machete, just, pnpm from `package.json`, Node 24). Boot reports 4–5 ms; `machine new` takes about 2.2 s wall. Desktop URLs and `agent-browser` work on snapshot-based machines. Rebake with `loop/boxd.sh bake` when `rust-toolchain.toml` or the pnpm pin changes. The snapshot is about 11.5 GB and is kept; `loop/boxd.sh bake` replaces it.
 - Upload the commit under test with `git archive`, never a recursive copy (that would ship `node_modules/`, `target/` and other agents' state).
@@ -41,7 +41,7 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 - Per run, notional list price: ping $0.09; small Sonnet task $0.08–0.14; Opus one-line review $0.17. On Max this is plan usage, not cash. Each fresh `claude -p` writes about 20k cache tokens, so prefer fewer, larger tasks.
 - boxd credit stayed at about €30 across all spikes (29.997 on one reading, 30.00 after rounding).
 - The JSON output has no quota field. `loop/boxd.sh` pauses on `api_error_status` 429 or "usage limit" / "rate limit" in the result by writing `loop/out/PAUSED` and exiting 75. Delete the file to resume. This path is covered by a stub test (`loop/boxd.test.sh`) but has never met a real limit error.
-- Cap: 4 concurrent Builder VMs, the largest number measured. Raise it only after a run with realistic task sizes shows no limit errors.
+- Cap: `BOXD_MAX_VMS` concurrent `ru-` VMs, default 12 on the user's instruction. Measured only up to 4; the account allows 50 machines per the boxd-docs probe. Watch for limit errors (`loop/out/PAUSED`) when raising it.
 
 ## Cleanup
 

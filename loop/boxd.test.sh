@@ -91,7 +91,7 @@ if grep -q 'machine remove' log; then echo "FAIL: L5 existing VM removed"; failu
 new_repo; STUB_MODE=no-secret expect_code 1 "L6 a missing boxd secret stops the run"
 if grep -q 'machine new' log; then echo "FAIL: L6 VM created without the secret"; failures=$((failures + 1)); else echo "ok:   L6 no VM without the secret"; fi
 
-new_repo; STUB_MODE=full expect_code 1 "L8 cap of 4 refuses a fifth VM"
+new_repo; BOXD_MAX_VMS=4 STUB_MODE=full expect_code 1 "L8 BOXD_MAX_VMS=4 refuses a fifth VM"
 if grep -q 'machine new' log; then echo "FAIL: L8 VM created over the cap"; failures=$((failures + 1)); else echo "ok:   L8 no VM over the cap"; fi
 
 new_repo; mkdir -p loop/out/lock; STUB_MODE='' expect_code 1 "L8 a held lock stops the run"
@@ -104,6 +104,9 @@ new_repo; loop/boxd.sh review r prompt.md >out 2>err && echo "ok:   L9 review su
 expect_true "L9 verdict written" test "$(cat loop/out/verdicts/r.md)" = ok
 expect_log 'machine new ru-r .*--isolated' "L9 review VM is isolated"
 expect_log 'machine remove ru-r' "L9 review VM destroyed"
+
+new_repo; STUB_MODE=full expect_code 0 "L8 the default cap allows more than 4 VMs"
+new_repo; BOXD_MAX_VMS=x STUB_MODE= expect_code 2 "L8 non-numeric BOXD_MAX_VMS is refused"
 
 # Hostile inputs are refused before any VM or file is made.
 refused() { # refused <name> <exit-code> <args...>
