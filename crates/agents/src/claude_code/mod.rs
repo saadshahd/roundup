@@ -1,5 +1,6 @@
-//! The Claude Code adapter. Hook payloads, the terminal title and the exit status become a Status
-//! (ADR 0006); `session`, `hook` and `transcript` are Claude Code's own words and stay in here.
+//! The Claude Code adapter. Hook payloads and the exit status become a Status (ADR 0006);
+//! `session`, `hook` and `transcript` are Claude Code's own words, so they must not leak out of
+//! this module into public names.
 
 use contracts::{Kind, Status};
 use serde_json::Value;
@@ -70,7 +71,7 @@ fn hook_status(payload: &Value) -> Option<(Kind, String)> {
             Some((Kind::Working, "working".into()))
         }
         "PermissionRequest" => Some((Kind::NeedsYou, permission_label(payload))),
-        "StopFailure" => Some((Kind::Error, text("error")?)),
+        "StopFailure" => Some((Kind::Error, text("error").unwrap_or_else(|| "error".into()))),
         "SessionEnd" => Some((Kind::Done, text("reason").unwrap_or_else(|| "done".into()))),
         _ => None,
     }

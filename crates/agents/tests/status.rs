@@ -1,4 +1,5 @@
-//! A1 (signals to status) and A3 (exit), replayed from the hooks-state spike fixtures.
+//! A1 is replayed from the hooks-state spike fixtures, so a Claude Code payload change shows up
+//! here; A3 feeds hand-built exits because no fixture records one.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -83,6 +84,16 @@ fn a1_stop_failure_gives_error_labelled_with_the_error_field() {
     let status = signal(&mut adapter, event(FAILURE, "StopFailure")).unwrap();
     assert_eq!(status.kind, Kind::Error);
     assert_eq!(status.label, "model_not_found");
+}
+
+#[test]
+fn a1_stop_failure_without_an_error_field_is_still_an_error() {
+    let (mut adapter, _) = adapter();
+    signal(&mut adapter, event(RUN1, "UserPromptSubmit"));
+    let mut failure = event(FAILURE, "StopFailure");
+    failure.as_object_mut().unwrap().remove("error");
+    let status = signal(&mut adapter, failure).unwrap();
+    assert_eq!((status.kind, status.label.as_str()), (Kind::Error, "error"));
 }
 
 #[test]
