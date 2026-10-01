@@ -377,3 +377,34 @@ async fn p9_delete_removes_the_file_when_file_backed() {
 
     assert!(!file.exists());
 }
+
+#[tokio::test]
+async fn p4_owner_may_hand_over_its_own_pad() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    rig.ok(&a, "pad.create", json!({"name": "notes"})).await;
+
+    let handed = rig
+        .ok(&a, "pad.setOwner", json!({"name": "notes", "owner": b}))
+        .await;
+
+    assert_eq!(handed["owner"]["id"], "b");
+    let again = rig
+        .fail(&a, "pad.setOwner", json!({"name": "notes", "owner": a}))
+        .await;
+    assert_eq!(again.code, code::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn p1_names_are_unique_ignoring_case() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "t"}))
+        .await;
+
+    let clash = rig.fail(&a, "pad.create", json!({"name": "Notes"})).await;
+
+    assert_eq!(clash.code, code::CONFLICT);
+    let found = rig.ok(&a, "pad.read", json!({"name": "NOTES"})).await;
+    assert_eq!(found["name"], "notes");
+}
