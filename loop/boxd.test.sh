@@ -22,12 +22,13 @@ new_repo() {
   cat >bin/boxd <<'S'
 #!/usr/bin/env bash
 echo "$*" >>"$STUB_LOG"
-cat >/dev/null 2>&1 || true
+if [ "$1 $2 $3" = "machine cp -" ]; then cat >"$STUB_DIR/$(basename "$4")"; else cat >/dev/null 2>&1 || true; fi
 case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
     if [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'; else echo '[]'; fi ;;
   "machine new") [ "${STUB_MODE:-}" != exists ] || exit 1 ;;
+  "machine reboot") ;;
   "machine remove") [ "${STUB_MODE:-}" != remove-fails ] || exit 1 ;;
   "machine exec")
     case "$*" in
@@ -42,7 +43,8 @@ case "$1 $2" in
 esac
 S
   chmod +x bin/boxd
-  export BOXD_LOCK_WAIT=1 PATH="$PWD/bin:$PATH" STUB_LOG="$PWD/log"
+  export BOXD_LOCK_WAIT=1 PATH="$PWD/bin:$PATH" STUB_LOG="$PWD/log" STUB_DIR="$PWD/cp"
+  mkdir cp
   : >log
 }
 
@@ -102,5 +104,28 @@ new_repo; loop/boxd.sh review r prompt.md >out 2>err && echo "ok:   L9 review su
 expect_true "L9 verdict written" test "$(cat loop/out/verdicts/r.md)" = ok
 expect_log 'machine new ru-r .*--isolated' "L9 review VM is isolated"
 expect_log 'machine remove ru-r' "L9 review VM destroyed"
+
+# Hostile inputs are refused before any VM or file is made.
+refused() { # refused <name> <exit-code> <args...>
+  local label=$1 args=("${@:2}")
+  new_repo
+  loop/boxd.sh "${args[@]}" >out 2>err && { echo "FAIL: $label accepted"; failures=$((failures + 1)); return; }
+  if grep -q 'machine new' log || [ -e ../esc.json ] || [ -e loop/out/runs/esc.json ]; then echo "FAIL: $label made a VM or file"; failures=$((failures + 1)); else echo "ok:   $label refused"; fi
+}
+refused "L10 name with a path" build ../../esc prompt.md
+refused "L10 name with a shell metacharacter" build 'a;rm -rf ~' prompt.md
+refused "L10 name with a newline" build $'a\nb' prompt.md
+refused "L10 option-like name" review -x prompt.md
+refused "L10 option-like prompt file" build t -x
+refused "L10 option-like ref" review t prompt.md --output=x
+
+# The Reviewer's checkout: tag base is the merge-base, HEAD is the ref.
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+loop/boxd.sh review r prompt.md feat >out 2>err
+expect_true "L9 base archive is the merge-base (no feature file)" bash -c '! tar tzf cp/base.tgz | grep -q "^g$"'
+expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
+expect_log 'git tag base' "L9 base is tagged"
+expect_log '--auto-destroy-timeout 1800' "L5 VM has an auto-destroy timer"
+expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

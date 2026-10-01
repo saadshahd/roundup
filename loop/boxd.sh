@@ -78,6 +78,14 @@ release_lock() {
   lock_held=0
 }
 
+# <name> becomes a VM name and a file name; <prompt-file> is passed to `boxd machine cp` as a positional argument.
+validate_args() {
+  local name=$1 prompt=$2
+  [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: name must match ^[a-z0-9][a-z0-9-]*\$, got: $name" >&2; exit 2; }
+  [[ $prompt != -* ]] || { echo "boxd.sh: prompt file must not start with '-': $prompt" >&2; exit 2; }
+  [ -f "$prompt" ] || { echo "boxd.sh: no prompt file: $prompt" >&2; exit 2; }
+}
+
 vm_count() { boxd machine list --json </dev/null | jq '[.[] | select(.name | startswith("ru-"))] | length'; }
 
 # Create the isolated VM for <name>, enforcing pause, token and cap. Sets $VM.
@@ -92,13 +100,22 @@ start_vm() {
   boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout 1800 >/dev/null </dev/null
   VM="ru-$name"
   release_lock
+  # A VM restored from a memory snapshot wedges claude and tsc until it is rebooted (measured: tsc hangs before, 0.4 s after).
+  boxd machine reboot "$VM" >/dev/null </dev/null
+  local _
+  for _ in $(seq 60); do
+    boxd machine exec "$VM" --timeout 5 -- true </dev/null >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  echo "boxd.sh: $VM did not answer after reboot" >&2
+  exit 1
 }
 
 # Put <ref> in ~/roundup on the VM as a git repo: tag `base` is <base-ref>'s tree, HEAD is <ref>'s tree.
 upload_checkout() {
   local base_ref=$1 ref=$2 prompt=$3
-  git archive --format=tar.gz "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
-  git archive --format=tar.gz "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
+  git archive --format=tar.gz --end-of-options "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
+  git archive --format=tar.gz --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
   boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
@@ -120,8 +137,9 @@ run_agent() {
 
 review() {
   local name=$1 prompt=$2 ref=${3:-HEAD}
+  validate_args "$name" "$prompt"
   local result="$OUT/runs/$name.json" verdict="$OUT/verdicts/$name.md" base
-  base="$(git merge-base origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
+  base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   start_vm "$name"
   upload_checkout "$base" "$ref" "$prompt"
   run_agent "${BOXD_MODEL:-opus}" "$result"
@@ -131,6 +149,7 @@ review() {
 
 build() {
   local name=$1 prompt=$2
+  validate_args "$name" "$prompt"
   local result="$OUT/runs/$name.json" patch="$OUT/patches/$name.patch" checklog="$OUT/runs/$name.check.log"
   start_vm "$name"
   upload_checkout HEAD HEAD "$prompt"
