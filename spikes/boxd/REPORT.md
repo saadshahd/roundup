@@ -1,55 +1,50 @@
-# boxd spike: VM mechanics (2026-10-01)
+# boxd spike (2026-10-01)
 
-Three machines created and destroyed; `boxd machine list` showed 0 afterwards. No Claude token was used.
+Superseded in part by `docs/boxd.md`, which holds the current use cases and recipes. This file keeps the raw measurements and corrects what the first version got wrong.
+
+## Corrections to the earlier version
+
+- **Wrong:** an earlier note in this repo dropped boxd on the grounds that e2e "needs the Tauri window, which a Linux VM can't give" and that boxd has no desktop. boxd has a live **Desktop** (`boxd machine desktop <vm>`, a browser-viewable graphical display) and a preinstalled `agent-browser`. A VM can run the web UI and take screenshots. It still cannot run the macOS WKWebView or produce macOS perf numbers.
+- **Wrong:** the quota section recommended a cap of "3 to 4" from a single sequential run. The cap is now 4 because four parallel Builders were run and succeeded (see below). Larger tasks are untested.
+- **Misleading:** the first quota attempt failed because I reassembled the token from a wrapped terminal capture. It was not a boxd or token-policy failure. It is removed from this report.
+- **Incomplete:** the first report said the Max token "works unattended" from ping and small tasks only. It had not checked whether the token lands on the VM's disk, whether `--isolated` VMs work, or what happens at parallelism. Those are measured below.
+
+## VM mechanics
 
 | Measure | Result |
 |---|---|
-| Default VM | 2 vCPU / 8G, x86_64, Ubuntu 24.04; node v24.21.0 and claude 2.1.283 preinstalled |
-| Boot | reported 8 ms, about 1.0 s wall |
-| First exec | about 0.9 s wall; each exec carries similar CLI overhead |
-| Fork of a running VM | reported 222 ms, about 2.4 s wall; inherits state and size |
-| `--isolated` | boots in about 1.5 s; still has outbound internet; no in-VM `boxd` CLI; inbound from other machines not tested |
-| Exit codes | propagate (42 -> 42, fork 3 -> 3, missing binary 127) |
-| File copy in and out | round-trips |
-| Rust | not preinstalled; rustup minimal profile takes about 12 s (rustc 1.99.0); `exec` runs `sh -c`, so source `~/.cargo/env` or use absolute paths |
-| Credit | 30.00 EUR before and after; per-hour cost unmeasured (billing may be lazy) |
+| Default VM | 2 vCPU / 8G, x86_64, Ubuntu 24.04; node 24, claude 2.1.283, `agent-browser` 0.34.0 preinstalled; no Rust |
+| Fresh VM | boot reported 8 ms, about 1.0 s wall; first exec about 0.9 s |
+| From snapshot | boot reported 4–5 ms; about 2.2 s wall; toolchain, Desktop URL and `agent-browser` all present |
+| Fork of a running VM | reported 222 ms, about 2.4 s wall |
+| Exit codes | propagate through `boxd machine exec` |
+| Rust via rustup (minimal profile) | about 12 s; `exec` runs `sh -c`, so source `~/.cargo/env` |
+| `--isolated` | boots about 1.5 s; egress is `unrestricted`; `claude -p` and `agent-browser` work; inbound isolation untested |
+| Snapshot `ru-toolchain` | about 11.5 GB; 2.5 min to bake with Rust, nextest, cargo-machete, just, pnpm |
+| Credit | EUR 30.00 before and after everything |
 
-Implication: for Linux CI-parity runs, install Rust once, snapshot, then fork per run.
+## Builder runs (Max token passed per call with `exec -e`)
 
-## Unmeasured
+| Run | Turns | Wall | Notional cost |
+|---|---|---|---|
+| Ping, laptop / VM | 1 | 1.7 s / 1.5 s | $0.105 / $0.092 |
+| Sonnet: add a unit test and run the check | 3–8 | 13–19 s | $0.08–0.14 |
+| Opus: one-line review | 2 | 5.2 s | $0.170 |
+| 4 Sonnet Builders in parallel, distinct tasks | 3–6 each | 21–27 s total wall | $0.08–0.11 each |
 
-- Claude quota burn. Needs `claude setup-token`, which only the user can generate.
-- cargo build and test time on 2 vCPU.
-- Fork from a snapshot with Rust preinstalled.
-- Behaviour above 3 concurrent VMs.
+No 401, 429 or terms error appeared in any run. The JSON has no quota field. `sonnet` and `opus` resolve to claude-sonnet-5-5 and claude-opus-5-5.
 
-## Quota-burn attempt 1 (blocked: corrupted token)
+## Secrets
 
-The token I extracted from a PTY capture of `claude setup-token` was rejected: `Failed to authenticate. API Error: 401 OAuth access token is invalid.` It failed the same way on the laptop, so boxd is not the cause. The extracted string was 128 characters; the terminal had re-rendered and wrapped the output, so it was most likely corrupted when I reassembled it. Nothing past authentication ran, so burn, rate limits and automation-terms behaviour are still unmeasured.
+After a Builder run, a search of the VM's home, `/tmp` and `/etc` found no copy of the token, and `~/.claude/.credentials.json` did not exist. `boxd env list` was empty. `boxd env set --secret` is account-wide and was not used.
 
-Findings that do hold:
+## QA pipeline proof
 
-- `boxd env set NAME value --secret` injects intact and lists as `(sealed)`.
-- Those secrets are account-wide, so every machine would receive the token. For concurrent Builders, pass it per machine (`exec -e` or `env push`).
-- The VM and secret were removed afterwards. Credit stayed at about 29.997 EUR.
+On an `--isolated` VM, `agent-browser` rendered a static page and saved a PNG that copied out with `boxd machine cp`. Notes: the default viewport is 2545x2739, so set one (`agent-browser set viewport W H`); a page without `<meta charset=utf-8>` shows mojibake; the glyphs `● ✕ ⏸ ○ · ✓ ◈ ◇ ▾ ›` all render, but `⏸` and `✕` use fallback glyphs, so Linux screenshots cannot be diffed against macOS baselines.
 
-To redo: generate the token in a real terminal, copy it, and save it with `pbpaste > ~/.roundup-spike-token; chmod 600 ~/.roundup-spike-token`.
+## Still unmeasured
 
-## Quota-burn attempt 2 (measured, 2026-10-01)
-
-A fresh `claude setup-token` token, passed per machine with `exec -e` (never stored on the VM, no account-wide secret). The VM was 2 vCPU / 8G with claude 2.1.283. No 401s, rate limits or automation-terms errors appeared.
-
-| Run | Turns | Duration | In / cache-create / cache-read / out tokens | `total_cost_usd` (list-price notional) |
-|---|---|---|---|---|
-| Ping, laptop | 1 | 1.7 s | 2 / 26,245 / 0 / 4 | 0.105 |
-| Ping, VM | 1 | 1.5 s | 2 / 22,038 / 18,639 / 4 | 0.092 |
-| Sonnet: Rust fn + test + `cargo test` (6 pass) | 3 | 12.9 s | 6 / 19,617 / 68,138 / 896 | 0.101 |
-| Opus: one-line review of the diff | 2 | 5.2 s | 4 / 19,558 / 38,998 / 266 | 0.170 |
-
-- `sonnet` and `opus` resolve to claude-sonnet-5-5 and claude-opus-5-5. Rustup minimal plus cargo took about 9 s.
-- Each fresh `claude -p` writes about 20k cache-creation tokens, so even a trivial call carries that overhead.
-- On Max the cost field is plan usage, not cash. The JSON exposes no plan-limit or remaining-quota field, so quota must be tracked outside claude.
-- All VMs share one token and one Max usage window; that, not boxd, limits concurrency. Opus is about 1.7x Sonnet per run here.
-- VM destroyed; `boxd machine list` and `boxd env list` empty. Credit 29.997 EUR before and after.
-
-Not tested: concurrent runs. Cap: 3 to 4 Builder VMs, Sonnet by default, Opus for review only, with a circuit breaker that pauses every run on the first 429 or usage-limit error. Run a 4-way parallel test before raising the cap.
+- Parallelism above 4, or with large tasks, and what a real limit error looks like (the pause path in `loop/boxd.sh` is untested against one).
+- What the Desktop view shows (URLs were issued, nobody opened them).
+- Whether the token is visible to other processes in the VM during a call.
+- Inbound isolation and escape resistance of `--isolated`.
