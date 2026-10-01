@@ -11,7 +11,7 @@ use sysinfo::System;
 #[derive(Parser)]
 struct Args {
     /// Fresh Daemons to measure; each metric is the median over them.
-    #[arg(long, default_value_t = 7)]
+    #[arg(long, default_value_t = 11)]
     runs: usize,
     /// Calls per latency measurement.
     #[arg(long, default_value_t = 1000)]
@@ -25,7 +25,11 @@ struct Args {
 }
 
 async fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
-    let budgets: Budgets = serde_json::from_slice(&std::fs::read(&args.budgets)?)?;
+    let budgets: Budgets = serde_json::from_slice(
+        &std::fs::read(&args.budgets)
+            .map_err(|err| format!("{}: {err}", args.budgets.display()))?,
+    )
+    .map_err(|err| format!("{}: {err}", args.budgets.display()))?;
     let cpus = std::thread::available_parallelism()?.get();
     let mut loads = Vec::new();
     let mut per_run: BTreeMap<String, Vec<f64>> = BTreeMap::new();

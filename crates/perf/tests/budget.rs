@@ -1,8 +1,8 @@
-//! Scenarios R1 to R7 (`scenarios/perf.md`).
+//! Scenarios R1 to R10 (`scenarios/perf.md`).
 
 use std::collections::BTreeMap;
 
-use perf::budget::{Budget, Miss, Report, judge, median, misses};
+use perf::budget::{Budget, Budgets, Miss, Report, judge, median, misses};
 
 fn budget(limit: Option<f64>, noise: f64, baseline: &[(&str, f64)]) -> Budget {
     Budget {
@@ -90,4 +90,68 @@ fn r7_a_budget_for_a_metric_that_was_not_measured_is_an_error() {
         misses(&report("linux", &[("cold_start_ms", 20.0)]), &budgets),
         Ok(vec![])
     );
+}
+
+fn committed() -> Budgets {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/budgets.json");
+
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+fn next_up(value: f64) -> f64 {
+    f64::from_bits(value.to_bits() + 1)
+}
+
+#[test]
+fn r8_the_committed_limits_are_rule_sevens_budgets() {
+    let budgets = committed();
+
+    assert_eq!(budgets["cold_start_ms"].limit, Some(300.0));
+    assert_eq!(budgets["rss_extra_mb"].limit, Some(150.0));
+    assert_eq!(budgets["write_to_output_p95_ms"].limit, Some(16.0));
+}
+
+#[test]
+fn r8_every_committed_baseline_gates_within_fifteen_percent_and_the_rest_have_a_limit() {
+    for (name, budget) in committed() {
+        if budget.baseline.is_empty() {
+            assert!(
+                budget.limit.is_some(),
+                "{name} has neither a baseline nor a limit"
+            );
+        }
+
+        for (os, baseline) in &budget.baseline {
+            let ceiling = baseline * 1.10 + budget.noise;
+
+            assert!(
+                ceiling <= baseline * 1.15,
+                "{name} on {os}: ceiling {ceiling} is more than 15% over {baseline}"
+            );
+        }
+    }
+}
+
+#[test]
+fn r9_a_value_at_a_committed_limit_passes_and_the_next_one_fails() {
+    for (name, budget) in committed() {
+        let Some(limit) = budget.limit else { continue };
+
+        assert_eq!(judge(limit, &budget, "none"), None, "{name} at its limit");
+        assert_eq!(
+            judge(next_up(limit), &budget, "none"),
+            Some(Miss::OverLimit { limit }),
+            "{name} just over"
+        );
+    }
+}
+
+#[test]
+fn r9_the_regression_ceiling_is_inclusive_and_exact_at_the_float_edge() {
+    let b = budget(None, 0.0, &[("linux", 100.0)]);
+    let ceiling = 100.0 * 1.10;
+
+    assert_eq!(ceiling, 110.00000000000001);
+    assert_eq!(judge(ceiling, &b, "linux"), None);
+    assert!(judge(next_up(ceiling), &b, "linux").is_some());
 }

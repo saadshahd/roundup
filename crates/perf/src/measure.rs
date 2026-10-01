@@ -151,7 +151,8 @@ pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
-        .spawn()?;
+        .spawn()
+        .map_err(|err| io::Error::other(format!("{}: {err}", rupd.display())))?;
 
     first_ping(&socket, &mut child).await?;
     sample.insert("cold_start_ms".into(), ms(started.elapsed()));
