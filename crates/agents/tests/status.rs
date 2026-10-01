@@ -94,6 +94,14 @@ fn a1_post_tool_use_after_needs_you_gives_working() {
 }
 
 #[test]
+fn a1_pre_tool_use_after_a_stop_gives_working() {
+    let (mut adapter, _) = adapter();
+    signal(&mut adapter, event(RUN1, "Stop"));
+    let status = signal(&mut adapter, event(RUN1, "PreToolUse"));
+    assert_eq!(kind(status), Kind::Working);
+}
+
+#[test]
 fn a1_a_failed_tool_is_not_an_agent_error() {
     let (mut adapter, _) = adapter();
     signal(&mut adapter, event(RUN2, "PermissionRequest"));
@@ -195,7 +203,10 @@ fn a3_non_zero_exit_is_an_error_naming_the_code() {
 fn a3_death_by_signal_is_an_error() {
     let (mut adapter, _) = adapter();
     let status = adapter.observe(Observation::Exit { code: None }).unwrap();
-    assert_eq!(status.kind, Kind::Error);
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Error, "exited by signal")
+    );
 }
 
 #[test]
