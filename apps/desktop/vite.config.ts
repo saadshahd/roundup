@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [solid()],
+  // tauri.conf.json's devUrl names this port; moving off it must fail, not open a blank window.
+  server: { port: 5173, strictPort: true },
   test: {
     environment: "jsdom",
     // Vitest returns empty CSS by default; the Drawer test needs the real rules to read computed positions.

@@ -338,6 +338,31 @@ fn s1_the_webview_is_granted_dialogs_the_dock_badge_and_hearing_events_and_nothi
     assert_eq!(granted, expected);
 }
 
+fn tauri_config() -> Value {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn s4_the_dev_window_loads_the_dev_server_on_the_port_vite_is_pinned_to() {
+    let vite = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/vite.config.ts");
+    let vite = std::fs::read_to_string(vite).unwrap();
+
+    assert_eq!(tauri_config()["build"]["devUrl"], "http://localhost:5173");
+    assert!(
+        vite.contains("port: 5173") && vite.contains("strictPort: true"),
+        "vite must fail rather than move off the port devUrl names"
+    );
+}
+
+#[test]
+fn s4_the_built_app_embeds_the_directory_vite_builds_into() {
+    assert_eq!(
+        tauri_config()["build"]["frontendDist"],
+        "../../apps/desktop/dist"
+    );
+}
+
 #[test]
 fn s2_rpc_ping_answers_pong() {
     let fx = Fixture::new(SERVE_AND_WAIT);
