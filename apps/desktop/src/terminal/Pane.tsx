@@ -7,8 +7,12 @@ import { isStoppable, paneHeader } from "./header";
 import { createScreens } from "./screens";
 import "./styles.css";
 
-/** The selected row's Terminal. `createEmulator` is the edge tests replace; the App passes none. */
-export const Pane = (props: { createEmulator?: EmulatorFactory }) => {
+/**
+ * The selected row's Terminal. Every error line of the centre lives in the pane's one fixed-height slot, so the
+ * screen never moves after it was fitted: `notice` (the Daemon or Rail failure) wins over the pane's own failure.
+ * `createEmulator` is the edge tests replace; the App passes none.
+ */
+export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorFactory }) => {
   const connected = useConnectedProject();
   const { rail } = connected;
   const screens = createScreens(connected, props.createEmulator ?? createXtermEmulators());
@@ -71,7 +75,7 @@ export const Pane = (props: { createEmulator?: EmulatorFactory }) => {
         </Show>
       </div>
       <div class="pane-failure">
-        <Show when={screens.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
+        <Show when={props.notice ?? screens.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
       <div class="pane-screen" ref={setScreen} />
     </div>

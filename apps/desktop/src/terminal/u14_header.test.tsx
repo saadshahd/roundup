@@ -169,4 +169,43 @@ describe("u14 pane header", () => {
 
     expect([before, after]).toEqual([["24px", "0"], ["24px", "0"]]);
   });
+
+  it("u14_stop_stays_in_the_header_and_a_long_title_shrinks_with_an_ellipsis", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+
+    sheet.textContent = pane;
+
+    const { connected, container } = await mountPane([node("a", { name: "x".repeat(63) })], [info("t-a")]);
+
+    connected.rail.select("a");
+
+    const title = container.querySelector(".pane-title");
+    const stop = screen.getByText("stop");
+
+    if (!title) throw new Error("the pane has no title");
+
+    const rules = [getComputedStyle(title), getComputedStyle(stop)];
+
+    sheet.remove();
+
+    expect([
+      stop.parentElement?.className,
+      rules[0]?.minWidth,
+      rules[0]?.overflow,
+      rules[0]?.textOverflow,
+      rules[1]?.flexShrink,
+    ]).toEqual(["pane-header", "0px", "hidden", "ellipsis", "0"]);
+  });
+
+  it("u14_stop_on_a_meta_agent_calls_agent_stop", async () => {
+    const { app, connected } = await mountPane(
+      [node("m", { kind: "group", meta: true })],
+      [info("t-m")],
+    );
+
+    connected.rail.select("m");
+    screen.getByText("stop").click();
+
+    expect(app.calls.filter((call) => call.method === "agent.stop").map((call) => call.params)).toEqual([{ id: "m" }]);
+  });
 });

@@ -52,14 +52,16 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     const flush = async (): Promise<void> => {
       writing = true;
 
-      while (typed.length > 0) {
-        const data = toBase64(Uint8Array.from(typed));
+      try {
+        while (typed.length > 0) {
+          const data = toBase64(Uint8Array.from(typed));
 
-        typed = [];
-        await attempt(app.rpc("terminal.write", { id, data }));
+          typed = [];
+          await attempt(app.rpc("terminal.write", { id, data }));
+        }
+      } finally {
+        writing = false;
       }
-
-      writing = false;
     };
 
     emulator.onInput((bytes) => {

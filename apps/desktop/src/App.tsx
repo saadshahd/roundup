@@ -4,7 +4,7 @@ import { ChooseProject, EmptyRail, EmptyShelf } from "./app/FirstRun";
 import { Layout } from "./app/Layout";
 import type { AppSeam, DaemonExit, Project } from "./app/seam";
 import { DrawerHost } from "./drawer/DrawerHost";
-import { ErrorLine, failureLine } from "./ink/ErrorLine";
+import { failureLine } from "./ink/ErrorLine";
 import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { Rail } from "./rail/Rail";
@@ -39,9 +39,7 @@ const OpenProject = (props: {
               rail={<Rail />}
               centre={
                 <>
-                  <Show when={open().rail.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
-                  <Show when={props.daemonExit}>{(exit) => <ErrorLine message={daemonExitText(exit())} />}</Show>
-                  <Pane />
+                  <Pane notice={props.daemonExit ? daemonExitText(props.daemonExit) : open().rail.failure()} />
                 </>
               }
               shelf={
