@@ -26,9 +26,9 @@ Each has a fake and a test here. U2, U10 and U21 use them, so no later PR edits 
 
 For an item (`todo:<id>` or `pad:<name>`), the Drawer calls `provenance.history {item}` before its own read of the item. The last-touch line then reads `last  <name> <read|wrote> <hh:mm>`, from the newest Touch in that first fetch. Opening the Drawer is itself a read Touch by the user, and fetching history first keeps that read out of the line, so it never reads "you read" at the moment of opening.
 
-**U23 column widths.** Given the main workspace, then the Rail is 20% of the window wide, never under 252px (its three action words fit on one line) nor over 320px, the Shelf is 14%, never under 160px nor over 280px, and the terminal pane is never under 680px, which fits 80 cells at 13px with its padding and scrollbar. At 1100px and wider the terminal therefore fits at least 80 columns. A name too long for the Rail ends in `…`.
+**U23 column widths.** Given the main workspace, then the Rail is 20% of the window wide, never under 252px (its three action words fit on one line) nor over 320px, the Shelf is 14%, never under 160px nor over 280px, and the terminal is never under 690px. That floor is 80 text columns of the system monospace face at 13px (8px each: 80 x 8, plus the 14px xterm scrollbar and 32px of padding is 686px); the app's font stack resolves to that face in WKWebView. From 1102px wide the terminal therefore shows at least 80 columns. A name too long for the Rail ends in `…`.
 
-**U24 narrow window.** Given a window under 1100px, then the Shelf is hidden and the Rail and the terminal pane share the width; the Shelf is the first thing to give, before the terminal pane shrinks. Below 932px the terminal pane gives next, and the Rail stays at 252px.
+**U24 narrow window.** Given a window under 1102px, then the Shelf moves under the Rail in the left column (the Rail takes the upper 65% of the height, the Shelf the lower 35%, each scrolling on its own) and the terminal takes the full height on the right, so the Shelf's lists, its `+` words and the Todo and Pad Drawers stay reachable. Under 942px the terminal gives width and the Rail stays at 252px. A Drawer never covers the Rail: it is at most the window width minus 252px.
 
 ## Rail (U6 to U10)
 
