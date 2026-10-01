@@ -1,6 +1,5 @@
 //! A1 replays the hooks-state spike fixtures, so re-recording the spike after a Claude Code
-//! payload change re-tests the adapter against it; A3 feeds hand-built exits because no fixture
-//! records one.
+//! payload change re-tests the adapter against it. A3 exits are hand-built.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
