@@ -1,0 +1,11 @@
+# Daemon
+
+D1 is in `crates/rupd`. D2 to D4 are end-to-end tests of the whole Daemon. They live in `crates/rup/tests`, the only package whose tests can run both the Daemon (a dev-dependency) and the built `rup` binary that hooks and MCP servers call (`CARGO_BIN_EXE_rup`). They run without `claude`: a fake `claude` named by `ROUNDUP_CLAUDE_BIN` plays recorded hook payloads from `spikes/hooks-state/log*.jsonl`. `CLAUDE_CONFIG_DIR` points at a temp dir, so no test ever touches the user's `~/.claude.json`.
+
+**D1 attached.** Given `rupd <project> --attached`, when its stdin closes, then it exits within a bound the test names, and every program it started in a Terminal is gone. Without `--attached`, a closed stdin changes nothing; CI starts `rupd &` with no stdin. The App passes `--attached`, so no Daemon and no Agent outlives the App, even when the App crashes.
+
+**D2 Status end to end.** Given a Daemon whose fake `claude` feeds these hook payloads, in order, to the hook command in its `--settings` file: `SessionStart`, `UserPromptSubmit` (prompt "fix the refresh race"), `PermissionRequest`, `PostToolUse`, `Stop`. `ROUNDUP_RUP_BIN` is the built `rup`. When a subscribed client calls `agent.spawn`, then it receives that Agent's `agent.status` Kinds `idle, working, needs-you, working, idle` in order, and `rail.tree` names the Agent `fix-refresh-race` (A9).
+
+**D3 Todos over MCP end to end.** Given the same Daemon with a fake `claude` that starts the `roundup` server from its `--mcp-config` file and calls `todo_create {title: "split checkout"}` over it, then `todo.list` holds that Todo and `provenance.history {item: "todo:1"}` names that Agent.
+
+**D4 ten idle Agents.** Given ten Agents whose fake `claude` sends `SessionStart` and then sleeps, then the Daemon's resident memory grows by less than 150 MB. This is rule 7's budget for roundup's own share; the real `claude` programs are measured on the laptop at the MVP gate. The test prints the number it measured, for the gate report.
