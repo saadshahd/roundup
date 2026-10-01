@@ -208,19 +208,32 @@ pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
         ),
     );
 
+    // The Terminal's first output is `ready`, printed once `stty` has made the tty raw: before that a write is line-edited, and more than a line of them is refused.
+    let mut events = Client::connect(&socket).await?;
+
+    ask(&events, "events.subscribe", Value::Null).await?;
+
     let echo = ask(
         &client,
         "terminal.spawn",
-        json!({ "cwd": cwd, "command": ["/bin/sh", "-c", "stty raw -echo; exec cat"], "env": {}, "cols": 80, "rows": 24 }),
+        json!({ "cwd": cwd, "command": ["/bin/sh", "-c", "stty raw -echo; echo ready; exec cat"], "env": {}, "cols": 80, "rows": 24 }),
     )
     .await?;
     let terminal = echo["id"]
         .as_str()
         .ok_or_else(|| io::Error::other("terminal.spawn returned no id"))?;
 
-    // `stty` must have run before the first write, and the echoes of the writes below must have drained before the subscription.
-    tokio::time::sleep(SETTLE).await;
+    wait_for_output(&mut events, terminal).await?;
 
+    sample.insert(
+        "write_to_output_p95_ms".into(),
+        percentile(
+            write_to_output(&client, &mut events, terminal, calls).await?,
+            0.95,
+        ),
+    );
+
+    // Last: its echoes are never read, so they must not sit in front of a write_to_output sample.
     sample.insert(
         "terminal_write_p95_ms".into(),
         percentile(
@@ -231,19 +244,6 @@ pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
                 calls,
             )
             .await?,
-            0.95,
-        ),
-    );
-
-    tokio::time::sleep(SETTLE).await;
-
-    let mut events = Client::connect(&socket).await?;
-
-    ask(&events, "events.subscribe", Value::Null).await?;
-    sample.insert(
-        "write_to_output_p95_ms".into(),
-        percentile(
-            write_to_output(&client, &mut events, terminal, calls).await?,
             0.95,
         ),
     );
