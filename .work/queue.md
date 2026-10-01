@@ -68,7 +68,7 @@ Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, 
 | U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
 | U38 | empty states (V6) | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal`; narrows U14's test | U2's tests | after U34, U35 and U36 merge (they edit those directories) |
 
-From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`). The audit's browser driver left Enter held down after `press Enter`, which faked U42 (a Todo Drawer loop); U43 (rename) was a double-click that landed on the Live line. Both are dropped. The auditor re-checked the rest with dispatched events and confirms U44, U45 and U46; U47 to U50 do not depend on key events. A create-then-open call-count test (one `todo.get`) may be added as a test-only guard. A double-click on the Live line does nothing, which U9 allows.
+From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`). The audit's browser driver left Enter held down after `press Enter`, which faked U42 (a Todo Drawer loop); U43 (rename) was a double-click that landed on the Live line. Both are dropped. The auditor re-checked the rest with dispatched events and confirms U44, U45 and U46; U47 to U50 do not depend on key events. A create-then-open call-count test (one `todo.get`) may be added as a test-only guard. A double-click on the Live line does nothing, which U9 allows. Each Builder of a row below reproduces the defect first, with dispatched events, and stops and reports if it does not reproduce.
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
