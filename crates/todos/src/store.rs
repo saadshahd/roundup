@@ -127,10 +127,14 @@ impl Store {
 
     /// Replaces the whole blocker list. The caller has checked ids and cycles.
     pub(crate) fn set_blockers(&self, id: u32, blockers: &[u32]) -> Result<Todo, RpcError> {
-        self.db
-            .execute("DELETE FROM blockers WHERE todo = ?1", [id])
-            .map_err(internal)?;
+        let tx = self
+            .db
+            .unchecked_transaction()
+            .map_err(RpcError::internal)?;
+        tx.execute("DELETE FROM blockers WHERE todo = ?1", [id])
+            .map_err(RpcError::internal)?;
         self.insert_blockers(id, blockers)?;
+        tx.commit().map_err(RpcError::internal)?;
         self.get(id)
     }
 
