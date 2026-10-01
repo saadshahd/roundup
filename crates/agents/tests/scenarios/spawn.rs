@@ -35,6 +35,13 @@ async fn until_file(path: &Path) -> String {
     panic!("{} was never written", path.display());
 }
 
+fn status_of<'a>(tree: &'a [RailNode], id: &str) -> &'a contracts::Status {
+    tree.iter()
+        .find(|node| node.id == id)
+        .and_then(|node| node.status.as_ref())
+        .expect("an Agent has a Status")
+}
+
 #[tokio::test]
 async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
     let mut f = Fixture::running("echo \"$@\" > \"$(dirname \"$0\")/argv\"; sleep 30");
@@ -92,6 +99,40 @@ async fn a4_a_spawn_that_cannot_start_leaves_no_agent_behind() {
         .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(f.tree().await.is_empty());
+}
+
+#[tokio::test]
+async fn a3_a_clean_exit_makes_the_agent_done() {
+    let f = Fixture::running("exit 0");
+    let node = f.spawn(None).await.unwrap();
+    let tree = f
+        .until(|t| status_of(t, &node.id).kind != Kind::Working)
+        .await;
+    assert_eq!(status_of(&tree, &node.id).kind, Kind::Done);
+}
+
+#[tokio::test]
+async fn a3_a_non_zero_exit_makes_the_agent_an_error() {
+    let f = Fixture::running("exit 3");
+    let node = f.spawn(None).await.unwrap();
+    let tree = f
+        .until(|t| status_of(t, &node.id).kind != Kind::Working)
+        .await;
+    let status = status_of(&tree, &node.id);
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Error, "exited 3")
+    );
+}
+
+#[tokio::test]
+async fn a2_a_star_title_from_the_terminal_ends_working() {
+    let f = Fixture::running("printf '\\033]0;\\342\\234\\263 Claude Code\\007'; sleep 30");
+    let node = f.spawn(None).await.unwrap();
+    let tree = f
+        .until(|t| status_of(t, &node.id).kind != Kind::Working)
+        .await;
+    assert_eq!(status_of(&tree, &node.id).kind, Kind::Idle);
 }
 
 #[tokio::test]

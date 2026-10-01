@@ -7,13 +7,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SpawnParams,
+    CreateGroupParams, MoveParams, NodeKind, RailNode, RenameParams, SpawnParams, StatusEvent,
 };
 use contracts::terminal::SpawnParams as TerminalSpawn;
-use contracts::{EventData, Kind, Status};
+use contracts::{Actor, EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
 use terminal::Terminals;
+use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast::error::RecvError;
 
 pub mod claude_code;
 mod rail;
@@ -41,6 +43,7 @@ pub trait AgentAdapter {
 struct Shared {
     rail: Mutex<rail::Rail>,
     runs: Mutex<HashMap<String, ClaudeCode>>,
+    bus: Bus,
     terminals: Arc<Terminals>,
     /// Since when an Agent without a Terminal has been `done`.
     opened: i64,
@@ -71,6 +74,62 @@ impl Shared {
         }
         node
     }
+
+    /// Fold `observation` into Agent `id`'s Status and announce it if it changed.
+    fn observe(&self, actor: Actor, id: &str, observation: Observation) {
+        let changed = self
+            .runs()
+            .get_mut(id)
+            .and_then(|run| run.observe(observation));
+        if let Some(status) = changed {
+            let event = StatusEvent {
+                id: id.to_owned(),
+                status,
+            };
+            self.bus.emit(actor, EventData::AgentStatus(event));
+        }
+    }
+}
+
+/// Feed one Terminal's title changes and its exit to the Agent behind it.
+async fn watch(
+    shared: Arc<Shared>,
+    id: String,
+    terminal_id: String,
+    mut events: Receiver<EventData>,
+) {
+    let daemon = Actor::daemon;
+    loop {
+        match events.recv().await {
+            Ok(EventData::TerminalTitle(title)) => {
+                shared.observe(daemon(), &id, Observation::Title(title.title));
+            }
+            Ok(EventData::TerminalExited(exited)) => {
+                shared.observe(daemon(), &id, Observation::Exit { code: exited.code });
+                return;
+            }
+            Ok(_) => {}
+            // Output can outrun this task and drop the exit event with it; the table still knows.
+            Err(RecvError::Lagged(_)) => {
+                let gone = shared
+                    .terminals
+                    .list()
+                    .into_iter()
+                    .find(|t| t.id == terminal_id && !t.running);
+                if let Some(gone) = gone {
+                    shared.observe(
+                        daemon(),
+                        &id,
+                        Observation::Exit {
+                            code: gone.exit_code,
+                        },
+                    );
+                    return;
+                }
+            }
+            Err(RecvError::Closed) => return,
+        }
+    }
 }
 
 pub struct Agents {
@@ -88,7 +147,7 @@ impl Agents {
 
     pub fn open_with(
         dir: &Path,
-        _bus: Bus,
+        bus: Bus,
         terminals: Arc<Terminals>,
         launcher: Launcher,
     ) -> Result<Self, OpenError> {
@@ -96,6 +155,7 @@ impl Agents {
             shared: Arc::new(Shared {
                 rail: Mutex::new(rail::Rail::open(&dir.join("agents.db"))?),
                 runs: Mutex::new(HashMap::new()),
+                bus,
                 terminals,
                 opened: now_ms(),
             }),
@@ -125,6 +185,12 @@ impl Agents {
             .runs()
             .insert(node.id.clone(), ClaudeCode::starting(now_ms));
         self.shared.rail().attach_terminal(&node.id, &spawned.id)?;
+        tokio::spawn(watch(
+            Arc::clone(&self.shared),
+            node.id.clone(),
+            spawned.id.clone(),
+            spawned.events,
+        ));
         ctx.emit(EventData::RailChanged);
         Ok(self.shared.present(RailNode {
             terminal_id: Some(spawned.id),

@@ -3,6 +3,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use agents::Agents;
 use agents::claude_code::Launcher;
@@ -13,6 +14,8 @@ use rpc::{Bus, Ctx, Module, RpcError};
 use serde_json::{Value, json};
 use terminal::Terminals;
 use tokio::sync::broadcast::Receiver;
+
+const PATIENCE: Duration = Duration::from_secs(10);
 
 pub struct Fixture {
     pub dir: tempfile::TempDir,
@@ -102,5 +105,20 @@ impl Fixture {
         std::iter::from_fn(|| self.events.try_recv().ok())
             .filter(|event| matches!(event.data, EventData::RailChanged))
             .count()
+    }
+
+    /// The tree, once `done` holds for it.
+    pub async fn until(&self, done: impl Fn(&[RailNode]) -> bool) -> Vec<RailNode> {
+        tokio::time::timeout(PATIENCE, async {
+            loop {
+                let tree = self.tree().await;
+                if done(&tree) {
+                    return tree;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the tree reaches the expected state in time")
     }
 }
