@@ -134,8 +134,9 @@ start_vm() {
   mkdir -p "$OUT/runs"
   acquire_lock
   [ "$(vm_count)" -lt "$MAX_VMS" ] || { echo "boxd.sh: $MAX_VMS ru- VMs already exist" >&2; exit 1; }
+  # The timer outlasts everything that runs after creation (reboot wait 60 s, upload, an agent run of up to 570 s, then run_check's 1800 s).
   # Own the name only once `new` succeeds, so a failed create never removes someone else's VM.
-  boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout 1800 >/dev/null </dev/null
+  boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout 3600 >/dev/null </dev/null
   VM="ru-$name"
   release_lock
   # A VM restored from a memory snapshot wedges claude and tsc until it is rebooted (measured: tsc hangs before, 0.4 s after).
@@ -233,7 +234,7 @@ check() {
   sha=$(git rev-parse "refs/boxd-check/$slug")
   git update-ref -d "refs/boxd-check/$slug-base"
   git update-ref -d "refs/boxd-check/$slug"
-  tree=$(git merge-tree --write-tree "$base" "$sha")
+  tree=$(git merge-tree --write-tree "$base" "$sha") || { echo "boxd.sh: $ref conflicts with origin/main:" >&2; echo "$tree" >&2; exit 1; }
   start_vm "chk-$slug"
   upload_checkout "$base" "$tree" ""
   local rc=0

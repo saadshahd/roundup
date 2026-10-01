@@ -39,7 +39,7 @@ Beyond the toolchain: the WebKitGTK libraries (`apt-get` must run with `NEEDREST
 ## Defaults for every VM
 
 - Name prefix `ru-`, so a sweep can find them: `boxd machine list | grep '^ru-'`. `loop/boxd.sh build` refuses to start when `BOXD_MAX_VMS` (default 12) `ru-` VMs exist.
-- `--auto-destroy-timeout 1800` (leak guard; `bake` uses 3600) and `--auto-suspend-timeout 0`, because CPU-only builds look idle and would be suspended mid-run. Both confirmed with `boxd machine get`. Auto-hibernate defaults to 14400 s of no network traffic; a job longer than 4 hours needs it set to 0.
+- `--auto-destroy-timeout 3600` (leak guard, longer than reboot, upload and the 1800 s check together; `bake` uses 7200) and `--auto-suspend-timeout 0`, because CPU-only builds look idle and would be suspended mid-run. Both confirmed with `boxd machine get`. Auto-hibernate defaults to 14400 s of no network traffic; a job longer than 4 hours needs it set to 0.
 - Create from the `ru-toolchain` snapshot (Rust from `rust-toolchain.toml`, clippy, rustfmt, nextest, cargo-machete, just, pnpm from `package.json`, Node 24). Boot reports 4–5 ms; `machine new` takes about 2.2 s wall. Desktop URLs and `agent-browser` work on snapshot-based machines. Rebake with `loop/boxd.sh bake` when `rust-toolchain.toml` or the pnpm pin changes. The snapshot is about 11.5 GB and is kept; `loop/boxd.sh bake` replaces it.
 - Upload the commit under test with `git archive`, never a recursive copy (that would ship `node_modules/`, `target/` and other agents' state).
 - Bring results back as a patch (`git format-patch` then `boxd machine cp`) and push from the laptop. GitHub credentials never go to the VM.
@@ -47,6 +47,7 @@ Beyond the toolchain: the WebKitGTK libraries (`apt-get` must run with `NEEDREST
 ## Secrets
 
 - The Claude token is the boxd secret `CLAUDE_CODE_OAUTH_TOKEN`, host-scoped. Inside a VM the variable holds a placeholder (`bxds_...`); boxd swaps in the real token on requests to `*.anthropic.com`, `*.claude.com` and `claude.ai`, so the real token never reaches the VM. Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` for `claude`: without it the process hangs about 90 s after answering (some other host is blocked), with it `claude -p "say hi"` takes 2 s.
+- The secret is account-wide by design for this private, personal repo (no outside contributors): every VM, including `--isolated` ones, gets the `bxds_` placeholder. It is substituted only for `*.anthropic.com`, `*.claude.com` and `claude.ai`, so exposure is quota use, not credential theft. If the repo ever runs code outside our own PRs, `check` and `bake` VMs must stop receiving it.
 - Normal machines expose connected integration credentials to any code running in them. Use `--isolated` when running code you do not trust.
 
 ## Cost and quota
