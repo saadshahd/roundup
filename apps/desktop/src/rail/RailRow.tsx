@@ -11,7 +11,7 @@ import { isUnprompted, liveLineOf } from "./liveLine";
 
 type NodeRow = Extract<RailRow, { kind: "node" }>;
 
-/** A Kind's mark, or a bare mark for a Group, which has no Kind. */
+/** A Kind's mark, or a bare mark for a plain Group, which has no Kind. */
 type Mark = { kind: Kind } | { bare: string };
 
 /** A Terminal has no Kind, so it borrows the marks of `working` and `done`. */

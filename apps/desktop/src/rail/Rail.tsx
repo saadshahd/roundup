@@ -35,8 +35,8 @@ export const Rail = () => {
 
   const [pending, setPending] = createSignal(false);
 
-  /** One spawn at a time: a second click while the Daemon is answering would add a second row. */
-  const act = <T,>(call: () => Promise<T>): void => {
+  /** Runs one of the three spawn actions; a second click while the Daemon is still answering would add a second row. */
+  const guarded = <T,>(call: () => Promise<T>): void => {
     setPending(true);
     void attempt(call).finally(() => setPending(false));
   };
@@ -132,7 +132,7 @@ export const Rail = () => {
           class="word"
           disabled={pending()}
           onClick={() =>
-            act(async () => {
+            guarded(async () => {
               const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
 
               setWanted(spawned.id);
@@ -144,14 +144,14 @@ export const Rail = () => {
         <button
           class="word"
           disabled={pending()}
-          onClick={() => act(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
+          onClick={() => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
         >
           + terminal
         </button>
         <button
           class="word"
           disabled={pending()}
-          onClick={() => act(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
+          onClick={() => guarded(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
         >
           + group
         </button>

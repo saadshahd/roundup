@@ -26,7 +26,7 @@ const isFoldedAgent = (node: RailNode, now: number): boolean =>
   node.status.kind === "done" &&
   now - node.status.since >= DONE_FOLD_MS;
 
-/** Rows in tree order: siblings by `order`, done Agents last under each parent, a collapsed Group without its descendants. */
+/** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Group without its descendants. */
 export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[] => {
   const childrenOf = new Map<string | null, RailNode[]>();
 

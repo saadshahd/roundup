@@ -6,7 +6,7 @@ import { exitText } from "../ink/exitText";
 
 const UNPROMPTED: readonly Kind[] = ["blocked", "needs-you", "error"];
 
-/** The second line under a row: an Agent's label and age, an exited Terminal's ending, nothing for a running Terminal or a Group. */
+/** The second line under a row: an Agent's label and age, an exited Terminal's ending, nothing for a running Terminal or a plain Group. */
 export const liveLineOf = (node: RailNode, exit: ExitState | null, now: number): string | null => {
   if (node.status) return `${node.status.label}  ${elapsed(node.status.since, now)}`;
 
