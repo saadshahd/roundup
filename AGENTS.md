@@ -15,6 +15,14 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 ## Workflow
 
 - No scenario, no work: specs are `scenarios/*.md` (given/when/then in glossary words).
+- Name tests after the scenario they prove: `fn t3_...` for scenario T3 (`scenarios/README.md`).
 - Write the failing test first, then the code, in your own git worktree.
 - Red main is stop-the-line. Fix-forward on main is forbidden; revert.
 - Anti-slop is mandatory (installed in Phase 1 via `/install-anti-slop`).
+
+## Branches and reviews
+
+- Builders work on a branch in their own worktree and open a PR against `main`. Nobody pushes to `main` except the Architect for `contracts/` and core crates, and docs.
+- Before pushing: `pnpm install` then `just check`; the PR must also pass `just pr-size origin/main`.
+- A module ships as several small PRs, each naming its scenario ids.
+- The generated TypeScript in `contracts/generated/` comes from `crates/contracts`; never edit it by hand.

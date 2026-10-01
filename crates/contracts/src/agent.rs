@@ -1,0 +1,86 @@
+//! Agents and the Rail: the tree of Groups, Meta-agents, Agents and Terminals.
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ts_rs::TS;
+
+use crate::common::Status;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "agent/")]
+pub enum NodeKind {
+    Group,
+    Agent,
+    Terminal,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct RailNode {
+    pub id: String,
+    pub kind: NodeKind,
+    pub name: String,
+    pub parent: Option<String>,
+    /// Position among siblings; lower first.
+    pub order: u32,
+    /// `None` for Groups and Terminals.
+    pub status: Option<Status>,
+    /// A Group with a live Agent sitting at it.
+    pub meta: bool,
+    /// The Terminal behind an Agent or Terminal node.
+    pub terminal_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct SpawnParams {
+    pub cwd: String,
+    pub prompt: Option<String>,
+    pub parent: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct NodeId {
+    pub id: String,
+}
+
+/// One adapter-specific Signal for an Agent; for Claude Code, a hook payload.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct SignalParams {
+    pub id: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub payload: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct CreateGroupParams {
+    pub name: String,
+    pub parent: Option<String>,
+}
+
+/// Re-parent and position a node. `parent: None` moves it to the root.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct MoveParams {
+    pub id: String,
+    pub parent: Option<String>,
+    pub index: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct RenameParams {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct StatusEvent {
+    pub id: String,
+    pub status: Status,
+}

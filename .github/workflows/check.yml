@@ -14,6 +14,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.0
@@ -29,11 +31,13 @@ jobs:
       - uses: taiki-e/install-action@just
       - run: pnpm install --frozen-lockfile
       - run: just check
+      - if: github.event_name == 'pull_request'
+        run: just pr-size origin/${{ github.base_ref }}
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"
           cargo build -p rupd -p rup
           ./target/debug/rupd & 
           for _ in $(seq 20); do [ -S "$RUPD_SOCKET" ] && break; sleep 0.25; done
-          ./target/debug/rup ping | grep -q '"pong":true'
+          ./target/debug/rup ping | grep -q pong
           kill %1

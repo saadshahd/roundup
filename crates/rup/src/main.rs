@@ -14,12 +14,18 @@ async fn main() -> ExitCode {
         }
     };
     let reply = match rpc::socket_path() {
-        Ok(path) => rpc::call(&path, method).await,
-        Err(err) => Err(err),
+        Ok(path) => match rpc::Client::connect(&path).await {
+            Ok(client) => client
+                .request(method, serde_json::Value::Null)
+                .await
+                .map_err(|err| err.to_string()),
+            Err(err) => Err(err.to_string()),
+        },
+        Err(err) => Err(err.to_string()),
     };
     match reply {
         Ok(reply) => {
-            println!("{reply}");
+            println!("{}", serde_json::json!({ "result": reply }));
             ExitCode::SUCCESS
         }
         Err(err) => {

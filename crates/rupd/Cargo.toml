@@ -5,9 +5,18 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+agents = { path = "../agents" }
+contracts = { path = "../contracts" }
+pads = { path = "../pads" }
+provenance = { path = "../provenance" }
 rpc = { path = "../rpc" }
 serde_json.workspace = true
+terminal = { path = "../terminal" }
+todos = { path = "../todos" }
 tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

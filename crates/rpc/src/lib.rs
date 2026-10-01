@@ -1,11 +1,18 @@
-//! Shared by the Daemon and its clients: where the socket lives and how to call it.
+//! Shared by the Daemon, its modules and its clients: errors, the module contract, and the client.
+
+mod client;
+mod error;
+mod module;
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
+pub use client::Client;
+pub use error::{RpcError, code};
+pub use module::{Bus, Ctx, Module, params, reply};
+
+/// Why a module could not start (a bad database, an unwritable directory).
+pub type OpenError = Box<dyn std::error::Error + Send + Sync>;
 
 /// `RUPD_SOCKET` if set, else `~/.roundup/rupd.sock`.
 pub fn socket_path() -> io::Result<PathBuf> {
@@ -15,14 +22,4 @@ pub fn socket_path() -> io::Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
     Ok(PathBuf::from(home).join(".roundup/rupd.sock"))
-}
-
-/// One JSON-RPC 2.0 request over a newline-delimited Unix socket; returns the whole response.
-pub async fn call(socket: &Path, method: &str) -> io::Result<Value> {
-    let mut stream = UnixStream::connect(socket).await?;
-    let request = json!({ "jsonrpc": "2.0", "id": 1, "method": method });
-    stream.write_all(format!("{request}\n").as_bytes()).await?;
-    let mut line = String::new();
-    BufReader::new(stream).read_line(&mut line).await?;
-    serde_json::from_str(&line).map_err(io::Error::other)
 }

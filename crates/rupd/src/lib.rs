@@ -1,72 +1,223 @@
 //! The Daemon: every other part of roundup is a client of it.
+//! It owns the connection loop, the module router, the event bus and the Provenance log.
 
+mod builtin;
+
+use std::collections::HashMap;
 use std::io;
+use std::path::Path;
+use std::sync::Arc;
 
+use contracts::Actor;
+use provenance::Touches;
+use rpc::{Bus, Ctx, Module, OpenError, RpcError, code};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::mpsc;
 
-const PARSE_ERROR: i64 = -32700;
-const METHOD_NOT_FOUND: i64 = -32601;
+pub struct Daemon {
+    modules: HashMap<&'static str, Arc<dyn Module>>,
+    bus: Bus,
+    touches: Arc<Touches>,
+}
+
+/// Per-connection state.
+pub struct Conn {
+    actor: Actor,
+    events: mpsc::UnboundedSender<Value>,
+}
+
+impl Daemon {
+    /// `dir` is the Project's `.roundup/` directory; it is created if missing.
+    pub fn open(dir: &Path) -> Result<Self, OpenError> {
+        std::fs::create_dir_all(dir)?;
+        let bus = Bus::new();
+        let terminals = Arc::new(terminal::Terminals::open(dir, bus.clone())?);
+        let mut daemon = Self {
+            modules: HashMap::new(),
+            touches: Arc::new(Touches::open(&dir.join("provenance.db"))?),
+            bus: bus.clone(),
+        };
+        daemon.register(Arc::new(todos::Todos::open(dir, bus.clone())?));
+        daemon.register(Arc::new(pads::Pads::open(dir, bus.clone())?));
+        daemon.register(Arc::new(agents::Agents::open(
+            dir,
+            bus,
+            Arc::clone(&terminals),
+        )?));
+        daemon.register(terminals);
+        Ok(daemon)
+    }
+
+    fn register(&mut self, module: Arc<dyn Module>) {
+        for namespace in module.namespaces() {
+            self.modules.insert(namespace, Arc::clone(&module));
+        }
+    }
+
+    /// Answer one request line. Notifications (no `id`) get no answer.
+    async fn dispatch(&self, conn: &mut Conn, line: &str) -> Option<Value> {
+        let Ok(request) = serde_json::from_str::<Value>(line) else {
+            return Some(failure(
+                &Value::Null,
+                &RpcError::new(code::PARSE_ERROR, "parse error"),
+            ));
+        };
+        let id = request.get("id").cloned();
+        let method = request["method"].as_str().unwrap_or_default();
+        let params = request.get("params").cloned().unwrap_or(Value::Null);
+        let outcome = self.route(conn, method, params).await;
+        let id = id?;
+        Some(match outcome {
+            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+            Err(err) => failure(&id, &err),
+        })
+    }
+
+    async fn route(&self, conn: &mut Conn, method: &str, params: Value) -> Result<Value, RpcError> {
+        let namespace = method.split('.').next().unwrap_or_default();
+        if let Some(outcome) = builtin::call(self, conn, namespace, method, &params) {
+            return outcome;
+        }
+        let module = self
+            .modules
+            .get(namespace)
+            .ok_or_else(|| RpcError::method_not_found(method))?;
+        let ctx = Ctx {
+            actor: conn.actor.clone(),
+            bus: self.bus.clone(),
+            touches: Arc::clone(&self.touches),
+        };
+        module.call(&ctx, method, params).await
+    }
+}
+
+fn failure(id: &Value, err: &RpcError) -> Value {
+    json!({ "jsonrpc": "2.0", "id": id, "error": err })
+}
 
 /// Accept connections until the listener fails.
-pub async fn serve(listener: UnixListener) -> io::Result<()> {
+pub async fn serve(listener: UnixListener, daemon: Arc<Daemon>) -> io::Result<()> {
     loop {
         let (stream, _) = listener.accept().await?;
+        let daemon = Arc::clone(&daemon);
         tokio::spawn(async move {
-            if let Err(err) = handle(stream).await {
+            if let Err(err) = handle(stream, daemon).await {
                 eprintln!("rupd: connection failed: {err}");
             }
         });
     }
 }
 
-async fn handle(stream: UnixStream) -> io::Result<()> {
+async fn handle(stream: UnixStream, daemon: Arc<Daemon>) -> io::Result<()> {
     let (read, mut write) = stream.into_split();
+    let (frames, mut outbox) = mpsc::unbounded_channel::<Value>();
+    let writer = tokio::spawn(async move {
+        while let Some(frame) = outbox.recv().await {
+            write.write_all(format!("{frame}\n").as_bytes()).await?;
+        }
+        io::Result::Ok(())
+    });
+    let mut conn = Conn {
+        actor: Actor::user(),
+        events: frames.clone(),
+    };
     let mut lines = BufReader::new(read).lines();
     while let Some(line) = lines.next_line().await? {
-        write
-            .write_all(format!("{}\n", respond(&line)).as_bytes())
-            .await?;
+        if let Some(reply) = daemon.dispatch(&mut conn, &line).await {
+            let _ = frames.send(reply);
+        }
     }
-    Ok(())
-}
-
-/// One request line in, one response line out.
-pub fn respond(line: &str) -> Value {
-    let Ok(request) = serde_json::from_str::<Value>(line) else {
-        return error(Value::Null, PARSE_ERROR, "parse error");
-    };
-    let id = request["id"].clone();
-    match request["method"].as_str() {
-        Some("daemon.ping") => json!({ "jsonrpc": "2.0", "id": id, "result": { "pong": true } }),
-        _ => error(id, METHOD_NOT_FOUND, "method not found"),
-    }
-}
-
-fn error(id: Value, code: i64, message: &str) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+    drop(conn);
+    drop(frames);
+    writer.await.map_err(io::Error::other)?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn ping_answers_pong() {
-        let reply = respond(r#"{"jsonrpc":"2.0","id":7,"method":"daemon.ping"}"#);
+    async fn ask(daemon: &Daemon, line: &str) -> Value {
+        let (events, _) = mpsc::unbounded_channel();
+        let mut conn = Conn {
+            actor: Actor::user(),
+            events,
+        };
+        daemon.dispatch(&mut conn, line).await.unwrap()
+    }
+
+    fn daemon() -> (tempfile::TempDir, Daemon) {
+        let dir = tempfile::tempdir().unwrap();
+        let daemon = Daemon::open(dir.path()).unwrap();
+        (dir, daemon)
+    }
+
+    #[tokio::test]
+    async fn ping_answers_pong() {
+        let (_dir, daemon) = daemon();
+        let reply = ask(
+            &daemon,
+            r#"{"jsonrpc":"2.0","id":7,"method":"daemon.ping"}"#,
+        )
+        .await;
         assert_eq!(reply["id"], 7);
         assert_eq!(reply["result"]["pong"], true);
     }
 
-    #[test]
-    fn unknown_method_is_an_error() {
-        let reply = respond(r#"{"jsonrpc":"2.0","id":1,"method":"nope"}"#);
-        assert_eq!(reply["error"]["code"], METHOD_NOT_FOUND);
+    #[tokio::test]
+    async fn unknown_method_is_an_error() {
+        let (_dir, daemon) = daemon();
+        let reply = ask(
+            &daemon,
+            r#"{"jsonrpc":"2.0","id":1,"method":"nope.nothing"}"#,
+        )
+        .await;
+        assert_eq!(reply["error"]["code"], code::METHOD_NOT_FOUND);
     }
 
-    #[test]
-    fn garbage_is_a_parse_error() {
-        assert_eq!(respond("{")["error"]["code"], PARSE_ERROR);
+    #[tokio::test]
+    async fn module_methods_reach_their_module() {
+        let (_dir, daemon) = daemon();
+        let reply = ask(&daemon, r#"{"jsonrpc":"2.0","id":1,"method":"todo.list"}"#).await;
+        // The stub module answers; the router found it.
+        assert_eq!(reply["error"]["code"], code::METHOD_NOT_FOUND);
+        assert!(
+            reply["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("todo.list")
+        );
+    }
+
+    #[tokio::test]
+    async fn subscribers_receive_events_pushed_on_the_same_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let daemon = Arc::new(Daemon::open(dir.path()).unwrap());
+        let socket = dir.path().join("rupd.sock");
+        tokio::spawn(serve(
+            UnixListener::bind(&socket).unwrap(),
+            Arc::clone(&daemon),
+        ));
+        let mut client = rpc::Client::connect(&socket).await.unwrap();
+        client
+            .request("events.subscribe", Value::Null)
+            .await
+            .unwrap();
+
+        daemon
+            .bus
+            .emit(Actor::daemon(), contracts::EventData::RailChanged);
+
+        let event = client.next_event().await.unwrap();
+        assert_eq!(event.actor, Actor::daemon());
+        assert!(matches!(event.data, contracts::EventData::RailChanged));
+    }
+
+    #[tokio::test]
+    async fn garbage_is_a_parse_error() {
+        let (_dir, daemon) = daemon();
+        let reply = ask(&daemon, "{").await;
+        assert_eq!(reply["error"]["code"], code::PARSE_ERROR);
     }
 }

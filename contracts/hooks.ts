@@ -1,12 +1,12 @@
 /** Extension Hook types. See docs/extension-interface.md. */
 
-export type StatusKind = "error" | "needs-you" | "blocked" | "working" | "idle" | "done";
+import type { Actor } from "./generated/Actor";
+import type { Kind } from "./generated/Kind";
+import type { Status } from "./generated/Status";
 
-export type Status = { kind: StatusKind; label: string; since: number };
+export type { Actor, Kind, Status };
 
 export type Chip = { label: string; tone: "dim" | "info" };
-
-export type Actor = { kind: "user" | "agent" | "ext"; id: string; parent: string | null };
 
 export type Delivery = "auto" | "ask-first" | "drop";
 

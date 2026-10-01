@@ -1,5 +1,13 @@
 {
-  "entry": ["contracts/*.ts"],
-  "ignorePatterns": ["tools/oxlint/anti-slop/**", "spikes/**"],
-  "ignoreDependencies": ["@oxlint/plugins"]
+  "entry": [
+    "contracts/**/*.ts",
+    "scripts/*.mjs"
+  ],
+  "ignorePatterns": [
+    "tools/oxlint/anti-slop/**",
+    "spikes/**"
+  ],
+  "ignoreDependencies": [
+    "@oxlint/plugins"
+  ]
 }

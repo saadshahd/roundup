@@ -21,7 +21,9 @@ Principle: every feature is a typed RPC method plus an event. The UI has zero pr
 
 | Path | Owner module | Contents |
 |---|---|---|
-| `contracts/` | Architect | RPC schema, events, Hook types, glossary |
+| `crates/contracts` | Architect | RPC params, results and events as Rust types; generates `contracts/generated/*.ts` (`cargo test -p contracts`); `contracts/hooks.ts` holds the Hook types |
+| `crates/rpc` | Architect | `Module` trait, `Ctx`, event `Bus`, error codes, `Client` |
+| `crates/provenance` | Architect | the Touch log (append-only SQLite) |
 | `crates/terminal` | terminal | `portable-pty`, screen state |
 | `crates/agents` | agents | `AgentAdapter`, Status classifier; `claude_code/` adapter |
 | `crates/todos` | todos | SQLite (WAL), blocker graph |

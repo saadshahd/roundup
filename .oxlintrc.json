@@ -14,7 +14,8 @@
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
     "target/**",
-    "spikes/**"
+    "spikes/**",
+    "contracts/generated/**"
   ],
   "jsPlugins": [
     {

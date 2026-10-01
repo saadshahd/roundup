@@ -13,7 +13,7 @@ Glossary only. No implementation. Rule 6 of the loop: every identifier, RPC meth
 - **Status** — `{kind, label, since}`. **Kind** — one of `error | needs-you | blocked | working | idle | done`. **Chip** — extra label after a name; never changes the glyph.
 - **Observation** — one input an adapter reads about its Agent: terminal output, a Signal, or an exit. **Signal** — a structured event the Agent's own tooling pushes (for Claude Code, a hook payload). _Avoid:_ notification, alert.
 - **Todo** — an item with an optional blocker list, owned by the Project. _Avoid:_ task, ticket.
-- **Pad** — a markdown note owned by an Agent or the user. _Avoid:_ scratchpad in code; "scratchpad" is the product word in prose only.
+- **Pad** — a markdown note owned by an Agent or the user. _Avoid:_ scratchpad. "Scratchpad" is the product word in prose only; code says Pad.
 - **Message** — a typed envelope `{from, to, kind, body}` between Actors. **Route** — a sender→receiver pair with a delivery value (`auto | ask-first | drop`). **Held** — a Message waiting on an ask-first Route.
 - **Actor** — the user, an Agent or an Extension making a call. **Touch** — one logged read or write of a Todo or Pad by an Actor. **Provenance** — the append-only log of Touches.
 - **Extension** — a directory with a manifest and one module. **Hook** — one `($, e, next)` function an Extension registers. **Daemon** (`rupd`) — the local process everything else is a client of. **Adapter** — the code that turns one agent vendor's process into an Agent (`AgentAdapter`).
