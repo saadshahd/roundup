@@ -34,7 +34,7 @@ boxd is optional. Read `docs/boxd.md` before touching it; it says what a VM can 
 
 - Start boxd Builders only with `loop/boxd.sh build <name> <prompt-file>`. It creates an `--isolated` VM from the `ru-toolchain` snapshot with an auto-destroy timer, uploads `git archive HEAD`, runs `just check` as the observer, returns a patch, and destroys the VM.
 - Name every VM `ru-<something>`. Create QA VMs with `--auto-destroy-timeout` and `--auto-suspend-timeout 0`, and use `--isolated` for any VM that runs code you did not write.
-- The Claude token goes in per call as `CLAUDE_CODE_OAUTH_TOKEN` via `boxd machine exec -e`. Never use `boxd env set` (it is account-wide), never write the token to a file in the repo or on a VM, never print it. `loop/boxd.sh` deletes any artifact that contains it.
+- Claude authenticates through the boxd secret `CLAUDE_CODE_OAUTH_TOKEN` (sealed, scoped to `*.anthropic.com`, `*.claude.com`, `claude.ai`): a VM sees only a placeholder and boxd substitutes the real token on those hosts. Never print or write the real token, and do not widen the secret's hosts.
 - Never push GitHub credentials to a VM. Results come back as a patch and are pushed from the laptop.
 - At most 4 `ru-` VMs at once (`loop/boxd.sh` enforces it). If `loop/out/PAUSED` exists, a limit was hit: stop and tell the user.
 - A VM cannot show macOS behaviour: perf numbers, WKWebView rendering and the macOS gate come from the laptop and CI.
