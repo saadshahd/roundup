@@ -3,7 +3,7 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import { dropAt, isInPlace, remainingRows } from "./dragTarget";
 import { layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
-import { agent, group, NOW } from "./railFixture";
+import { agent, group, MINUTE, NOW } from "./railFixture";
 
 /** a, g { x, y }, b */
 const TREE: RailNode[] = [
@@ -14,15 +14,35 @@ const TREE: RailNode[] = [
   agent("b", "idle", "i", { order: 2 }),
 ];
 
-const rowsOf = (nodes: RailNode[], collapsed: string[] = []): NodeRow[] =>
-  layoutRail(nodes, { collapsed: new Set(collapsed), unfolded: new Set(), now: NOW }).filter(
+const rowsOf = (nodes: RailNode[], collapsed: string[] = [], unfolded: (string | null)[] = []): NodeRow[] =>
+  layoutRail(nodes, { collapsed: new Set(collapsed), unfolded: new Set(unfolded), now: NOW }).filter(
     (row): row is NodeRow => row.kind === "node",
   );
 
 const dropOf = (dragged: string, slot: number, depth: number, nodes = TREE, collapsed: string[] = []) =>
   dropAt(nodes, remainingRows(nodes, rowsOf(nodes, collapsed), dragged), dragged, slot, depth);
 
+/** Displayed `a b c d` once the done line is open, although the Daemon's order is d, a, b, c. */
+const WITH_DONE: RailNode[] = [
+  agent("d", "done", "finished", { order: 0, status: { kind: "done", label: "finished", since: NOW - 60 * MINUTE } }),
+  agent("a", "idle", "i", { order: 1 }),
+  agent("b", "idle", "i", { order: 2 }),
+  agent("c", "idle", "i", { order: 3 }),
+];
+
 describe("u22 drop target", () => {
+  it("u22_a_row_shown_out_of_order_after_an_opened_done_line_is_not_a_place_to_drop", () => {
+    const rows = rowsOf(WITH_DONE, [], [null]);
+
+    expect(remainingRows(WITH_DONE, rows, "a").map((row) => row.node.id)).toEqual(["b", "c"]);
+  });
+
+  it("u22_below_the_last_live_row_a_drop_counts_the_done_rows_in_the_index", () => {
+    const rows = remainingRows(WITH_DONE, rowsOf(WITH_DONE, [], [null]), "a");
+
+    expect(dropAt(WITH_DONE, rows, "a", 2, 0)).toEqual({ parent: null, index: 3, depth: 0 });
+  });
+
   it("u22_above_the_first_row_lands_first_at_the_top_level", () => {
     expect(dropOf("b", 0, 3)).toEqual({ parent: null, index: 0, depth: 0 });
   });

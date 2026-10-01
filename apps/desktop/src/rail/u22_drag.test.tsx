@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
 import { dragFrom, pointerAt, release, stubLayout } from "./dragFixture";
-import { agent, callsTo, group, mountRail, rowNames, rowOf } from "./railFixture";
+import { agent, callsTo, group, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
 
 /** a, g { x }, b */
 const TREE: RailNode[] = [
@@ -84,6 +84,48 @@ describe("u22 drag", () => {
     dragFrom("a", pointerAt(4, 0));
 
     expect(shiftsOf()).toEqual({ g: "-1", x: "-1", b: "-1" });
+  });
+
+  it("u22_a_drop_below_an_opened_done_line_lands_where_the_line_is_drawn", async () => {
+    const done = agent("d", "done", "finished", {
+      order: 0,
+      status: { kind: "done", label: "finished", since: NOW - 60 * MINUTE },
+    });
+
+    const mounted = await mountRail([
+      done,
+      agent("a", "idle", "i", { order: 1 }),
+      agent("b", "idle", "i", { order: 2 }),
+      agent("c", "idle", "i", { order: 3 }),
+    ]);
+
+    mounted.app.handlers["rail.move"] = () => null;
+    fireEvent.click(screen.getByText("✓ 1 done"));
+
+    dragFrom("a", pointerAt(4, 0));
+    release(pointerAt(4, 0));
+
+    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "a", parent: null, index: 3 }]));
+  });
+
+  it("u22_a_pointer_just_below_a_rows_middle_lands_below_it", async () => {
+    const mounted = await mountRail(TREE);
+    mounted.app.handlers["rail.move"] = () => null;
+
+    dragFrom("b", { clientX: 0, clientY: 11 });
+    release({ clientX: 0, clientY: 11 });
+
+    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 1 }]));
+  });
+
+  it("u22_a_pointer_just_above_a_rows_middle_lands_above_it", async () => {
+    const mounted = await mountRail(TREE);
+    mounted.app.handlers["rail.move"] = () => null;
+
+    dragFrom("b", { clientX: 0, clientY: 9 });
+    release({ clientX: 0, clientY: 9 });
+
+    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
   });
 
   it("u22_live_lines_are_hidden_while_a_drag_is_under_way", async () => {

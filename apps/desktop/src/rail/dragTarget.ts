@@ -1,18 +1,19 @@
 import type { RailNode } from "@contracts/agent/RailNode";
-import { siblingsOf } from "./layout";
+import { descendantsOf, siblingsOf } from "./layout";
 import type { NodeRow } from "./layout";
 
 /** The `rail.move` arguments for a release, plus the depth the drop line is drawn at. */
 export type Drop = { parent: string | null; index: number; depth: number };
 
-const descendantsOf = (nodes: readonly RailNode[], id: string): Set<string> =>
-  new Set(nodes.filter((node) => node.parent === id).flatMap((child) => [child.id, ...descendantsOf(nodes, child.id)]));
+/** The dragged node and the nodes that move with it. */
+export const movingWith = (nodes: readonly RailNode[], dragged: string): Set<string> =>
+  new Set([dragged, ...descendantsOf(nodes, dragged).map((node) => node.id)]);
 
-/** The rows a dragged row can land between: everything but itself and what moves with it (a Group cannot move into its own descendant). */
+/** The rows a dragged row can land between. Not itself or what moves with it (a Group cannot move into its own descendant), and not a row shown out of `order` after an opened `✓ n done` line: the Daemon orders by `order` alone, so a drop below one would land elsewhere than the line. */
 export const remainingRows = (nodes: readonly RailNode[], rows: readonly NodeRow[], dragged: string): NodeRow[] => {
-  const moving = descendantsOf(nodes, dragged).add(dragged);
+  const moving = movingWith(nodes, dragged);
 
-  return rows.filter((row) => !moving.has(row.node.id));
+  return rows.filter((row) => !moving.has(row.node.id) && !row.folded);
 };
 
 /** Where the dragged row lands in gap `slot` (0 is above the first row) of `rows`, with the pointer at `depth`, clamped to the depths the gap allows. `index` counts siblings without the dragged row. */

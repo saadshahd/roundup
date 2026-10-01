@@ -8,7 +8,15 @@ const DONE_FOLD_MS = 10 * 60_000;
 export type Collapsed = { kind: Kind | null; children: number };
 
 export type RailRow =
-  | { kind: "node"; key: string; depth: number; node: RailNode; collapsed: Collapsed | null }
+  | {
+      kind: "node";
+      key: string;
+      depth: number;
+      node: RailNode;
+      collapsed: Collapsed | null;
+      /** An Agent shown only because its `✓ n done` line is open: it sits after its live siblings whatever its `order`. */
+      folded: boolean;
+    }
   | { kind: "fold"; key: string; depth: number; parent: string | null; count: number };
 
 export type NodeRow = Extract<RailRow, { kind: "node" }>;
@@ -26,6 +34,10 @@ export const isPlainGroup = (node: RailNode): boolean => node.kind === "group" &
 export const siblingsOf = (nodes: readonly RailNode[], parent: string | null): RailNode[] =>
   nodes.filter((node) => node.parent === parent).toSorted((a, b) => a.order - b.order);
 
+/** Every node below `id`, each parent before its children. */
+export const descendantsOf = (nodes: readonly RailNode[], id: string): RailNode[] =>
+  siblingsOf(nodes, id).flatMap((child) => [child, ...descendantsOf(nodes, child.id)]);
+
 const isFoldedAgent = (node: RailNode, now: number): boolean =>
   node.kind === "agent" &&
   node.status !== null &&
@@ -37,7 +49,7 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
   const under = (parent: string | null): RailNode[] => siblingsOf(nodes, parent);
 
   const kindsBelow = (parent: string): Kind[] =>
-    under(parent).flatMap((child) => [...(child.status ? [child.status.kind] : []), ...kindsBelow(child.id)]);
+    descendantsOf(nodes, parent).flatMap((child) => (child.status ? [child.status.kind] : []));
 
   const rowsOf = (parent: string | null, depth: number): RailRow[] => {
     const siblings = under(parent);
@@ -57,6 +69,7 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
         key: `node:${node.id}`,
         depth,
         node,
+        folded: folded.includes(node),
         collapsed: collapsed ? { kind: mostUrgent(kindsBelow(node.id)), children: under(node.id).length } : null,
       };
 
