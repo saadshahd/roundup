@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
-import { agent, glyphOf, group, metaAgent, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
+import { agent, glyphOf, group, metaAgent, MINUTE, mountRail, NOW, rowNames, rowOf, terminal } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -127,11 +127,24 @@ describe("u8 folding", () => {
     expect(rowOf("g").querySelector(".light")?.textContent).toBe("1");
   });
 
-  it("u8_a_selected_done_agent_stays_in_its_row_instead_of_folding_out_of_sight", async () => {
-    const { rail } = await mountRail([doneFor("old-1", 30, { order: 0 }), doneFor("old-2", 30, { order: 1 })]);
+  it("u8_a_collapsed_group_shows_the_most_urgent_kind_among_all_descendants_not_the_last_child", async () => {
+    await mountRail([
+      group("outer"),
+      group("inner", { parent: "outer", order: 0 }),
+      agent("asks", "needs-you", "?", { parent: "inner", order: 0 }),
+      agent("busy", "working", "w", { parent: "outer", order: 1 }),
+    ]);
 
-    rail.select("old-2");
+    fireEvent.click(glyphOf("outer"));
 
-    expect([rowNames(), screen.getByText("✓ 1 done").textContent]).toEqual([["old-2"], "✓ 1 done"]);
+    expect([glyphOf("outer").textContent, glyphOf("outer").className]).toEqual(["●", "glyph ink"]);
+  });
+
+  it("u8_a_collapsed_group_with_no_agent_below_shows_a_right_triangle", async () => {
+    await mountRail([group("g"), terminal("t", { parent: "g" })]);
+
+    fireEvent.click(glyphOf("g"));
+
+    expect(glyphOf("g").textContent).toBe("▸");
   });
 });

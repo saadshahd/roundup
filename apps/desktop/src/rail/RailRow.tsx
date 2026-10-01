@@ -105,7 +105,7 @@ export const RailRowView = (props: {
         >
           <button
             class="word"
-            aria-label="fold"
+            aria-label="collapse"
             onClick={(click) => {
               click.stopPropagation();
               props.onToggle();

@@ -16,18 +16,15 @@ export type RailView = {
   /** Parents whose `✓ n done` line has been clicked open; `null` is the top level. */
   unfolded: ReadonlySet<string | null>;
   now: number;
-  /** A selected Agent stays in its row, so the selection is never invisible. */
-  selected: string | null;
 };
 
 export const isPlainGroup = (node: RailNode): boolean => node.kind === "group" && !node.meta;
 
-const isFoldedAgent = (node: RailNode, view: RailView): boolean =>
+const isFoldedAgent = (node: RailNode, now: number): boolean =>
   node.kind === "agent" &&
   node.status !== null &&
   node.status.kind === "done" &&
-  view.now - node.status.since >= DONE_FOLD_MS &&
-  node.id !== view.selected;
+  now - node.status.since >= DONE_FOLD_MS;
 
 /** Rows in tree order: siblings by `order`, done Agents last under each parent, a collapsed Group without its descendants. */
 export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[] => {
@@ -43,7 +40,7 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
 
   const rowsOf = (parent: string | null, depth: number): RailRow[] => {
     const siblings = under(parent);
-    const folded = siblings.filter((node) => isFoldedAgent(node, view));
+    const folded = siblings.filter((node) => isFoldedAgent(node, view.now));
     const unfolded = view.unfolded.has(parent);
 
     const shown = [

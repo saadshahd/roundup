@@ -19,7 +19,7 @@ export const Rail = () => {
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
 
-  const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now(), selected: rail.selected() }));
+  const rows = createMemo(() => layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now() }));
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
 
@@ -33,7 +33,13 @@ export const Rail = () => {
     }
   };
 
-  const [spawning, setSpawning] = createSignal(false);
+  const [pending, setPending] = createSignal(false);
+
+  /** One spawn at a time: a second click while the Daemon is answering would add a second row. */
+  const act = <T,>(call: () => Promise<T>): void => {
+    setPending(true);
+    void attempt(call).finally(() => setPending(false));
+  };
 
   const parent = (): string | null => {
     const selected = rail.nodes.find((node) => node.id === rail.selected());
@@ -124,27 +130,28 @@ export const Rail = () => {
       <div class="rail-actions">
         <button
           class="word"
-          disabled={spawning()}
-          onClick={() => {
-            setSpawning(true);
-            void attempt(async () => {
+          disabled={pending()}
+          onClick={() =>
+            act(async () => {
               const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
 
               setWanted(spawned.id);
-            }).finally(() => setSpawning(false));
-          }}
+            })
+          }
         >
           + agent
         </button>
         <button
           class="word"
-          onClick={() => void attempt(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
+          disabled={pending()}
+          onClick={() => act(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }))}
         >
           + terminal
         </button>
         <button
           class="word"
-          onClick={() => void attempt(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
+          disabled={pending()}
+          onClick={() => act(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
         >
           + group
         </button>

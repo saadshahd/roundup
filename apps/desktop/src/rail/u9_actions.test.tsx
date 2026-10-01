@@ -269,4 +269,20 @@ describe("u9 actions", () => {
     await waitFor(() => expect(button).toHaveProperty("disabled", false));
     expect(callsTo(mounted.app, "agent.spawn")).toHaveLength(1);
   });
+
+  it("u9_plus_terminal_and_plus_group_are_disabled_while_a_spawn_is_pending", async () => {
+    const mounted = await mountRail([]);
+    let finish: (node: RailNode) => void = () => {};
+
+    mounted.app.handlers["rail.spawnTerminal"] = () => new Promise<RailNode>((done) => (finish = done));
+    const terminalButton = screen.getByText("+ terminal");
+
+    fireEvent.click(terminalButton);
+
+    expect([terminalButton, screen.getByText("+ group")].map((button) => button.hasAttribute("disabled"))).toEqual([
+      true,
+      true,
+    ]);
+    finish(SPAWNED);
+  });
 });
