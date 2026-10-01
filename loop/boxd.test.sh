@@ -27,16 +27,28 @@ case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
     if [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
-    elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'; else echo '[]'; fi ;;
-  "machine new") [ "${STUB_MODE:-}" != exists ] || exit 1 ;;
+    elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'
+    elif [ "${STUB_MODE:-}" = mixed ]; then echo '[{"name":"ru-builder-1"},{"name":"ru-reviewer-2"},{"name":"ru-x8-1"},{"name":"ru-builderx"},{"name":"ru-x-builder-9"},{"name":"ru-builder-x"},{"name":"ru-builder-1x"},{"name":"ru-builder-3"}]'
+    else (cd "$STUB_DIR" && ls alive-* 2>/dev/null || true) | jq -Rnc '[inputs | {name: sub("^alive-"; "")}]'; fi ;;
+  "machine new")
+    [ "${STUB_MODE:-}" != exists ] && [ ! -e "$STUB_DIR/alive-$3" ] || exit 1
+    touch "$STUB_DIR/alive-$3"; ls "$STUB_DIR"/alive-* | wc -l | tr -d " " >>"$STUB_DIR/maxlog" ;;
   "machine reboot") ;;
-  "machine remove") [ "${STUB_MODE:-}" != remove-fails ] || exit 1 ;;
+  "machine remove")
+    if [ "${STUB_MODE:-}" = remove-fails ] || [ "${STUB_FAIL_REMOVE:-}" = "$3" ]; then exit 1; fi
+    rm -f "$STUB_DIR/alive-$3"
+    if [ -e "$STUB_DIR/exec-$3.pid" ]; then kill "$(cat "$STUB_DIR/exec-$3.pid")" 2>/dev/null || true; fi ;;
   "machine exec")
     case "$*" in
+      *pgrep*)
+        case "$3" in ru-builder-1) echo agent-running ;; ru-reviewer-2) echo idle ;; *) exit 1 ;; esac ;;
       *claude*)
         case "${STUB_MODE:-}" in
           limit) echo '{"is_error":true,"api_error_status":429,"result":"x"}'; exit 1 ;;
-          *) echo '{"is_error":false,"result":"ok","num_turns":1,"duration_ms":1000,"total_cost_usd":0.1}' ;;
+          *)
+            echo $$ >"$STUB_DIR/exec-$3.pid"
+            sleep "${STUB_CLAUDE_SLEEP:-0}"
+            echo '{"is_error":false,"result":"ok","num_turns":1,"duration_ms":1000,"total_cost_usd":0.1}' ;;
         esac ;;
       *"grep -rlF /tmp/warm"*) [ "${STUB_MODE:-}" != warm-dirty ] || exit 1 ;;
       *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
@@ -226,5 +238,83 @@ bake_repo; loop/boxd.sh bake >out 2>err
 bake_repo; got=0; STUB_MODE=bake-leak loop/boxd.sh bake >out 2>err || got=$?
 expect_true "L15 a token in the bake VM refuses the snapshot" test "$got" -eq 1
 if grep -q 'snapshots save' log; then echo "FAIL: L15 snapshot saved with a token"; failures=$((failures + 1)); else echo "ok:   L15 no snapshot saved with a token"; fi
+
+# swarm, status, kill
+new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md; echo p >p3.md
+if STUB_MODE='' loop/boxd.sh swarm build prompt.md p2.md p3.md >out 2>err; then echo "ok:   L12 swarm exits 0 when every agent succeeds"; else echo "FAIL: L12 swarm exit"; failures=$((failures + 1)); fi
+for n in 1 2 3; do
+  expect_true "L12 status line for ru-builder-$n" grep -qx "ru-builder-$n ok" out
+  expect_log "machine new ru-builder-$n .*--isolated" "L12 ru-builder-$n is its own isolated VM"
+done
+expect_true "L12 exactly one line per VM" test "$(wc -l <out | tr -d ' ')" = 3
+
+# At most BOXD_MAX_VMS agents at once, counted from the VMs that actually exist; 2 proves they do overlap.
+for cap in 1 2; do
+  new_repo; export BOXD_LOCK_WAIT=60; echo p >p2.md; echo p >p3.md
+  BOXD_MAX_VMS=$cap STUB_CLAUDE_SLEEP=2 loop/boxd.sh swarm build prompt.md p2.md p3.md >out 2>err || true
+  expect_true "L12 cap $cap: all three agents ran" test "$(grep -c ' ok$' out)" = 3
+  expect_true "L12 cap $cap: never more than $cap VMs at once" test "$(sort -n cp/maxlog | tail -1)" = "$cap"
+done
+
+new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
+if STUB_MODE=check-fails loop/boxd.sh swarm build prompt.md p2.md >out 2>err; then echo "FAIL: L12 failing agents reported ok"; failures=$((failures + 1)); else echo "ok:   L12 failing agents fail the swarm"; fi
+expect_true "L12 each failing agent gets its own failed line" test "$(grep -c 'failed rc=7 (see loop/out/runs/swarm-[0-9]*-[12].log)' out)" = 2
+expect_true "L12 the two lines name different VMs" test "$(grep -c '^ru-builder-1 failed' out)$(grep -c '^ru-builder-2 failed' out)" = 11
+
+new_repo; echo p >p2.md
+if loop/boxd.sh swarm build prompt.md missing.md >out 2>err; then echo "FAIL: L12 missing prompt accepted"; failures=$((failures + 1)); else echo "ok:   L12 a bad prompt file is refused"; fi
+if grep -q 'machine new' log; then echo "FAIL: L12 a VM was made before the bad prompt was refused"; failures=$((failures + 1)); else echo "ok:   L12 no VM before every prompt is validated"; fi
+
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main
+BOXD_REF=feat loop/boxd.sh swarm review prompt.md >out 2>err
+expect_log 'machine new ru-reviewer-1 ' "L12 swarm review names ru-reviewer-<n>"
+expect_true "L12 swarm review checks out BOXD_REF" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
+
+refused "L12 swarm with an unknown role" swarm nope prompt.md
+refused "L12 swarm with no prompt files" swarm build
+
+# SIGTERM: the swarm removes its VMs and its children die, instead of burning quota to the end.
+new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
+STUB_CLAUDE_SLEEP=30 loop/boxd.sh swarm build prompt.md p2.md >out 2>err &
+swarm_pid=$!
+for _ in $(seq 100); do [ "$(find cp -name 'exec-*.pid' | wc -l | tr -d ' ')" = 2 ] && break; sleep 0.1; done
+kill -TERM "$swarm_pid"
+SECONDS=0
+rc=0; wait "$swarm_pid" || rc=$?
+expect_true "L12 interrupt ends the swarm at once, not when the agents finish" test "$SECONDS" -lt 10
+expect_true "L12 interrupted swarm exits 130" test "$rc" = 130
+expect_log 'machine remove ru-builder-1' "L12 interrupt removes ru-builder-1"
+expect_log 'machine remove ru-builder-2' "L12 interrupt removes ru-builder-2"
+expect_true "L12 interrupt stops the agents" bash -c "for f in cp/exec-*.pid; do ! kill -0 \$(cat \$f) 2>/dev/null || exit 1; done"
+
+# A name that already exists is someone else's: an interrupted swarm must not remove it.
+new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md; touch cp/alive-ru-builder-1
+STUB_CLAUDE_SLEEP=30 loop/boxd.sh swarm build prompt.md p2.md >out 2>err &
+swarm_pid=$!
+for _ in $(seq 100); do [ -e cp/exec-ru-builder-2.pid ] && break; sleep 0.1; done
+kill -TERM "$swarm_pid"; wait "$swarm_pid" || true
+expect_true "L12 interrupt leaves a VM the swarm did not create" test -e cp/alive-ru-builder-1
+expect_true "L12 interrupt removes the VM the swarm created" test ! -e cp/alive-ru-builder-2
+if grep -q 'machine remove ru-builder-1 ' log; then echo "FAIL: L12 interrupt removed a foreign VM"; failures=$((failures + 1)); else echo "ok:   L12 interrupt never asks to remove a foreign VM"; fi
+
+new_repo; STUB_MODE=mixed loop/boxd.sh status >out 2>err
+expect_true "L13 status shows agent-running" grep -qx 'ru-builder-1 agent-running' out
+expect_true "L13 status shows idle" grep -qx 'ru-reviewer-2 idle' out
+expect_true "L13 status shows unreachable" grep -qx 'ru-x8-1 unreachable' out
+expect_true "L13 status lists every ru- VM" test "$(wc -l <out | tr -d ' ')" = 8
+
+new_repo; STUB_MODE=mixed loop/boxd.sh kill all >out 2>err
+expect_log 'machine remove ru-builder-1' "L14 kill all removes swarm builders"
+expect_log 'machine remove ru-reviewer-2' "L14 kill all removes swarm reviewers"
+for foreign in ru-x8-1 ru-builder-1x ru-builderx ru-x-builder-9 ru-builder-x; do
+  if grep -q "machine remove $foreign " log; then echo "FAIL: L14 kill all removed $foreign"; failures=$((failures + 1)); else echo "ok:   L14 kill all leaves $foreign"; fi
+done
+new_repo
+if STUB_MODE=mixed STUB_FAIL_REMOVE=ru-builder-1 loop/boxd.sh kill all >out 2>err; then echo "FAIL: L14 failed removal hidden"; failures=$((failures + 1)); else echo "ok:   L14 a failed removal fails kill all"; fi
+expect_true "L14 failed removal is named" grep -q '^FAILED' out
+new_repo; STUB_MODE=mixed loop/boxd.sh kill all >out 2>err
+new_repo; loop/boxd.sh kill foo >out 2>err; expect_log 'machine remove ru-foo' "L14 kill <name> removes ru-<name>"
+new_repo
+if loop/boxd.sh kill '../x' >out 2>err; then echo "FAIL: L14 hostile kill name accepted"; failures=$((failures + 1)); else echo "ok:   L14 hostile kill name refused"; fi
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

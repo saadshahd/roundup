@@ -30,7 +30,7 @@ For an item (`todo:<id>` or `pad:<name>`), the Drawer calls `provenance.history 
 
 **U24 narrow window.** Given a window under 1102px, then the Shelf moves under the Rail in the left column (the Rail takes the upper 65% of the height, the Shelf the lower 35%, each scrolling on its own) and the terminal takes the full height on the right, so the Shelf's lists, its `+` words and the Todo and Pad Drawers stay reachable. Under 942px the terminal gives width and the Rail stays at 252px. A Drawer never covers the Rail: it is at most the window width minus 252px.
 
-## Rail (U6 to U10)
+## Rail (U6 to U10, U32)
 
 **U6 rows.** Given a Rail tree, then each node is one row, indented 2 per depth under its parent, in `order`. An Agent or a Meta-agent shows its Status Glyph. A plain Group shows `▾`. A Terminal shows `○` while it runs and `✓` once it has exited. The selected row has a faint band. Rows never reorder when a Status changes. Clicking a row selects it.
 
@@ -46,6 +46,8 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 **U9 actions.** `+ agent` calls `agent.spawn {cwd: <Project path>, prompt: null, parent}`. `parent` is the selected Group or Meta-agent, else `null`, and the new row becomes selected, so its terminal shows. `+ terminal` calls `rail.spawnTerminal {cwd: <Project path>, parent}` with the same parent rule. `+ group` calls `rail.createGroup {name: "group", parent}`. Double-clicking a name edits it in place: Enter calls `rail.rename`; Esc or an empty name keeps the old one. Hovering a plain Group shows a light `promote`, which calls `rail.promote`. A failed call shows one line `✕ <message>` in Ink above `+ agent  + terminal  + group` until the next click. Rows come only from `rail.tree`; the webview never adds one itself.
 
 **U10 Dock badge.** The Dock badge shows how many Agents have Kind `needs-you` or `error`, and there is no badge at zero (decision 4). The badge is set through U1's adapter.
+
+**U32 spawn shortcuts and pinned actions.** Given an open Project, then `⌘N` does what `+ agent` does (U9) and `⌘T` does what `+ terminal` does, with the same parent rule and the same `✕ <message>` line on failure. A ⌘ chord is handled by the webview and never reaches a Terminal, and Caps Lock does not change it; the same keys with Shift, Ctrl or Alt, or without ⌘, do nothing. Neither chord acts while a spawn call is in flight or after `daemon-exited`. The Rail's `+ agent  + terminal  + group` line stays at the bottom edge of the Rail while its rows scroll, so the actions are reachable with ten Agents.
 
 ## Terminal pane (U11 to U14)
 
@@ -99,6 +101,10 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 **U27 focus returns.** Given a selected Agent or Terminal whose pane had the keyboard, when its Drawer closes (U5), keyboard focus goes back to that Terminal, so typing reaches it without a click. With no Terminal shown, or with focus already in another field, focus is left alone.
 
 **U28 Esc closes.** While a Drawer is open, Esc closes it. Esc inside an inline field or a Pad's text field is that field's own key (U16, U19) and the Drawer stays open; Esc inside a Terminal goes to the program, and a closed Drawer does nothing with it.
+
+## Jump to what needs you (U30)
+
+**U30 jump.** Given a Rail with Agents or Meta-agents of Kind `needs-you` or `error`, then the header reads `<n> need you` after the Project name, where `<n>` is the count U10 puts on the Dock badge, and nothing is shown at zero. Pressing `⌘J`, or clicking that text, selects the most urgent of them: Kind `error` before `needs-you`, and within a Kind the one whose Status `since` is oldest, ties in the Daemon's order. Its row scrolls into view and its Terminal shows; any selection that lands under a collapsed Group expands that Group, so the row is never hidden. Doing it again selects the next in that order and wraps after the last, and from a selection outside that order it selects the first. With none, `⌘J` changes nothing. Terminals never count and the Rail never reorders (wireframes decision 3). This is V1 of `ux.md`.
 
 ## Stretch
 

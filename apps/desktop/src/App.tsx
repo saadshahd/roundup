@@ -7,6 +7,7 @@ import { DrawerHost } from "./drawer/DrawerHost";
 import { ErrorLine, failureLine } from "./ink/ErrorLine";
 import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
+import { AttentionChip } from "./rail/AttentionChip";
 import { Rail } from "./rail/Rail";
 import { createNow } from "./state/clock";
 import type { Clock } from "./state/clock";
@@ -38,6 +39,7 @@ const OpenProject = (props: {
               header={
                 <>
                   {`roundup   ${open().project.name}`}
+                  <AttentionChip />
                   <Show when={props.daemonExit}>
                     {(exit) => (
                       <>

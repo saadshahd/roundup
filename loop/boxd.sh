@@ -6,7 +6,10 @@
 #                                           # writes the Reviewer's answer to loop/out/verdicts/<name>.md. The checkout is a
 #                                           # git repo with tag `base`, so the Reviewer can run `loop/rules.sh size base`.
 #   loop/boxd.sh check <pr-number|branch>   # merge it into origin/main here, run `just check` on a fresh isolated VM
-# BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_MODEL overrides the model (build: sonnet, review: opus).
+#   loop/boxd.sh swarm <build|review> <prompt-file>...  # one isolated VM per prompt (ru-builder-<n> / ru-reviewer-<n>), at most BOXD_MAX_VMS at once; one status line each
+#   loop/boxd.sh status                      # every ru- VM with what it is doing
+#   loop/boxd.sh kill <name|all>             # remove ru-<name>; `all` removes only swarm VMs (ru-builder-*, ru-reviewer-*)
+# review checks out $BOXD_REF (default HEAD). BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_MODEL overrides the model (build: sonnet, review: opus).
 # Auth is the boxd secret CLAUDE_CODE_OAUTH_TOKEN (sealed, host-scoped): each VM sees only a placeholder, boxd swaps in the real token for *.anthropic.com, *.claude.com and claude.ai.
 # Exit codes: 0 ok, 1 failure, 75 paused (limit hit, or loop/out/PAUSED exists).
 set -euo pipefail
@@ -244,10 +247,82 @@ check() {
   exit "$rc"
 }
 
+# Run one agent per prompt file, each on its own VM, never more than MAX_VMS at once.
+swarm() {
+  local role=${1:?build or review} prefix n=0 i
+  shift
+  case $role in build) prefix=builder ;; review) prefix=reviewer ;; *) echo "boxd.sh: swarm role must be build or review, got: $role" >&2; exit 2 ;; esac
+  [ "$#" -gt 0 ] || { echo "boxd.sh: swarm needs at least one prompt file" >&2; exit 2; }
+  local pids=() names=() prompt
+  mkdir -p "$OUT/runs"
+  # Refuse every bad prompt file before the first VM exists.
+  for prompt in "$@"; do validate_args "$prefix-1" "$prompt"; done
+  # Background children ignore SIGINT, so TERM them; each one's exit trap then removes the VM it created and nothing else.
+  trap 'stop_swarm "${pids[@]+"${pids[@]}"}"' INT TERM
+  for prompt in "$@"; do
+    n=$((n + 1))
+    while [ "$(running_children ${pids[@]+"${pids[@]}"})" -ge "$MAX_VMS" ]; do sleep 1; done
+    names+=("$prefix-$n")
+    if [ "$role" = review ]; then "$0" review "$prefix-$n" "$prompt" "${BOXD_REF:-HEAD}" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
+    else "$0" build "$prefix-$n" "$prompt" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
+    fi
+    pids+=($!)
+  done
+  local failed=0 rc
+  for i in "${!pids[@]}"; do
+    rc=0
+    wait "${pids[$i]}" || rc=$?
+    if [ "$rc" -eq 0 ]; then echo "ru-${names[$i]} ok"; else echo "ru-${names[$i]} failed rc=$rc (see $OUT/runs/swarm-$$-$((i + 1)).log)"; failed=1; fi
+  done
+  exit "$failed"
+}
+
+# stop_swarm <pid>...: TERM the children and wait until their exit traps have removed their VMs.
+stop_swarm() {
+  trap '' INT TERM
+  kill "$@" 2>/dev/null || true
+  wait "$@" 2>/dev/null || true
+  echo "boxd.sh: swarm interrupted; its agents are stopped and their VMs removed" >&2
+  exit 130
+}
+
+running_children() {
+  local count=0 pid
+  for pid in "$@"; do kill -0 "$pid" 2>/dev/null && count=$((count + 1)); done
+  echo "$count"
+}
+
+status() {
+  local vm state
+  while read -r vm; do
+    state=$(boxd machine exec "$vm" --timeout 10 -- 'pgrep -x claude >/dev/null && echo agent-running || echo idle' </dev/null 2>/dev/null) || state=unreachable
+    echo "$vm $state"
+  done < <(boxd machine list --json </dev/null | jq -r '.[] | select(.name | startswith("ru-")) | .name')
+}
+
+# `all` is every VM named exactly ru-builder-<n> or ru-reviewer-<n>, which is what `swarm` creates, including another swarm's.
+kill_vms() {
+  local target=$1 vm failed=0 targets
+  if [ "$target" = all ]; then
+    targets=$(boxd machine list --json </dev/null | jq -r '.[] | select(.name | test("^ru-(builder|reviewer)-[0-9]+$")) | .name')
+  else
+    [[ $target =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: bad name: $target" >&2; exit 2; }
+    targets="ru-$target"
+  fi
+  while read -r vm; do
+    [ -n "$vm" ] || continue
+    if boxd machine remove "$vm" -y </dev/null >/dev/null; then echo "removed $vm"; else echo "FAILED $vm"; failed=1; fi
+  done <<<"$targets"
+  exit "$failed"
+}
+
 case "${1:-}" in
   bake) bake ;;
   build) build "${2:?name}" "${3:?prompt-file}" ;;
   check) check "${2:?pr-number-or-branch}" ;;
+  swarm) shift; swarm "$@" ;;
+  status) status ;;
+  kill) kill_vms "${2:?name or all}" ;;
   review) review "${2:?name}" "${3:?prompt-file}" "${4:-HEAD}" ;;
-  *) sed -n '2,12p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,14p' "$0" >&2; exit 2 ;;
 esac
