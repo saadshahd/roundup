@@ -1,11 +1,13 @@
 //! Scenarios S1 to S3 (`scenarios/app.md`). A fake `rupd` is a state script; the real Daemon runs
 //! in-process on a socket the script links to the one the App chose.
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -24,6 +26,8 @@ use tokio::net::UnixListener;
 
 /// Every wait in these tests is bounded by this; nothing sleeps for a fixed time.
 const WAIT: Duration = Duration::from_secs(10);
+
+const BURST: usize = 50;
 
 struct Fixture {
     dir: TempDir,
@@ -98,6 +102,29 @@ fn app(config: Config, folder: Option<PathBuf>) -> (App<MockRuntime>, WebviewWin
         .build()
         .unwrap();
     (app, webview)
+}
+
+fn real_context_app(config: Config) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
+    let app = build(mock_builder(), config, None)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let webview = WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
+        .build()
+        .unwrap();
+    (app, webview)
+}
+
+fn event_channel() -> (Channel<contracts::Event>, mpsc::Receiver<Value>) {
+    let (tx, received) = mpsc::channel();
+    let channel = Channel::new(move |body| {
+        let InvokeResponseBody::Json(json) = body else {
+            panic!("events are JSON")
+        };
+        tx.send(serde_json::from_str::<Value>(&json).unwrap())
+            .unwrap();
+        Ok(())
+    });
+    (channel, received)
 }
 
 fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Result<Value, Value> {
@@ -360,39 +387,75 @@ fn s2_a_call_that_fails_in_the_daemon_fails_with_the_daemons_code_and_message() 
 }
 
 #[test]
-fn s2_events_the_daemon_emits_arrive_on_the_channel_in_order() {
+fn s2_events_the_daemon_emits_in_one_burst_arrive_on_the_channel_in_order() {
     let fx = Fixture::new(SERVE_AND_WAIT);
     fx.serve_real_daemon();
     let (app, webview) = app(fx.config.clone(), None);
     open(&webview, &fx.project);
-    let (tx, received) = mpsc::channel();
-    let channel = Channel::<contracts::Event>::new(move |body| {
-        let InvokeResponseBody::Json(json) = body else {
-            panic!("events are JSON")
-        };
-        tx.send(serde_json::from_str::<Value>(&json).unwrap())
-            .unwrap();
-        Ok(())
-    });
+    let (channel, received) = event_channel();
     tauri::async_runtime::block_on(app.state::<AppState>().subscribe(channel)).unwrap();
 
-    for title in ["first", "second", "third"] {
-        invoke(
-            &webview,
-            "rpc",
-            json!({ "method": "todo.create", "params": { "title": title } }),
-        )
-        .unwrap();
-    }
+    tauri::async_runtime::block_on(async {
+        let client = rpc::Client::connect(&fx.real_daemon_socket())
+            .await
+            .unwrap();
+        for n in 0..BURST {
+            client
+                .request("todo.create", json!({ "title": n.to_string() }))
+                .await
+                .unwrap();
+        }
+    });
 
-    let titles: Vec<_> = (0..3)
+    let titles: Vec<String> = (0..BURST)
         .map(|_| received.recv_timeout(WAIT).unwrap())
         .map(|event| {
             assert_eq!(event["name"], "todo.created");
             event["data"]["title"].as_str().unwrap().to_owned()
         })
         .collect();
-    assert_eq!(titles, ["first", "second", "third"]);
+    assert_eq!(
+        titles,
+        (0..BURST).map(|n| n.to_string()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn s2_subscribe_through_ipc_takes_a_channel_argument_and_answers_null() {
+    let fx = Fixture::new(SERVE_AND_WAIT);
+    fx.serve_real_daemon();
+    let (_app, webview) = app(fx.config.clone(), None);
+    open(&webview, &fx.project);
+    let (channel, _received) = event_channel();
+
+    let subscribed = invoke(&webview, "subscribe", json!({ "channel": channel }));
+    let misnamed = invoke(&webview, "subscribe", json!({ "events": channel }));
+
+    assert_eq!(subscribed, Ok(Value::Null));
+    assert!(misnamed.is_err());
+}
+
+#[test]
+fn s2_a_second_subscribe_replaces_the_first() {
+    let fx = Fixture::new(SERVE_AND_WAIT);
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    open(&webview, &fx.project);
+    let (first, first_received) = event_channel();
+    let (second, second_received) = event_channel();
+    let state = app.state::<AppState>();
+    tauri::async_runtime::block_on(state.subscribe(first)).unwrap();
+    tauri::async_runtime::block_on(state.subscribe(second)).unwrap();
+
+    invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "todo.create", "params": { "title": "only" } }),
+    )
+    .unwrap();
+
+    second_received.recv_timeout(WAIT).unwrap();
+    assert!(first_received.try_recv().is_err());
 }
 
 #[test]
@@ -475,4 +538,124 @@ fn s3_after_the_daemon_exits_rpc_fails_with_internal() {
     .unwrap_err();
 
     assert_eq!(error["code"], code::INTERNAL);
+}
+
+#[test]
+fn s1_the_webview_may_listen_for_daemon_exited_through_the_real_capabilities() {
+    let fx = Fixture::new(SERVE_AND_WAIT);
+    let (_app, webview) = real_context_app(fx.config.clone());
+
+    let listen = invoke(
+        &webview,
+        "plugin:event|listen",
+        json!({ "event": "daemon-exited", "target": { "kind": "Any" }, "handler": 7 }),
+    );
+
+    let event_id = listen.expect("the capability grants core:event:allow-listen");
+    let unlisten = invoke(
+        &webview,
+        "plugin:event|unlisten",
+        json!({ "event": "daemon-exited", "eventId": event_id }),
+    );
+    assert_eq!(unlisten, Ok(Value::Null));
+}
+
+#[test]
+fn s1_a_failed_roundup_project_start_exits_non_zero_without_panicking() {
+    let fx = Fixture::new("echo 'cannot open the database' >&2\nexit 3");
+    let (mut app, _webview) = app(fx.config.clone(), Some(fx.project.clone()));
+    let exit_codes = Rc::new(RefCell::new(Vec::new()));
+    let seen = Rc::clone(&exit_codes);
+
+    let start = Instant::now();
+    while exit_codes.borrow().is_empty() {
+        assert!(start.elapsed() < WAIT, "no exit request within {WAIT:?}");
+        let seen = Rc::clone(&seen);
+        #[allow(deprecated)]
+        app.run_iteration(move |_, event| {
+            if let RunEvent::ExitRequested { code, .. } = event {
+                seen.borrow_mut().push(code);
+            }
+        });
+    }
+
+    assert_eq!(*exit_codes.borrow(), [Some(1)]);
+}
+
+#[test]
+fn s1_a_socket_path_of_103_bytes_is_accepted_and_104_is_rejected() {
+    let socket_name_len = "/roundup-1.sock".len();
+    let dir_of = |socket_len: usize| {
+        PathBuf::from(format!("/{}", "d".repeat(socket_len - socket_name_len - 1)))
+    };
+
+    let accepted = Config::locate(None, Path::new("/a/roundup"), &dir_of(103), 1).unwrap();
+    let rejected = Config::locate(None, Path::new("/a/roundup"), &dir_of(104), 1);
+
+    assert_eq!(accepted.socket.as_os_str().len(), 103);
+    assert!(rejected.is_err());
+}
+
+#[test]
+fn s1_a_daemon_that_accepts_connections_but_never_answers_ping_is_silent_past_the_bound() {
+    let fx = Fixture::new(SERVE_AND_WAIT);
+    let listener = std::os::unix::net::UnixListener::bind(fx.real_daemon_socket()).unwrap();
+    std::thread::spawn(move || {
+        let held: Vec<_> = listener.incoming().collect();
+        drop(held);
+    });
+    let mut config = fx.config.clone();
+    config.ready_bound = Duration::from_millis(300);
+    let (_app, webview) = app(config, None);
+
+    let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    assert_eq!(error["code"], code::INTERNAL);
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("did not answer daemon.ping")
+    );
+}
+
+#[test]
+fn s1_stderr_that_is_not_utf8_does_not_stop_the_tail() {
+    let fx = Fixture::new("printf 'bad \\377 line\\n' >&2\necho 'after the bad line' >&2\nexit 3");
+    let (_app, webview) = app(fx.config.clone(), None);
+
+    let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("after the bad line")
+    );
+}
+
+#[test]
+fn s1_a_project_path_ending_in_dotdot_is_named_after_the_directory_it_reaches() {
+    let fx = Fixture::new(SERVE_AND_WAIT);
+    fx.serve_real_daemon();
+    let (_app, webview) = app(fx.config.clone(), None);
+    let through_dotdot = fx.project.join("..");
+
+    let opened = invoke(&webview, "open_project", path_arg(&through_dotdot)).unwrap();
+
+    let reached = fx.dir.path().file_name().unwrap().to_str().unwrap();
+    assert_eq!(opened["name"], reached);
+}
+
+#[test]
+fn s3_when_the_app_exits_the_socket_file_it_owned_is_gone() {
+    let fx = Fixture::new(SERVE_AND_WAIT);
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    open(&webview, &fx.project);
+    assert!(fx.config.socket.symlink_metadata().is_ok());
+
+    handle_run_event(app.handle(), &RunEvent::Exit);
+
+    assert!(fx.config.socket.symlink_metadata().is_err());
 }
