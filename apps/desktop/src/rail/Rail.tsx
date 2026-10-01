@@ -4,6 +4,7 @@ import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { createRailDrag } from "./drag";
+import { adjacentId } from "./keys";
 import { ancestorsOf, layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
@@ -43,6 +44,49 @@ export const Rail = () => {
   };
 
   const [container, setContainer] = createSignal<HTMLElement>();
+
+  const focusRow = (id: string) => container()?.querySelector<HTMLElement>(`[data-id="${id}"]`)?.focus();
+
+  /** The row a keyboard-only move has focused, between an arrow press and the next `rail.select` call. */
+  const [focusOverride, setFocusOverride] = createSignal<string | null>(null);
+
+  createEffect(on(rail.selected, () => setFocusOverride(null)));
+
+  const tabbableId = createMemo(() => {
+    const ids = nodeRows().map((row) => row.node.id);
+    const override = focusOverride();
+
+    if (override !== null && ids.includes(override)) return override;
+
+    return rail.selected() ?? ids[0] ?? null;
+  });
+
+  const selectRow = (id: string) => {
+    rail.select(id);
+    focusRow(id);
+  };
+
+  const moveFocus = (direction: 1 | -1) => {
+    const next = adjacentId(nodeRows().map((row) => row.node.id), tabbableId(), direction);
+
+    if (next !== null) {
+      setFocusOverride(next);
+      focusRow(next);
+    }
+  };
+
+  const onRailKeyDown = (press: KeyboardEvent) => {
+    if (press.key === "ArrowDown" || press.key === "ArrowUp") {
+      press.preventDefault();
+      moveFocus(press.key === "ArrowDown" ? 1 : -1);
+    } else if (press.key === "Enter") {
+      press.preventDefault();
+
+      const id = tabbableId();
+
+      if (id !== null) selectRow(id);
+    }
+  };
 
   const drag = createRailDrag({
     container,
@@ -139,7 +183,12 @@ export const Rail = () => {
         "--shift-ms": reducedMotion() ? "0ms" : "120ms",
       }}
     >
-      <div role="tree" aria-label="rail" aria-disabled={daemonExit() !== null ? true : undefined}>
+      <div
+        role="tree"
+        aria-label="rail"
+        aria-disabled={daemonExit() !== null ? true : undefined}
+        onKeyDown={onRailKeyDown}
+      >
         <For each={keys()}>
           {(key) => (
             <Show when={byKey().get(key)}>
@@ -164,8 +213,9 @@ export const Rail = () => {
                           row={view()}
                           exit={rail.exitOf(view().node)}
                           selected={rail.selected() === view().node.id}
+                          tabbable={tabbableId() === view().node.id}
                           now={now}
-                          onSelect={() => rail.select(view().node.id)}
+                          onSelect={() => selectRow(view().node.id)}
                           onToggle={() => setCollapsed((open) => toggled(open, view().node.id))}
                           onRename={(name) =>
                             void attempt(() => app.rpc("rail.rename", { id: view().node.id, name }))

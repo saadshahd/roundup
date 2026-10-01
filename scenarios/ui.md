@@ -114,6 +114,10 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U30 jump.** Given a Rail with Agents or Meta-agents of Kind `needs-you` or `error`, then the header reads `<n> need you` after the Project name, where `<n>` is the count U10 puts on the Dock badge, and nothing is shown at zero. Pressing `⌘J`, or clicking that text, selects the most urgent of them: Kind `error` before `needs-you`, and within a Kind the one whose Status `since` is oldest, ties in the Daemon's order. Its row scrolls into view and its Terminal shows; any selection that lands under a collapsed Group expands that Group, so the row is never hidden. Doing it again selects the next in that order and wraps after the last, and from a selection outside that order it selects the first. With none, `⌘J` changes nothing. Terminals never count and the Rail never reorders (wireframes decision 3). This is V1 of `ux.md`.
 
+## Rail keyboard (U31)
+
+**U31 rail keyboard.** Given focus in the Rail, when the user presses `↑` or `↓`, then the Rail moves focus to the previous or next visible row in Rail order, never wrapping past the first or last row and skipping a collapsed Group's children, and the focused row shows a visible focus ring. Pressing `Enter` selects the focused row exactly as a click does (U6), so its Terminal shows, and calls no method of its own. Exactly one row is reachable by Tab (a roving tabindex): the selected row when one exists, else the first row. Focus is in exactly one place at a time — the Rail, the pane or a Drawer — and nothing in the Rail takes a keystroke while focus sits in the pane or a Drawer, so typing `j` into a Terminal never moves the focus or the selection. The Rail never reorders. `←`, `→`, `F2`, `⌘1` and `⌘2` are V2's remainder, left for a later item.
+
 ## Stretch
 
 **U22 drag.** Dragging a row shows a drop line whose left end is the depth the row lands at; moving sideways changes the depth. Release calls `rail.move {id, parent, index}`. A `CONFLICT` puts the row back and shows the message as in U9. The other rows make room as the pointer moves (motion.md, "Drag to reorder").
