@@ -1,8 +1,9 @@
 import { createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
+import type { Kind } from "@contracts/Kind";
 import { glyphOf, hasInk } from "../ink/glyph";
-import type { Glyph } from "../ink/glyph";
+import { KindGlyph } from "../ink/KindGlyph";
 import type { ExitState } from "../state/rail";
 import { isPlainGroup } from "./layout";
 import type { RailRow } from "./layout";
@@ -10,20 +11,25 @@ import { isUnprompted, liveLineOf } from "./liveLine";
 
 type NodeRow = Extract<RailRow, { kind: "node" }>;
 
-const COLLAPSED_WITHOUT_AGENT: Glyph = { mark: "▸", tone: "light" };
-
-const PLAIN_GROUP: Glyph = { mark: "▾", tone: "light" };
+/** A Kind's mark, or a bare mark for a Group, which has no Kind. */
+type Mark = { kind: Kind } | { bare: string };
 
 /** A Terminal has no Kind, so it borrows the marks of `working` and `done`. */
-const glyphOfRow = (row: NodeRow, exit: ExitState | null): Glyph => {
-  if (row.collapsed) return row.collapsed.kind ? glyphOf(row.collapsed.kind) : COLLAPSED_WITHOUT_AGENT;
+const markOfRow = (row: NodeRow, exit: ExitState | null): Mark => {
+  if (row.collapsed) return row.collapsed.kind ? { kind: row.collapsed.kind } : { bare: "▸" };
 
-  if (row.node.status) return glyphOf(row.node.status.kind);
+  if (row.node.status) return { kind: row.node.status.kind };
 
-  if (row.node.kind === "terminal") return glyphOf(exit ? "done" : "working");
+  if (row.node.kind === "terminal") return { kind: exit ? "done" : "working" };
 
-  return PLAIN_GROUP;
+  return { bare: "▾" };
 };
+
+const MarkView = (props: { mark: Mark }) => (
+  <Show when={"kind" in props.mark ? props.mark.kind : null} fallback={<span class="glyph" data-tone="light">{"bare" in props.mark ? props.mark.bare : ""}</span>}>
+    {(kind) => <KindGlyph kind={kind()} />}
+  </Show>
+);
 
 const NameField = (props: { node: RailNode; onCommit: (name: string) => void; onCancel: () => void }) => (
   <input
@@ -62,8 +68,20 @@ export const RailRowView = (props: {
   const [hovered, setHovered] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
 
-  const glyph = () => glyphOfRow(props.row, props.exit);
-  const ink = () => hasInk(glyph());
+  const mark = () => markOfRow(props.row, props.exit);
+
+  const kind = () => {
+    const current = mark();
+
+    return "kind" in current ? current.kind : null;
+  };
+
+  const inkTone = () => {
+    const current = kind();
+
+    return current !== null && hasInk(glyphOf(current)) ? glyphOf(current).tone : undefined;
+  };
+
   const liveLine = () => liveLineOf(props.row.node, props.exit, props.now());
   const showsLiveLine = () => props.selected || hovered() || isUnprompted(props.row.node);
 
@@ -83,23 +101,17 @@ export const RailRowView = (props: {
       <p class="line">
         <Show
           when={isPlainGroup(props.row.node)}
-          fallback={
-            <span class="glyph" classList={{ ink: ink() }} data-tone={glyph().tone}>
-              {glyph().mark}
-            </span>
-          }
+          fallback={<MarkView mark={mark()} />}
         >
           <button
-            class="word glyph"
+            class="word"
             aria-label="fold"
-            data-tone={glyph().tone}
-            classList={{ ink: ink() }}
             onClick={(click) => {
               click.stopPropagation();
               props.onToggle();
             }}
           >
-            {glyph().mark}
+            <MarkView mark={mark()} />
           </button>
         </Show>
         <Show
@@ -107,8 +119,8 @@ export const RailRowView = (props: {
           fallback={
             <span
               class="name"
-              classList={{ ink: ink() }}
-              data-tone={ink() ? glyph().tone : undefined}
+              classList={{ ink: inkTone() !== undefined }}
+              data-tone={inkTone()}
               onDblClick={() => setEditing(true)}
             >
               {props.row.node.name}

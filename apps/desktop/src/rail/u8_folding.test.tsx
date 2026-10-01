@@ -70,7 +70,7 @@ describe("u8 folding", () => {
     expect([rowNames(), glyphOf("migrate").textContent, glyphOf("migrate").className]).toEqual([
       ["migrate"],
       "●",
-      "word glyph ink",
+      "glyph ink",
     ]);
   });
 

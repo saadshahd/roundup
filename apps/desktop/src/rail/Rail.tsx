@@ -1,10 +1,8 @@
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
-import type { Accessor } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { glyphOf } from "../ink/glyph";
-import { useWorkspace } from "../state/workspace";
+import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
-import { createClock } from "./clock";
 import { layoutRail } from "./layout";
 import { RailRowView } from "./RailRow";
 import "./rail.css";
@@ -12,10 +10,8 @@ import "./rail.css";
 const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
   new Set(set.has(member) ? [...set].filter((each) => each !== member) : [...set, member]);
 
-/** `now` defaults to a clock that ticks while the Rail is mounted; tests inject their own. */
-export const Rail = (props: { now?: Accessor<number> }) => {
-  const { app, project, rail } = useWorkspace();
-  const now = props.now ?? createClock();
+export const Rail = () => {
+  const { app, project, rail, now } = useConnectedProject();
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());

@@ -7,7 +7,7 @@ import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
-import { openWorkspace, WorkspaceContext } from "../state/workspace";
+import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
 import { Rail } from "./Rail";
 
 export const NOW = 1_700_000_000_000;
@@ -68,16 +68,16 @@ export const mountRail = async (tree: RailNode[], terminals: TerminalInfo[] = []
   app.handlers["rail.tree"] = () => tree;
   app.handlers["terminal.list"] = () => terminals;
 
-  const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
   const [now, setNow] = createSignal(NOW);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now);
 
   render(() => (
-    <WorkspaceContext.Provider value={workspace}>
-      <Rail now={now} />
-    </WorkspaceContext.Provider>
+    <ConnectedProjectContext.Provider value={connected}>
+      <Rail />
+    </ConnectedProjectContext.Provider>
   ));
 
-  return { app, rail: workspace.rail, setNow };
+  return { app, rail: connected.rail, setNow };
 };
 
 export const rowOf = (name: string): HTMLElement => {
