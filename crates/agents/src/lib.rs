@@ -16,6 +16,8 @@ pub enum Observation {
     Signal(Value),
     /// The window title the Agent's program set.
     Title(String),
+    /// The clock reached the time the adapter asked for (see `ClaudeCode::tick_at`).
+    Tick,
     /// The Agent's program ended. `None` when it was killed by a signal.
     Exit { code: Option<i32> },
 }
