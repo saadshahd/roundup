@@ -260,9 +260,12 @@ describe("u22 drag", () => {
     const mounted = await mountRail(TREE, [], () => ({ code: 1 }));
 
     dragFrom("b", pointerAt(0, 0));
+
+    expect([dropLine(), rowOf("b").dataset.lifted]).toEqual([null, "false"]);
+
     release(pointerAt(0, 0));
 
-    expect([callsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
+    expect(callsTo(mounted.app, "rail.move")).toEqual([]);
   });
 
   it("u22_a_drag_under_way_when_the_daemon_exits_drops_nothing", async () => {
