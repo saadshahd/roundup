@@ -50,9 +50,10 @@ async fn x8_a_slow_subscriber_never_blocks_the_reader() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
     let mut slow = terminals
-        .spawn(sh(dir.path(), "yes x | head -c 6000000"))
+        .spawn(sh(dir.path(), "yes x | head -c 2000000"))
         .await
         .unwrap();
+    // 2 MB is about 2900 events on macOS, three times the backlog; fewer would not overflow it.
     // `slow` is not read until the program has finished and been listed as exited.
     tokio::time::timeout(PATIENCE, async {
         while terminals.list().iter().any(|t| t.running) {
