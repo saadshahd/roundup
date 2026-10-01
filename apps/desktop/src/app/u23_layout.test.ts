@@ -5,7 +5,7 @@ const NARROW = /@media \(max-width: 1101px\)\s*{([\s\S]*?)}\s*}/;
 
 const effective = (css: string, selector: string, property: string) =>
   [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${selector}\\s*{([^}]*)}`, "g"))]
-    .flatMap(([, body]) => [...(body ?? "").matchAll(new RegExp(`${property}:\\s*([^;]+);`, "g"))].map((m) => m[1]))
+    .flatMap(([, body]) => [...(body ?? "").matchAll(new RegExp(`(?:^|[\\s;{])${property}:\\s*([^;]+);`, "g"))].map((m) => m[1]))
     .at(-1);
 
 const wide = styles.replace(NARROW, "");
