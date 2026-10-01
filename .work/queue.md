@@ -80,6 +80,21 @@ Shared webview files (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.
 - **Peak:** once `ui-shell` merges, `ui-rail`, `ui-terminal`, `ui-todos` and `ui-pads` run at once, alongside `mcp` and `agents-mvp`: six Builders.
 - **Critical path:** `workspace` → `ui-shell` → the four UI PRs → MVP gate. In parallel: agents stack → `agents-mvp` → `daemon-e2e`.
 
+## Branching notes
+
+- `agents-mvp` stacks on `builder/agents-11`, which predates #43. Merge `origin/main` into the branch once #43 is on main; A10 needs `SpawnTerminalParams`. The stack already merges main into its branches this way.
+- `mcp` needs the `JsonSchema` derives from #44. Branch from main once #44 is merged. If #34 is still open then, branch from `builder/agents-11` and merge `origin/main` into it.
+- `app` must pass `just check` on a fresh clone with no webview build. Do not commit a `dist/`, and do not add a root build step to satisfy Tauri's `frontendDist` or its icons.
+
+## Linux VMs and CI after `app` merges
+
+Once `crates/desktop` is a workspace member, every `just check` compiles Tauri. That has two effects.
+
+- **macOS CI gets slower.**
+- **boxd checks break.** On Linux, Tauri needs WebKitGTK and its dev packages. The `ru-toolchain` snapshot has none, so every boxd `just check` fails from then on, in every module. The `app` Builder cannot run on a VM at all.
+
+Default until the user decides (open question): run `app` and every later PR in local worktrees. Alternatively, rebake the snapshot with Tauri's Linux packages (`loop/boxd.sh bake`) before `app` merges.
+
 ## MVP gate (QA and Driver; no Builder)
 
 Once every PR above except `ui-drag` is merged:
