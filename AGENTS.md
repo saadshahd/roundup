@@ -17,6 +17,7 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 - No scenario, no work: specs are `scenarios/*.md` (given/when/then in glossary words).
 - Name tests after the scenario they prove: `fn t3_...` for scenario T3 (`scenarios/README.md`).
 - Write the failing test first, then the code, in your own git worktree.
+- Before writing or editing code, read the taste rules in `.claude/sound/` (`sound:prime`): 33 rules chosen for this repo, one file each, grouped by topic. Reviewers check every added comment against `comment-must-name-a-consequence`: delete a comment the code already says, correct one that is false. Rules the daemon deliberately breaks (shared locked state in one process, in-file unit tests of private functions) are not installed.
 - Red main is stop-the-line. Fix-forward on main is forbidden; revert.
 - Anti-slop is mandatory (installed in Phase 1 via `/install-anti-slop`).
 
