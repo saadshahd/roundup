@@ -240,13 +240,20 @@ impl Terminals {
             .ok_or_else(|| RpcError::not_found(format!("running terminal {id}")))
     }
 
-    /// Every event this Terminal emits from now on, in order. `NOT_FOUND` if it is unknown.
+    /// Every event this Terminal emits from now on, in order. `NOT_FOUND` if it is unknown or has
+    /// exited, as for [`Terminals::write`]: an exited Terminal has no more events, so a receiver
+    /// would never yield or close. Subscribe through [`Spawned::events`] to be sure to see the exit.
     /// A subscriber that falls more than 1024 events behind gets `RecvError::Lagged` and then the
     /// newest events; it never slows the PTY reader. Use [`Spawned::events`] to see output from the start.
     pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<EventData>, RpcError> {
         id.parse::<u64>()
             .ok()
-            .and_then(|number| Some(self.shared.table().get(&number)?.events.subscribe()))
+            .and_then(|number| {
+                let table = self.shared.table();
+                let entry = table.get(&number)?;
+                entry.handle.as_ref()?;
+                Some(entry.events.subscribe())
+            })
             .ok_or_else(|| RpcError::not_found(format!("terminal {id}")))
     }
 

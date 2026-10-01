@@ -32,6 +32,16 @@ async fn x8_subscribing_to_an_unknown_terminal_is_not_found() {
 }
 
 #[tokio::test]
+async fn x8_subscribing_to_an_exited_terminal_is_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals.spawn(sh(dir.path(), "true")).await.unwrap();
+    until_exit(&mut spawned.events).await;
+    let err = terminals.subscribe(&spawned.id).unwrap_err();
+    assert_eq!(err.code, code::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn x8_a_slow_subscriber_never_blocks_the_reader() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);
