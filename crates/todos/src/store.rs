@@ -121,7 +121,7 @@ impl Store {
         self.get(id)?;
         self.db
             .execute("UPDATE todos SET done = 1 WHERE id = ?1", [id])
-            .map_err(internal)?;
+            .map_err(RpcError::internal)?;
         self.get(id)
     }
 
@@ -143,7 +143,7 @@ impl Store {
         self.get(id)?;
         self.db
             .execute("DELETE FROM todos WHERE id = ?1", [id])
-            .map_err(internal)?;
+            .map_err(RpcError::internal)?;
         Ok(())
     }
 
