@@ -7,9 +7,19 @@ use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
 
+/// How long a star right after `PreToolUse` waits for its `PermissionRequest`, in milliseconds,
+/// measured from the star. Across 9 dialogs the star precedes its `PermissionRequest` by 18-79 ms;
+/// 200 ms is about 2.5 times that. Shorter flickers `idle` before a dialog; longer delays the
+/// `idle` of an Esc during an auto-allowed tool.
+pub const STAR_HOLD: i64 = 200;
+
 pub struct ClaudeCode {
     status: Option<Status>,
     exited: bool,
+    /// The latest recognised Signal was `PreToolUse`: a dialog may be about to open.
+    after_pre_tool_use: bool,
+    /// When a star after `PreToolUse` was first seen and not yet resolved.
+    star_held_since: Option<i64>,
     clock: Box<dyn Fn() -> i64 + Send>,
 }
 
@@ -19,6 +29,8 @@ impl ClaudeCode {
         Self {
             status: None,
             exited: false,
+            after_pre_tool_use: false,
+            star_held_since: None,
             clock: Box::new(clock),
         }
     }
@@ -37,8 +49,56 @@ impl ClaudeCode {
         Some(next)
     }
 
+    /// When the adapter wants an `Observation::Tick`: `STAR_HOLD` after the star it is holding.
+    pub fn tick_at(&self) -> Option<i64> {
+        self.star_held_since.map(|since| since + STAR_HOLD)
+    }
+
+    /// Claude Code spins ◐/◑ while it works and shows ✳ whenever it is not, a permission dialog
+    /// included. A spinner means working, but never ends `needs-you` (a denied dialog resumes the
+    /// spinner with no hook). A star means idle only for a working Agent, so it never ends
+    /// `needs-you`, `error` or `done`. The one star not read at once follows `PreToolUse`: it may
+    /// be the dialog's, which precedes its `PermissionRequest`, so it is held for `STAR_HOLD`;
+    /// reading it as idle would flicker `idle` before `needs-you`. A spinner after that star shows
+    /// the tool still running and drops the hold.
+    fn retitle(&mut self, title: &str) -> Option<Status> {
+        let kind = self.status.as_ref().map(|status| status.kind);
+        match title.chars().next()? {
+            '◐' | '◑' => {
+                self.star_held_since = None;
+                if kind == Some(Kind::NeedsYou) {
+                    return None;
+                }
+                self.settle(Kind::Working, "working".into())
+            }
+            '✳' if kind == Some(Kind::Working) && self.after_pre_tool_use => {
+                let now = (self.clock)();
+                self.star_held_since.get_or_insert(now);
+                None
+            }
+            '✳' if kind == Some(Kind::Working) => self.settle(Kind::Idle, "idle".into()),
+            _ => None,
+        }
+    }
+
+    /// A held star that no `PermissionRequest` followed was a plain idle.
+    fn tick(&mut self) -> Option<Status> {
+        self.star_held_since
+            .filter(|since| (self.clock)() - since >= STAR_HOLD)?;
+        self.star_held_since = None;
+        self.settle(Kind::Idle, "idle".into())
+    }
+
+    fn signal(&mut self, payload: &Value) -> Option<Status> {
+        let (kind, label) = hook_status(payload)?;
+        self.after_pre_tool_use = payload["hook_event_name"] == "PreToolUse";
+        self.star_held_since = None;
+        self.settle(kind, label)
+    }
+
     fn exit(&mut self, code: Option<i32>) -> Option<Status> {
         self.exited = true;
+        self.star_held_since = None;
         match code {
             Some(0) if self.status.as_ref().is_some_and(|s| s.kind == Kind::Done) => None,
             Some(0) => self.settle(Kind::Done, "exited 0".into()),
@@ -52,11 +112,12 @@ impl AgentAdapter for ClaudeCode {
     fn observe(&mut self, observation: Observation) -> Option<Status> {
         match observation {
             Observation::Exit { code } => self.exit(code),
-            Observation::Signal(_) if self.exited => None,
-            Observation::Signal(payload) => {
-                let (kind, label) = hook_status(&payload)?;
-                self.settle(kind, label)
+            Observation::Signal(_) | Observation::Title(_) | Observation::Tick if self.exited => {
+                None
             }
+            Observation::Tick => self.tick(),
+            Observation::Signal(payload) => self.signal(&payload),
+            Observation::Title(title) => self.retitle(&title),
         }
     }
 }
