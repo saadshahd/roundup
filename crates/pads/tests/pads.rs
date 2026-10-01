@@ -87,12 +87,13 @@ async fn p2_owner_rewrites_and_others_only_append() {
     rig.call(&a, "pad.write", json!({"name": "notes", "text": "two"}))
         .await
         .unwrap();
+    let mut events = rig.bus.subscribe();
     let denied = rig
         .call(&b, "pad.write", json!({"name": "notes", "text": "x"}))
         .await
         .unwrap_err();
     assert_eq!(denied.code, code::FORBIDDEN);
-    let mut events = rig.bus.subscribe();
+    assert!(events.try_recv().is_err());
     rig.call(&b, "pad.append", json!({"name": "notes", "text": "+b"}))
         .await
         .unwrap();
@@ -116,7 +117,7 @@ async fn p3_list_is_ordered_and_read_is_logged() {
     let rig = Rig::new();
     let a = agent("a");
     for name in ["c", "a", "b"] {
-        rig.call(&a, "pad.create", json!({"name": name}))
+        rig.call(&a, "pad.create", json!({"name": name, "text": name}))
             .await
             .unwrap();
     }
@@ -129,6 +130,14 @@ async fn p3_list_is_ordered_and_read_is_logged() {
         .map(|p| p["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, ["a", "b", "c"]);
+    let read = rig
+        .call(&a, "pad.read", json!({"name": "b"}))
+        .await
+        .unwrap();
+    assert_eq!(
+        (read["name"].as_str(), read["text"].as_str()),
+        (Some("b"), Some("b"))
+    );
     rig.call(&a, "pad.read", json!({"name": "a"}))
         .await
         .unwrap();
