@@ -102,6 +102,10 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U25 Daemon gone.** Given an open Project, when `daemon-exited` arrives, then the header reads `roundup   <Project name>   ✕ daemon exited <code>`, or `✕ daemon exited by signal` when the code is `null`, the part after the name in Ink, and that is the only place the exit shows. The Pane sends no `terminal.write` and no `terminal.resize`; `stop`, `+ agent`, `+ terminal` and `+ group` are disabled. The Rail is greyed, not emptied or faded: each row keeps its Glyph, its name and its Live line, and every Live line keeps at least 2:1 contrast against its background, so the user still sees what each Agent was doing when the Daemon went away. Other controls (Todos, Pads, rename, promote) are not disabled: their calls fail with `INTERNAL` (S3) and show as the usual `✕ <message>` line.
 
+## Dev harness
+
+**U26 harness seeds.** Given a seed name (`first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`), when the App mounts on a fake Daemon holding that seed, then the Rail region shows what the seed describes. `first-run` has no open Project (U2). `agents-10` has ten Agents of every Kind. `tree-40` has forty nodes: Groups nested two deep, a Meta-agent with children and Terminals; with eight Todos and four Pads. `daemon-exits` sends `daemon-exited` with code `1` once the App has loaded (U2). `conflict` makes the next call after the App has loaded fail with `CONFLICT` and the one after succeed. Every Rail, Todo and Pad write the App can make changes the fake Daemon and sends the Events the real one sends. `just harness <seed>` serves the same App in a browser, and the page can send Events and failures to it (`docs/development-loop.md`).
+
 ## Deferred past the MVP
 
 No scenario yet:

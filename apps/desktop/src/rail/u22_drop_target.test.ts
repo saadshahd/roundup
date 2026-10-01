@@ -3,7 +3,7 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import { dropAt, isInPlace, remainingRows } from "./dragTarget";
 import { layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
-import { agent, group, MINUTE, NOW } from "./railFixture";
+import { agent, group, MINUTE, NOW } from "../testing/nodes";
 
 /** a, g { x, y }, b */
 const TREE: RailNode[] = [

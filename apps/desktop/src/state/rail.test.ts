@@ -1,41 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { Status } from "@contracts/Status";
-import type { Actor } from "@contracts/Actor";
-import type { EventData } from "@contracts/EventData";
-import type { Event as DaemonEvent } from "@contracts/Event";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { connectEvents } from "../app/events";
 import { RpcError } from "../app/seam";
 import { createFakeApp } from "../testing/fakeApp";
+import { event, info, node, USER } from "../testing/nodes";
 import { createRailState } from "./rail";
 
-const USER: Actor = { kind: "user", id: "you", parent: null };
-
 const status = (label: string): Status => ({ kind: "working", label, since: 1 });
-
-const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
-  id,
-  kind: "agent",
-  name: id,
-  parent: null,
-  order: 0,
-  status: status("starting"),
-  meta: false,
-  terminal_id: `t-${id}`,
-  ...over,
-});
-
-const event = (data: EventData): DaemonEvent => ({ actor: USER, ...data });
-
-const terminalInfo = (id: string, over: Partial<TerminalInfo> = {}): TerminalInfo => ({
-  id,
-  cwd: "/p",
-  title: null,
-  running: true,
-  exit_code: null,
-  ...over,
-});
 
 const open = async (tree: RailNode[], terminals: TerminalInfo[] = []) => {
   const app = createFakeApp();
@@ -108,7 +81,7 @@ describe("u3 Rail state", () => {
   });
 
   it("u3_a_terminal_that_the_first_terminal_list_reports_exited_is_exited", async () => {
-    const { rail } = await open([node("a")], [terminalInfo("t-a", { running: false, exit_code: 1 })]);
+    const { rail } = await open([node("a")], [info("t-a", { running: false, exit_code: 1 })]);
 
     expect(rail.exitOf(node("a"))).toEqual({ kind: "code", code: 1 });
   });

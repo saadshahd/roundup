@@ -5,7 +5,7 @@ import { createFakeApp } from "../testing/fakeApp";
 import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import { Pane } from "../terminal/Pane";
 import type { Emulator } from "../terminal/emulator";
-import { info, node } from "../terminal/paneHarness";
+import { info, node } from "../testing/nodes";
 import styles from "../styles.css?inline";
 import { createDrawer } from "./drawer";
 import { DrawerHost } from "./DrawerHost";

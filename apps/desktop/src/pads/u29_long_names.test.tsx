@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { openShelf, padOf, YOU } from "./padsFixture";
+import { openShelf, padOf } from "./padsFixture";
+import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -20,7 +21,7 @@ const cut = (name: HTMLElement) => {
 
 describe("u29 long names", () => {
   it("u29_a_long_pad_name_keeps_the_mark_and_the_name_on_one_cut_line", async () => {
-    await openShelf([padOf(LONG, YOU)]);
+    await openShelf([padOf(LONG, USER)]);
     const name = await screen.findByText(LONG);
     const row = name.closest("p");
 
@@ -30,7 +31,7 @@ describe("u29 long names", () => {
   });
 
   it("u29_the_drawer_first_line_cuts_a_long_name_and_leaves_the_owner_words_whole", async () => {
-    await openShelf([padOf(LONG, YOU)]);
+    await openShelf([padOf(LONG, USER)]);
     fireEvent.click(await screen.findByText(LONG));
     const name = await within(await screen.findByLabelText("drawer")).findByText(LONG);
     const row = name.closest("p");

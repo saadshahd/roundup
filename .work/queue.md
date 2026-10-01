@@ -92,7 +92,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U27–U28 | `ux-drawer` (focus on close, Esc, the Drawer edge) |
   | U29 | `ux-pads` (the Pad row) |
   | U30–U33 | the next UX items, unassigned: V1 jump to what needs you, Rail by keyboard, spawn shortcuts (reserved for the Architect's dispatch) |
-  | L10–L12 | `boxd-agents`: `swarm`, `status`, `kill` (L9 is already used by the `review` test in `loop/boxd.test.sh` but has no scenario in `scenarios/loop.md`; boxd-agents adds it) |
+  | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
 
   Every Builder has ids now; the Architect reserves more on request. V1–V9 in `scenarios/ux.md` are the Architect's candidates and are not reserved to any Builder; `ux-drawer` overlaps V9, so whichever lands second drops the overlap.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.

@@ -3,7 +3,8 @@ import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DaemonExit } from "../app/seam";
 import rail from "./styles.css?inline";
-import { agent, glyphOf, liveLineOf, mountRail, rowNames } from "./railFixture";
+import { glyphOf, liveLineOf, mountRail, rowNames } from "./railFixture";
+import { agent } from "../testing/nodes";
 
 afterEach(cleanup);
 

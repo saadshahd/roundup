@@ -2,71 +2,15 @@ import { render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { DaemonExit } from "../app/seam";
-import type { Actor } from "@contracts/Actor";
-import type { Event as DaemonEvent } from "@contracts/Event";
-import type { EventData } from "@contracts/EventData";
-import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
+import { info, NOW } from "../testing/nodes";
 import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
 import { Rail } from "./Rail";
 
-export const NOW = 1_700_000_000_000;
-
-export const MINUTE = 60_000;
-
-const USER: Actor = { kind: "user", id: "you", parent: null };
-
-export const event = (data: EventData): DaemonEvent => ({ actor: USER, ...data });
-
-export const agent = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode => ({
-  id,
-  kind: "agent",
-  name: id,
-  parent: null,
-  order: 0,
-  status: { kind, label, since: NOW },
-  meta: false,
-  terminal_id: `t-${id}`,
-  ...over,
-});
-
-export const group = (id: string, over: Partial<RailNode> = {}): RailNode => ({
-  id,
-  kind: "group",
-  name: id,
-  parent: null,
-  order: 0,
-  status: null,
-  meta: false,
-  terminal_id: null,
-  ...over,
-});
-
-/** A Meta-agent as the Daemon sends it: a Group with a live Agent sitting at it. */
-export const metaAgent = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
-  group(id, { meta: true, status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
-
-export const terminal = (id: string, over: Partial<RailNode> = {}): RailNode => ({
-  id,
-  kind: "terminal",
-  name: id,
-  parent: null,
-  order: 0,
-  status: null,
-  meta: false,
-  terminal_id: `t-${id}`,
-  ...over,
-});
-
-export const exitedTerminal = (id: string, exit_code: number | null): TerminalInfo => ({
-  id: `t-${id}`,
-  cwd: "/p",
-  title: null,
-  running: false,
-  exit_code,
-});
+export const exitedTerminal = (id: string, exit_code: number | null): TerminalInfo =>
+  info(`t-${id}`, { running: false, exit_code });
 
 /** The Rail on a fake Daemon whose tree is `tree` and whose clock is a signal the test can advance. */
 export const mountRail = async (

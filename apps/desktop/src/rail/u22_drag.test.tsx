@@ -5,7 +5,8 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
 import type { DaemonExit } from "../app/seam";
 import { dragFrom, pointerAt, release, stubLayout } from "./dragFixture";
-import { agent, callsTo, event, group, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
+import { callsTo, mountRail, rowNames, rowOf } from "./railFixture";
+import { agent, event, group, MINUTE, NOW } from "../testing/nodes";
 
 /** a, g { x }, b */
 const TREE: RailNode[] = [

@@ -5,6 +5,8 @@ import type { Pad } from "@contracts/pad/Pad";
 import { RpcError } from "../app/seam";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { createFakeApp } from "../testing/fakeApp";
+import { padHandlers } from "../testing/stores";
+import type { PadStore } from "../testing/stores";
 import {
   connectProject,
   ConnectedProjectContext,
@@ -14,8 +16,6 @@ import { Pads } from "./Pads";
 export const AGENT: Actor = { kind: "agent", id: "agent-7f3", parent: null };
 
 const AGENT_NAME = "auth-refactor";
-
-export const YOU: Actor = { kind: "user", id: "you", parent: null };
 
 export const padOf = (name: string, owner: Actor, text = ""): Pad => ({
   name,
@@ -47,25 +47,10 @@ export const deferred = <T,>(): Deferred<T> => {
   return { promise, resolve, reject };
 };
 
-const replaceText = (
-  state: { pads: Pad[] },
-  name: string,
-  change: (before: string, owner: Actor) => { text: string; owner: Actor },
-): Pad => {
-  const found = state.pads.find((pad) => pad.name === name);
-
-  if (!found) throw new RpcError(-32004, `no pad ${name}`);
-
-  const next = { ...found, ...change(found.text, found.owner) };
-  state.pads = state.pads.map((pad) => (pad.name === name ? next : pad));
-
-  return { ...next };
-};
-
 /** The Shelf and the Drawer over a fake Daemon whose Pads are `state.pads`; `state.history` answers `provenance.history`. */
 export const openShelf = async (pads: Pad[]) => {
   const history: Touch[] = [];
-  const state = { pads, history };
+  const state: PadStore = { pads, history };
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => [
     {
@@ -79,23 +64,7 @@ export const openShelf = async (pads: Pad[]) => {
       terminal_id: null,
     },
   ];
-  app.handlers["pad.list"] = () => state.pads.map((pad) => ({ ...pad }));
-  app.handlers["pad.read"] = ({ name }) => {
-    const found = state.pads.find((pad) => pad.name === name);
-
-    if (!found) throw new RpcError(-32004, `no pad ${name}`);
-
-    return { ...found };
-  };
-
-  app.handlers["pad.write"] = ({ name, text }) =>
-    replaceText(state, name, (_, owner) => ({ text, owner }));
-  app.handlers["pad.append"] = ({ name, text }) =>
-    replaceText(state, name, (before, owner) => ({
-      text: before + text,
-      owner,
-    }));
-  app.handlers["provenance.history"] = () => state.history;
+  Object.assign(app.handlers, padHandlers(state, () => {}));
 
   const connected = await connectProject(
     app,
