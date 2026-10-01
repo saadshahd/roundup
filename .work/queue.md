@@ -44,7 +44,7 @@ Critical path: #54 → #55 → `daemon-e2e` → MVP gate.
 
 ## UX enhancements (`scenarios/ux.md`)
 
-Start after the MVP gate unless the Architect says otherwise; ordered by expected value. Observer for every row: `just check` green, the `v<n>_` tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. Every row is a candidate: the Architect confirms it before it is dispatched. V6 also edits U14 in `scenarios/ui.md`, in the same PR as this board.
+Start after the MVP gate unless the Architect says otherwise; ordered by expected value. Observer for every row: `just check` green, the `v<n>_` tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. Every row is a candidate: the Architect confirms it before it is dispatched. V6 amends U14 in `scenarios/ui.md`, in the `ux-empty` PR together with U14's test and code, so main never disagrees with its scenarios.
 
 | Order | PR key | Scenarios | Module | Owns | Est. lines | Merge after | Extra observer |
 |---|---|---|---|---|---|---|---|

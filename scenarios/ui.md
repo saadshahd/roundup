@@ -59,7 +59,7 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 | A running Terminal | `<name>` alone |
 | An exited Terminal | `<name>  ` followed by its U7 wording: `exited <code>`, `exited by signal` or `exited` |
 
-While the program runs, a light `stop` sits at the right: for an Agent it calls `agent.stop {id}`, for a Terminal `terminal.kill {id: <terminal_id>}`. With an open Project and nothing selected, the pane reads `select an agent or a terminal` and shows no header or `stop`.
+While the program runs, a light `stop` sits at the right: for an Agent it calls `agent.stop {id}`, for a Terminal `terminal.kill {id: <terminal_id>}`. With an open Project and nothing selected, the pane is empty.
 
 ## Todos (U15 to U17)
 
