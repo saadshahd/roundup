@@ -20,6 +20,7 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@cargo-machete
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -31,6 +32,8 @@ jobs:
       - run: cargo nextest run
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm slop
+      - run: cargo machete
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"

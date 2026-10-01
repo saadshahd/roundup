@@ -5,7 +5,7 @@ Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term 
 ## Rules
 
 1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings.
-2. **Slop** (each is a CI failure): an anti-slop rule violation; a duplicate block of 15+ lines across files; an unused export or file; a public function with no test or caller; a comment that restates the line below it.
+2. **Slop** (each is a CI failure): an anti-slop rule violation; TypeScript duplication, unused exports, files or dependencies reported by `pnpm slop` (fallow); Rust dead code or unused dependencies reported by clippy and `cargo machete`; a public function with no test or caller; a comment that restates the line below it.
 3. **Small PR**: at most 400 changed lines (excluding lockfiles and generated files) and exactly one module directory, or only `contracts/`.
 4. **Contract change** = any edit under `contracts/`. Needs Architect approval. No v2s: change every caller in the same PR.
 5. **Reviewer input** = diff + linked spec + this file. Never the author's rationale.

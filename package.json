@@ -5,7 +5,8 @@
   "packageManager": "pnpm@10.14.0",
   "scripts": {
     "lint": "oxlint",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "slop": "fallow dead-code && fallow dupes"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.86.0",
