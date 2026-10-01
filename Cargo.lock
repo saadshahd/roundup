@@ -14,10 +14,14 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "contracts",
+ "provenance",
  "rpc",
+ "rusqlite",
  "serde_json",
+ "tempfile",
  "terminal",
  "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]
