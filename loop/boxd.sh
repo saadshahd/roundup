@@ -37,12 +37,20 @@ trap cleanup EXIT
 TOKEN_PATTERN='gho_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,}'
 
 # Install, then clippy and test builds of the lockfile's dependencies, so a later `check` only compiles the workspace crates.
-# The target dir lives outside the checkout (see CARGO_TARGET_DIR in ~/.cargo/env below).
+# The target dir lives outside the checkout (see CARGO_TARGET_DIR in ~/.cargo/env below). Workspace members are then cleaned:
+# their artifacts hold /tmp/warm in env!("CARGO_MANIFEST_DIR") and dep-info, and cargo judges a path crate fresh by mtime, so a
+# tree uploaded elsewhere with older mtimes (git archive stamps commit time) could run the baked code instead of its own.
+# shellcheck disable=SC2016 # runs on the VM, so nothing may expand here
 WARM='set -e; . ~/.cargo/env; mkdir /tmp/warm && tar xzf /tmp/warm.tgz -C /tmp/warm && cd /tmp/warm
 pnpm install --frozen-lockfile >/dev/null
 cargo clippy --all-targets >/dev/null 2>&1
 cargo nextest run --no-run >/dev/null 2>&1
+for member in $(cargo metadata --no-deps --format-version 1 | jq -r ".packages[].name"); do cargo clean -p "$member" -q; done
 cd; rm -rf /tmp/warm /tmp/warm.tgz'
+
+# Fails (printing the offending files) when anything under the warm target still names the bake checkout.
+# shellcheck disable=SC2016 # runs on the VM, so nothing may expand here
+ASSERT_COLD_WORKSPACE='! grep -rlF /tmp/warm ~/cargo-target | head -5 | grep .'
 
 bake() {
   mkdir -p "$OUT"
@@ -66,6 +74,7 @@ bake() {
     pnpm --version" </dev/null
   git archive --format=tar.gz HEAD | boxd machine cp - "$VM:/tmp/warm.tgz" >/dev/null
   boxd machine exec "$VM" --timeout 1800 -- "$WARM" </dev/null
+  boxd machine exec "$VM" --timeout 300 -- "$ASSERT_COLD_WORKSPACE" </dev/null || { echo "boxd.sh: the warm target still holds workspace artifacts from /tmp/warm; not saving the snapshot" >&2; exit 1; }
   local scan=0
   # shellcheck disable=SC2016 # $HOME must expand inside the VM
   boxd machine exec "$VM" --timeout 580 -- "sudo grep -rIlE --exclude-dir=proc --exclude-dir=sys --exclude-dir=cargo-target --exclude-dir=.pnpm-store --exclude-dir=.bun -- '$TOKEN_PATTERN' \$HOME /etc /usr/local /root /var/lib 2>/dev/null" </dev/null >"$OUT/bake-scan.txt" || scan=$?

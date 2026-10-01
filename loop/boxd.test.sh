@@ -38,6 +38,7 @@ case "$1 $2" in
           limit) echo '{"is_error":true,"api_error_status":429,"result":"x"}'; exit 1 ;;
           *) echo '{"is_error":false,"result":"ok","num_turns":1,"duration_ms":1000,"total_cost_usd":0.1}' ;;
         esac ;;
+      *"grep -rlF /tmp/warm"*) [ "${STUB_MODE:-}" != warm-dirty ] || exit 1 ;;
       *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
       *"just check"*)
         case "${STUB_MODE:-}" in check-fails) exit 7 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
@@ -206,6 +207,12 @@ expect_log 'machine new ru-bake --isolated .*--auto-destroy-timeout 7200' "L12 t
 expect_log 'grep -rIlE .*gho_' "L12 the bake scan looks for GitHub OAuth tokens"
 expect_log '--frozen-lockfile' "L12 the bake warms dependencies from the lockfile"
 expect_log 'machine remove ru-bake' "L12 the bake VM is destroyed"
+expect_log 'cargo clean -p' "L12 the bake cleans every workspace member from the warm target"
+expect_log 'grep -rlF /tmp/warm' "L12 the bake asserts nothing under the warm target names the bake checkout"
+bake_repo; got=0; STUB_MODE=warm-dirty loop/boxd.sh bake >out 2>err || got=$?
+expect_true "L12 a warm target that still names the bake checkout refuses the snapshot" test "$got" -eq 1
+if grep -q 'snapshots save' log; then echo "FAIL: L12 snapshot saved with a dirty warm target"; failures=$((failures + 1)); else echo "ok:   L12 no snapshot saved with a dirty warm target"; fi
+bake_repo; loop/boxd.sh bake >out 2>err
 bake_repo; got=0; STUB_MODE=bake-leak loop/boxd.sh bake >out 2>err || got=$?
 expect_true "L12 a token in the bake VM refuses the snapshot" test "$got" -eq 1
 if grep -q 'snapshots save' log; then echo "FAIL: L12 snapshot saved with a token"; failures=$((failures + 1)); else echo "ok:   L12 no snapshot saved with a token"; fi
