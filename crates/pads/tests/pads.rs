@@ -363,3 +363,17 @@ async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
     assert_eq!(pad["text"], "edited on disk");
     assert_eq!(pad["owner"]["id"], "a");
 }
+
+#[tokio::test]
+async fn p9_delete_removes_the_file_when_file_backed() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
+    rig.ok(&a, "pad.create", json!({"name": "notes"})).await;
+    let file = rig.dir.path().join("pads/notes.md");
+    assert!(file.exists());
+
+    rig.ok(&a, "pad.delete", json!({"name": "notes"})).await;
+
+    assert!(!file.exists());
+}

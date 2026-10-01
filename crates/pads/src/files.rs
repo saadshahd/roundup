@@ -8,6 +8,14 @@ pub fn write(dir: &Path, name: &str, text: &str) -> io::Result<()> {
     std::fs::write(path(dir, name), text)
 }
 
+/// A missing file is already removed.
+pub fn remove(dir: &Path, name: &str) -> io::Result<()> {
+    match std::fs::remove_file(path(dir, name)) {
+        Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err),
+        _ => Ok(()),
+    }
+}
+
 /// `None` when the file does not exist.
 pub fn read(dir: &Path, name: &str) -> io::Result<Option<String>> {
     match std::fs::read_to_string(path(dir, name)) {

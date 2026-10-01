@@ -112,6 +112,9 @@ impl Pads {
         let pad = get(&store, &p.name)?;
         require_owner_or_user(ctx, &pad, "delete")?;
         store.delete(&pad.name).map_err(RpcError::internal)?;
+        if store.files().map_err(RpcError::internal)? {
+            files::remove(&self.files_dir, &pad.name).map_err(RpcError::internal)?;
+        }
         wrote(ctx, &pad.name)?;
         Ok(Value::Null)
     }
