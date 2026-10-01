@@ -68,11 +68,10 @@ Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, 
 | U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
 | U38 | empty states (V6) | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal`; narrows U14's test | U2's tests | after U34, U35 and U36 merge (they edit those directories) |
 
-From the fresh audit of main 9784d54 (ux-auditor-1; unverified until each Builder reproduces it; screenshots in `/tmp/ux2-shots/`):
+From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`). The audit's driver left Enter held down after `press Enter`, which faked U42 (a Todo Drawer loop), so every row below is unverified until the auditor re-checks it with synthetic events or a keyup, and no Builder starts one before that. U43 (focus and keys) and U45 (modifiers) are the most at risk; U44 is geometric and probably real. A create-then-open call-count test (one `todo.get`) may be added as a test-only guard.
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
-| U42 | CRITICAL: a Todo's Drawer loops on `todo.get` after a Todo is created from the field | `apps/desktop/src/drawer/**` and `src/todos/**`, whichever holds the cause (U35 also edits `src/todos`: merge main often) | `u15_`–`u17_`, `u5_` | now, first |
 | U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now |
 | U43, U44, U46, U47, U49 | rail polish: rename on a selected row, rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the five do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
@@ -121,7 +120,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U39 | `?perf` hook |
   | U40 | the Drawer's focus |
   | U41 | Rail by keyboard, the rest |
-  | U42 | Todo Drawer loop (critical) |
+  | U42 | dropped: a false positive (a stuck key in the test driver), never an app defect |
   | U43–U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
