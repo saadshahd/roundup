@@ -20,7 +20,7 @@ contracts-fresh:
 packages script:
     pnpm -r --if-present {{script}}
 
-# Serves the real App on a fake Daemon holding the named seed (U23) and prints the URL (pass another port when 5199 is taken); no Daemon, Tauri or display needed.
+# Serves the real App on a fake Daemon holding the named seed (U26) and prints the URL (pass another port when 5199 is taken); no Daemon, Tauri or display needed.
 harness seed="tree-40" port="5199":
     @echo "http://localhost:{{port}}/harness.html?seed={{seed}}"
     pnpm --filter desktop exec vite --port {{port}} --strictPort

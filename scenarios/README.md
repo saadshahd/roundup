@@ -18,7 +18,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `mcp.md` | `crates/rup` (the `rup mcp` subcommand) | M1–M3 |
 | `daemon.md` | `crates/rupd` (D1); end-to-end tests in `crates/rup/tests` (D2–D4) | D1–D4 |
 | `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | S1–S3 |
-| `ui.md` | `apps/desktop` (the webview) | U1–U23 |
+| `ui.md` | `apps/desktop` (the webview) | U1–U26 |
 | `workspace.md` | root files | W1 |
 
 The order of work, the PR each scenario belongs to and what can start now are in `.work/queue.md`.
