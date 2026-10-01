@@ -148,10 +148,22 @@ async fn p3_list_is_ordered_and_read_is_logged() {
 async fn p8_bad_names_are_invalid_params_for_every_method() {
     let rig = Rig::new();
     let a = agent("a");
-    for method in ["pad.create", "pad.read", "pad.write", "pad.append"] {
+    for method in [
+        "pad.create",
+        "pad.read",
+        "pad.write",
+        "pad.append",
+        "pad.delete",
+        "pad.setOwner",
+        "pad.export",
+    ] {
         for name in ["", "a/b", "a\\b", "..", ".hidden", "a..b"] {
             let err = rig
-                .fail(&a, method, json!({"name": name, "text": "x"}))
+                .fail(
+                    &a,
+                    method,
+                    json!({"name": name, "text": "x", "owner": a, "path": "x.md"}),
+                )
                 .await;
             assert_eq!(err.code, code::INVALID_PARAMS, "{method} {name:?}");
         }
@@ -262,4 +274,33 @@ async fn p7_pads_survive_reopening_the_directory() {
 
     assert_eq!(pad["text"], "kept");
     assert_eq!(pad["owner"]["id"], "a");
+}
+
+#[tokio::test]
+async fn p9_owner_or_user_deletes_and_others_are_forbidden() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    rig.ok(&a, "pad.create", json!({"name": "notes"})).await;
+    rig.ok(&a, "pad.create", json!({"name": "plan"})).await;
+
+    let denied = rig.fail(&b, "pad.delete", json!({"name": "notes"})).await;
+    assert_eq!(denied.code, code::FORBIDDEN);
+    let mut events = rig.bus.subscribe();
+    rig.ok(&a, "pad.delete", json!({"name": "notes"})).await;
+    rig.ok(&user(), "pad.delete", json!({"name": "plan"})).await;
+
+    let gone = rig.fail(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(gone.code, code::NOT_FOUND);
+    let EventData::PadChanged(changed) = events.try_recv().unwrap().data else {
+        panic!("expected pad.changed");
+    };
+    assert_eq!(changed.name, "notes");
+    let verbs: Vec<_> = rig
+        .touches
+        .history("pad:notes")
+        .unwrap()
+        .iter()
+        .map(|t| t.verb)
+        .collect();
+    assert_eq!(verbs, [Verb::Wrote, Verb::Wrote]);
 }
