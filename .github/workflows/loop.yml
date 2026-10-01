@@ -1,0 +1,19 @@
+name: loop
+
+on:
+  pull_request:
+
+concurrency:
+  group: loop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: loop/rules.sh size origin/${{ github.base_ref }}
+      - run: loop/rules.sh trailers origin/${{ github.base_ref }}
+      - run: loop/rules.sh vocab
