@@ -1,0 +1,17 @@
+[package]
+name = "rup"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+rpc = { path = "../rpc" }
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+rupd = { path = "../rupd" }
+tempfile = "3"
+
+[lints]
+workspace = true

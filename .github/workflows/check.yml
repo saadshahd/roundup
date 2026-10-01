@@ -1,0 +1,40 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo nextest run
+      - run: pnpm lint
+      - name: hello-world round trip (rup ping through rupd)
+        run: |
+          export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"
+          cargo build -p rupd -p rup
+          ./target/debug/rupd & 
+          for _ in $(seq 20); do [ -S "$RUPD_SOCKET" ] && break; sleep 0.25; done
+          ./target/debug/rup ping | grep -q '"pong":true'
+          kill %1

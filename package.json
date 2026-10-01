@@ -1,0 +1,13 @@
+{
+  "name": "roundup",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "lint": "oxlint"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.86.0",
+    "oxlint": "1.86.0"
+  }
+}

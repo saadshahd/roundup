@@ -1,0 +1,30 @@
+/** Extension Hook types. See docs/extension-interface.md. */
+
+export type StatusKind = "error" | "needs-you" | "blocked" | "working" | "idle" | "done";
+
+export type Status = { kind: StatusKind; label: string; since: number };
+
+export type Chip = { label: string; tone: "dim" | "info" };
+
+export type Actor = { kind: "user" | "agent" | "ext"; id: string; parent: string | null };
+
+export type Delivery = "auto" | "ask-first" | "drop";
+
+/** A Hook may add Chips; it can never change Kind. */
+export type HookResults = {
+  "rail.group": { group: string[] };
+  "agent.status": { status: Chip[] };
+  "agent.classify": { tags: string[] };
+  "bus.route": { deliver: Delivery };
+  "tool.call": { deny: string } | { context: string };
+};
+
+export type HookName = keyof HookResults;
+
+/** Pass the event on, optionally rewritten for later Hooks. */
+export type Next<E> = (event: E) => HookResults[HookName] | undefined;
+
+export type Hook<E, R> = (engine: Engine, event: E, next: Next<E>) => R | undefined;
+
+/** Typed engine handle (`$`). Members are filled in as their modules land. */
+export type Engine = { clock: { now: () => number } };

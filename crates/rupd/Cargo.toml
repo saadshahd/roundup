@@ -1,0 +1,13 @@
+[package]
+name = "rupd"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+rpc = { path = "../rpc" }
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
