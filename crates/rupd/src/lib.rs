@@ -116,7 +116,7 @@ impl Daemon {
         )))
     }
 
-    /// One round: kill every Terminal listed as running, concurrently. Returns how many it found.
+    /// One round: kill every Terminal listed as running, concurrently. Returns how many kills stopped a program; one that had already ended does not count.
     async fn stop_running_terminals(&self) -> Result<usize, RpcError> {
         let terminals = self
             .modules
@@ -137,15 +137,16 @@ impl Daemon {
                     .await
             });
         }
-        let found = set.len();
+        let mut stopped = 0;
         while let Some(joined) = set.join_next().await {
             // A program that ended on its own between the list and the kill is already stopped.
             match joined.map_err(RpcError::internal)? {
+                Ok(_) => stopped += 1,
                 Err(err) if err.code != code::NOT_FOUND => return Err(err),
-                _ => {}
+                Err(_) => {}
             }
         }
-        Ok(found)
+        Ok(stopped)
     }
 }
 
@@ -278,6 +279,33 @@ mod tests {
         let event = client.next_event().await.unwrap();
         assert_eq!(event.actor, Actor::daemon());
         assert!(matches!(event.data, contracts::EventData::RailChanged));
+    }
+
+    /// Lists one running Terminal whose program has already ended, so every kill is `NOT_FOUND`.
+    struct SelfEnded;
+
+    #[async_trait::async_trait]
+    impl Module for SelfEnded {
+        fn namespaces(&self) -> &'static [&'static str] {
+            &["terminal"]
+        }
+
+        async fn call(&self, _ctx: &Ctx, method: &str, _params: Value) -> Result<Value, RpcError> {
+            match method {
+                "terminal.list" => Ok(json!([
+                    { "id": "1", "cwd": "/", "title": null, "running": true, "exit_code": null }
+                ])),
+                _ => Err(RpcError::not_found("running terminal 1")),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn d1_stopping_programs_that_ended_by_themselves_is_not_a_failure() {
+        let (_dir, mut daemon) = daemon();
+        daemon.register(Arc::new(SelfEnded));
+
+        daemon.stop_terminals().await.unwrap();
     }
 
     #[tokio::test]

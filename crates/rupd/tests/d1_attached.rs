@@ -151,6 +151,35 @@ async fn d1_attached_daemon_exits_when_stdin_closes_and_its_programs_are_gone() 
 }
 
 #[tokio::test]
+async fn d1_attached_daemon_exits_cleanly_when_programs_end_by_themselves_during_shutdown() {
+    let mut running = start(&["--attached"], piped);
+    let mut client = rpc::Client::connect(&running.socket).await.unwrap();
+    let program = spawn_stubborn_program(&mut client, running._dir.path()).await;
+    for _ in 0..30 {
+        let params = SpawnParams {
+            cwd: running._dir.path().to_string_lossy().into_owned(),
+            command: Some(vec!["/bin/sh".into(), "-c".into(), "sleep 0.3".into()]),
+            env: BTreeMap::new(),
+            cols: 80,
+            rows: 24,
+        };
+        client.request("terminal.spawn", params).await.unwrap();
+    }
+    // Close stdin just as the programs reach their end, so some finish between list and kill.
+    tokio::time::sleep(Duration::from_millis(250)).await;
+
+    drop(running.stdin.take());
+
+    assert!(
+        wait_for_exit(&mut running.daemon),
+        "the Daemon did not exit"
+    );
+    let status = running.daemon.wait().unwrap();
+    assert!(status.success(), "the Daemon exited with {status}");
+    assert!(!is_alive(program.0), "the program outlived the Daemon");
+}
+
+#[tokio::test]
 async fn d1_attached_daemon_exits_when_stdin_is_already_closed() {
     let mut running = start(&["--attached"], |command| {
         command.stdin(Stdio::null());
