@@ -209,4 +209,58 @@ describe("u1 calls and events", () => {
 
     await expect(createTauriApp().openProject("/p")).rejects.toThrow();
   });
+
+  it("u1_a_project_answer_that_is_not_a_project_is_rejected_by_the_project_call", async () => {
+    mockIPC(() => ({ name: 7 }));
+
+    await expect(createTauriApp().project()).rejects.toThrow();
+  });
+
+  it("u1_a_daemon_exited_payload_that_is_not_a_code_never_reaches_the_listener", async () => {
+    mockIPC(() => null, { shouldMockEvents: true });
+    const exits: unknown[] = [];
+
+    await createTauriApp().onDaemonExited((exit) => exits.push(exit));
+    await emit("daemon-exited", { code: "x" }).catch(() => {});
+
+    expect(exits).toEqual([]);
+  });
+
+  it("u1_a_folder_chooser_that_throws_a_string_rejects_with_internal_and_the_string", async () => {
+    mockIPC((command) => {
+      if (command === "plugin:dialog|open") throw "dialog could not open";
+
+      return null;
+    });
+
+    await expect(createTauriApp().chooseProjectPath()).rejects.toMatchObject({
+      name: "RpcError",
+      code: -32603,
+      message: "dialog could not open",
+    });
+  });
+
+  it("u1_a_save_chooser_that_throws_a_string_rejects_with_internal_and_the_string", async () => {
+    mockIPC((command) => {
+      if (command === "plugin:dialog|save") throw "save panel failed";
+
+      return null;
+    });
+
+    await expect(createTauriApp().chooseSavePath("x.md")).rejects.toMatchObject({
+      code: -32603,
+      message: "save panel failed",
+    });
+  });
+
+  it("u1_a_dock_badge_that_throws_a_string_rejects_with_internal_and_the_string", async () => {
+    mockWindows("main");
+    mockIPC((command) => {
+      if (command === "plugin:window|set_badge_count") throw "no dock";
+
+      return null;
+    });
+
+    await expect(createTauriApp().setDockBadge(2)).rejects.toMatchObject({ code: -32603, message: "no dock" });
+  });
 });

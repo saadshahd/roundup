@@ -1,5 +1,6 @@
-import { createResource, Show } from "solid-js";
+import { createResource, ErrorBoundary, Show } from "solid-js";
 import type { JSX } from "solid-js";
+import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { lastTouchLine } from "./touchLine";
 
@@ -21,7 +22,10 @@ export const ItemDrawer = <Value,>(props: {
   });
 
   return (
-    <Show when={loaded()}>
+    <ErrorBoundary
+      fallback={(failure) => <ErrorLine message={failure instanceof Error ? failure.message : String(failure)} />}
+    >
+      <Show when={loaded()}>
       {(item) => (
         <>
           {props.children(item().value)}
@@ -34,6 +38,7 @@ export const ItemDrawer = <Value,>(props: {
           </Show>
         </>
       )}
-    </Show>
+      </Show>
+    </ErrorBoundary>
   );
 };

@@ -167,6 +167,19 @@ describe("u3 Rail state", () => {
     expect(rail.failure()).toBe("daemon is gone");
   });
 
+  it("u3_a_failure_clears_after_a_later_successful_fetch", async () => {
+    const { app, rail } = await open([node("a")]);
+    app.handlers["rail.tree"] = () => Promise.reject(new RpcError(-32603, "daemon is gone"));
+    app.emit(event({ name: "rail.changed" }));
+    await rail.settled();
+    app.handlers["rail.tree"] = () => [node("a")];
+
+    app.emit(event({ name: "rail.changed" }));
+    await rail.settled();
+
+    expect(rail.failure()).toBeNull();
+  });
+
   it("u3_no_node_is_selected_at_start", async () => {
     const { rail } = await open([node("a")]);
 

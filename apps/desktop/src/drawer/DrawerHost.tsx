@@ -36,7 +36,7 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
         if (!isOpen()) setMounted(null);
       }}
     >
-      <button type="button" class="word" onClick={() => props.drawer.close()}>
+      <button type="button" class="word close" onClick={() => props.drawer.close()}>
         close
       </button>
       <Show when={mounted()} keyed>
