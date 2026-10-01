@@ -98,10 +98,12 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
   it("u32_the_chords_are_handled_by_the_webview_so_the_browser_never_sees_them", async () => {
     await mountRail([group("g")]);
+
     const handled = [
       fireEvent.keyDown(document, { key: "n", metaKey: true }),
       fireEvent.keyDown(document, { key: "t", metaKey: true }),
     ];
+
     const ignored = fireEvent.keyDown(document, { key: "n" });
 
     expect([handled, ignored]).toEqual([[false, false], true]);
