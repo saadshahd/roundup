@@ -322,31 +322,25 @@ async fn p9_owner_or_user_deletes_and_others_are_forbidden() {
 async fn p5_files_mirror_pads_and_edits_import_when_flipped_back() {
     let rig = Rig::new();
     let a = agent("a");
-    rig.call(&a, "pad.create", json!({"name": "notes", "text": "one"}))
-        .await
-        .unwrap();
-    rig.call(&a, "pad.create", json!({"name": "plan", "text": "p"}))
-        .await
-        .unwrap();
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "one"}))
+        .await;
+    rig.ok(&a, "pad.create", json!({"name": "plan", "text": "p"}))
+        .await;
     let notes = rig.dir.path().join("pads").join("notes.md");
 
-    rig.call(&a, "pad.setStorage", json!({"files": true}))
-        .await
-        .unwrap();
+    rig.ok(&a, "pad.setStorage", json!({"files": true})).await;
     assert_eq!(rig.file_text("notes.md"), "one");
     assert_eq!(rig.file_text("plan.md"), "p");
 
-    rig.call(&a, "pad.write", json!({"name": "notes", "text": "two"}))
-        .await
-        .unwrap();
+    rig.ok(&a, "pad.write", json!({"name": "notes", "text": "two"}))
+        .await;
     assert_eq!(rig.file_text("notes.md"), "two");
-    rig.call(
+    rig.ok(
         &agent("b"),
         "pad.append",
         json!({"name": "notes", "text": "+b"}),
     )
-    .await
-    .unwrap();
+    .await;
     assert_eq!(rig.file_text("notes.md"), "two+b");
 
     let reopened = Pads::open(rig.dir.path(), Bus::new()).unwrap();
