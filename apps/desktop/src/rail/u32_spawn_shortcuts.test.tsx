@@ -74,7 +74,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     ["no modifier", {}],
     ["ctrl", { ctrlKey: true }],
     ["alt", { altKey: true }],
-    ["cmd and shift", { metaKey: true, shiftKey: true }],
     ["cmd and ctrl", { metaKey: true, ctrlKey: true }],
     ["cmd and alt", { metaKey: true, altKey: true }],
   ])("u32_a_plain_n_or_t_spawns_nothing_%s", async (_, held) => {
@@ -82,6 +81,16 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("n", held);
     chord("t", held);
+    await Promise.resolve();
+
+    expect(spawnCalls(mounted)).toEqual([]);
+  });
+
+  /** ⇧⌘N is U33's spawn-with-a-prompt chord; ⇧⌘T stays inert. */
+  it("u32_shift_cmd_t_still_spawns_nothing", async () => {
+    const mounted = await mountRail([group("g")]);
+
+    chord("t", { metaKey: true, shiftKey: true });
     await Promise.resolve();
 
     expect(spawnCalls(mounted)).toEqual([]);

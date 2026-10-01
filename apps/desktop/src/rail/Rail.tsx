@@ -7,6 +7,7 @@ import { createRailDrag } from "./drag";
 import { ancestorsOf, layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
+import { SpawnPromptField } from "./SpawnPromptField";
 import "./styles.css";
 
 const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
@@ -20,6 +21,8 @@ export const Rail = () => {
   const [failure, setFailure] = createSignal<string | null>(null);
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
+  /** U33's inline prompt field, opened by `⇧⌘N`. */
+  const [composing, setComposing] = createSignal(false);
 
   const [dragged, setDragged] = createSignal<string | null>(null);
 
@@ -68,12 +71,15 @@ export const Rail = () => {
     return selected?.kind === "group" ? selected.id : null;
   };
 
-  const spawnAgent = () =>
+  const spawnAgentWith = (prompt: string | null) =>
     guarded(async () => {
-      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
+      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt, parent: parent() });
 
       setWanted(spawned.id);
+      setComposing(false);
     });
+
+  const spawnAgent = () => spawnAgentWith(null);
 
   const spawnTerminal = () => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }));
 
@@ -89,9 +95,21 @@ export const Rail = () => {
     const clear = () => setFailure(null);
 
     const chord = (press: KeyboardEvent) => {
-      if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+      if (!press.metaKey || press.ctrlKey || press.altKey) return;
 
-      const spawn = { n: spawnAgent, t: spawnTerminal }[press.key.toLowerCase()];
+      const key = press.key.toLowerCase();
+
+      if (press.shiftKey) {
+        if (key !== "n") return;
+
+        press.preventDefault();
+
+        if (canSpawn()) setComposing(true);
+
+        return;
+      }
+
+      const spawn = { n: spawnAgent, t: spawnTerminal }[key];
 
       if (!spawn) return;
 
@@ -139,6 +157,14 @@ export const Rail = () => {
         "--shift-ms": reducedMotion() ? "0ms" : "120ms",
       }}
     >
+      <Show when={composing()}>
+        <SpawnPromptField
+          onSubmit={(prompt) => {
+            if (canSpawn()) spawnAgentWith(prompt);
+          }}
+          onCancel={() => setComposing(false)}
+        />
+      </Show>
       <div role="tree" aria-label="rail" aria-disabled={daemonExit() !== null ? true : undefined}>
         <For each={keys()}>
           {(key) => (
