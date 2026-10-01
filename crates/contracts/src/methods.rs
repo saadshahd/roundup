@@ -67,6 +67,11 @@ pub const METHODS: &[Method] = &[
     m("rail.move", "agent_MoveParams", "null"),
     m("rail.rename", "agent_RenameParams", "agent_RailNode"),
     m("rail.promote", "agent_NodeId", "agent_RailNode"),
+    m(
+        "rail.spawnTerminal",
+        "agent_SpawnTerminalParams",
+        "agent_RailNode",
+    ),
 ];
 
 /// Render `METHODS` as `contracts/generated/methods.ts`.

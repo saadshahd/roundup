@@ -6,6 +6,7 @@ import type { RailNode as agent_RailNode } from "./agent/RailNode";
 import type { RenameParams as agent_RenameParams } from "./agent/RenameParams";
 import type { SignalParams as agent_SignalParams } from "./agent/SignalParams";
 import type { SpawnParams as agent_SpawnParams } from "./agent/SpawnParams";
+import type { SpawnTerminalParams as agent_SpawnTerminalParams } from "./agent/SpawnTerminalParams";
 import type { HistoryParams as common_HistoryParams } from "./HistoryParams";
 import type { IdentifyParams as common_IdentifyParams } from "./IdentifyParams";
 import type { Touch as common_Touch } from "./Touch";
@@ -64,6 +65,7 @@ export type RpcMethods = {
   "rail.move": { params: agent_MoveParams; result: null };
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
   "rail.promote": { params: agent_NodeId; result: agent_RailNode };
+  "rail.spawnTerminal": { params: agent_SpawnTerminalParams; result: agent_RailNode };
 };
 
 export type RpcMethodName = keyof RpcMethods;
