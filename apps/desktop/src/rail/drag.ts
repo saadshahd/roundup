@@ -1,4 +1,4 @@
-import { createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { dropAt, isInPlace, movingWith, remainingRows } from "./dragTarget";
@@ -106,6 +106,8 @@ const swallowNextClick = (): (() => void) => {
 export const createRailDrag = (source: {
   container: () => HTMLElement | undefined;
   nodes: () => readonly RailNode[];
+  /** Names the rows and where they sit; a drag ends without dropping when it changes after the rows were measured. */
+  layoutKey: () => string;
   /** Read after `onDragging(id)` has run, so the rows are the ones laid out for the drag. */
   rows: () => readonly NodeRow[];
   /** The id from the first move past a click until release, then `null`; the Rail lays its rows out for the drag in between, before they are measured. */
@@ -117,6 +119,7 @@ export const createRailDrag = (source: {
   const [state, setState] = createSignal<DragState | null>(null);
 
   let stop: () => void = () => {};
+  let measuredLayout: string | null = null;
 
   let forgetClick: () => void = () => {};
 
@@ -136,6 +139,7 @@ export const createRailDrag = (source: {
       if (!snapshot) source.onDragging(id);
 
       snapshot ??= measured(container, nodes, source.rows(), id);
+      measuredLayout = source.layoutKey();
       setState(
         stateAt(snapshot, id, container.getBoundingClientRect(), { x: move.clientX, y: move.clientY }, move.clientY - press.clientY),
       );
@@ -162,6 +166,7 @@ export const createRailDrag = (source: {
       window.removeEventListener("keydown", cancelOnEscape);
       setState(null);
       source.onDragging(null);
+      measuredLayout = null;
     };
 
     window.addEventListener("pointermove", follow);
@@ -169,6 +174,16 @@ export const createRailDrag = (source: {
     window.addEventListener("pointercancel", stop);
     window.addEventListener("keydown", cancelOnEscape);
   };
+
+  createEffect(
+    on(
+      source.layoutKey,
+      (layout) => {
+        if (measuredLayout !== null && layout !== measuredLayout) stop();
+      },
+      { defer: true },
+    ),
+  );
 
   onCleanup(() => {
     stop();

@@ -28,6 +28,7 @@ export const Rail = () => {
   );
 
   const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
+  const layoutKey = createMemo(() => nodeRows().map((row) => `${row.key}@${row.depth}`).join());
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
 
@@ -47,6 +48,7 @@ export const Rail = () => {
     container,
     nodes: () => rail.nodes,
     rows: nodeRows,
+    layoutKey,
     onDragging: setDragged,
     enabled: () => daemonExit() === null,
     onDrop: (id, { parent, index }) => void attempt(() => app.rpc("rail.move", { id, parent, index })),

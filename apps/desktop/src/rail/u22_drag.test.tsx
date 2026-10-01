@@ -5,7 +5,7 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
 import type { DaemonExit } from "../app/seam";
 import { dragFrom, pointerAt, release, stubLayout } from "./dragFixture";
-import { agent, callsTo, group, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
+import { agent, callsTo, event, group, MINUTE, mountRail, NOW, rowNames, rowOf } from "./railFixture";
 
 /** a, g { x }, b */
 const TREE: RailNode[] = [
@@ -184,6 +184,48 @@ describe("u22 drag", () => {
     release({ clientX: 0, clientY: 9 });
 
     await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
+  });
+
+  it("u22_a_tree_change_during_a_drag_ends_it_without_a_call", async () => {
+    const tree = [...TREE];
+    const mounted = await mountRail(tree);
+    mounted.app.handlers["rail.tree"] = () => [...tree];
+
+    dragFrom("b", pointerAt(0, 0));
+    tree.unshift(agent("fresh", "idle", "i", { order: -1 }));
+    mounted.app.emit(event({ name: "rail.changed" }));
+    await mounted.rail.settled();
+
+    expect(dropLine()).toBeNull();
+
+    release(pointerAt(0, 0));
+
+    expect(callsTo(mounted.app, "rail.move")).toEqual([]);
+  });
+
+  describe.each<[string, (mounted: Awaited<ReturnType<typeof mountRail>>) => void]>([
+    ["a release", () => release(pointerAt(0, 0))],
+    ["escape", () => fireEvent.keyDown(window, { key: "Escape" })],
+    [
+      "a conflict",
+      (mounted) => {
+        mounted.app.handlers["rail.move"] = () => {
+          throw new RpcError(-32000, "CONFLICT: no");
+        };
+        release(pointerAt(0, 0));
+      },
+    ],
+  ])("u22 after %s", (_ending, end) => {
+    it("u22_the_opened_done_line_and_the_live_line_are_back", async () => {
+      const mounted = await mountRail([doneAgent("d", 0), agent("b", "idle", "i", { order: 1 })]);
+      mounted.rail.select("b");
+      fireEvent.click(screen.getByText("✓ 1 done"));
+      const before = [rowNames(), rowOf("b").querySelector(".live") !== null];
+
+      dragFrom("b", pointerAt(0, 0));
+      end(mounted);
+      await waitFor(() => expect([rowNames(), rowOf("b").querySelector(".live") !== null]).toEqual(before));
+    });
   });
 
   it("u22_live_lines_are_hidden_while_a_drag_is_under_way", async () => {
