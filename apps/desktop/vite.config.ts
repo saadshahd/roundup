@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [solid()],
   test: {
     environment: "jsdom",
+    // Vitest returns empty CSS by default; the Drawer test needs the real rules to read computed positions.
+    css: { include: [/styles\.css/] },
     include: ["src/**/*.test.{ts,tsx}"],
     // jsdom resolves the server build of solid-js unless told to use the browser one.
     server: { deps: { inline: [/solid-js/] } },

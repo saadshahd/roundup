@@ -5,6 +5,7 @@ import { Layout } from "./app/Layout";
 import type { AppSeam, DaemonExit, Project } from "./app/seam";
 import { DrawerHost } from "./drawer/DrawerHost";
 import { ErrorLine } from "./ink/ErrorLine";
+import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { Rail } from "./rail/Rail";
 import { createNow } from "./state/clock";
@@ -15,7 +16,7 @@ import { Pane } from "./terminal/Pane";
 import { Todos } from "./todos/Todos";
 
 const daemonExitText = ({ code }: DaemonExit): string =>
-  code === null ? "daemon exited by signal" : `daemon exited ${code}`;
+  `daemon ${exitText(code === null ? { kind: "signal" } : { kind: "code", code })}`;
 
 const OpenProject = (props: {
   app: AppSeam;
