@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use contracts::Actor;
+use contracts::terminal::TerminalInfo;
 use provenance::Touches;
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code};
 use serde_json::{Value, json};
@@ -84,12 +85,49 @@ impl Daemon {
             .modules
             .get(namespace)
             .ok_or_else(|| RpcError::method_not_found(method))?;
-        let ctx = Ctx {
-            actor: conn.actor.clone(),
+        module
+            .call(&self.ctx(conn.actor.clone()), method, params)
+            .await
+    }
+
+    fn ctx(&self, actor: Actor) -> Ctx {
+        Ctx {
+            actor,
             bus: self.bus.clone(),
             touches: Arc::clone(&self.touches),
-        };
-        module.call(&ctx, method, params).await
+        }
+    }
+
+    /// Stop every running Terminal's program, Agents' included, and return once all are stopped.
+    /// A program that ignores SIGHUP is killed by the Terminal module's own escalation.
+    pub async fn stop_terminals(&self) -> Result<(), RpcError> {
+        let terminals = self
+            .modules
+            .get("terminal")
+            .ok_or_else(|| RpcError::internal("terminal module is not registered"))?;
+        let listed = terminals
+            .call(&self.ctx(Actor::daemon()), "terminal.list", Value::Null)
+            .await?;
+        let infos: Vec<TerminalInfo> =
+            serde_json::from_value(listed).map_err(RpcError::internal)?;
+        let mut set = tokio::task::JoinSet::new();
+        for info in infos.into_iter().filter(|info| info.running) {
+            let terminals = Arc::clone(terminals);
+            let ctx = self.ctx(Actor::daemon());
+            set.spawn(async move {
+                terminals
+                    .call(&ctx, "terminal.kill", json!({ "id": info.id }))
+                    .await
+            });
+        }
+        while let Some(joined) = set.join_next().await {
+            // A program that ended on its own between the list and the kill is already stopped.
+            match joined.map_err(RpcError::internal)? {
+                Err(err) if err.code != code::NOT_FOUND => return Err(err),
+                _ => {}
+            }
+        }
+        Ok(())
     }
 }
 
