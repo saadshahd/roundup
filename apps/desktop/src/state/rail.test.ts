@@ -6,6 +6,7 @@ import type { EventData } from "@contracts/EventData";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { connectEvents } from "../app/events";
+import { RpcError } from "../app/seam";
 import { createFakeApp } from "../testing/fakeApp";
 import { createRailState } from "./rail";
 
@@ -89,7 +90,7 @@ describe("u3 Rail state", () => {
 
     app.emit(event({ name: "terminal.exited", data: { id: "t-b", code: 3 } }));
 
-    expect([rail.exitOf(node("a")), rail.exitOf(node("b"))]).toEqual([null, { code: 3 }]);
+    expect([rail.exitOf(node("a")), rail.exitOf(node("b"))]).toEqual([null, { kind: "code", code: 3 }]);
   });
 
   it("u3_terminal_exited_keeps_a_null_code_when_a_signal_ended_the_program", async () => {
@@ -97,22 +98,31 @@ describe("u3 Rail state", () => {
 
     app.emit(event({ name: "terminal.exited", data: { id: "t-a", code: null } }));
 
-    expect(rail.exitOf(node("a"))).toEqual({ code: null });
+    expect(rail.exitOf(node("a"))).toEqual({ kind: "signal" });
   });
 
   it("u3_a_node_with_no_terminal_id_counts_as_exited", async () => {
     const { rail } = await open([]);
 
-    expect(rail.exitOf(node("a", { terminal_id: null }))).toEqual({ code: null });
+    expect(rail.exitOf(node("a", { terminal_id: null }))).toEqual({ kind: "unknown" });
   });
 
   it("u3_a_terminal_that_the_first_terminal_list_reports_exited_is_exited", async () => {
     const { rail } = await open([node("a")], [terminalInfo("t-a", { running: false, exit_code: 1 })]);
 
-    expect(rail.exitOf(node("a"))).toEqual({ code: 1 });
+    expect(rail.exitOf(node("a"))).toEqual({ kind: "code", code: 1 });
   });
 
-  it("u3_a_group_is_never_exited", async () => {
+  it("u3_terminal_exited_marks_a_meta_agent_whose_terminal_ended", async () => {
+    const meta = node("m", { kind: "group", meta: true });
+    const { app, rail } = await open([meta]);
+
+    app.emit(event({ name: "terminal.exited", data: { id: "t-m", code: 2 } }));
+
+    expect(rail.exitOf(meta)).toEqual({ kind: "code", code: 2 });
+  });
+
+  it("u3_a_plain_group_is_never_exited", async () => {
     const { rail } = await open([]);
 
     expect(rail.exitOf(node("g", { kind: "group", status: null, terminal_id: null }))).toBeNull();
@@ -145,6 +155,16 @@ describe("u3 Rail state", () => {
     await rail.settled();
 
     expect(rail.nodes.map((each) => each.id)).toEqual(["a", "b"]);
+  });
+
+  it("u3_a_failed_refetch_is_surfaced_as_the_rails_failure", async () => {
+    const { app, rail } = await open([node("a")]);
+    app.handlers["rail.tree"] = () => Promise.reject(new RpcError(-32603, "daemon is gone"));
+
+    app.emit(event({ name: "rail.changed" }));
+    await rail.settled();
+
+    expect(rail.failure()).toBe("daemon is gone");
   });
 
   it("u3_no_node_is_selected_at_start", async () => {

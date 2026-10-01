@@ -1,6 +1,6 @@
 import { createResource, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { useWorkspace } from "../state/workspace";
+import { useConnectedProject } from "../state/connectedProject";
 import { lastTouchLine } from "./touchLine";
 
 /**
@@ -12,12 +12,12 @@ export const ItemDrawer = <Value,>(props: {
   read: () => Promise<Value>;
   children: (value: Value) => JSX.Element;
 }) => {
-  const workspace = useWorkspace();
+  const connected = useConnectedProject();
 
   const [loaded] = createResource(async () => {
-    const history = await workspace.app.rpc("provenance.history", { item: props.item });
+    const history = await connected.app.rpc("provenance.history", { item: props.item });
 
-    return { line: lastTouchLine(history, workspace.rail.nameOf), value: await props.read() };
+    return { line: lastTouchLine(history, connected.rail.nameOf), value: await props.read() };
   });
 
   return (

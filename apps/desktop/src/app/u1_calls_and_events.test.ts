@@ -191,4 +191,22 @@ describe("u1 calls and events", () => {
 
     expect(calls).toEqual([{ label: "main", value: undefined }]);
   });
+
+  it("u1_the_adapter_parses_the_open_project", async () => {
+    mockIPC(() => ({ name: "payments-api", path: "/p/payments-api" }));
+
+    expect(await createTauriApp().project()).toEqual({ name: "payments-api", path: "/p/payments-api" });
+  });
+
+  it("u1_the_adapter_answers_null_when_no_project_is_open", async () => {
+    mockIPC(() => null);
+
+    expect(await createTauriApp().project()).toBeNull();
+  });
+
+  it("u1_an_open_project_answer_that_is_not_a_project_is_rejected", async () => {
+    mockIPC(() => ({ name: 7 }));
+
+    await expect(createTauriApp().openProject("/p")).rejects.toThrow();
+  });
 });

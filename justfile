@@ -20,15 +20,28 @@ contracts-fresh:
 packages script:
     pnpm -r --if-present {{script}}
 
-# Builds rupd and rup, starts the webview dev server, runs the App on a folder.
-app folder:
+# Builds rupd and rup, starts the webview dev server, runs the App on a Project.
+app project:
     #!/usr/bin/env bash
     set -euo pipefail
-    project=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(folder)}})
+    path=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(project)}})
     cargo build -p rupd -p rup
     set -m
     pnpm --filter "./apps/*" --if-present dev &
     dev=$!
     set +m
     trap 'kill -- -"$dev" 2>/dev/null || true' EXIT
-    cargo run -p desktop -- "$project"
+    cargo run -p desktop -- "$path"
+
+# Builds the webview files, then rupd, rup and the App (custom-protocol, serving apps/desktop/dist) in release mode, and runs the App on them with no dev server. No bundling or signing.
+app-release project:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    path=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(project)}})
+    dist={{quote(justfile_directory())}}/apps/desktop/dist
+    TAURI_CONFIG=$(jq -nc --arg dist "$dist" '{build: {frontendDist: $dist}}')
+    export TAURI_CONFIG
+    pnpm -r --if-present build
+    cargo build --release -p rupd -p rup
+    cargo build --release -p desktop --features custom-protocol
+    cargo run --release -p desktop --features custom-protocol -- "$path"
