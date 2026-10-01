@@ -28,6 +28,13 @@ export const isPlainGroup = (node: RailNode): boolean => node.kind === "group" &
 export const siblingsOf = (nodes: readonly RailNode[], parent: string | null): RailNode[] =>
   nodes.filter((node) => node.parent === parent).toSorted((a, b) => a.order - b.order);
 
+/** The ids of every node above `id`, nearest first. */
+export const ancestorsOf = (nodes: readonly RailNode[], id: string): string[] => {
+  const parent = nodes.find((node) => node.id === id)?.parent ?? null;
+
+  return parent === null ? [] : [parent, ...ancestorsOf(nodes, parent)];
+};
+
 /** Every node below `id`, each parent before its children. */
 export const descendantsOf = (nodes: readonly RailNode[], id: string): RailNode[] =>
   siblingsOf(nodes, id).flatMap((child) => [child, ...descendantsOf(nodes, child.id)]);

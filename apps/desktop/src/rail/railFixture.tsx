@@ -7,6 +7,7 @@ import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
 import { info, NOW } from "../testing/nodes";
 import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
+import { AttentionChip } from "./AttentionChip";
 import { Rail } from "./Rail";
 
 export const exitedTerminal = (id: string, exit_code: number | null): TerminalInfo =>
@@ -28,6 +29,7 @@ export const mountRail = async (
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>
+      <AttentionChip />
       <Rail />
     </ConnectedProjectContext.Provider>
   ));
