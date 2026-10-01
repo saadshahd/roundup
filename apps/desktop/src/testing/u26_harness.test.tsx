@@ -186,6 +186,7 @@ describe("u26 the Daemon's rail methods", () => {
     const { app } = await daemon();
 
     await app.rpc("rail.move", { id: "docs", parent: "backend", index: 2 });
+
     const order = (await app.rpc("rail.tree", null))
       .filter((node) => node.parent === "backend")
       .sort((left, right) => left.order - right.order)
