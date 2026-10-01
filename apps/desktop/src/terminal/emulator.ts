@@ -13,6 +13,8 @@ export type Emulator = {
   onInput(listener: (bytes: Uint8Array) => void): void;
   /** Moves the emulator into `host` (opening it the first time), gives it focus, and returns its fitted size. */
   show(host: HTMLElement): Size;
+  /** Gives the keyboard back to the emulator. */
+  focus(): void;
   /** The size that fills the emulator's current host. */
   fit(): Size;
   dispose(): void;
@@ -87,6 +89,7 @@ export const createXtermEmulators = (): EmulatorFactory => {
         return size();
       },
       fit: size,
+      focus: () => terminal.focus(),
       dispose: () => terminal.dispose(),
     };
   };

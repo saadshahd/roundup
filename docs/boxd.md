@@ -6,7 +6,7 @@ boxd is optional: nothing on the critical path depends on it (merging needs GitH
 
 | Use case | What local cannot do | Recipe | Status |
 |---|---|---|---|
-| **Unattended Builder** | Run `claude -p --dangerously-skip-permissions` without exposing your laptop's files and credentials. The VM is the sandbox, and `--isolated` removes the connected integration tokens and the in-VM `boxd` CLI. | `loop/boxd.sh build <name> <prompt-file>` | Verified, including `--isolated` created from the snapshot with the prompt on stdin: 5 turns, 56 s wall for a small task, patch applied cleanly. The limit-pause, cap and token-scan paths are stub-tested only (`loop/boxd.test.sh`). |
+| **Unattended Builder** | Run `claude -p --dangerously-skip-permissions` without exposing your laptop's files and credentials. The VM is the sandbox, and `--isolated` removes the connected integration tokens and the in-VM `boxd` CLI. | `loop/boxd.sh build <name> <prompt-file>` | Verified, including `--isolated` created from the snapshot with the prompt on stdin: 5 turns, 56 s wall for a small task, patch applied cleanly. The limit-pause and cap paths are stub-tested only (`loop/boxd.test.sh`). |
 | **Parallel Builders** | Run N Builders with no shared disk, ports or caches. | One VM per Builder, started in parallel. | Verified at 4 (small tasks, 21–27 s wall each, no errors). Not tested above 4 or with large tasks. |
 | **Linux check run** | Run `just check` on a clean Linux box in seconds. CI's macOS job also runs the `rup ping` round trip, which `just check` does not; CI uses Node 22 and the VM Node 24. | `just check` on a VM from the snapshot (the justfile is the single definition of `check`). | Verified: a whole `loop/boxd.sh build` (Builder run plus `just check`) took 29–37 s wall on a fresh VM from the snapshot with Rust 1.89, and 56 s with Rust 1.99 on the current script. An earlier, shorter check plus the `rup ping` round trip took 15 s. All in `spikes/boxd/REPORT.md`. Catches platform-neutral breakage before a PR. It is not the macOS gate. |
 | **QA screenshots** | Render the web UI where an agent can drive it and nobody's windows get hijacked. | `agent-browser` in the VM, screenshots to `artifacts/ux/<scenario>/<step>.png`, then `boxd machine cp` out. | Pipeline verified with a static page, not with roundup's UI (none exists yet). |
@@ -33,9 +33,7 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 
 ## Secrets
 
-- Pass the Claude token per call: `boxd machine exec <vm> -e CLAUDE_CODE_OAUTH_TOKEN=... -- ...`. `boxd env set --secret` is account-wide and puts the token on every machine, so do not use it.
-- Observed: after a Builder run, a search of the VM's home, `/tmp` and `/etc` found no copy of the token, and there was no `~/.claude/.credentials.json`. `boxd env list` was empty.
-- By design the Builder holds the token in its environment, so `loop/boxd.sh` deletes any result or patch that contains it and refuses to print it. The token is also in `boxd`'s argument list on the laptop while a call runs (`ps` shows it), and in the VM's process environment. Treat the VM as trusted for the length of the call.
+- The Claude token is the boxd secret `CLAUDE_CODE_OAUTH_TOKEN`, host-scoped. Inside a VM the variable holds a placeholder (`bxds_...`); boxd swaps in the real token on requests to `*.anthropic.com`, `*.claude.com` and `claude.ai`, so the real token never reaches the VM. Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` for `claude`: without it the process hangs about 90 s after answering (some other host is blocked), with it `claude -p "say hi"` takes 2 s.
 - Normal machines expose connected integration credentials to any code running in them. Use `--isolated` when running code you do not trust.
 
 ## Cost and quota

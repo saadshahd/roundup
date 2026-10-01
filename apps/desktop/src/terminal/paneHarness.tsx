@@ -1,18 +1,17 @@
 import { render } from "@solidjs/testing-library";
-import type { Actor } from "@contracts/Actor";
+import type { Accessor } from "solid-js";
+import type { DaemonExit } from "../app/seam";
 import type { Event as DaemonEvent } from "@contracts/Event";
-import type { EventData } from "@contracts/EventData";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
+import { USER } from "../testing/nodes";
 import type { FakeApp } from "../testing/fakeApp";
 import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import type { ConnectedProject } from "../state/connectedProject";
 import { Pane } from "./Pane";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
 import { toBase64 } from "./base64";
-
-const USER: Actor = { kind: "user", id: "you", parent: null };
 
 type FakeEmulator = Emulator & {
   written: Uint8Array[];
@@ -53,6 +52,7 @@ const fakeEmulators = () => {
 
         return emulator.size;
       },
+      focus: () => {},
       dispose: () => {
         emulator.disposed = true;
       },
@@ -67,37 +67,11 @@ const fakeEmulators = () => {
   return { factory, made };
 };
 
-export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
-  id,
-  kind: "agent",
-  name: id,
-  parent: null,
-  order: 0,
-  status: { kind: "working", label: "starting", since: 0 },
-  meta: false,
-  terminal_id: `t-${id}`,
-  ...over,
-});
-
-export const shell = (id: string, over: Partial<RailNode> = {}): RailNode =>
-  node(id, { kind: "terminal", status: null, ...over });
-
-export const info = (id: string, over: Partial<TerminalInfo> = {}): TerminalInfo => ({
-  id,
-  cwd: "/p",
-  title: null,
-  running: true,
-  exit_code: null,
-  ...over,
-});
-
 export const output = (id: string, text: string): DaemonEvent => ({
   actor: USER,
   name: "terminal.output",
   data: { id, data: toBase64(new TextEncoder().encode(text)) },
 });
-
-export const event = (data: EventData): DaemonEvent => ({ actor: USER, ...data });
 
 type Mounted = {
   app: FakeApp;
@@ -107,7 +81,12 @@ type Mounted = {
 };
 
 /** A Pane inside an open Project whose Rail holds `tree` and whose Daemon lists `terminals`. */
-export const mountPane = async (tree: RailNode[], terminals: TerminalInfo[] = [], now = 0): Promise<Mounted> => {
+export const mountPane = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  now = 0,
+  daemonExit: Accessor<DaemonExit | null> = () => null,
+): Promise<Mounted> => {
   const app = createFakeApp();
 
   app.handlers["rail.tree"] = () => tree;
@@ -115,7 +94,7 @@ export const mountPane = async (tree: RailNode[], terminals: TerminalInfo[] = []
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.resize"] = () => null;
 
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now, daemonExit);
   const { factory, made } = fakeEmulators();
 
   const { container } = render(() => (

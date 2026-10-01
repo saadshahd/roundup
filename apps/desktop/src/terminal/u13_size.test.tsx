@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ITerminalAddon } from "@xterm/xterm";
 import { attachRenderer, createXtermEmulators } from "./emulator";
 import type { RendererAddon } from "./emulator";
-import { callsTo, event, info, mountPane, node, shell } from "./paneHarness";
+import { callsTo, mountPane } from "./paneHarness";
+import { event, info, node, terminal } from "../testing/nodes";
 
 const nextFrame = () => vi.advanceTimersToNextFrame();
 
@@ -81,7 +82,7 @@ describe("u13 size", () => {
   });
 
   it("u13_an_exited_terminal_is_not_resized", async () => {
-    const { app, connected } = await mountPane([shell("a")], [info("t-a", { running: false, exit_code: 0 })]);
+    const { app, connected } = await mountPane([terminal("a")], [info("t-a", { running: false, exit_code: 0 })]);
 
     connected.rail.select("a");
     window.dispatchEvent(new Event("resize"));
@@ -91,7 +92,7 @@ describe("u13 size", () => {
   });
 
   it("u13_a_terminal_that_exits_is_no_longer_resized", async () => {
-    const { app, connected } = await mountPane([shell("a")], [info("t-a")]);
+    const { app, connected } = await mountPane([terminal("a")], [info("t-a")]);
 
     connected.rail.select("a");
     app.emit(event({ name: "terminal.exited", data: { id: "t-a", code: 0 } }));

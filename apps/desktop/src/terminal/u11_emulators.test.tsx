@@ -1,6 +1,7 @@
 import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { event, info, mountPane, node, output, shell } from "./paneHarness";
+import { mountPane, output } from "./paneHarness";
+import { event, info, node, terminal } from "../testing/nodes";
 
 const decoded = (chunks: Uint8Array[]): string[] => chunks.map((chunk) => new TextDecoder().decode(chunk));
 
@@ -63,7 +64,7 @@ describe("u11 one emulator per Terminal", () => {
   });
 
   it("u11_closing_the_pane_disposes_every_emulator", async () => {
-    const { app, emulators } = await mountPane([shell("a")], [info("t-a")]);
+    const { app, emulators } = await mountPane([terminal("a")], [info("t-a")]);
 
     app.emit(output("t-a", "x"));
     cleanup();

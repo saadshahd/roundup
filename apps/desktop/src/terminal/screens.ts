@@ -8,7 +8,7 @@ import type { Emulator, EmulatorFactory, Size } from "./emulator";
 export type Screens = {
   /** The Terminal's emulator, created on first call; `terminal.output` arriving first creates it, so a pane shown later is not blank. */
   emulatorFor(id: string): Emulator;
-  /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited takes no resize. */
+  /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited, or a Daemon that has, takes no resize. */
   resize(id: string, size: Size): void;
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
   stop(node: RailNode): void;
@@ -18,7 +18,7 @@ export type Screens = {
 };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
-  const { app, output, rail } = connected;
+  const { app, output, rail, daemonExit } = connected;
   const emulators = new Map<string, Emulator>();
   const [failure, setFailure] = createSignal<string | null>(null);
 
@@ -65,7 +65,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     };
 
     emulator.onInput((bytes) => {
-      if (exited(id)) return;
+      if (exited(id) || daemonExit() !== null) return;
 
       for (const byte of bytes) typed.push(byte);
 
@@ -91,7 +91,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   return {
     emulatorFor,
     resize: (id, size) => {
-      if (!exited(id)) void attempt(app.rpc("terminal.resize", { id, ...size }));
+      if (!exited(id) && daemonExit() === null) void attempt(app.rpc("terminal.resize", { id, ...size }));
     },
     stop: (node) => {
       if (node.status !== null) {

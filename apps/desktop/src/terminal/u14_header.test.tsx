@@ -1,7 +1,8 @@
 import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import pane from "./styles.css?inline";
-import { event, info, mountPane, node, shell } from "./paneHarness";
+import { mountPane } from "./paneHarness";
+import { event, info, node, terminal } from "../testing/nodes";
 
 const MINUTE = 60_000;
 
@@ -25,7 +26,7 @@ describe("u14 pane header", () => {
   });
 
   it("u14_a_running_terminal_header_is_its_name_alone", async () => {
-    const { connected, container } = await mountPane([shell("dev", { name: "npm run dev" })], [info("t-dev")]);
+    const { connected, container } = await mountPane([terminal("dev", { name: "npm run dev" })], [info("t-dev")]);
 
     connected.rail.select("dev");
 
@@ -36,7 +37,7 @@ describe("u14 pane header", () => {
     ["a known code", { running: false, exit_code: 3 }, "exited 3"],
     ["a signal", { running: false, exit_code: null }, "exited by signal"],
   ])("u14_an_exited_terminal_header_gives_%s", async (_case, exit, wording) => {
-    const { connected, container } = await mountPane([shell("dev", { name: "npm run dev" })], [info("t-dev", exit)]);
+    const { connected, container } = await mountPane([terminal("dev", { name: "npm run dev" })], [info("t-dev", exit)]);
 
     connected.rail.select("dev");
 
@@ -44,7 +45,7 @@ describe("u14 pane header", () => {
   });
 
   it("u14_a_terminal_row_with_no_terminal_id_reads_exited_alone", async () => {
-    const { connected, container } = await mountPane([shell("dev", { name: "npm run dev", terminal_id: null })]);
+    const { connected, container } = await mountPane([terminal("dev", { name: "npm run dev", terminal_id: null })]);
 
     connected.rail.select("dev");
 
@@ -52,7 +53,7 @@ describe("u14 pane header", () => {
   });
 
   it("u14_a_terminal_that_exits_while_selected_changes_its_header", async () => {
-    const { app, connected, container } = await mountPane([shell("dev", { name: "npm run dev" })], [info("t-dev")]);
+    const { app, connected, container } = await mountPane([terminal("dev", { name: "npm run dev" })], [info("t-dev")]);
 
     connected.rail.select("dev");
     app.emit(event({ name: "terminal.exited", data: { id: "t-dev", code: 0 } }));
@@ -97,7 +98,7 @@ describe("u14 pane header", () => {
   });
 
   it("u14_stop_on_a_running_terminal_kills_its_terminal_id", async () => {
-    const { app, connected } = await mountPane([shell("dev")], [info("t-dev")]);
+    const { app, connected } = await mountPane([terminal("dev")], [info("t-dev")]);
 
     connected.rail.select("dev");
     screen.getByText("stop").click();
@@ -106,7 +107,7 @@ describe("u14 pane header", () => {
   });
 
   it("u14_an_exited_terminal_has_no_stop", async () => {
-    const { connected } = await mountPane([shell("dev")], [info("t-dev", { running: false, exit_code: 0 })]);
+    const { connected } = await mountPane([terminal("dev")], [info("t-dev", { running: false, exit_code: 0 })]);
 
     connected.rail.select("dev");
 
@@ -114,7 +115,7 @@ describe("u14 pane header", () => {
   });
 
   it("u14_stop_disappears_when_the_program_exits", async () => {
-    const { app, connected } = await mountPane([shell("dev")], [info("t-dev")]);
+    const { app, connected } = await mountPane([terminal("dev")], [info("t-dev")]);
 
     connected.rail.select("dev");
     app.emit(event({ name: "terminal.exited", data: { id: "t-dev", code: 0 } }));

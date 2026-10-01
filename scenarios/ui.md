@@ -16,7 +16,7 @@ The adapter file is the only door to Tauri, and it offers four things besides ca
 
 Each has a fake and a test here. U2, U10 and U21 use them, so no later PR edits this file.
 
-**U2 first run.** Given no open Project (Screen 11), then the Rail region reads `agents and terminals` / `appear here, one per row,` / `nested by indent`. The centre reads `open a folder to start` and `choose folder…`. The Shelf reads `todos` / `agents add them as they` / `plan; so can you`, then `pads` / `◈ agent notes` / `◇ yours`. When a folder is chosen in the macOS chooser, or the App already has a Project (`project`), then the header reads `roundup   <Project name>` and the three regions show that Project. When `open_project` fails, `✕ <message>` replaces `open a folder to start` and is the only ink in the window. On `daemon-exited`, the centre shows `✕ daemon exited <code>` in ink, or `✕ daemon exited by signal` when the code is `null`.
+**U2 first run.** Given no open Project (Screen 11), then the Rail region reads `agents and terminals` / `appear here, one per row,` / `nested by indent`. The centre reads `open a folder to start` and `choose folder…`. The Shelf reads `todos` / `agents add them as they` / `plan; so can you`, then `pads` / `◈ agent notes` / `◇ yours`. When a folder is chosen in the macOS chooser, or the App already has a Project (`project`), then the header reads `roundup   <Project name>` and the three regions show that Project. When `open_project` fails, `✕ <message>` replaces `open a folder to start` and is the only ink in the window. On `daemon-exited`, see U25.
 
 **U3 Rail state.** Given an open Project, then the webview subscribes before its first `rail.tree` and `terminal.list` and keeps the Rail state current. `rail.changed` refetches the tree. `agent.status` replaces one node's Status. `terminal.exited` marks the node with that `terminal_id` as exited with its code (`null` when a signal ended it). A node with no `terminal_id` counts as exited with no known code. Events that arrive while a `rail.tree` call is in flight are applied after it, never dropped. At most one node is selected (none at start), and a node that leaves the tree is no longer selected. `nameOf(actor)` gives `you` for the user, the Rail name for an Agent's id, and otherwise the id.
 
@@ -49,7 +49,7 @@ The Live line is hidden, shows on hover or selection, and shows unprompted when 
 
 **U12 typing.** Given the selected Terminal runs, when the user types into the pane, then each keystroke's bytes go to `terminal.write {id, data}` (base64), in order. An exited Terminal takes no input.
 
-**U13 size.** Given the pane shows a Terminal, then `terminal.resize {id, cols, rows}` is called with the emulator's fitted size: when that Terminal is first shown, and whenever the window resizes, at most once per animation frame. Opening a Drawer never resizes it. The WebGL renderer is used when the webview grants a WebGL context, else the DOM renderer, with one warning logged.
+**U13 size.** Given the pane shows a Terminal, then `terminal.resize {id, cols, rows}` is called with the emulator's fitted size: when that Terminal is first shown, and whenever the window resizes, at most once per animation frame, until `daemon-exited` (U25). Opening a Drawer never resizes it. The WebGL renderer is used when the webview grants a WebGL context, else the DOM renderer, with one warning logged.
 
 **U14 pane header.** The pane's top line depends on the selected row:
 
@@ -78,7 +78,7 @@ While the program runs, a light `stop` sits at the right: for an Agent it calls 
 
 Double-clicking the title or the body edits it, and leaving the field calls `todo.update` once if the text changed. Opening the Drawer calls `provenance.history {item: "todo:<id>"}` and then `todo.get` once; that `todo.get` is the one read Touch. Background refreshes never call `todo.get`.
 
-## Pads (U18 to U21)
+## Pads (U18 to U21, U29)
 
 **U18 list and ownership.** Given Pads, then the Shelf's `pads` list shows each by name with an owner mark: `◈` when an Agent owns it, `◇` when the user does. The owner mark is not a Glyph; Glyphs mark Kinds. Clicking `◈` calls `pad.setOwner {name, owner: <user>}`, and the mark becomes `◇`. On `pad.changed`, the list refetches `pad.list`, which logs no Touch.
 
@@ -88,9 +88,23 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U21 export.** `export .md` opens the macOS save chooser, through U1's adapter, with `<name>.md` filled in. Choosing a path calls `pad.export {name, path}`, and cancelling calls nothing. An error shows `✕ <message>` in the Drawer.
 
+**U29 long names.** A Pad whose name is longer than its column still keeps one line in the Shelf's `pads` list: its owner mark and name stay together on that line, and the name is cut with `…` and carries its full name as a tooltip. The Drawer's first line does the same, and `export .md`, `close` and the name never overlap.
+
+## Drawer keys (U27 to U28)
+
+**U27 focus returns.** Given a selected Agent or Terminal whose pane had the keyboard, when its Drawer closes (U5), keyboard focus goes back to that Terminal, so typing reaches it without a click. With no Terminal shown, or with focus already in another field, focus is left alone.
+
+**U28 Esc closes.** While a Drawer is open, Esc closes it. Esc inside an inline field or a Pad's text field is that field's own key (U16, U19) and the Drawer stays open; Esc inside a Terminal goes to the program, and a closed Drawer does nothing with it.
+
 ## Stretch
 
 **U22 drag.** Dragging a row shows a drop line whose left end is the depth the row lands at; moving sideways changes the depth. Release calls `rail.move {id, parent, index}`. A `CONFLICT` puts the row back and shows the message as in U9. The other rows make room as the pointer moves (motion.md, "Drag to reorder").
+
+**U25 Daemon gone.** Given an open Project, when `daemon-exited` arrives, then the header reads `roundup   <Project name>   ✕ daemon exited <code>`, or `✕ daemon exited by signal` when the code is `null`, the part after the name in Ink, and that is the only place the exit shows. The Pane sends no `terminal.write` and no `terminal.resize`; `stop`, `+ agent`, `+ terminal` and `+ group` are disabled. The Rail is greyed, not emptied or faded: each row keeps its Glyph, its name and its Live line, and every Live line keeps at least 2:1 contrast against its background, so the user still sees what each Agent was doing when the Daemon went away. Other controls (Todos, Pads, rename, promote) are not disabled: their calls fail with `INTERNAL` (S3) and show as the usual `✕ <message>` line.
+
+## Dev harness
+
+**U26 harness seeds.** Given a seed name (`first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`), when the App mounts on a fake Daemon holding that seed, then the Rail region shows what the seed describes. `first-run` has no open Project (U2). `agents-10` has ten Agents of every Kind. `tree-40` has forty nodes: Groups nested two deep, a Meta-agent with children and Terminals; with eight Todos and four Pads. `daemon-exits` sends `daemon-exited` with code `1` once the App has loaded (U2). `conflict` makes the next call after the App has loaded fail with `CONFLICT` and the one after succeed. Every Rail, Todo and Pad write the App can make changes the fake Daemon and sends the Events the real one sends. `just harness <seed>` serves the same App in a browser, and the page can send Events and failures to it (`docs/development-loop.md`).
 
 ## Deferred past the MVP
 

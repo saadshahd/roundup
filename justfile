@@ -20,6 +20,11 @@ contracts-fresh:
 packages script:
     pnpm -r --if-present {{script}}
 
+# Serves the real App on a fake Daemon holding the named seed (U26) and prints the URL (pass another port when 5199 is taken); no Daemon, Tauri or display needed.
+harness seed="tree-40" port="5199":
+    @echo "http://localhost:{{port}}/harness.html?seed={{seed}}"
+    pnpm --filter desktop exec vite --port {{port}} --strictPort
+
 # Builds rupd and rup, starts the webview dev server, waits until it answers, runs the App on a Project.
 app project:
     #!/usr/bin/env bash
@@ -51,3 +56,8 @@ app-release project:
     cargo build --release -p rupd -p rup
     cargo build --release -p desktop --features custom-protocol
     cargo run --release -p desktop --features custom-protocol -- "$path"
+
+# Rule 7 as a command: measures a fresh Daemon (median of 7 runs), writes target/perf.json, fails on a miss against crates/perf/budgets.json.
+perf *args:
+    cargo build --release -p rupd -p perf
+    ./target/release/perf {{args}}

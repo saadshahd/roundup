@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { DRAWER_EASING, DRAWER_SLIDE_MS } from "./drawer";
 import type { DrawerContent, DrawerState } from "./drawer";
@@ -18,6 +18,16 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
     if (content !== null) setMounted(() => content);
     else if (props.reducedMotion()) setMounted(null);
   });
+
+  // A field or the terminal owns Esc: it cancels the field or reaches the program.
+  const closeOnEsc = (key: KeyboardEvent) => {
+    const editing = key.target instanceof HTMLElement && key.target.matches("input, textarea, [contenteditable]");
+
+    if (key.key === "Escape" && isOpen() && !editing) props.drawer.close();
+  };
+
+  document.addEventListener("keydown", closeOnEsc);
+  onCleanup(() => document.removeEventListener("keydown", closeOnEsc));
 
   return (
     <aside

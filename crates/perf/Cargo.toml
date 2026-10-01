@@ -1,0 +1,18 @@
+[package]
+name = "perf"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+contracts = { path = "../contracts" }
+rpc = { path = "../rpc" }
+serde = { workspace = true }
+serde_json.workspace = true
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process", "rt-multi-thread"] }
+
+[lints]
+workspace = true
