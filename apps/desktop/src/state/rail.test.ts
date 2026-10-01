@@ -122,7 +122,6 @@ describe("u3 Rail state", () => {
     const pending = Promise.withResolvers<RailNode[]>();
     const app = createFakeApp();
     app.handlers["rail.tree"] = () => pending.promise;
-    app.handlers["terminal.list"] = () => [];
     const events = await connectEvents(app);
     const rail = createRailState(app, events);
 
@@ -138,7 +137,6 @@ describe("u3 Rail state", () => {
     let fetches = 0;
     const app = createFakeApp();
     app.handlers["rail.tree"] = () => (++fetches === 1 ? pending.promise : [node("a"), node("b")]);
-    app.handlers["terminal.list"] = () => [];
     const events = await connectEvents(app);
     const rail = createRailState(app, events);
 

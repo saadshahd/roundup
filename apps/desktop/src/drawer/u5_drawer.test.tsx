@@ -108,8 +108,6 @@ describe("u5 Drawer and last touch", () => {
       disconnect() {}
     };
     const app = createFakeApp();
-    app.handlers["rail.tree"] = () => [];
-    app.handlers["terminal.list"] = () => [];
     const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
     render(() => (
       <WorkspaceContext.Provider value={workspace}>
@@ -153,9 +151,6 @@ describe("u5 Drawer and last touch", () => {
 
   it("u5_an_item_drawer_calls_provenance_history_before_its_own_read", async () => {
     const app = createFakeApp();
-    app.handlers["rail.tree"] = () => [];
-    app.handlers["terminal.list"] = () => [];
-    app.handlers["provenance.history"] = () => [];
     app.handlers["todo.get"] = () => TODO;
     const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
 
@@ -173,8 +168,6 @@ describe("u5 Drawer and last touch", () => {
 
   it("u5_the_last_touch_line_is_from_the_history_fetched_before_the_read", async () => {
     const app = createFakeApp();
-    app.handlers["rail.tree"] = () => [];
-    app.handlers["terminal.list"] = () => [];
     const history = [touch(AGENT, "wrote", at(8, 7))];
     app.handlers["provenance.history"] = () => [...history];
     app.handlers["todo.get"] = () => {
