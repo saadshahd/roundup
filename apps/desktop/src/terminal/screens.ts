@@ -15,7 +15,7 @@ export type Screens = {
 };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
-  const { app, events, rail } = connected;
+  const { app, output, rail } = connected;
   const emulators = new Map<string, Emulator>();
   const [failure, setFailure] = createSignal<string | null>(null);
 
@@ -55,12 +55,10 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     return emulator;
   };
 
-  const stopListening = events.subscribe((event) => {
-    if (event.name !== "terminal.output") return;
-
+  const stopListening = output.subscribe((chunk) => {
     // A throw here would stop `connectEvents` from reaching the Rail state for the same Event.
     try {
-      emulatorFor(event.data.id).write(fromBase64(event.data.data));
+      emulatorFor(chunk.id).write(fromBase64(chunk.data));
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
