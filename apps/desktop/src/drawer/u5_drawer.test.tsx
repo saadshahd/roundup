@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
+import styles from "../styles.css?inline";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Actor } from "@contracts/Actor";
 import type { Touch } from "@contracts/Touch";
@@ -197,5 +198,24 @@ describe("u5 Drawer and last touch", () => {
     ));
 
     expect((await screen.findByText(/^last/)).textContent).toBe("last  a wrote 08:07");
+  });
+
+  it("u5_a_second_light_word_in_the_drawer_is_not_positioned_over_close", () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    const { drawer } = drawerSetup();
+    drawer.open(() => (
+      <button type="button" class="word">
+        export .md
+      </button>
+    ));
+
+    const positions = [screen.getByText("close"), screen.getByText("export .md")].map(
+      (word) => getComputedStyle(word).position,
+    );
+
+    sheet.remove();
+
+    expect(positions).toEqual(["absolute", "static"]);
   });
 });
