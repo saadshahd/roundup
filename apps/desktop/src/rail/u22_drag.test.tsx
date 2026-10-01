@@ -212,6 +212,7 @@ describe("u22 drag", () => {
         mounted.app.handlers["rail.move"] = () => {
           throw new RpcError(-32000, "CONFLICT: no");
         };
+
         release(pointerAt(0, 0));
       },
     ],

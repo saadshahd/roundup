@@ -119,6 +119,7 @@ export const createRailDrag = (source: {
   const [state, setState] = createSignal<DragState | null>(null);
 
   let stop: () => void = () => {};
+
   let measuredLayout: string | null = null;
 
   let forgetClick: () => void = () => {};
