@@ -36,6 +36,21 @@ mod tests {
     }
 
     #[test]
+    fn a9_every_filler_word_is_dropped() {
+        let all = "a an the to of in on for and please fix build";
+        assert_eq!(from_prompt(all).as_deref(), Some("fix-build"));
+        for word in [
+            "a", "an", "the", "to", "of", "in", "on", "for", "and", "please",
+        ] {
+            assert_eq!(
+                from_prompt(&format!("{word} fix {word}")).as_deref(),
+                Some("fix"),
+                "{word}"
+            );
+        }
+    }
+
+    #[test]
     fn a9_a_long_name_is_cut_at_32_characters_without_a_trailing_dash() {
         let name = from_prompt("internationalisation-free ABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
         assert_eq!(name, "internationalisation-free-abcdef");

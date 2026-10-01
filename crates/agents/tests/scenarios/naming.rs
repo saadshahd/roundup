@@ -3,7 +3,7 @@
 use contracts::agent::RailNode;
 use serde_json::json;
 
-use crate::common::Fixture;
+use crate::common::{Fixture, hold_starts, release};
 
 impl Fixture {
     async fn submit(&self, id: &str, prompt: &str) {
@@ -83,4 +83,25 @@ async fn a9_a_meta_agent_keeps_its_groups_name() {
     f.submit(&team, "fix the build").await;
 
     assert_eq!(f.name_of(&team).await, "team");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a9_a_rename_while_the_agent_is_still_starting_wins_over_the_first_prompt() {
+    let f = std::sync::Arc::new(Fixture::running("sleep 30"));
+    let config = hold_starts(&f);
+    let spawning = {
+        let f = std::sync::Arc::clone(&f);
+        tokio::spawn(async move { f.spawn(None, None).await })
+    };
+    let tree = f.until(|t| !t.is_empty()).await;
+    let id = tree[0].id.clone();
+    f.call("rail.rename", json!({"id": id, "name": "mine"}))
+        .await
+        .unwrap();
+    release(config).await;
+    spawning.await.unwrap().unwrap();
+
+    f.submit(&id, "fix the build").await;
+
+    assert_eq!(f.name_of(&id).await, "mine");
 }

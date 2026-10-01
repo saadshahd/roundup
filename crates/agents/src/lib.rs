@@ -75,7 +75,13 @@ impl Shared {
 
     fn mark_starting(&self, id: &str) {
         let since = (self.clock)();
-        self.runs().insert(id.to_owned(), Slot::Starting { since });
+        self.runs().insert(
+            id.to_owned(),
+            Slot::Starting {
+                since,
+                named: false,
+            },
+        );
     }
 
     /// An Agent, or a Meta-agent, has a Status: its live one; `working` while it starts; else
@@ -85,7 +91,7 @@ impl Shared {
         if node.kind == NodeKind::Agent || node.meta {
             let live = match self.runs().get(&node.id) {
                 Some(Slot::Running(run)) => run.adapter.status().cloned(),
-                Some(Slot::Starting { since }) => Some(Status {
+                Some(Slot::Starting { since, .. }) => Some(Status {
                     kind: Kind::Working,
                     label: "starting".into(),
                     since: *since,
@@ -167,11 +173,21 @@ enum Slot {
     /// Its Terminal is starting; `since` is when, on `clock`, it was marked.
     Starting {
         since: i64,
+        /// A `rail.rename` came while it started; its first prompt must not undo it.
+        named: bool,
     },
     Running(Run),
 }
 
 impl Slot {
+    /// The node's name is final: no prompt renames it.
+    fn settle_name(&mut self) {
+        match self {
+            Self::Running(run) => run.named = true,
+            Self::Starting { named, .. } => *named = true,
+        }
+    }
+
     fn run_mut(&mut self) -> Option<&mut Run> {
         match self {
             Self::Running(run) => Some(run),
@@ -407,10 +423,14 @@ impl Agents {
             }
         };
         let clock = Arc::clone(&self.shared.clock);
+        let named = matches!(
+            self.shared.runs().get(id),
+            Some(Slot::Starting { named: true, .. })
+        );
         let run = Run {
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
-            named: false,
+            named,
             terminal_id: spawned.id.clone(),
         };
         self.shared.runs().insert(id.to_owned(), Slot::Running(run));
@@ -539,8 +559,8 @@ impl Module for Agents {
                 let node = {
                     let mut rail = shared.rail();
                     let node = rail.rename(&id, &name)?;
-                    if let Some(run) = shared.runs().get_mut(&id).and_then(Slot::run_mut) {
-                        run.named = true;
+                    if let Some(slot) = shared.runs().get_mut(&id) {
+                        slot.settle_name();
                     }
                     node
                 };

@@ -5,7 +5,7 @@ use contracts::agent::{NodeKind, RailNode};
 use rpc::code;
 use serde_json::{Value, json};
 
-use crate::common::{Fixture, status_of, until_file};
+use crate::common::{Fixture, hold_starts, release, status_of, until_file};
 
 impl Fixture {
     async fn promote(&self, id: &str) -> Result<RailNode, rpc::RpcError> {
@@ -184,26 +184,6 @@ async fn a7_a_stopped_agent_is_done_not_an_error() {
     // The kill's exit must not turn it into an error afterwards.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     assert_eq!(status_of(&f.tree().await, &agent.id).kind, Kind::Done);
-}
-
-/// Hold every start of an Agent at its first read of Claude's config, until the returned path
-/// is written to.
-fn hold_starts(f: &Fixture) -> std::path::PathBuf {
-    let config = f.dir.path().join("claude.json");
-    let _ = std::fs::remove_file(&config);
-    let made = std::process::Command::new("mkfifo")
-        .arg(&config)
-        .status()
-        .unwrap();
-    assert!(made.success());
-    config
-}
-
-async fn release(config: std::path::PathBuf) {
-    tokio::task::spawn_blocking(move || std::fs::write(config, "{}"))
-        .await
-        .unwrap()
-        .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

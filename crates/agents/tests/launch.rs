@@ -584,18 +584,24 @@ fn a4_the_home_folder_is_refused_and_never_trusted() {
 }
 
 #[test]
-fn a4_a_symlink_planted_where_the_settings_go_is_replaced_not_written_through() {
+fn a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through() {
     let s = setup();
-    let victim = s.root.path().join("zshrc");
-    std::fs::write(&victim, "export KEEP=1\n").unwrap();
     let agents = s.dir.join("agents");
     std::fs::create_dir(&agents).unwrap();
-    let planted = agents.join("1.settings.json");
-    std::os::unix::fs::symlink(&victim, &planted).unwrap();
+    for name in ["1.settings.json", "1.mcp.json"] {
+        let victim = s.root.path().join(format!("victim-{name}"));
+        std::fs::write(&victim, "export KEEP=1\n").unwrap();
+        std::os::unix::fs::symlink(&victim, agents.join(name)).unwrap();
+    }
 
     s.prepare("1").unwrap();
 
-    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "export KEEP=1\n");
-    assert!(!planted.symlink_metadata().unwrap().file_type().is_symlink());
-    assert!(read(&planted)["hooks"]["Stop"].is_array());
+    for name in ["1.settings.json", "1.mcp.json"] {
+        let victim = s.root.path().join(format!("victim-{name}"));
+        let planted = agents.join(name);
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "export KEEP=1\n");
+        assert!(!planted.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+    assert!(read(&agents.join("1.settings.json"))["hooks"]["Stop"].is_array());
+    assert!(read(&agents.join("1.mcp.json"))["mcpServers"]["roundup"].is_object());
 }
