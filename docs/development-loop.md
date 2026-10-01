@@ -60,12 +60,12 @@ For QA and Reviewers who need the real App without a Daemon, Tauri or a display.
 The page exposes `window.__fake`, so `agent-browser eval` can drive it:
 
 - `__fake.setStatus("agent-3", "needs-you", "asks: keep v1?")` sends `agent.status`.
-- `__fake.writeOutput("t-agent-3", "hello\r\n")` sends `terminal.output` to that Terminal.
+- `__fake.writeOutput("t-agent-3", "hello\r\n")` sends `terminal.output` to that Terminal. Nothing shows until that Agent is selected in the Rail, because the centre pane shows the selected node's Terminal.
 - `__fake.emit({actor: {kind: "user", id: "you", parent: null}, name: "rail.changed"})` sends any Event.
 - `__fake.failNext(-32003, "name already taken")` makes the next call of any method reject.
 - `__fake.app.exitDaemon({code: 1})` sends `daemon-exited`; `__fake.app.calls` lists every call made.
 
-Writes the App makes (spawn, create Group, rename, create Todo) change the fake Daemon and refresh the Rail. It is a fake: it checks no Route, Block or Provenance, and it says nothing about macOS rendering or timing. Read the DOM, never the numbers.
+Every write the App can make (spawn, create Group, rename, promote, move, stop, kill, and the Todo and Pad writes) changes the fake Daemon and sends the Events the real one sends, so the Rail and Shelf refresh. It is a fake: it checks no Route, Block or Provenance, and it says nothing about macOS rendering or timing. Read the DOM, never the numbers.
 
 ## Rules and what enforces them today
 

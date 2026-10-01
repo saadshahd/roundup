@@ -1,0 +1,49 @@
+import type { Actor } from "@contracts/Actor";
+import type { Event as DaemonEvent } from "@contracts/Event";
+import type { EventData } from "@contracts/EventData";
+import type { Kind } from "@contracts/Kind";
+import type { RailNode } from "@contracts/agent/RailNode";
+import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
+
+export const NOW = 1_700_000_000_000;
+
+export const MINUTE = 60_000;
+
+export const USER: Actor = { kind: "user", id: "you", parent: null };
+
+export const event = (data: EventData): DaemonEvent => ({ actor: USER, ...data });
+
+/** An Agent that started working at time 0; the other builders refine it. */
+export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
+  id,
+  kind: "agent",
+  name: id,
+  parent: null,
+  order: 0,
+  status: { kind: "working", label: "starting", since: 0 },
+  meta: false,
+  terminal_id: `t-${id}`,
+  ...over,
+});
+
+export const agent = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
+  node(id, { status: { kind, label, since: NOW }, ...over });
+
+export const group = (id: string, over: Partial<RailNode> = {}): RailNode =>
+  node(id, { kind: "group", status: null, terminal_id: null, ...over });
+
+/** A Meta-agent as the Daemon sends it: a Group with a live Agent sitting at it. */
+export const metaAgent = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
+  group(id, { meta: true, status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
+
+export const terminal = (id: string, over: Partial<RailNode> = {}): RailNode =>
+  node(id, { kind: "terminal", status: null, ...over });
+
+export const info = (id: string, over: Partial<TerminalInfo> = {}): TerminalInfo => ({
+  id,
+  cwd: "/p",
+  title: null,
+  running: true,
+  exit_code: null,
+  ...over,
+});

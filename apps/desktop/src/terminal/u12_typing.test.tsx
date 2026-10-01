@@ -1,6 +1,7 @@
 import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callsTo, event, info, mountPane, node, shell } from "./paneHarness";
+import { callsTo, mountPane } from "./paneHarness";
+import { event, info, node, terminal } from "../testing/nodes";
 
 const bytes = (...values: number[]) => Uint8Array.from(values);
 
@@ -8,7 +9,7 @@ afterEach(cleanup);
 
 describe("u12 typing", () => {
   it("u12_each_keystroke_goes_to_terminal_write_as_base64_in_order", async () => {
-    const { app, connected, emulators } = await mountPane([shell("a")], [info("t-a")]);
+    const { app, connected, emulators } = await mountPane([terminal("a")], [info("t-a")]);
 
     connected.rail.select("a");
     emulators.get("t-a")?.type(bytes(108));
@@ -23,7 +24,7 @@ describe("u12 typing", () => {
   });
 
   it("u12_a_write_waits_for_the_one_typed_before_it", async () => {
-    const { app, connected, emulators } = await mountPane([shell("a")], [info("t-a")]);
+    const { app, connected, emulators } = await mountPane([terminal("a")], [info("t-a")]);
     const releases: (() => void)[] = [];
 
     connected.rail.select("a");
@@ -38,7 +39,7 @@ describe("u12 typing", () => {
   });
 
   it("u12_what_is_typed_while_a_write_is_in_flight_goes_as_one_write_in_order", async () => {
-    const { app, connected, emulators } = await mountPane([shell("a")], [info("t-a")]);
+    const { app, connected, emulators } = await mountPane([terminal("a")], [info("t-a")]);
     const releases: (() => void)[] = [];
 
     app.handlers["terminal.write"] = () => new Promise<null>((resolve) => releases.push(() => resolve(null)));
@@ -58,7 +59,7 @@ describe("u12 typing", () => {
 
   it("u12_an_exited_terminal_takes_no_input", async () => {
     const { app, connected, emulators } = await mountPane(
-      [shell("a"), shell("b")],
+      [terminal("a"), terminal("b")],
       [info("t-a", { running: false, exit_code: 0 }), info("t-b")],
     );
 
@@ -71,7 +72,7 @@ describe("u12 typing", () => {
   });
 
   it("u12_a_terminal_that_exits_while_shown_stops_taking_input", async () => {
-    const { app, connected, emulators } = await mountPane([shell("a"), shell("b")], [info("t-a"), info("t-b")]);
+    const { app, connected, emulators } = await mountPane([terminal("a"), terminal("b")], [info("t-a"), info("t-b")]);
 
     connected.rail.select("a");
     app.emit(event({ name: "terminal.exited", data: { id: "t-a", code: 1 } }));

@@ -7,8 +7,8 @@ import {
   openShelf,
   padOf,
   RpcError,
-  YOU,
 } from "./padsFixture";
+import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -16,7 +16,7 @@ describe("u18 list and ownership", () => {
   it("u18_the_pads_list_shows_each_pad_by_name", async () => {
     await openShelf([
       padOf("auth-notes", AGENT),
-      padOf("release-checklist", YOU),
+      padOf("release-checklist", USER),
     ]);
 
     expect(
@@ -38,7 +38,7 @@ describe("u18 list and ownership", () => {
   it("u18_an_agents_pad_carries_the_mark_◈_and_the_users_pad_the_mark_◇", async () => {
     await openShelf([
       padOf("auth-notes", AGENT),
-      padOf("release-checklist", YOU),
+      padOf("release-checklist", USER),
     ]);
     await screen.findByText("auth-notes");
 
@@ -62,13 +62,13 @@ describe("u18 list and ownership", () => {
     await screen.findByText("◇");
 
     expect(app.calls.filter((call) => call.method === "pad.setOwner")).toEqual([
-      { method: "pad.setOwner", params: { name: "auth-notes", owner: YOU } },
+      { method: "pad.setOwner", params: { name: "auth-notes", owner: USER } },
     ]);
     expect(screen.queryByText("◈")).toBeNull();
   });
 
   it("u18_the_mark_◇_is_not_clickable", async () => {
-    const { calls } = await openShelf([padOf("release-checklist", YOU)]);
+    const { calls } = await openShelf([padOf("release-checklist", USER)]);
 
     fireEvent.click(await screen.findByText("◇"));
 

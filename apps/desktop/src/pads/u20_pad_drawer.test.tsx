@@ -6,8 +6,8 @@ import {
   openShelf,
   padOf,
   RpcError,
-  YOU,
 } from "./padsFixture";
+import { USER } from "../testing/nodes";
 import type { Pad } from "@contracts/pad/Pad";
 import styles from "../styles.css?inline";
 
@@ -103,7 +103,7 @@ describe("u20 open and edit", () => {
   });
 
   it("u20_a_pad_the_user_owns_has_editable_text", async () => {
-    await openShelf([padOf("release-checklist", YOU, "x")]);
+    await openShelf([padOf("release-checklist", USER, "x")]);
 
     const field = await openPad("release-checklist");
 
@@ -114,7 +114,7 @@ describe("u20 open and edit", () => {
   });
 
   it("u20_leaving_the_field_calls_pad_write_once_when_the_text_changed", async () => {
-    const { app } = await openShelf([padOf("release-checklist", YOU, "old")]);
+    const { app } = await openShelf([padOf("release-checklist", USER, "old")]);
     const field = await openPad("release-checklist");
 
     edit(field, "new");
@@ -130,7 +130,7 @@ describe("u20 open and edit", () => {
 
   it("u20_leaving_the_field_with_unchanged_text_calls_nothing", async () => {
     const { calls } = await openShelf([
-      padOf("release-checklist", YOU, "same"),
+      padOf("release-checklist", USER, "same"),
     ]);
 
     const field = await openPad("release-checklist");
@@ -228,13 +228,13 @@ describe("u20 open and edit", () => {
 
   it("u20_pad_changed_while_the_user_is_editing_leaves_the_text_alone", async () => {
     const { app, state, calls } = await openShelf([
-      padOf("release-checklist", YOU, "mine"),
+      padOf("release-checklist", USER, "mine"),
     ]);
 
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "mine, typing" } });
-    state.pads = [padOf("release-checklist", YOU, "theirs")];
+    state.pads = [padOf("release-checklist", USER, "theirs")];
     const before = calls().length;
 
     app.emit({
@@ -259,20 +259,20 @@ describe("u20 open and edit", () => {
   });
 
   it("u20_a_write_reply_never_overwrites_text_typed_after_a_quick_refocus", async () => {
-    const { app } = await openShelf([padOf("release-checklist", YOU, "old")]);
+    const { app } = await openShelf([padOf("release-checklist", USER, "old")]);
     const reply = deferred<Pad>();
     const writes: string[] = [];
     app.handlers["pad.write"] = ({ text }) => {
       writes.push(text);
 
-      return writes.length === 1 ? reply.promise : padOf("release-checklist", YOU, text);
+      return writes.length === 1 ? reply.promise : padOf("release-checklist", USER, text);
     };
 
     const field = await openPad("release-checklist");
     edit(field, "new");
 
     fireEvent.input(field, { target: { value: "newer" } });
-    reply.resolve(padOf("release-checklist", YOU, "new"));
+    reply.resolve(padOf("release-checklist", USER, "new"));
     await reply.promise;
     await new Promise((done) => setTimeout(done, 0));
     expect(field.value).toBe("newer");
@@ -282,7 +282,7 @@ describe("u20 open and edit", () => {
   });
 
   it("u20_clicking_back_in_while_a_save_is_in_flight_never_loses_an_agents_append", async () => {
-    const { app, state } = await openShelf([padOf("release-checklist", YOU, "old")]);
+    const { app, state } = await openShelf([padOf("release-checklist", USER, "old")]);
     const reply = deferred<Pad>();
     const writes: string[] = [];
     app.handlers["pad.write"] = ({ text }) => {
@@ -294,10 +294,10 @@ describe("u20 open and edit", () => {
     const field = await openPad("release-checklist");
     edit(field, "new");
     fireEvent.focus(field);
-    reply.resolve(padOf("release-checklist", YOU, "new"));
+    reply.resolve(padOf("release-checklist", USER, "new"));
     await reply.promise;
     await new Promise((done) => setTimeout(done, 0));
-    state.pads = [padOf("release-checklist", YOU, "new plus agent")];
+    state.pads = [padOf("release-checklist", USER, "new plus agent")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
     await waitFor(() => expect(field.value).toBe("new plus agent"));
 
@@ -308,10 +308,10 @@ describe("u20 open and edit", () => {
   });
 
   it("u20_typing_back_to_the_original_text_never_sends_it_over_an_agents_append", async () => {
-    const { app, state } = await openShelf([padOf("release-checklist", YOU, "mine")]);
+    const { app, state } = await openShelf([padOf("release-checklist", USER, "mine")]);
     const field = await openPad("release-checklist");
     fireEvent.input(field, { target: { value: "mine, typing" } });
-    state.pads = [padOf("release-checklist", YOU, "mine plus agent")];
+    state.pads = [padOf("release-checklist", USER, "mine plus agent")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
     await waitFor(() => expect(app.calls.filter((call) => call.method === "pad.list").length).toBeGreaterThan(1));
 
@@ -326,7 +326,7 @@ describe("u20 open and edit", () => {
     const { app, state } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
     const field = await openPad("auth-notes");
     fireEvent.focus(field);
-    state.pads = [padOf("auth-notes", YOU, "v1")];
+    state.pads = [padOf("auth-notes", USER, "v1")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
     await waitFor(() => expect(field.readOnly).toBe(false));
 
@@ -341,13 +341,13 @@ describe("u20 open and edit", () => {
 
   it("u20_a_change_skipped_while_editing_is_caught_up_after_the_write_settles", async () => {
     const { app, state, calls } = await openShelf([
-      padOf("release-checklist", YOU, "mine"),
+      padOf("release-checklist", USER, "mine"),
     ]);
 
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "mine, edited" } });
-    state.pads = [padOf("release-checklist", YOU, "mine\nagent line")];
+    state.pads = [padOf("release-checklist", USER, "mine\nagent line")];
     app.emit({
       actor: AGENT,
       name: "pad.changed",
@@ -369,12 +369,12 @@ describe("u20 open and edit", () => {
 
   it("u20_a_change_skipped_while_editing_refreshes_on_blur_when_nothing_was_typed", async () => {
     const { app, state } = await openShelf([
-      padOf("release-checklist", YOU, "mine"),
+      padOf("release-checklist", USER, "mine"),
     ]);
 
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
-    state.pads = [padOf("release-checklist", YOU, "mine plus")];
+    state.pads = [padOf("release-checklist", USER, "mine plus")];
     app.emit({
       actor: AGENT,
       name: "pad.changed",
@@ -394,12 +394,12 @@ describe("u20 open and edit", () => {
 
   it("u20_clicking_in_and_out_without_typing_never_sends_the_text_the_user_was_shown", async () => {
     const { app, state } = await openShelf([
-      padOf("release-checklist", YOU, "mine"),
+      padOf("release-checklist", USER, "mine"),
     ]);
 
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
-    state.pads = [padOf("release-checklist", YOU, "mine plus agent")];
+    state.pads = [padOf("release-checklist", USER, "mine plus agent")];
     app.emit({
       actor: AGENT,
       name: "pad.changed",
@@ -534,7 +534,7 @@ describe("u20 open and edit", () => {
 
   it("u20_a_write_that_fails_after_the_drawer_closed_shows_its_message_on_the_shelf", async () => {
     const { app, connected } = await openShelf([
-      padOf("release-checklist", YOU, "old"),
+      padOf("release-checklist", USER, "old"),
     ]);
 
     const reply = deferred<Pad>();

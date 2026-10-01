@@ -2,7 +2,8 @@ import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
-import { agent, callsTo, event, glyphOf, group, metaAgent, mountRail, rowNames, rowOf, terminal } from "./railFixture";
+import { callsTo, glyphOf, mountRail, rowNames, rowOf } from "./railFixture";
+import { agent, event, group, metaAgent, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 

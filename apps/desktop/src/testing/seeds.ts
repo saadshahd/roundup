@@ -1,22 +1,19 @@
-import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { EventData } from "@contracts/EventData";
 import type { Kind } from "@contracts/Kind";
-import type { NodeKind } from "@contracts/agent/NodeKind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { Pad } from "@contracts/pad/Pad";
-import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import type { Todo } from "@contracts/todo/Todo";
 import { RpcError } from "../app/seam";
 import type { Project } from "../app/seam";
 import { createFakeApp } from "./fakeApp";
 import type { FakeApp } from "./fakeApp";
+import { agent, group, MINUTE, metaAgent, terminal, USER } from "./nodes";
+import { padHandlers, todoHandlers } from "./stores";
 
 const CONFLICT = -32003;
 
-const MINUTE = 60_000;
-
-const USER: Actor = { kind: "user", id: "you", parent: null };
+const NOT_FOUND = -32001;
 
 const KINDS: Kind[] = ["error", "needs-you", "blocked", "working", "idle", "done"];
 
@@ -40,17 +37,6 @@ export type Controls = {
   failNext(code: number, message: string): void;
 };
 
-const node = (id: string, kind: NodeKind, name: string, parent: string | null, order: number, status: RailNode["status"], meta = false): RailNode => ({
-  id,
-  kind,
-  name,
-  parent,
-  order,
-  status,
-  meta,
-  terminal_id: kind === "group" && !meta ? null : `t-${id}`,
-});
-
 const statusAt = (now: number, kind: Kind, label: string, minutesAgo: number) => ({
   kind,
   label,
@@ -60,21 +46,44 @@ const statusAt = (now: number, kind: Kind, label: string, minutesAgo: number) =>
 const cyclingAgents = (now: number, count: number, parentOf: (index: number) => string | null): RailNode[] =>
   Array.from({ length: count }, (_, index) => {
     const kind = KINDS[index % KINDS.length] ?? "idle";
+    const name = `agent-${index + 1}`;
 
-    return node(`agent-${index + 1}`, "agent", `agent-${index + 1}`, parentOf(index), index, statusAt(now, kind, `${kind} label ${index + 1}`, index * 3 + 1));
+    return agent(name, kind, `${kind} label ${index + 1}`, {
+      parent: parentOf(index),
+      order: index,
+      status: statusAt(now, kind, `${kind} label ${index + 1}`, index * 3 + 1),
+    });
   });
 
 /** Groups nested two deep, a Meta-agent with children, long names and Terminals; 40 nodes in all. */
 const nestedTree = (now: number): RailNode[] => [
-  node("backend", "group", "backend", null, 0, null),
-  node("auth", "group", "auth-refactor", "backend", 0, null),
-  node("payments", "group", "payments meta-agent with a very long name that overflows the rail", null, 1, statusAt(now, "working", "coordinating 3 children", 42), true),
-  node("migrate", "agent", "migrate-db", "backend", 1, statusAt(now, "needs-you", "asks: keep v1 routes? and a long label that should truncate in the live line", 4)),
-  node("tokens", "agent", "token-rotation", "auth", 0, statusAt(now, "working", "editing src/auth/token.rs", 12)),
-  node("sessions", "agent", "login-store", "auth", 1, statusAt(now, "error", "tests failed: 3", 1)),
-  node("docs", "agent", "docs", "auth", 2, statusAt(now, "done", "finished", 30)),
-  node("shell", "terminal", "zsh", "backend", 2, null),
-  node("loose-shell", "terminal", "zsh", null, 2, null),
+  group("backend", { name: "backend" }),
+  group("auth", { name: "auth-refactor", parent: "backend" }),
+  metaAgent("payments", "working", "coordinating 3 children", {
+    name: "payments meta-agent with a very long name that overflows the rail",
+    order: 1,
+    status: statusAt(now, "working", "coordinating 3 children", 42),
+  }),
+  agent("migrate", "needs-you", "asks: keep v1 routes? and a long label that should truncate in the live line", {
+    name: "migrate-db",
+    parent: "backend",
+    order: 1,
+    status: statusAt(now, "needs-you", "asks: keep v1 routes? and a long label that should truncate in the live line", 4),
+  }),
+  agent("tokens", "working", "editing src/auth/token.rs", {
+    name: "token-rotation",
+    parent: "auth",
+    status: statusAt(now, "working", "editing src/auth/token.rs", 12),
+  }),
+  agent("logins", "error", "tests failed: 3", {
+    name: "login-store",
+    parent: "auth",
+    order: 1,
+    status: statusAt(now, "error", "tests failed: 3", 1),
+  }),
+  agent("docs", "done", "finished", { parent: "auth", order: 2, status: statusAt(now, "done", "finished", 30) }),
+  terminal("shell", { name: "zsh", parent: "backend", order: 2 }),
+  terminal("loose-shell", { name: "zsh", order: 2 }),
   ...cyclingAgents(now, 31, (index) => (index % 3 === 0 ? "payments" : null)),
 ];
 
@@ -103,68 +112,84 @@ const exitCodeOf = (target: RailNode): number | null => {
   return target.status?.kind === "done" ? 0 : null;
 };
 
-const terminalOf = (target: RailNode): TerminalInfo => {
-  const exitCode = exitCodeOf(target);
-
-  return { id: `t-${target.id}`, cwd: PROJECT.path, title: null, running: exitCode === null, exit_code: exitCode };
-};
-
-const failMissing = (what: string): never => {
-  throw new RpcError(-32001, `no ${what}`);
-};
-
-/** Installs a Daemon that keeps the Rail, Todos and Pads in memory and tells the App when a write changes them. */
+/** Installs a Daemon that keeps the Rail, Todos and Pads in memory and sends the Events a real one sends after the same write. */
 const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: boolean): Controls => {
   const nodes = structuredClone(tree);
-  const todos = withShelf ? todosAt(now) : [];
-  const pads = withShelf ? padsAt(now) : [];
-  const emit = (event: DaemonEvent) => app.emit(event);
-  const send = (data: EventData) => emit({ actor: USER, ...data });
+  const exits = new Map<string, number | null>();
 
-  const changed = <T>(value: T): T => {
+  for (const other of nodes) {
+    if (other.terminal_id && exitCodeOf(other) !== null) exits.set(other.terminal_id, exitCodeOf(other));
+  }
+
+  const send = (data: EventData) => app.emit({ actor: USER, ...data });
+
+  const changed = <T,>(value: T): T => {
     queueMicrotask(() => send({ name: "rail.changed" }));
 
     return value;
   };
 
-  const append = (kind: NodeKind, name: string, parent: string | null, status: RailNode["status"]): RailNode => {
-    const added = node(`n${nodes.length + 1}`, kind, name, parent, nodes.filter((other) => other.parent === parent).length, status);
+  const find = (id: string): RailNode => {
+    const found = nodes.find((other) => other.id === id);
+
+    if (!found) throw new RpcError(NOT_FOUND, `not found: node ${id}`);
+
+    return found;
+  };
+
+  const append = (parent: string | null, made: (id: string, order: number) => RailNode): RailNode => {
+    const added = made(`n${nodes.length + 1}`, nodes.filter((other) => other.parent === parent).length);
     nodes.push(added);
 
     return changed(added);
   };
 
-  const find = (id: string): RailNode => {
-    const found = nodes.find((other) => other.id === id);
-
-    if (!found) throw new RpcError(-32001, `no node ${id}`);
-
-    return found;
+  const exit = (terminalId: string) => {
+    exits.set(terminalId, null);
+    send({ name: "terminal.exited", data: { id: terminalId, code: null } });
   };
 
+  Object.assign(
+    app.handlers,
+    todoHandlers({ todos: withShelf ? todosAt(now) : [] }, send),
+    padHandlers({ pads: withShelf ? padsAt(now) : [], history: [{ actor: USER, verb: "wrote", item: "todo:1", at: now - 5 * MINUTE }] }, send),
+  );
   app.handlers["rail.tree"] = () => structuredClone(nodes);
-  app.handlers["terminal.list"] = () => nodes.filter((other) => other.terminal_id).map(terminalOf);
-  app.handlers["todo.list"] = () => structuredClone(todos);
-  app.handlers["todo.get"] = ({ id }) => structuredClone(todos.find((todo) => todo.id === id) ?? failMissing(`todo ${id}`));
-  app.handlers["todo.create"] = ({ title }) => {
-    const created: Todo = { id: todos.length + 1, title, body: "", done: false, blockers: [], blocked: false, created_at: Date.now() };
-    todos.push(created);
-    send({ name: "todo.created", data: created });
+  app.handlers["terminal.list"] = () =>
+    nodes.flatMap((other) =>
+      other.terminal_id
+        ? [{ id: other.terminal_id, cwd: PROJECT.path, title: null, running: !exits.has(other.terminal_id), exit_code: exits.get(other.terminal_id) ?? null }]
+        : [],
+    );
+  app.handlers["agent.spawn"] = ({ parent }) =>
+    append(parent, (id, order) => agent(id, "working", "starting", { name: "agent", parent, order, status: statusAt(Date.now(), "working", "starting", 0) }));
+  app.handlers["rail.spawnTerminal"] = ({ parent }) => append(parent, (id, order) => terminal(id, { name: "zsh", parent, order }));
+  app.handlers["rail.createGroup"] = ({ name, parent }) => append(parent, (id, order) => group(id, { name, parent, order }));
+  app.handlers["rail.rename"] = ({ id, name }) => changed(Object.assign(find(id), { name }));
+  app.handlers["rail.promote"] = ({ id }) =>
+    changed(Object.assign(find(id), { meta: true, terminal_id: `t-${id}`, status: statusAt(Date.now(), "working", "starting", 0) }));
+  app.handlers["rail.move"] = ({ id, parent, index }) => {
+    const moved = find(id);
+    const siblings = nodes.filter((other) => other.parent === parent && other.id !== id).sort((left, right) => left.order - right.order);
+    siblings.splice(index, 0, Object.assign(moved, { parent }));
+    siblings.forEach((sibling, order) => Object.assign(sibling, { order }));
 
-    return created;
+    return changed(null);
   };
 
-  app.handlers["pad.list"] = () => structuredClone(pads);
-  app.handlers["pad.read"] = ({ name }) => structuredClone(pads.find((pad) => pad.name === name) ?? failMissing(`pad ${name}`));
-  app.handlers["provenance.history"] = () => [{ actor: USER, verb: "wrote", item: "todo:1", at: now - 5 * MINUTE }];
-  app.handlers["agent.spawn"] = ({ parent }) => append("agent", "agent", parent, statusAt(Date.now(), "working", "starting", 0));
-  app.handlers["rail.spawnTerminal"] = ({ parent }) => append("terminal", "zsh", parent, null);
-  app.handlers["rail.createGroup"] = ({ name, parent }) => append("group", name, parent, null);
-  app.handlers["rail.rename"] = ({ id, name }) => changed(Object.assign(find(id), { name }));
   app.handlers["terminal.resize"] = () => null;
   app.handlers["terminal.write"] = () => null;
-  app.handlers["terminal.kill"] = () => null;
-  app.handlers["agent.stop"] = () => null;
+  app.handlers["terminal.kill"] = (terminalId) => {
+    exit(terminalId.id);
+
+    return null;
+  };
+
+  app.handlers["agent.stop"] = ({ id }) => {
+    exit(find(id).terminal_id ?? `t-${id}`);
+
+    return null;
+  };
 
   let failure: RpcError | null = null;
   const rpc = app.rpc;
@@ -180,7 +205,7 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
 
   return {
     app,
-    emit,
+    emit: (event) => app.emit(event),
     setStatus: (id, kind, label) => {
       const status = statusAt(Date.now(), kind, label, 0);
       find(id).status = status;
