@@ -8,8 +8,10 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use contracts::pad::{AppendParams, CreateParams, Pad, PadName, WriteParams};
-use contracts::{EventData, Verb};
+use contracts::pad::{
+    AppendParams, CreateParams, ExportParams, Pad, PadName, SetOwnerParams, WriteParams,
+};
+use contracts::{ActorKind, EventData, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
 
@@ -83,6 +85,43 @@ impl Pads {
         reply(&Pad { text, ..pad })
     }
 
+    fn set_owner(&self, ctx: &Ctx, p: SetOwnerParams) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let pad = get(&store, &p.name)?;
+        require_owner_or_user(ctx, &pad, "hand over")?;
+        store
+            .set_owner(&pad.name, &p.owner, now_ms())
+            .map_err(RpcError::internal)?;
+        wrote(ctx, &pad.name)?;
+        reply(&Pad {
+            owner: p.owner,
+            ..pad
+        })
+    }
+
+    fn delete(&self, ctx: &Ctx, p: PadName) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let pad = get(&store, &p.name)?;
+        require_owner_or_user(ctx, &pad, "delete")?;
+        store.delete(&pad.name).map_err(RpcError::internal)?;
+        wrote(ctx, &pad.name)?;
+        Ok(Value::Null)
+    }
+
+    fn export(&self, ctx: &Ctx, p: ExportParams) -> Result<Value, RpcError> {
+        let store = self.store()?;
+        let pad = get(&store, &p.name)?;
+        std::fs::write(&p.path, &pad.text).map_err(|err| {
+            let code = match err.kind() {
+                std::io::ErrorKind::NotFound => rpc::code::INVALID_PARAMS,
+                _ => rpc::code::INTERNAL,
+            };
+            RpcError::new(code, format!("cannot export to {}: {err}", p.path))
+        })?;
+        ctx.touch(Verb::Read, &item(&pad.name))?;
+        Ok(Value::Null)
+    }
+
     fn store(&self) -> Result<std::sync::MutexGuard<'_, Store>, RpcError> {
         self.store
             .lock()
@@ -103,9 +142,22 @@ impl Module for Pads {
             "pad.list" => self.list(),
             "pad.write" => self.write(ctx, params(value)?),
             "pad.append" => self.append(ctx, params(value)?),
+            "pad.setOwner" => self.set_owner(ctx, params(value)?),
+            "pad.delete" => self.delete(ctx, params(value)?),
+            "pad.export" => self.export(ctx, params(value)?),
             _ => Err(RpcError::method_not_found(method)),
         }
     }
+}
+
+fn require_owner_or_user(ctx: &Ctx, pad: &Pad, action: &str) -> Result<(), RpcError> {
+    if ctx.actor.kind == ActorKind::User || ctx.actor == pad.owner {
+        return Ok(());
+    }
+    Err(RpcError::forbidden(format!(
+        "only the user or {} may {action} pad {}",
+        pad.owner.id, pad.name
+    )))
 }
 
 /// Validates the name, then looks the Pad up.

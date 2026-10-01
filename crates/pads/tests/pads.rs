@@ -148,12 +148,242 @@ async fn p3_list_is_ordered_and_read_is_logged() {
 async fn p8_bad_names_are_invalid_params_for_every_method() {
     let rig = Rig::new();
     let a = agent("a");
-    for method in ["pad.create", "pad.read", "pad.write", "pad.append"] {
-        for name in ["", "a/b", "a\\b", "..", ".hidden", "a..b"] {
+    for method in [
+        "pad.create",
+        "pad.read",
+        "pad.write",
+        "pad.append",
+        "pad.delete",
+        "pad.setOwner",
+        "pad.export",
+    ] {
+        for name in ["", "a/b", "a\\b", "..", ".hidden", "a..b", "a\0b"] {
             let err = rig
-                .fail(&a, method, json!({"name": name, "text": "x"}))
+                .fail(
+                    &a,
+                    method,
+                    json!({"name": name, "text": "x", "owner": a, "path": "x.md"}),
+                )
                 .await;
             assert_eq!(err.code, code::INVALID_PARAMS, "{method} {name:?}");
         }
     }
+}
+
+fn user() -> Actor {
+    Actor::user()
+}
+
+#[tokio::test]
+async fn p4_user_flips_ownership_and_owner_may_hand_over() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    rig.call(&a, "pad.create", json!({"name": "notes"}))
+        .await
+        .unwrap();
+
+    let denied = rig
+        .call(&b, "pad.setOwner", json!({"name": "notes", "owner": b}))
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, code::FORBIDDEN);
+    let flipped = rig
+        .call(
+            &user(),
+            "pad.setOwner",
+            json!({"name": "notes", "owner": user()}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(flipped["owner"]["kind"], "user");
+
+    let locked_out = rig
+        .call(&a, "pad.write", json!({"name": "notes", "text": "x"}))
+        .await
+        .unwrap_err();
+    assert_eq!(locked_out.code, code::FORBIDDEN);
+    rig.call(
+        &user(),
+        "pad.write",
+        json!({"name": "notes", "text": "mine"}),
+    )
+    .await
+    .unwrap();
+    let handed = rig
+        .call(
+            &user(),
+            "pad.setOwner",
+            json!({"name": "notes", "owner": b}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(handed["owner"]["id"], "b");
+}
+
+#[tokio::test]
+async fn p6_export_writes_one_file_and_never_creates_directories() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.call(&a, "pad.create", json!({"name": "notes", "text": "hello"}))
+        .await
+        .unwrap();
+    let out = TempDir::new().unwrap();
+
+    let target = out.path().join("notes.md");
+    rig.call(&a, "pad.export", json!({"name": "notes", "path": target}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello");
+
+    let missing_dir = out.path().join("nope").join("notes.md");
+    let err = rig
+        .call(
+            &a,
+            "pad.export",
+            json!({"name": "notes", "path": missing_dir}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(!out.path().join("nope").exists());
+}
+
+#[tokio::test]
+async fn p7_pads_survive_reopening_the_directory() {
+    let dir = TempDir::new().unwrap();
+    let a = agent("a");
+    let touches = Arc::new(Touches::in_memory().unwrap());
+    let call = |pads: Pads, method: &'static str, params: Value| {
+        let ctx = Ctx {
+            actor: a.clone(),
+            bus: Bus::new(),
+            touches: Arc::clone(&touches),
+        };
+        async move { pads.call(&ctx, method, params).await.unwrap() }
+    };
+    let first = Pads::open(dir.path(), Bus::new()).unwrap();
+    call(
+        first,
+        "pad.create",
+        json!({"name": "notes", "text": "kept"}),
+    )
+    .await;
+
+    let reopened = Pads::open(dir.path(), Bus::new()).unwrap();
+    let pad = call(reopened, "pad.read", json!({"name": "notes"})).await;
+
+    assert_eq!(pad["text"], "kept");
+    assert_eq!(pad["owner"]["id"], "a");
+}
+
+#[tokio::test]
+async fn p9_owner_or_user_deletes_and_others_are_forbidden() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    rig.ok(&a, "pad.create", json!({"name": "notes"})).await;
+    rig.ok(&a, "pad.create", json!({"name": "plan"})).await;
+
+    let denied = rig.fail(&b, "pad.delete", json!({"name": "notes"})).await;
+    assert_eq!(denied.code, code::FORBIDDEN);
+    let mut events = rig.bus.subscribe();
+    rig.ok(&a, "pad.delete", json!({"name": "notes"})).await;
+    rig.ok(&user(), "pad.delete", json!({"name": "plan"})).await;
+
+    let gone = rig.fail(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(gone.code, code::NOT_FOUND);
+    let EventData::PadChanged(changed) = events.try_recv().unwrap().data else {
+        panic!("expected pad.changed");
+    };
+    assert_eq!(changed.name, "notes");
+    let verbs: Vec<_> = rig
+        .touches
+        .history("pad:notes")
+        .unwrap()
+        .iter()
+        .map(|t| t.verb)
+        .collect();
+    assert_eq!(verbs, [Verb::Wrote, Verb::Wrote]);
+}
+
+#[tokio::test]
+async fn p4_owner_may_hand_over_its_own_pad() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    rig.ok(&a, "pad.create", json!({"name": "notes"})).await;
+
+    let handed = rig
+        .ok(&a, "pad.setOwner", json!({"name": "notes", "owner": b}))
+        .await;
+
+    assert_eq!(handed["owner"]["id"], "b");
+    let again = rig
+        .fail(&a, "pad.setOwner", json!({"name": "notes", "owner": a}))
+        .await;
+    assert_eq!(again.code, code::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn p1_names_are_unique_ignoring_case() {
+    let rig = Rig::new();
+    let a = agent("a");
+    rig.ok(&a, "pad.create", json!({"name": "notes", "text": "t"}))
+        .await;
+
+    let clash = rig.fail(&a, "pad.create", json!({"name": "Notes"})).await;
+
+    assert_eq!(clash.code, code::CONFLICT);
+    let found = rig.ok(&a, "pad.read", json!({"name": "NOTES"})).await;
+    assert_eq!(found["name"], "notes");
+}
+
+#[tokio::test]
+async fn p1_names_that_fold_or_normalize_together_conflict() {
+    let rig = Rig::new();
+    let a = agent("a");
+    for (first, second) in [
+        ("ΑΣ", "ασ"),
+        ("straße", "STRASSE"),
+        ("caf\u{e9}", "cafe\u{301}"),
+        ("\u{1FB4}", "\u{3B1}\u{345}\u{301}"),
+    ] {
+        rig.ok(&a, "pad.create", json!({"name": first})).await;
+        let clash = rig.fail(&a, "pad.create", json!({"name": second})).await;
+        assert_eq!(clash.code, code::CONFLICT, "{first} vs {second}");
+    }
+}
+
+#[tokio::test]
+async fn p1_every_method_resolves_other_spellings_to_the_same_pad() {
+    let rig = Rig::new();
+    let (a, b) = (agent("a"), agent("b"));
+    let out = TempDir::new().unwrap();
+    rig.ok(&a, "pad.create", json!({"name": "Notes", "text": "x"}))
+        .await;
+
+    rig.ok(&a, "pad.write", json!({"name": "nOTES", "text": "y"}))
+        .await;
+    rig.ok(&b, "pad.append", json!({"name": "NOTES", "text": "z"}))
+        .await;
+    let read = rig.ok(&a, "pad.read", json!({"name": "notes"})).await;
+    assert_eq!(
+        (read["name"].as_str(), read["text"].as_str()),
+        (Some("Notes"), Some("yz"))
+    );
+    rig.ok(&a, "pad.setOwner", json!({"name": "nOtEs", "owner": b}))
+        .await;
+    let path = out.path().join("n.md");
+    rig.ok(&b, "pad.export", json!({"name": "NOTES", "path": path}))
+        .await;
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "yz");
+    rig.ok(&b, "pad.delete", json!({"name": "noTES"})).await;
+
+    let gone = rig.fail(&a, "pad.read", json!({"name": "Notes"})).await;
+    assert_eq!(gone.code, code::NOT_FOUND);
+    assert!(
+        rig.ok(&a, "pad.list", Value::Null)
+            .await
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }

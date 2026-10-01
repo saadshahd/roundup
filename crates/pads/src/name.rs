@@ -5,7 +5,7 @@ use rpc::RpcError;
 pub fn validate(name: &str) -> Result<(), RpcError> {
     let bad = name.is_empty()
         || name.starts_with('.')
-        || name.contains(['/', '\\'])
+        || name.contains(['/', '\\', '\0'])
         || name.contains("..");
     if bad {
         return Err(RpcError::new(
