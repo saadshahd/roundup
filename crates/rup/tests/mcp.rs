@@ -134,7 +134,6 @@ fn fake_daemon(socket: &Path, answered: &'static [&'static str]) -> mpsc::Unboun
     requests
 }
 
-/// `rup mcp a1` with no MCP client: its stdin is closed at once.
 async fn run_without_client(socket: &Path) -> Output {
     let mut child = start_rup_mcp(socket, "a1");
     drop(child.stdin.take());
