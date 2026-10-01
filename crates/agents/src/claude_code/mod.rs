@@ -13,6 +13,8 @@ pub use launch::Launcher;
 pub struct ClaudeCode {
     status: Option<Status>,
     exited: bool,
+    /// The latest Signal was `PreToolUse`: a dialog may be about to open.
+    tool_pending: bool,
     clock: Box<dyn Fn() -> i64 + Send>,
 }
 
@@ -22,6 +24,7 @@ impl ClaudeCode {
         Self {
             status: None,
             exited: false,
+            tool_pending: false,
             clock: Box::new(clock),
         }
     }
@@ -51,18 +54,23 @@ impl ClaudeCode {
         Some(next)
     }
 
-    /// Claude Code spins ◐/◑ while it works and shows ✳ whenever it is not. A spinner therefore
-    /// always means working. A star only says "not working", so it ends working (the Esc
-    /// interrupt fires no hook) but leaves needs-you alone: a dialog shows the same star.
-    /// The star lands about 50 ms before PermissionRequest, so needs-you may pass through idle.
+    /// Claude Code spins ◐/◑ while it works and shows ✳ whenever it is not, a permission dialog
+    /// included. So a spinner means working unless a dialog is open (a denied dialog resumes the
+    /// spinner with no hook, and must keep `needs-you`), and a star means idle only if the Agent
+    /// was working. The dialog's star lands 40-80 ms before its `PermissionRequest`, right after
+    /// `PreToolUse`; a spinner since then shows no dialog is coming.
     fn retitle(&mut self, title: &str) -> Option<Status> {
+        let kind = self.status.as_ref().map(|status| status.kind);
         match title.chars().next()? {
-            '◐' | '◑' => self.settle(Kind::Working, "working".into()),
-            '✳' if self
-                .status
-                .as_ref()
-                .is_some_and(|s| s.kind == Kind::Working) =>
-            {
+            '◐' | '◑' if kind == Some(Kind::NeedsYou) => {
+                self.tool_pending = false;
+                None
+            }
+            '◐' | '◑' => {
+                self.tool_pending = false;
+                self.settle(Kind::Working, "working".into())
+            }
+            '✳' if kind == Some(Kind::Working) && !self.tool_pending => {
                 self.settle(Kind::Idle, "idle".into())
             }
             _ => None,
@@ -86,6 +94,7 @@ impl AgentAdapter for ClaudeCode {
             Observation::Exit { code } => self.exit(code),
             Observation::Signal(_) | Observation::Title(_) if self.exited => None,
             Observation::Signal(payload) => {
+                self.tool_pending = payload["hook_event_name"] == "PreToolUse";
                 let (kind, label) = hook_status(&payload)?;
                 self.settle(kind, label)
             }

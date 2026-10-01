@@ -42,7 +42,7 @@ trait AgentAdapter {
     /// Fold one Observation into the Agent's Status. None = no change.
     fn observe(&mut self, o: Observation) -> Option<Status>;
 }
-enum Observation { Output(Bytes), Signal(Json), Exit { code: Option<i32> } }
+enum Observation { Title(String), Signal(Json), Exit { code: Option<i32> }, Stopped }
 enum AdapterKind { NeedsYou, Error, Working, Idle, Done } // never Blocked
 ```
 
