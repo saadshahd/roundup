@@ -59,12 +59,40 @@ describe("u30 jump", () => {
   });
 
   it("u30_with_none_cmd_j_changes_nothing", async () => {
-    const { rail } = await mountRail([since("a", "working", 1), terminal("t")]);
+    const { rail } = await mountRail([since("a", "working", 1), since("b", "working", 1)]);
 
-    rail.select("a");
+    rail.select("b");
     jump();
 
-    expect(rail.selected()).toBe("a");
+    expect(rail.selected()).toBe("b");
+  });
+
+  it("u30_equal_kind_and_status_age_are_taken_in_the_daemons_order", async () => {
+    const { rail } = await mountRail([since("first", "needs-you", 5), since("second", "needs-you", 5)]);
+
+    jump();
+
+    expect(rail.selected()).toBe("first");
+  });
+
+  const pressed = async (chord: KeyboardEventInit) => {
+    const { rail } = await mountRail([since("a", "needs-you", 1)]);
+
+    fireEvent.keyDown(document, chord);
+
+    return rail.selected();
+  };
+
+  it("u30_a_plain_j_changes_nothing", async () => {
+    expect(await pressed({ key: "j" })).toBeNull();
+  });
+
+  it("u30_ctrl_j_changes_nothing", async () => {
+    expect(await pressed({ key: "j", ctrlKey: true })).toBeNull();
+  });
+
+  it("u30_cmd_shift_j_changes_nothing", async () => {
+    expect(await pressed({ key: "J", metaKey: true, shiftKey: true })).toBeNull();
   });
 
   it("u30_a_terminal_is_never_visited", async () => {
