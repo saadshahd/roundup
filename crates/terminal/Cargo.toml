@@ -15,9 +15,13 @@ portable-pty.workspace = true
 vt100.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+provenance = { path = "../provenance" }
+tempfile.workspace = true
+
 [package.metadata.cargo-machete]
 # Pre-declared by the Architect so Cargo.lock is resolved before Builders branch; delete this table when the crate uses them.
-ignored = ["contracts", "base64", "portable-pty", "vt100", "tokio"]
+ignored = ["vt100"]
 
 [lints]
 workspace = true
