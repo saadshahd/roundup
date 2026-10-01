@@ -1,4 +1,4 @@
-//! X4 title.
+//! X4 title, X10 titles with separators.
 
 use crate::common::{PATIENCE, open, sh};
 use contracts::EventData;
@@ -59,4 +59,10 @@ async fn x4_titles_do_not_depend_on_the_window_size() {
     (params.cols, params.rows) = (u16::MAX, u16::MAX);
     let (titles, _) = titles_of(dir, params).await;
     assert_eq!(titles, ["big"]);
+}
+
+#[tokio::test]
+async fn x10_a_title_with_a_semicolon_is_whole() {
+    let (titles, _) = titles_until_exit(r"printf '\033]0;build; test\007'").await;
+    assert_eq!(titles, ["build; test"]);
 }
