@@ -11,12 +11,12 @@ rpc = { path = "../rpc" }
 rusqlite.workspace = true
 serde_json.workspace = true
 terminal = { path = "../terminal" }
+tempfile.workspace = true
 
 tokio.workspace = true
 
 [dev-dependencies]
 provenance = { path = "../provenance" }
-tempfile.workspace = true
 
 [lints]
 workspace = true

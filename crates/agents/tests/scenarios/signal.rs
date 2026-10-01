@@ -101,3 +101,68 @@ async fn a4_the_prompt_is_typed_at_the_first_idle_and_only_then() {
         "hello there"
     );
 }
+
+#[tokio::test]
+async fn a4_the_prompt_and_enter_arrive_as_separate_reads_a_pause_apart() {
+    // One process makes both reads, so nothing but the Daemon's own pause sits between them.
+    let script = r#"stty raw -echo; echo 1 > "$(dirname "$0")/ready"
+perl -MTime::HiRes=time -e 'sysread(STDIN, $a, 100); $t = time; sysread(STDIN, $b, 100);
+  open(F, ">", "$ARGV[0]/typed"); print F join("|", $a, $b, time - $t)' "$(dirname "$0")"
+sleep 30"#;
+    let f = Fixture::running(script);
+    let node = f.spawn(None, Some("hello there")).await.unwrap();
+    // Typing before the terminal is raw would be line-edited, not read as it arrives.
+    until_file(&f.dir.path().join("ready")).await;
+    f.signal(&node.id, "SessionStart").await.unwrap();
+
+    let typed = until_file(&f.dir.path().join("typed")).await;
+    let [first, second, gap] = typed.split('|').collect::<Vec<_>>()[..] else {
+        panic!("unexpected {typed:?}");
+    };
+    assert_eq!((first, second), ("hello there", "\r"));
+    assert!(
+        gap.parse::<f64>().unwrap() >= 0.5,
+        "Enter followed after only {gap}s"
+    );
+}
+
+const NOISY_CHILD: &str = "ROUNDUP_TEST_NOISY_CHILD";
+
+/// Not a test: with `NOISY_CHILD` set, sends payloads an adapter must refuse, so the parent can
+/// read what this process wrote to stderr.
+#[tokio::test]
+async fn child_signals_payloads_the_adapter_refuses() {
+    if std::env::var_os(NOISY_CHILD).is_none() {
+        return;
+    }
+    let f = Fixture::running("sleep 30");
+    let node = f.spawn(None, None).await.unwrap();
+    for payload in [
+        json!({"hook_event_name": "FutureEvent", "prompt": "SECRET-PROMPT"}),
+        json!({"hook_event_name": "StopFailure", "last_assistant_message": "SECRET-MESSAGE"}),
+        json!({"prompt": "SECRET-PROMPT"}),
+    ] {
+        f.call("agent.signal", json!({"id": node.id, "payload": payload}))
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a5_refused_payloads_are_logged_to_stderr_by_event_name_never_by_content() {
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "signal::child_signals_payloads_the_adapter_refuses",
+            "--nocapture",
+        ])
+        .env(NOISY_CHILD, "1")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(stderr.contains("FutureEvent"), "{stderr}");
+    assert!(stderr.contains("StopFailure"), "{stderr}");
+    assert!(stderr.contains("no event name"), "{stderr}");
+    assert!(!stderr.contains("SECRET"), "{stderr}");
+}

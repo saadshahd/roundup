@@ -65,6 +65,45 @@ async fn a7_promote_makes_a_group_a_meta_agent_with_a_live_agent() {
     assert_eq!(f.changed(), 1);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a7_two_concurrent_promotes_start_one_agent_and_one_loses() {
+    let f = std::sync::Arc::new(Fixture::running(
+        "echo started >> \"$(dirname \"$0\")/starts\"; sleep 30",
+    ));
+    let team = f.group("team", None).await;
+    let promote = || {
+        let (f, team) = (std::sync::Arc::clone(&f), team.clone());
+        tokio::spawn(async move { f.promote(&team).await })
+    };
+
+    let (first, second) = (promote(), promote());
+
+    let mut codes: Vec<_> = [first.await.unwrap(), second.await.unwrap()]
+        .map(|r| r.map_err(|e| e.code))
+        .into();
+    codes.sort_by_key(|r| r.is_err());
+    assert_eq!(codes.len(), 2);
+    assert!(codes[0].is_ok());
+    assert_eq!(codes[1].as_ref().unwrap_err(), &code::CONFLICT);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let starts = std::fs::read_to_string(f.dir.path().join("starts")).unwrap();
+    assert_eq!(starts.lines().count(), 1);
+}
+
+#[tokio::test]
+async fn a7_a_promote_whose_agent_cannot_start_leaves_the_group_plain() {
+    let f = Fixture::running("sleep 30");
+    let team = f.group("team", None).await;
+    let rup = f.dir.path().join("rup");
+    std::fs::remove_file(&rup).unwrap();
+
+    assert!(f.promote(&team).await.is_err());
+    assert!(!f.tree().await[0].meta);
+
+    std::fs::write(&rup, "").unwrap();
+    assert!(f.promote(&team).await.unwrap().meta);
+}
+
 #[tokio::test]
 async fn a7_only_a_plain_group_can_be_promoted() {
     let f = Fixture::running("sleep 30");
@@ -102,6 +141,20 @@ async fn a7_stopping_a_meta_agent_lifts_its_children_where_it_was_and_they_keep_
         assert_eq!(status_of(&tree, id).kind, Kind::Working);
     }
     assert_eq!(f.changed(), 1);
+    for id in &agents {
+        let terminal = tree
+            .iter()
+            .find(|n| &n.id == id)
+            .unwrap()
+            .terminal_id
+            .clone();
+        let alive = f
+            .terminals
+            .list()
+            .into_iter()
+            .any(|t| Some(t.id) == terminal && t.running);
+        assert!(alive, "the kill reached a child's Terminal");
+    }
 }
 
 #[tokio::test]
