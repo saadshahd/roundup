@@ -1,4 +1,4 @@
-//! A4 spawn, and A2, A3, A8 as seen through a real Terminal running a fake `claude`.
+//! A4 spawn and A8 reopen, as seen through a real Terminal running a fake `claude`.
 
 use std::path::Path;
 use std::time::Duration;
@@ -120,5 +120,32 @@ async fn a8_an_agent_whose_terminal_is_gone_comes_back_done() {
     let tree = f.reopen().tree().await;
     assert_eq!(tree[0].id, node.id);
     assert_eq!(tree[0].status.as_ref().map(|s| s.kind), Some(Kind::Done));
-    assert_eq!(tree[0].terminal_id, node.terminal_id);
+    assert_eq!(tree[0].terminal_id, None);
+}
+
+#[tokio::test]
+async fn a8_an_agent_whose_program_exited_never_reads_working() {
+    let f = Fixture::running("exit 0");
+    let node = f.spawn(None).await.unwrap();
+    for _ in 0..500 {
+        let kind = f.tree().await[0].status.as_ref().map(|s| s.kind);
+        if kind != Some(Kind::Working) {
+            assert_eq!(kind, Some(Kind::Done));
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("agent {} read working after its program exited", node.id);
+}
+
+#[tokio::test]
+async fn a4_a_missing_claude_leaves_no_agent_and_no_settings_file() {
+    let f = Fixture::running("sleep 30");
+    std::fs::remove_file(f.dir.path().join("fake-claude")).unwrap();
+    f.spawn(None).await.unwrap_err();
+    assert!(f.tree().await.is_empty());
+    let left: Vec<_> = std::fs::read_dir(f.dir.path().join("agents"))
+        .map(|entries| entries.map(|e| e.unwrap().file_name()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "left behind: {left:?}");
 }

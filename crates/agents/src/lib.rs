@@ -14,6 +14,8 @@ use contracts::{EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, params, reply};
 use serde_json::Value;
 use terminal::Terminals;
+use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast::error::RecvError;
 
 pub mod claude_code;
 mod rail;
@@ -37,7 +39,7 @@ pub trait AgentAdapter {
     fn observe(&mut self, observation: Observation) -> Option<Status>;
 }
 
-/// State the Terminal watchers and the RPC calls share.
+/// State the RPC calls and the per-Agent exit watchers share.
 struct Shared {
     rail: Mutex<rail::Rail>,
     runs: Mutex<HashMap<String, ClaudeCode>>,
@@ -59,17 +61,48 @@ impl Shared {
     /// outlives the Daemon. Every node that leaves the module passes through here.
     fn present(&self, mut node: RailNode) -> RailNode {
         if node.kind == NodeKind::Agent || node.meta {
-            let live = self
-                .runs()
-                .get(&node.id)
-                .and_then(|run| run.status().cloned());
-            node.status = Some(live.unwrap_or_else(|| Status {
+            let live = self.runs().get(&node.id).map(|run| run.status().cloned());
+            // No run: its Terminal died with the last Daemon, and its stored id may now be another's.
+            if live.is_none() {
+                node.terminal_id = None;
+            }
+            node.status = Some(live.flatten().unwrap_or_else(|| Status {
                 kind: Kind::Done,
                 label: "terminal gone".into(),
                 since: self.opened,
             }));
         }
         node
+    }
+}
+
+/// Tell Agent `id` its program ended, so it stops reading `working`.
+async fn watch_exit(
+    shared: Arc<Shared>,
+    id: String,
+    terminal_id: String,
+    mut events: Receiver<EventData>,
+) {
+    let code = loop {
+        match events.recv().await {
+            Ok(EventData::TerminalExited(exited)) => break exited.code,
+            Ok(_) => {}
+            // Output can outrun this task and drop the exit event; the table still knows.
+            Err(RecvError::Lagged(_)) => {
+                let gone = shared
+                    .terminals
+                    .list()
+                    .into_iter()
+                    .find(|t| t.id == terminal_id && !t.running);
+                if let Some(gone) = gone {
+                    break gone.exit_code;
+                }
+            }
+            Err(RecvError::Closed) => return,
+        }
+    };
+    if let Some(run) = shared.runs().get_mut(&id) {
+        run.observe(Observation::Exit { code });
     }
 }
 
@@ -117,7 +150,7 @@ impl Agents {
         let spawned = match self.start(&node.id, cwd).await {
             Ok(spawned) => spawned,
             Err(err) => {
-                self.shared.rail().remove(&node.id)?;
+                self.roll_back(&node.id);
                 return Err(err);
             }
         };
@@ -125,11 +158,31 @@ impl Agents {
             .runs()
             .insert(node.id.clone(), ClaudeCode::starting(now_ms));
         self.shared.rail().attach_terminal(&node.id, &spawned.id)?;
+        tokio::spawn(watch_exit(
+            Arc::clone(&self.shared),
+            node.id.clone(),
+            spawned.id.clone(),
+            spawned.events,
+        ));
         ctx.emit(EventData::RailChanged);
         Ok(self.shared.present(RailNode {
             terminal_id: Some(spawned.id),
             ..node
         }))
+    }
+
+    /// Undo a spawn that never started. The spawn's own error is the one worth returning, so a
+    /// failed undo is reported here and not instead of it.
+    fn roll_back(&self, id: &str) {
+        if let Err(err) = self.shared.rail().remove(id) {
+            eprintln!(
+                "agents: could not remove Agent {id} from the Rail: {}",
+                err.message
+            );
+        }
+        if let Err(err) = Launcher::discard(&self.dir, id) {
+            eprintln!("agents: could not delete Agent {id}'s settings file: {err}");
+        }
     }
 
     async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {

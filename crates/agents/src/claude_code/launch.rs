@@ -69,6 +69,14 @@ impl Launcher {
     /// Write Agent `id`'s settings under `dir` (the Project's `.roundup/`), trust `cwd`, and return
     /// the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
     /// is the user's, and this is the only grant roundup makes in it.
+    /// Delete what `prepare` wrote for Agent `id`, for an Agent that never started.
+    pub fn discard(dir: &Path, id: &str) -> std::io::Result<()> {
+        match std::fs::remove_file(settings_path(dir, id)) {
+            Err(err) if err.kind() != ErrorKind::NotFound => Err(err),
+            _ => Ok(()),
+        }
+    }
+
     pub fn prepare(&self, dir: &Path, id: &str, cwd: &Path) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
         let cwd = cwd
@@ -93,7 +101,7 @@ impl Launcher {
                 self.rup.display()
             )));
         }
-        let settings = dir.join("agents").join(format!("{id}.settings.json"));
+        let settings = settings_path(dir, id);
         write_atomically(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
         Ok(vec![
@@ -168,4 +176,8 @@ fn write_atomically(path: &Path, value: &Value) -> std::io::Result<()> {
     }
     staged.persist(&target).map_err(|err| err.error)?;
     Ok(())
+}
+
+fn settings_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join("agents").join(format!("{id}.settings.json"))
 }

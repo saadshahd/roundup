@@ -66,7 +66,12 @@ impl Fixture {
             dir, bus, agents, ..
         } = self;
         drop(agents);
-        Self::over(dir, bus, "claude")
+        let bin = dir
+            .path()
+            .join("fake-claude")
+            .to_string_lossy()
+            .into_owned();
+        Self::over(dir, bus, &bin)
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
