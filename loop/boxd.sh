@@ -6,7 +6,7 @@
 #                                           # writes the Reviewer's answer to loop/out/verdicts/<name>.md. The checkout is a
 #                                           # git repo with tag `base`, so the Reviewer can run `loop/rules.sh size base`.
 # BOXD_MODEL overrides the model (build: sonnet, review: opus).
-# The token is read from $CLAUDE_CODE_OAUTH_TOKEN and passed per call, never stored on the VM.
+# Auth is the boxd secret CLAUDE_CODE_OAUTH_TOKEN (sealed, host-scoped): each VM sees only a placeholder, boxd swaps in the real token for *.anthropic.com, *.claude.com and claude.ai.
 # Exit codes: 0 ok, 1 failure, 75 paused (limit hit, or loop/out/PAUSED exists).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -61,18 +61,6 @@ guard_limits() {
   pause "limit hit"
 }
 
-# Fail without printing anything if the token reached an artifact.
-refuse_token_leak() {
-  local file
-  for file in "$@"; do
-    if grep -qF -- "$CLAUDE_CODE_OAUTH_TOKEN" "$file"; then
-      rm -f "$file"
-      echo "boxd.sh: token found in $file; deleted it" >&2
-      exit 1
-    fi
-  done
-}
-
 # Serialise "count, then create" so parallel starts cannot all pass the cap.
 acquire_lock() {
   local _
@@ -94,7 +82,7 @@ vm_count() { boxd machine list --json </dev/null | jq '[.[] | select(.name | sta
 # Create the isolated VM for <name>, enforcing pause, token and cap. Sets $VM.
 start_vm() {
   local name=$1
-  : "${CLAUDE_CODE_OAUTH_TOKEN:?set CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)}"
+  boxd env list --json </dev/null | jq -e 'any(.[]; .name == "CLAUDE_CODE_OAUTH_TOKEN")' >/dev/null || { echo "boxd.sh: boxd secret CLAUDE_CODE_OAUTH_TOKEN is missing (boxd env set --secret, allowed for *.anthropic.com, *.claude.com, claude.ai)" >&2; exit 1; }
   mkdir -p "$OUT/patches" "$OUT/runs" "$OUT/verdicts"
   [ ! -e "$PAUSED" ] || pause "paused since $(cat "$PAUSED")"
   acquire_lock
@@ -121,10 +109,10 @@ upload_checkout() {
 run_agent() {
   local model=$1 result=$2
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
-  boxd machine exec "$VM" --timeout 570 -e CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" -- \
+  # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
+  boxd machine exec "$VM" --timeout 570 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
     "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" || true
   [ -s "$result" ] || { echo "boxd.sh: agent produced no output" >&2; exit 1; }
-  refuse_token_leak "$result"
   guard_limits "$result"
   jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
 }
@@ -137,7 +125,6 @@ review() {
   upload_checkout "$base" "$ref" "$prompt"
   run_agent "${BOXD_MODEL:-opus}" "$result"
   jq -r .result "$result" >"$verdict"
-  refuse_token_leak "$verdict"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
 }
 
@@ -147,22 +134,12 @@ build() {
   start_vm "$name"
   upload_checkout HEAD HEAD "$prompt"
   run_agent "${BOXD_MODEL:-sonnet}" "$result"
-  # The observer is our own check, not the Builder's claim that it passed. Its output is scanned before it is shown.
+  # The observer is our own check, not the Builder's claim that it passed.
   local rc=0
   boxd machine exec "$VM" --timeout 570 -- 'cd ~/roundup && . ~/.cargo/env && pnpm install --frozen-lockfile && just check' </dev/null >"$checklog" 2>&1 || rc=$?
-  refuse_token_leak "$checklog"
   tail -n 15 "$checklog" >&2
   [ "$rc" -eq 0 ] || exit "$rc"
-  # A patch can carry binaries as base85, so look for the token in the VM's tree, not in the patch text.
-  # grep exits 1 for "not found"; any other status (found, or a read or exec error) refuses.
-  local scan=0
-  # shellcheck disable=SC2016 # $CLAUDE_CODE_OAUTH_TOKEN must expand inside the VM
-  boxd machine exec "$VM" -e CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" -- \
-    'grep -rlF --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules -- "$CLAUDE_CODE_OAUTH_TOKEN" ~/roundup' </dev/null >/dev/null 2>&1 || scan=$?
-  [ "$scan" -eq 1 ] || { echo "boxd.sh: token scan of the Builder's tree failed or found the token (exit $scan); not producing a patch" >&2; exit 1; }
-
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
-  refuse_token_leak "$patch"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
 }
 
