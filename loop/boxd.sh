@@ -169,9 +169,10 @@ upload_checkout() {
 # Run claude on the VM with /tmp/prompt.md; JSON lands in <result>. Exits unless the run succeeded.
 run_agent() {
   local model=$1 result=$2
+  # A feature-sized task outlasts 570 s (measured: V7 Todo triage hit it and returned nothing), so wait as long as the check may.
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
   # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
-  boxd machine exec "$VM" --timeout 570 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
+  boxd machine exec "$VM" --timeout "${BOXD_AGENT_TIMEOUT:-1800}" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
     "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" || true
   [ -s "$result" ] || { echo "boxd.sh: agent produced no output" >&2; exit 1; }
   guard_limits "$result"

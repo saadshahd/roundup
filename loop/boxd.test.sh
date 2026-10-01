@@ -148,6 +148,7 @@ expect_true "L9 base archive is the merge-base (no feature file)" bash -c '! tar
 expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
 expect_log 'git tag base' "L9 base is tagged"
 expect_log '--auto-destroy-timeout 3600' "L5 VM has an auto-destroy timer"
+expect_log 'machine exec ru-r --timeout 1800 .*claude' "L5 the agent may run as long as the check"
 expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
 
 # L15: `check` merges on this machine and runs on an isolated VM. The origin lives beside the repo, not inside it.
