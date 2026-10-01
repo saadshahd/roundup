@@ -258,10 +258,12 @@ mod tests {
             h.call("todo.create", json!({"title": "b", "blockers": [1]}))
                 .await
                 .unwrap();
+            h.call("todo.complete", json!({"id": 1})).await.unwrap();
             h.call("todo.list", json!({})).await.unwrap()
         };
         let h = Harness::new(dir.path());
         assert_eq!(h.call("todo.list", json!({})).await.unwrap(), before);
+        assert_eq!(before[0]["done"], true);
         assert_eq!(before[1]["blockers"], json!([1]));
         assert_eq!(
             h.call("todo.create", json!({"title": "c"})).await.unwrap()["id"],
