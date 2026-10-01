@@ -41,7 +41,7 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 - Per run, notional list price: ping $0.09; small Sonnet task $0.08–0.14; Opus one-line review $0.17. On Max this is plan usage, not cash. Each fresh `claude -p` writes about 20k cache tokens, so prefer fewer, larger tasks.
 - boxd credit stayed at about €30 across all spikes (29.997 on one reading, 30.00 after rounding).
 - The JSON output has no quota field. `loop/boxd.sh` pauses on `api_error_status` 429 or "usage limit" / "rate limit" in the result by writing `loop/out/PAUSED` and exiting 75. Delete the file to resume. This path is covered by a stub test (`loop/boxd.test.sh`) but has never met a real limit error.
-- Cap: `BOXD_MAX_VMS` concurrent `ru-` VMs, default 12 on the user's instruction. Measured only up to 4; the account's 50-machine quota comes from a boxd-docs probe and is unverified. Watch for limit errors (`loop/out/PAUSED`) when raising it.
+- Cap: `BOXD_MAX_VMS` concurrent `ru-` VMs, default 12. Measured only up to 4; the account's own machine limit has not been measured. Watch for limit errors (`loop/out/PAUSED`) when raising it.
 
 ## Cleanup
 

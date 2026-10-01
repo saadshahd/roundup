@@ -26,7 +26,8 @@ if [ "$1 $2 $3" = "machine cp -" ]; then cat >"$STUB_DIR/$(basename "$4")"; else
 case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
-    if [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'; else echo '[]'; fi ;;
+    if [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
+    elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'; else echo '[]'; fi ;;
   "machine new") [ "${STUB_MODE:-}" != exists ] || exit 1 ;;
   "machine reboot") ;;
   "machine remove") [ "${STUB_MODE:-}" != remove-fails ] || exit 1 ;;
@@ -100,13 +101,16 @@ new_repo; mkdir -p loop/out; echo old-time >loop/out/PAUSED; STUB_MODE='' expect
 expect_true "L4 PAUSED keeps its original time" test "$(cat loop/out/PAUSED)" = old-time
 
 
-new_repo; loop/boxd.sh review r prompt.md >out 2>err && echo "ok:   L9 review succeeds" || { echo "FAIL: L9 review succeeds"; failures=$((failures + 1)); }
+new_repo
+if loop/boxd.sh review r prompt.md >out 2>err; then echo "ok:   L9 review succeeds"; else echo "FAIL: L9 review succeeds"; failures=$((failures + 1)); fi
 expect_true "L9 verdict written" test "$(cat loop/out/verdicts/r.md)" = ok
 expect_log 'machine new ru-r .*--isolated' "L9 review VM is isolated"
 expect_log 'machine remove ru-r' "L9 review VM destroyed"
 
-new_repo; STUB_MODE=full expect_code 0 "L8 the default cap allows more than 4 VMs"
-new_repo; BOXD_MAX_VMS=x STUB_MODE= expect_code 2 "L8 non-numeric BOXD_MAX_VMS is refused"
+new_repo; STUB_RU=12 STUB_MODE='' expect_code 1 "L8 the default cap refuses a 13th ru- VM (12 exist)"
+if grep -q 'machine new' log; then echo "FAIL: L8 VM created over the default cap"; failures=$((failures + 1)); else echo "ok:   L8 no VM over the default cap"; fi
+new_repo; STUB_RU=11 STUB_MODE='' expect_code 0 "L8 11 ru- VMs leave room for a 12th; non-ru- VMs are not counted"
+new_repo; BOXD_MAX_VMS=x STUB_MODE='' expect_code 2 "L8 non-numeric BOXD_MAX_VMS is refused"
 
 # Hostile inputs are refused before any VM or file is made.
 refused() { # refused <name> <exit-code> <args...>
