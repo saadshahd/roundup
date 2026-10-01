@@ -99,7 +99,7 @@ const PadBody = (props: {
 
   return (
     <>
-      <p style={{ "padding-right": "6ch" }}>
+      <p>
         {ownerMark(pad().owner)} {name}{" "}
         <span class="light">
           owned by {connected.rail.nameOf(pad().owner)}

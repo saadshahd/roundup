@@ -274,9 +274,52 @@ describe("u20 open and edit", () => {
     fireEvent.input(field, { target: { value: "newer" } });
     reply.resolve(padOf("release-checklist", YOU, "new"));
     await reply.promise;
+    await new Promise((done) => setTimeout(done, 0));
+    expect(field.value).toBe("newer");
     fireEvent.blur(field);
 
     await waitFor(() => expect(writes).toEqual(["new", "newer"]));
+  });
+
+  it("u20_clicking_back_in_while_a_save_is_in_flight_never_loses_an_agents_append", async () => {
+    const { app, state } = await openShelf([padOf("release-checklist", YOU, "old")]);
+    const reply = deferred<Pad>();
+    const writes: string[] = [];
+    app.handlers["pad.write"] = ({ text }) => {
+      writes.push(text);
+
+      return reply.promise;
+    };
+
+    const field = await openPad("release-checklist");
+    edit(field, "new");
+    fireEvent.focus(field);
+    reply.resolve(padOf("release-checklist", YOU, "new"));
+    await reply.promise;
+    await new Promise((done) => setTimeout(done, 0));
+    state.pads = [padOf("release-checklist", YOU, "new plus agent")];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
+    await waitFor(() => expect(field.value).toBe("new plus agent"));
+
+    fireEvent.blur(field);
+    await new Promise((done) => setTimeout(done, 0));
+
+    expect([writes, state.pads[0]?.text]).toEqual([["new"], "new plus agent"]);
+  });
+
+  it("u20_typing_back_to_the_original_text_never_sends_it_over_an_agents_append", async () => {
+    const { app, state } = await openShelf([padOf("release-checklist", YOU, "mine")]);
+    const field = await openPad("release-checklist");
+    fireEvent.input(field, { target: { value: "mine, typing" } });
+    state.pads = [padOf("release-checklist", YOU, "mine plus agent")];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
+    await waitFor(() => expect(app.calls.filter((call) => call.method === "pad.list").length).toBeGreaterThan(1));
+
+    fireEvent.input(field, { target: { value: "mine" } });
+    fireEvent.blur(field);
+
+    await waitFor(() => expect(field.value).toBe("mine plus agent"));
+    expect([app.calls.some((call) => call.method === "pad.write"), state.pads[0]?.text]).toEqual([false, "mine plus agent"]);
   });
 
   it("u20_a_pad_handed_over_while_the_cursor_is_in_the_text_saves_what_is_typed", async () => {
