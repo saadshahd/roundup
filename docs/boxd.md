@@ -8,12 +8,25 @@ boxd is optional: nothing on the critical path depends on it (merging needs GitH
 |---|---|---|---|
 | **Unattended Builder** | Run `claude -p --dangerously-skip-permissions` without exposing your laptop's files and credentials. The VM is the sandbox, and `--isolated` removes the connected integration tokens and the in-VM `boxd` CLI. | `loop/boxd.sh build <name> <prompt-file>` | Verified, including `--isolated` created from the snapshot with the prompt on stdin: 5 turns, 56 s wall for a small task, patch applied cleanly. The limit-pause and cap paths are stub-tested only (`loop/boxd.test.sh`). |
 | **Parallel Builders** | Run N Builders with no shared disk, ports or caches. | One VM per Builder, started in parallel. | Verified at 4 (small tasks, 21–27 s wall each, no errors). Not tested above 4 or with large tasks. |
-| **Linux check run** | Run `just check` on a clean Linux box in seconds. CI's macOS job also runs the `rup ping` round trip, which `just check` does not; CI uses Node 22 and the VM Node 24. | `just check` on a VM from the snapshot (the justfile is the single definition of `check`). | Verified: a whole `loop/boxd.sh build` (Builder run plus `just check`) took 29–37 s wall on a fresh VM from the snapshot with Rust 1.89, and 56 s with Rust 1.99 on the current script. An earlier, shorter check plus the `rup ping` round trip took 15 s. All in `spikes/boxd/REPORT.md`. Catches platform-neutral breakage before a PR. It is not the macOS gate. |
+| **Linux check run** | Run `just check` on a clean Linux box. CI's macOS job also runs the `rup ping` round trip, which `just check` does not; CI uses Node 22 and the VM Node 24. | `loop/boxd.sh check <pr-number\|branch>`: merges the ref into `origin/main` on the laptop, uploads that tree to an `--isolated` VM from the snapshot and runs `just check` there (the justfile is the single definition of `check`). | Verified 2026-10-01: about 2 minutes wall per PR on a 2-vCPU VM, with the warmed snapshot. Catches platform-neutral breakage before a PR. It is not the macOS gate. |
 | **QA screenshots** | Render the web UI where an agent can drive it and nobody's windows get hijacked. | `agent-browser` in the VM, screenshots to `artifacts/ux/<scenario>/<step>.png`, then `boxd machine cp` out. | Pipeline verified with a static page, not with roundup's UI (none exists yet). |
 | **Watch an agent live** | Let a human see the VM's screen. | `boxd machine desktop <vm> --json` returns a `desktop_url`. | URL issued on snapshot-based and `--isolated` VMs. Not viewed by a human, so what it shows is unverified. |
 | **Sandbox for untrusted code** | Run extension code with no credentials and no in-VM `boxd`. | `boxd machine new --isolated` | Verified that `claude -p` and `agent-browser` work in an isolated VM and that egress is `unrestricted`. Inbound isolation and escape resistance not tested. Not needed until extensions exist. |
 
 The strongest reason to use a VM is the first row: unattended permission-skipping. Parallelism alone is not an argument, because git worktrees already isolate files.
+
+## GitHub on a VM
+
+- An `--isolated` VM has no GitHub login: `gh auth status` says "not logged in" and `git ls-remote` on the private repo asks for a username. `loop/boxd.sh build`, `review` and `check` rely on that: git work (the merge into `origin/main`) happens on the laptop and only the tree is uploaded, so code from a PR (install scripts, `build.rs`, tests) runs where there is no GitHub token to read.
+- A non-isolated VM gets `/usr/local/bin/gh`, a boxd wrapper that runs the stock `/usr/bin/gh` with the account's personal OAuth token (`repo` and `user:email`, so read/write on every private repo of the account). Code running there can read it (`gh auth token`, `boxd-github-token` and `git credential fill` all return it) and outbound HTTPS works. Use a non-isolated VM only for code you wrote and reviewed, and for read-only work. The stock `/usr/bin/gh` has no token, so `gh auth setup-git` leaves plain `git` without a credential; a credential helper must point at the wrapper.
+
+## tsc on the VM
+
+A VM restored from the snapshot hangs `pnpm typecheck` (native tsc 7.0.2, Go) until it is rebooted; `start_vm` reboots it. The mechanism, measured: at startup the Go runtime calls `fanotify_init` and closes the fd, and on the restored guest kernel (6.1.0+) that `close` never returns (the process sits in `flush_work`; `dmesg` shows `fsnotify` workers stuck in `synchronize_srcu`), even for `tsc --version`. Denying the call (`systemd-run -p SystemCallFilter=~fanotify_init -p SystemCallErrorNumber=ENOSYS`) also unblocks it.
+
+## What `bake` adds
+
+Beyond the toolchain: the WebKitGTK libraries (`apt-get` must run with `NEEDRESTART_SUSPEND=1`, or needrestart restarts the boxd agent and the exec dies with "lost the connection to the machine"), `CARGO_TARGET_DIR=~/cargo-target` in `~/.cargo/env`, and a warmed `~/cargo-target` and pnpm store from the lockfiles at bake time (clippy and test builds of the dependencies, not the repo). The bake VM is `--isolated`, so dependency build scripts run with no GitHub login. Bake refuses to save if a scan of the VM's home, `/etc`, `/usr/local`, `/root` and `/var/lib` (skipping the Bun cache, whose docs contain placeholder tokens) finds a GitHub or Anthropic token pattern. Rebake when the lockfiles change a lot; a stale warm cache only costs build time.
 
 ## What a VM cannot do
 
@@ -26,7 +39,7 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 ## Defaults for every VM
 
 - Name prefix `ru-`, so a sweep can find them: `boxd machine list | grep '^ru-'`. `loop/boxd.sh build` refuses to start when `BOXD_MAX_VMS` (default 12) `ru-` VMs exist.
-- `--auto-destroy-timeout 1800` (leak guard; `bake` uses 3600) and `--auto-suspend-timeout 0`, because CPU-only builds look idle and would be suspended mid-run. Both confirmed with `boxd machine get`. Auto-hibernate defaults to 14400 s of no network traffic; a job longer than 4 hours needs it set to 0.
+- `--auto-destroy-timeout 3600` (leak guard, longer than reboot, upload and the 1800 s check together; `bake` uses 7200) and `--auto-suspend-timeout 0`, because CPU-only builds look idle and would be suspended mid-run. Both confirmed with `boxd machine get`. Auto-hibernate defaults to 14400 s of no network traffic; a job longer than 4 hours needs it set to 0.
 - Create from the `ru-toolchain` snapshot (Rust from `rust-toolchain.toml`, clippy, rustfmt, nextest, cargo-machete, just, pnpm from `package.json`, Node 24). Boot reports 4–5 ms; `machine new` takes about 2.2 s wall. Desktop URLs and `agent-browser` work on snapshot-based machines. Rebake with `loop/boxd.sh bake` when `rust-toolchain.toml` or the pnpm pin changes. The snapshot is about 11.5 GB and is kept; `loop/boxd.sh bake` replaces it.
 - Upload the commit under test with `git archive`, never a recursive copy (that would ship `node_modules/`, `target/` and other agents' state).
 - Bring results back as a patch (`git format-patch` then `boxd machine cp`) and push from the laptop. GitHub credentials never go to the VM.
@@ -34,6 +47,7 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 ## Secrets
 
 - The Claude token is the boxd secret `CLAUDE_CODE_OAUTH_TOKEN`, host-scoped. Inside a VM the variable holds a placeholder (`bxds_...`); boxd swaps in the real token on requests to `*.anthropic.com`, `*.claude.com` and `claude.ai`, so the real token never reaches the VM. Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` for `claude`: without it the process hangs about 90 s after answering (some other host is blocked), with it `claude -p "say hi"` takes 2 s.
+- The secret is account-wide by design for this private, personal repo (no outside contributors): every VM, including `--isolated` ones, gets the `bxds_` placeholder. It is substituted only for `*.anthropic.com`, `*.claude.com` and `claude.ai`, so exposure is quota use, not credential theft. If the repo ever runs code outside our own PRs, `check` and `bake` VMs must stop receiving it.
 - Normal machines expose connected integration credentials to any code running in them. Use `--isolated` when running code you do not trust.
 
 ## Cost and quota
