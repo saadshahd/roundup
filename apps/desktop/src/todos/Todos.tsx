@@ -1,20 +1,19 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
-import { glyphOf } from "../ink/glyph";
-import { useWorkspace } from "../state/workspace";
+import { KindGlyph } from "../ink/KindGlyph";
+import { useConnectedProject } from "../state/connectedProject";
 import { failureOf } from "./failureOf";
 import { RowButton } from "./RowButton";
 import { createTodosState } from "./state";
 import { TodoDrawer } from "./TodoDrawer";
-import { TodoGlyph } from "./TodoGlyph";
-import { doneTodos, openBlockersOf, openTodos } from "./todoView";
+import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
 
 type CreateField = { kind: "closed" } | { kind: "typing" } | { kind: "failed"; message: string };
 
 /** The Shelf's `todos` list: open Todos in id order, done ones folded, and the inline field that makes a new one. */
 export const Todos = () => {
-  const workspace = useWorkspace();
+  const workspace = useConnectedProject();
   const todos = createTodosState(workspace.app, workspace.events);
   const [field, setField] = createSignal<CreateField>({ kind: "closed" });
   const [unfolded, setUnfolded] = createSignal(false);
@@ -63,7 +62,7 @@ export const Todos = () => {
         {(todo) => (
           <div>
             <RowButton onClick={() => show(todo)}>
-              <TodoGlyph todo={todo} /> #{todo.id} {todo.title}
+              <KindGlyph kind={kindOf(todo)} /> #{todo.id} {todo.title}
             </RowButton>
             <Show when={openBlockersOf(todo, todos.all()).length > 0}>
               <p class="light" style={{ "padding-left": "2ch" }}>
@@ -75,13 +74,13 @@ export const Todos = () => {
       </For>
       <Show when={done().length > 0}>
         <RowButton onClick={() => setUnfolded(!unfolded())}>
-          <span style={{ color: `var(--${glyphOf("done").tone})` }}>{glyphOf("done").mark}</span> {done().length} done
+          <KindGlyph kind="done" /> {done().length} done
         </RowButton>
         <Show when={unfolded()}>
           <For each={done()}>
             {(todo) => (
               <RowButton onClick={() => show(todo)}>
-                <TodoGlyph todo={todo} /> #{todo.id} {todo.title}
+                <KindGlyph kind={kindOf(todo)} /> #{todo.id} {todo.title}
               </RowButton>
             )}
           </For>

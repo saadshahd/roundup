@@ -4,7 +4,7 @@ import type { Event as DaemonEvent } from "@contracts/Event";
 import type { Todo } from "@contracts/todo/Todo";
 import { Layout } from "../app/Layout";
 import { DrawerHost } from "../drawer/DrawerHost";
-import { openWorkspace, WorkspaceContext } from "../state/workspace";
+import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import { createFakeApp } from "../testing/fakeApp";
 import { Todos } from "./Todos";
 
@@ -37,10 +37,10 @@ export const mountTodos = async (initial: Todo[]) => {
   app.handlers["todo.list"] = () => store.todos;
   app.handlers["todo.get"] = ({ id }) => store.todos.find((candidate) => candidate.id === id) ?? todo(id);
 
-  const workspace = await openWorkspace(app, { name: "p", path: "/p" }, () => false);
+  const workspace = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
 
   render(() => (
-    <WorkspaceContext.Provider value={workspace}>
+    <ConnectedProjectContext.Provider value={workspace}>
       <Layout
         header="roundup"
         rail={null}
@@ -48,7 +48,7 @@ export const mountTodos = async (initial: Todo[]) => {
         shelf={<Todos />}
         overlay={<DrawerHost drawer={workspace.drawer} reducedMotion={() => true} />}
       />
-    </WorkspaceContext.Provider>
+    </ConnectedProjectContext.Provider>
   ));
 
   return { app, store, workspace };

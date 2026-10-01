@@ -1,24 +1,24 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
+import { KindGlyph } from "../ink/KindGlyph";
 import { ItemDrawer } from "../drawer/ItemDrawer";
-import { useWorkspace } from "../state/workspace";
+import { useConnectedProject } from "../state/connectedProject";
 import { EditableText } from "./EditableText";
 import { failureOf } from "./failureOf";
 import { RowButton } from "./RowButton";
 import type { TodosState } from "./state";
-import { TodoGlyph } from "./TodoGlyph";
-import { blockedBy, blockersOf, offeredAsBlockers } from "./todoView";
+import { blockedBy, blockersOf, kindOf, offeredAsBlockers } from "./todoView";
 
 const TodoLine = (props: { todo: Todo }) => (
   <p style={{ "white-space": "pre-wrap" }}>
-    <TodoGlyph todo={props.todo} /> {`#${props.todo.id}  ${props.todo.title}`}
+    <KindGlyph kind={kindOf(props.todo)} /> {`#${props.todo.id}  ${props.todo.title}`}
   </p>
 );
 
 /** The Drawer of one Todo. What it shows follows the list, so an Event from the Daemon reaches it; `todo.get` is called once, on opening. */
 export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
-  const { app, drawer } = useWorkspace();
+  const { app, drawer } = useConnectedProject();
   const [failure, setFailure] = createSignal<string | null>(null);
   const [offering, setOffering] = createSignal(false);
 
@@ -34,7 +34,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
         return (
           <>
             <div style={{ display: "flex", "white-space": "pre" }}>
-              <TodoGlyph todo={todo()} /> <span>{`#${props.id}  `}</span>
+              <KindGlyph kind={kindOf(todo())} /> <span>{`#${props.id}  `}</span>
               <EditableText
                 name="title"
                 multiline={false}
@@ -64,7 +64,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                       );
                     }}
                   >
-                    <TodoGlyph todo={other} /> {`#${other.id}  ${other.title}`}
+                    <KindGlyph kind={kindOf(other)} /> {`#${other.id}  ${other.title}`}
                   </RowButton>
                 )}
               </For>
