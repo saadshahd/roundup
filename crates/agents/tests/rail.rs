@@ -107,7 +107,7 @@ async fn a6_move_reorders_and_keeps_orders_contiguous_from_zero() {
     let c = f.group("c", None).await;
     f.changed();
 
-    f.mv(&c, None, 0).await.unwrap();
+    assert_eq!(f.mv(&c, None, 0).await.unwrap(), Value::Null);
     assert_eq!(children(&f.tree().await, None), ["c:0", "a:1", "b:2"]);
 
     f.mv(&a, Some(&b), 5).await.unwrap();

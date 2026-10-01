@@ -85,9 +85,9 @@ impl Module for Agents {
             }
             "rail.move" => {
                 let MoveParams { id, parent, index } = params(value)?;
-                let node = self.rail().move_node(&id, parent.as_deref(), index)?;
+                self.rail().move_node(&id, parent.as_deref(), index)?;
                 ctx.emit(EventData::RailChanged);
-                reply(&node)
+                reply(&())
             }
             _ => Err(RpcError::method_not_found(method)),
         }
