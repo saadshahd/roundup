@@ -8,35 +8,38 @@ import type { DrawerState } from "../drawer/drawer";
 import { createRailState } from "./rail";
 import type { RailState } from "./rail";
 
-/** Everything a region of an open Project reads. */
-export type Workspace = {
+/** Everything a region of an open Project reads: the Project and its live connection to the Daemon. */
+export type ConnectedProject = {
   project: Project;
   app: AppSeam;
   events: Events;
   rail: RailState;
   drawer: DrawerState;
   reducedMotion: Accessor<boolean>;
+  /** Milliseconds since the epoch, refreshed on a coarse tick; for elapsed times. */
+  now: Accessor<number>;
 };
 
-export const openWorkspace = async (
+export const connectProject = async (
   app: AppSeam,
   project: Project,
   reducedMotion: Accessor<boolean>,
-): Promise<Workspace> => {
+  now: Accessor<number>,
+): Promise<ConnectedProject> => {
   const events = await connectEvents(app);
   const rail = createRailState(app, events);
 
   await rail.settled();
 
-  return { project, app, events, rail, drawer: createDrawer(), reducedMotion };
+  return { project, app, events, rail, drawer: createDrawer(), reducedMotion, now };
 };
 
-export const WorkspaceContext = createContext<Workspace>();
+export const ConnectedProjectContext = createContext<ConnectedProject>();
 
-export const useWorkspace = (): Workspace => {
-  const workspace = useContext(WorkspaceContext);
+export const useConnectedProject = (): ConnectedProject => {
+  const connected = useContext(ConnectedProjectContext);
 
-  if (!workspace) throw new Error("no open Project: a region read the Workspace outside one");
+  if (!connected) throw new Error("no open Project: a region read the ConnectedProject outside one");
 
-  return workspace;
+  return connected;
 };
