@@ -44,22 +44,24 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 | #67 | boxd.md corrections | docs | `docs` | reviewer approval | open |
 | none yet | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight (builder-ux-drawer) |
 | none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass, and the U32 test case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | Claimed-by: boxd-agents 2026-10-01 |
+| none yet | scrollback (V5) | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; `just check` green; QA RSS with ten Terminals printing 100 000 lines each | ready, ids reserved; no existing test narrowed |
+| none yet | Todo triage (V7) | U35 | `apps/desktop`: only `src/todos/**` | `u35_` tests pass; `just check` green; `u15_todo_list.test.tsx` unchanged and green | ready, ids reserved; row text at rest and the second line's text must stay exactly as U15 asserts |
+| none yet | Pad edits never overwrite another Actor (V8) | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; `just check` green; the three `u20_` tests U36 names stay green | ready, ids reserved |
+| none yet | reopen, App half (V4) | S5 | `crates/desktop`: only `crates/desktop/**` | `s5_` Rust tests pass; `just check` green; `s1_a_second_open_project_is_conflict` and `s3_after_the_daemon_exits_rpc_fails_with_internal` keep passing | ready, ids reserved |
 | none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
 ## UX enhancements (`scenarios/ux.md`)
 
-Candidates left after U30 (V1), U32 and U33 (V3), U31 (part of V2) and U27–U28 (most of V9) moved into `scenarios/ui.md`. Ordered by expected value. Observer for every row: `just check` green, the tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. A row moves into `ui.md` under a reserved `U` id when it is dispatched.
+Candidates left after S5, U34 to U36 (V4's App half, V5, V7, V8) and U30 (V1), U32 and U33 (V3), U31 (part of V2) and U27–U28 (most of V9) moved into `scenarios/ui.md`. Ordered by expected value. Observer for every row: `just check` green, the tests named in the scenario pass in Vitest against the fake App seam (`apps/desktop/src/testing/fakeApp.ts`), and QA captures the screenshots the scenario names. A row moves into `ui.md` under a reserved `U` id when it is dispatched.
 
 | Order | PR key | Scenarios | Module | Owns | Merge after | Extra observer |
 |---|---|---|---|---|---|---|
 | 1 | `ux-keys` | V2 rest (Left and Right fold, F2, ⌘1 and ⌘2) | `apps/desktop` | `src/keys/**`, one line in `src/App.tsx` | U31 | QA drives the Rail by keyboard only |
-| 2 | `ux-reopen-app` | V4 (App half) | `crates/desktop` | `crates/desktop/**`, `scenarios/app.md` S1 | none | a Rust `s1_` test for a second `open_project` after exit |
-| 3 | `ux-reopen-ui` | V4 (webview half) | `apps/desktop` | `src/app/reopen*` | `ux-reopen-app` | QA kills the Daemon and reopens |
-| 4 | `ux-scrollback` | V5 | `apps/desktop` | `src/terminal/scroll*`, `src/terminal/emulator.ts` | none | QA RSS with ten Terminals printing 100 000 lines each |
+| 3 | `ux-reopen-ui` | V4 (webview half; takes U37 when S5 is merged) | `apps/desktop` | `src/app/reopen*` | `ux-reopen-app` | QA kills the Daemon and reopens |
 | 5 | `ux-empty` | V6 (amends U14, with its test and code) | `apps/desktop` | one small file per region, four directories | none | QA screenshots of a fresh Project |
-| 6 | `ux-todos` | V7 | `apps/desktop` | `src/todos/**` | none | none |
-| 7 | `ux-pads-safe` | V8 | `apps/desktop` | `src/pads/**` | none | none |
 | 8 | V9 leftovers | V9 minus U27–U28 | `apps/desktop` | `src/drawer/**` | reconcile with U27–U28 first | none |
+
+The Architect has already moved each dispatched scenario's text into `ui.md` or `app.md`; a Builder edits only the files its row owns, never `scenarios/`, the README or this file, so parallel Builders cannot collide there.
 
 A shared webview file (`src/app`, `src/state`, `src/ink`, `src/drawer`, `src/App.tsx`, `package.json`, `pnpm-lock.yaml`) is edited only as the scenario's row says. Any other change to one stops the Builder and is reported to the Architect.
 
@@ -95,6 +97,12 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U31 | Rail keyboard, builder-ux-drawer |
   | U32 | #75, spawn shortcuts (merged) |
   | U33 | spawn with a prompt, boxd-agents |
+  | S5 | reopen, App half (V4) |
+  | U34 | scrollback (V5) |
+  | U35 | Todo triage (V7) |
+  | U36 | Pad edit safety (V8) |
+  | U37 | reserved: reopen, webview half (V4), after S5 |
+  | U38 | reserved: empty states (V6, amends U14 with its test and code) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
 
