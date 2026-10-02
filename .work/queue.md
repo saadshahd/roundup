@@ -90,6 +90,10 @@ The coverage audit: every scenario id in `scenarios/*.md` has a test with its lo
 
 ## Swarm protocol
 
+**Stacking.** A Builder may start from an unmerged base PR's branch when its scenario says "after X" or "may stack", opens its PR against that branch, and merges only after its base has merged (then retargets to `main`). A stacked PR touches no file its base does not, so the two stay reviewable apart.
+
+**Writers.** A writer owns the scenario file and the id range the Architect gave it, edits no other scenario file and not this file, and never decides a contract change, a new RPC method or an App seam command; those and any change to a merged scenario go to the Architect.
+
 Agents coordinate only through this repo: this file, `scenarios/`, PRs and their commit trailers. The WIP limit, the `Claimed-by:` line and the one-day claim expiry are queue policy added by the Architect, not `AGENTS.md` rules; change them here.
 
 - **Claiming.** An item is claimed by a `Claimed-by: <agent-id> <date>` line under its row. Only the Architect pushes it to main (`AGENTS.md`: nobody else pushes there). A Builder requests a claim by being named in a dispatch; a Builder never claims by editing this file in its own PR, and does not start an item that has no claim. A claim with no branch or PR after a day is released by the Architect.
