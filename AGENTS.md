@@ -1,16 +1,17 @@
 # AGENTS.md
 
-Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term from it (or adds it there in the same PR).
+Read `CONTEXT.md` and `PRINCIPLES.md` first; every identifier, RPC method and UI string uses a term from it (or adds it there in the same PR).
 
 ## Rules
 
-1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings.
+1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings; the PR body names the `PRINCIPLES.md` ids it serves and the Merger confirms they exist; the Reviewer answers each of those gates from the diff.
 2. **Slop** (each is a CI failure): an anti-slop rule violation; TypeScript duplication, unused exports, files or dependencies reported by `pnpm slop` (fallow); Rust dead code or unused dependencies reported by clippy and `cargo machete`; a public function with no test or caller; a comment that restates the line below it.
 3. **PR size is a guide**: aim for exactly one module directory (or only `contracts/`) and about 2000 changed lines (excluding lockfiles and generated files). A PR that exceeds either is allowed; `loop/rules.sh size` prints an advisory and the Reviewer notes it. Neither ever fails a PR.
 4. **Contract change** = any edit under `contracts/`. Needs Architect approval. No v2s: change every caller in the same PR.
-5. **Reviewer input** = diff + linked spec + this file, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
+5. **Reviewer input** = diff + linked spec + this file + the PR's earlier `VERDICT:` comments, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
 6. **Vocabulary**: see `CONTEXT.md`; `session`, `process`, `task`, `notification` and the other _Avoid_ words are banned in public names, except under `crates/agents/claude_code/`.
-7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails: `just perf` enforces it for five metrics on Linux and five on macOS (not the same five: cold start is gated only on macOS), and every other metric is limit-only. Keystroke-to-render is limit-only too, measured on macOS by `just perf-keystroke`. A latency miss on a busy machine is rerun on a quiet one before it is believed; a memory miss is believed at any load (`docs/perf.md`).
+7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails: `just perf` enforces it for five metrics on Linux and five on macOS (not the same five: cold start is gated only on macOS), except that a time metric's regression test is skipped, loudly, when the machine is busier than its baseline's load (R13); every other metric is limit-only. Keystroke-to-render is limit-only too, measured on macOS by `just perf-keystroke`. A latency miss on a busy machine is rerun on a quiet one before it is believed; a memory miss is believed at any load (`docs/perf.md`).
+8. **Visual change**: a PR that edits a stylesheet or component under `apps/desktop/src` names the Checks of `docs/design-system.md` it moves (`Moves: D3, D6`). Every look value is a Token (`loop/rules.sh tokens`, L41, once it lands), and no Check passes on `origin/main` and fails on the head (`loop/rules.sh delta`, L42, over QA's `checks.json` files). A Check that is a `vitest` test gates in `just check`; the Design critic's run on the real rendering is advisory.
 
 ## Workflow
 

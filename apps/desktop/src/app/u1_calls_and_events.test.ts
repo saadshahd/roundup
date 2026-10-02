@@ -284,4 +284,19 @@ describe("u1 calls and events", () => {
       message: "Invalid type: Expected string but received 7",
     });
   });
+
+  it("u1_the_adapter_file_is_the_only_door_to_tauri", () => {
+    // so the only-door check sees adapters added after this test was written
+    const sourceFiles = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+
+    const importers = Object.entries(sourceFiles)
+      .filter(([path, text]) => path !== "./tauri.ts" && text.includes("@tauri-apps"))
+      .map(([path]) => path);
+
+    expect(importers).toEqual([]);
+  });
 });

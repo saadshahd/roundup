@@ -4,6 +4,7 @@ import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { createRailDrag } from "./drag";
+import { adjacentId } from "./keys";
 import { ancestorsOf, layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
@@ -31,6 +32,7 @@ export const Rail = () => {
   );
 
   const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
+  const nodeIds = createMemo(() => nodeRows().map((row) => row.node.id));
   const layoutKey = createMemo(() => nodeRows().map((row) => `${row.key}@${row.depth}`).join());
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
@@ -47,6 +49,33 @@ export const Rail = () => {
 
   const [container, setContainer] = createSignal<HTMLElement>();
   const [field, setField] = createSignal<HTMLInputElement>();
+
+  const rowElement = (id: string) => container()?.querySelector<HTMLElement>(`[data-id="${id}"]`);
+
+  const focusRow = (id: string) => rowElement(id)?.focus();
+
+  const tabbableId = createMemo(() => {
+    const selected = rail.selected();
+    const ids = nodeIds();
+
+    return ids.find((id) => id === selected) ?? ids[0] ?? null;
+  });
+
+  const moveFocus = (current: string, direction: 1 | -1) => focusRow(adjacentId(nodeIds(), current, direction));
+
+  const onRailKeyDown = (press: KeyboardEvent) => {
+    const focusedId = press.target instanceof HTMLElement ? press.target.dataset.id : undefined;
+
+    if (focusedId === undefined) return;
+
+    if (press.key === "ArrowDown" || press.key === "ArrowUp") {
+      press.preventDefault();
+      moveFocus(focusedId, press.key === "ArrowDown" ? 1 : -1);
+    } else if (press.key === "Enter") {
+      press.preventDefault();
+      rail.select(focusedId);
+    }
+  };
 
   const drag = createRailDrag({
     container,
@@ -137,7 +166,7 @@ export const Rail = () => {
       const above = new Set(untrack(() => ancestorsOf(rail.nodes, id)));
 
       setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
-      queueMicrotask(() => container()?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" }));
+      queueMicrotask(() => rowElement(id)?.scrollIntoView({ block: "nearest" }));
     }),
   );
 
@@ -169,7 +198,12 @@ export const Rail = () => {
           onCancel={() => setComposing(false)}
         />
       </Show>
-      <div role="tree" aria-label="rail" aria-disabled={daemonExit() !== null ? true : undefined}>
+      <div
+        role="tree"
+        aria-label="rail"
+        aria-disabled={daemonExit() !== null ? true : undefined}
+        onKeyDown={onRailKeyDown}
+      >
         <For each={keys()}>
           {(key) => (
             <Show when={byKey().get(key)}>
@@ -194,6 +228,7 @@ export const Rail = () => {
                           row={view()}
                           exit={rail.exitOf(view().node)}
                           selected={rail.selected() === view().node.id}
+                          tabbable={tabbableId() === view().node.id}
                           now={now}
                           onSelect={() => rail.select(view().node.id)}
                           onToggle={() => setCollapsed((open) => toggled(open, view().node.id))}

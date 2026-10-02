@@ -13,9 +13,9 @@ export type Screens = {
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
   stop(node: RailNode): void;
   /**
-   * Whether the Terminal's view sits at its newest line; false once the user has scrolled up, true for an id with
-   * no emulator yet. Reactive only from the point `emulatorFor` was called for that id: call it first in the same
-   * reactive scope, or a memo reading this never updates for an id it has not yet seen.
+   * Whether the Terminal's view sits at its newest line; false once the user has scrolled up. Creates the
+   * Terminal's emulator if none exists yet (true for that first read), so a caller never needs `emulatorFor`
+   * called first for this to stay reactive.
    */
   isAtBottom(id: string): boolean;
   /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
@@ -123,7 +123,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
       }
     },
-    isAtBottom: (id) => holders.get(id)?.atBottom() ?? true,
+    isAtBottom: (id) => holderFor(id).atBottom(),
     returnToBottom: (id) => holderFor(id).returnToBottom(),
     failure,
     dispose: () => {
