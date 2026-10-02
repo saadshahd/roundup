@@ -64,8 +64,11 @@ case "$1 $2" in
       *"just check"*)
         if [ -n "${STUB_FS_FIXTURE:-}" ]; then
           cmd=${!#}
-          cmd=$(printf '%s' "$cmd" | sed "s#/node_modules#$STUB_FS_FIXTURE/node_modules#g")
-          HOME="$STUB_FS_FIXTURE/home" PATH="$STUB_FS_FIXTURE/bin:$PATH" FAKE_TSC_ROOT="$STUB_FS_FIXTURE" bash -c "$cmd"
+          rewritten=$(printf '%s' "$cmd" | sed "s#/node_modules#$STUB_FS_FIXTURE/node_modules#g")
+          # If boxd.sh ever stops naming the stray path literally, the sed above silently no-ops: refuse rather
+          # than run an unrewritten "sudo rm -rf /node_modules" against the real filesystem.
+          [ "$rewritten" != "$cmd" ] || { echo "boxd stub: command has no /node_modules to rewrite into the fixture; refusing to run it unmodified" >&2; exit 1; }
+          HOME="$STUB_FS_FIXTURE/home" PATH="$STUB_FS_FIXTURE/bin:$PATH" FAKE_TSC_ROOT="$STUB_FS_FIXTURE" bash -c "$rewritten"
         else
           case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
         fi ;;
@@ -275,13 +278,13 @@ expect_true "L15 a GitHub token in the check output is masked" bash -c '! grep -
 check_repo; got=0; STUB_MODE=no-secret run_check_ref 54 || got=$?
 expect_true "L15 check needs no Claude secret" test "$got" -eq 0
 
-# L40: the check must not depend on anything outside the checkout. A VM restored from the snapshot carries a stray
-# /node_modules/@types/node at the filesystem root (ru-tsc-gate): tsc's ambient @types lookup walks up every parent of
-# ~/roundup and finds it, so a package that never declares @types/node itself would still typecheck clean there
-# although a clean runner's tsc fails it. The stub replays boxd.sh's own "just check" command for real (sed-rewriting
-# the literal /node_modules path into the fixture, like L9's replay_on_vm rewrites /tmp/) against a two-package pnpm
-# workspace fixture below a planted node_modules/@types/node, with a fake `tsc` on PATH that walks up to
-# FAKE_TSC_ROOT exactly as the real lookup does, so no real typescript install or network is needed.
+# L40: the check must not depend on anything outside the checkout (see STRAY_NODE_MODULES in boxd.sh for why the stray
+# directory exists). The stub replays boxd.sh's own "just check" command for real (sed-rewriting the literal
+# /node_modules path into the fixture, like L9's replay_on_vm rewrites /tmp/) against a two-package pnpm workspace
+# fixture below a planted node_modules/@types/node. `pnpm`, `just` and `tsc` are faked on PATH so the ubuntu-latest
+# runner, which has none of the three installed, never needs them for real: the fake `pnpm` only links a package's
+# own node_modules/@types/node when its package.json declares the dependency, the fake `just` runs a justfile
+# recipe's body, and the fake `tsc` walks up to FAKE_TSC_ROOT exactly as the real ambient-@types lookup does.
 build_l40_fixture() { # build_l40_fixture <dir> <declared: yes|no>
   local f=$1 declared=$2
   mkdir -p "$f/home/roundup/packages/pkg-a/src" "$f/home/roundup/packages/types-node" "$f/node_modules/@types/node" "$f/bin" "$f/home/.cargo"
@@ -313,8 +316,44 @@ fi
 echo "tsc: no errors"
 TSC
   chmod +x "$f/bin/tsc"
-  (cd "$f/home/roundup" && pnpm install --offline -s >/dev/null)
+  cat >"$f/bin/pnpm" <<'PNPM'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  install)
+    for pkg in packages/*/package.json; do
+      jq -e '.devDependencies["@types/node"] // empty' "$pkg" >/dev/null 2>&1 || continue
+      mkdir -p "$(dirname "$pkg")/node_modules/@types"
+      ln -sfn "$(cd "$(dirname "$pkg")/../types-node" && pwd)" "$(dirname "$pkg")/node_modules/@types/node"
+    done
+    ;;
+  -r)
+    shift
+    [ "${1:-}" != --if-present ] || shift
+    script=$1
+    for pkg in packages/*/package.json; do
+      cmd=$(jq -r --arg s "$script" '.scripts[$s] // empty' "$pkg")
+      [ -n "$cmd" ] || continue
+      (cd "$(dirname "$pkg")" && eval "$cmd")
+    done
+    ;;
+esac
+PNPM
+  chmod +x "$f/bin/pnpm"
+  cat >"$f/bin/just" <<'JUST'
+#!/usr/bin/env bash
+set -euo pipefail
+recipe=$1
+mapfile -t lines < <(awk -v r="$recipe:" '
+  $0 == r { found=1; next }
+  found && NF && $0 !~ /^[ \t]/ { found=0 }
+  found { sub(/^[ \t]+/, ""); print }
+' justfile)
+for line in "${lines[@]}"; do eval "$line"; done
+JUST
+  chmod +x "$f/bin/just"
   # Root-owned, like the stray directory actually found on the VM: a fix that drops `sudo rm` would leave this in place.
+  # sudo and chown are only ever applied under $f, a mktemp'd directory, never the host's real /node_modules.
   sudo chown -R root:root "$f/node_modules"
 }
 l40_repo() { check_repo; fixture="$dir/fixture"; build_l40_fixture "$fixture" "$1"; }
@@ -328,6 +367,12 @@ expect_true "L40 the saved log holds the tsc error naming the package's file" gr
 l40_repo yes
 got=0; STUB_FS_FIXTURE="$fixture" run_check_ref 54 || got=$?
 expect_true "L40 the same tree passes once the package declares @types/node" test "$got" -eq 0
+
+# The stub's own safety net: if a command ever reaches it with no /node_modules to rewrite, it must refuse rather
+# than run an unrewritten "sudo rm -rf /node_modules" against the real filesystem.
+got=0; STUB_FS_FIXTURE="$fixture" boxd machine exec ru-x --timeout 1800 -- "cd ~/roundup && just check" >out 2>err || got=$?
+expect_true "L40 the stub refuses a command with no /node_modules to rewrite" test "$got" -eq 1
+expect_true "L40 the refusal names why" grep -q 'refusing to run it unmodified' err
 
 for bad_ref in 'x; rm -rf ~' -x --tags; do
   check_repo; got=0; run_check_ref "$bad_ref" || got=$?

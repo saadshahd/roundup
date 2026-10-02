@@ -251,8 +251,7 @@ run_agent() {
   jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
 }
 
-# The check both `build` and `check` observe: remove the stray node_modules (above), then install from the lockfile,
-# then the repo's own definition of check.
+# The check both `build` and `check` observe.
 run_check() {
   boxd machine exec "$VM" --timeout 1800 -- "cd ~/roundup && . ~/.cargo/env && sudo rm -rf $STRAY_NODE_MODULES && pnpm install --frozen-lockfile && just check" </dev/null
 }
