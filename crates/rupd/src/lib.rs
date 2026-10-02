@@ -37,7 +37,11 @@ impl Daemon {
     pub fn open(dir: &Path) -> Result<Self, OpenError> {
         std::fs::create_dir_all(dir)?;
         let bus = Bus::new();
-        let terminals = Arc::new(terminal::Terminals::open(dir, bus.clone())?);
+        let terminals = Arc::new(terminal::Terminals::open_with(
+            dir,
+            bus.clone(),
+            &agents::claude_code::MARKERS,
+        )?);
         let mut daemon = Self {
             modules: HashMap::new(),
             touches: Arc::new(Touches::open(&dir.join("provenance.db"))?),

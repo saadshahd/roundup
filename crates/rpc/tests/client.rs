@@ -71,6 +71,34 @@ async fn c1_every_other_pending_call_fails_the_same_way_and_none_hangs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn c1_every_other_pending_call_gets_the_same_message_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = socket_in(&dir);
+    let listener = UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut lines = std::io::BufReader::new(&stream).lines();
+        // Both request lines are read (both were written), then the connection drops
+        // before either gets a reply.
+        lines.next().unwrap().unwrap();
+        lines.next().unwrap().unwrap();
+    });
+
+    let client = Client::connect(&socket).await.unwrap();
+    let (a, b) = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::join!(
+            client.request("daemon.ping", Value::Null),
+            client.request("daemon.ping", Value::Null),
+        )
+    })
+    .await
+    .expect("no pending call should hang after the connection drops");
+
+    assert!(a.unwrap_err().message.contains("may have run"));
+    assert!(b.unwrap_err().message.contains("may have run"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn c1_a_request_made_after_the_connection_is_known_closed_fails_at_once_and_says_not_sent() {
     let dir = tempfile::tempdir().unwrap();
     let socket = socket_in(&dir);
