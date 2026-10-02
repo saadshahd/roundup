@@ -31,30 +31,31 @@ Scenario text is on main and nothing it needs is unmerged. Every row owns a dire
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests |
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests |
 | audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests |
-| U41 | Rail by keyboard, the rest | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests |
+| U41 | Rail by keyboard, the rest (Moves: none) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests |
 
 ## Waiting
 
-Scenario text is on main. The row starts when what it waits on has merged.
+Scenario text is on main. The row starts when what it waits on has merged. A UI row ends its Item with `(Moves: <D ids>)`, the design-system checks it moves (`docs/design-system.md`, baseline protocol); the Builder's PR body repeats the line and corrects it if the diff moves other checks.
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
-| U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
-| U101, U102 | Terminal copy and paste; Terminal text size | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
-| A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
+| L44–L49 | merge policy: `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` in `loop/rules.sh`, stall kind f in `loop/stalls.sh`, the `Scenarios:` check in `loop/boxd.sh build`, the new `loop/rules.sh` steps in `.github/workflows/loop.yml` | `loop/rules.sh`, `loop/rules.test.sh`, `loop/stalls.sh`, `loop/boxd.sh` (shared with L22 and L40: merges after them), `loop/boxd.test.sh`, `.github/workflows/loop.yml` | `loop/rules.test.sh`, `loop/boxd.test.sh` | the rules PR for these ids merging (user approves it) |
+| U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title (Moves: D1, D6) | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
+| U101, U102 | Terminal copy and paste (Moves: D3); Terminal text size (Moves: D2) | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
+| A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/agents/src/claude_code/**`, `crates/rupd/src/lib.rs`, `crates/rup/tests/**`; no `SpawnParams` field; no vendor name in `crates/terminal` (P4) | the `a` and `x` tests | after #114 lands |
 | A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd`; its `a16_` tests in `crates/agents/tests/scenarios/**` and `crates/rup/tests/**` | the `a` tests | after #114 lands (both edit `crates/agents/src/lib.rs`) |
-| U56 | right-click menu: stop, remove | `apps/desktop/src/rail/menu/**`, one line each in `Rail.tsx`, `RailRow.tsx`, `src/rail/keys.ts` (created by U31) | `u9_`, `u31_`, `u33_` tests | after A16, U31, U33 and the rail polish PR (U44, U46, U47, U49); stacking allowed |
-| U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests; the U4 computed-colour test drops the pane header | after U56 merges (or in its PR) |
-| U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
-| U59 | the terminal blends with the app | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
-| U37 | reopen, webview half | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
+| U56 | right-click menu: stop, remove (Moves: D1, D6, D7, D8) | `apps/desktop/src/rail/menu/**`, one line each in `Rail.tsx`, `RailRow.tsx`, `src/rail/keys.ts` (created by U31) | `u9_`, `u31_`, `u33_` tests | after A16, U31, U33 and the rail polish PR (U44, U46, U47, U49); stacking allowed |
+| U57 | no pane header (Moves: D1) | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests; the U4 computed-colour test drops the pane header | after U56 merges (or in its PR) |
+| U58 | an Agent's Pads under it, on demand (Moves: D1, D2, D4, D6) | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
+| U59 | the terminal blends with the app (Moves: D1, D5) | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
+| U37 | reopen, webview half (Moves: D3, D5, D6, D7) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
 | sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test | after D4 merges |
-| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U38 merges (it adds a pads file) |
+| U50 | the Pad's text fills its Drawer (Moves: D1, D2, D5) | `apps/desktop/src/pads/**` | `u20_` tests | after U38 merges (it adds a pads file) |
 | T8 | `Todo.creator` (contract change approved) | `crates/todos/**`, `crates/contracts/**` and generated files, `crates/rup/tests/e2e.rs`, the webview Todo fixtures T8 lists | `t` tests, `u15_`, `u17_` tests | after A15 and A16 merge (A15 edits `crates/rup/tests/e2e.rs`, A16 edits `src/testing/seeds.ts`) |
-| U60 | an Agent's Todos under it | `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
-| contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
+| U60 | an Agent's Todos under it (Moves: D1, D2, D4) | `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
+| contrast | Live lines and Ink text read at 4.5:1 (U4, U25) (Moves: D1, D5) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
 | notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
-| U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
+| U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) (Moves: none) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
 | U130, U131, L41 | visual pass 1, Tokens: `tokens.css` holds every look value (starting values in `docs/design-system.md`), the four stylesheets read `var(--…)`, type and space steps; `loop/rules.sh tokens` with its tests, run by a `tokens` step in `.github/workflows/loop.yml` | `apps/desktop/src/tokens.css`, `apps/desktop/src/**/*.css`, `loop/rules.sh`, `loop/rules.test.sh`, `.github/workflows/loop.yml` (the scenario says so) | every existing `apps/desktop` test; each `u4_`, `u5_` or `u20_` test that asserts a colour U130 replaces is changed and named in the PR | now, unless the `contrast` row is already in flight, then after it (D5 carries its ratios); one PR, so the check and the migration land together |
 | U137 | one module computes D1 to D10; `window.__checks()` on the harness page | `apps/desktop/src/testing/**`, `apps/desktop/harness.html` | `u26_` tests | after U130 and U131 merge |
 | U132, U133 | visual pass 2, colour and click targets: Kind tones, `--accent`, hover, pressed and focus states, 24 px hit areas | `apps/desktop/src/rail/**`, `apps/desktop/src/drawer/**`, `apps/desktop/src/todos/**`, `apps/desktop/src/pads/**` | every test of those folders | after U130, U137, U35 and U36 merge |
@@ -62,6 +63,7 @@ Scenario text is on main. The row starts when what it waits on has merged.
 | U136 | the finish line: D1 to D10 pass on `first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`; QA and the critic's baseline shows each check `fixed`, none `regressed` | no Builder; QA, Design critic and Driver | `u136_` | after U134 and U135 merge |
 | E7 | spike: does the real Claude Code take a Brief, a `SessionStart` context and an MCP server at start | `spikes/context-injection/**` | the report; no app code | now; needs the installed `claude` |
 | E1-E6 | Brief, `agent.context`, `rup context`, `agent_context`, `rup mcp` connecting at start, the `RailNode.channel` field (the Chip is E8, reserved); the contract rides in this PR (committee approval) | `crates/agents/src/**`, `crates/agents/tests/**` and `claude_code/`, `crates/rupd/src/**` (it composes the Rail and the Todos for E2), `crates/rup/src/**`, `crates/contracts/**` with `contracts/generated/**`, `crates/rup/tests/**`, every `RailNode` literal (the webview fixtures, `seeds.ts`) | the `e1_` to `e6_` tests, with the `a4_` and `m1_` tests kept green; `just check` | after E7, after B12 and T8's implementation merge |
+| F2, F3, F4, F5 | a Meta-agent has no shell, `agent_spawn`, the PATH shim, stray detection; the contract rides in this PR (committee approval) | `crates/agents/src/**` and `claude_code/`, `crates/rup/src/**`, `crates/contracts/**` with `contracts/generated/**`, every `RailNode` literal | the `f2_` to `f5_` tests, with the `a4_`, `a7_` and `m1_` tests kept green; `just check` | after #159 (G2, Home), #162 (E1) and #160 (B12) merge, and after E1 to E6 or in the same PR order |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -152,8 +154,10 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
+  | L44–L49 | `scenarios/loop.md`: merge policy, `loop/rules.sh` `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` and stall kind f (rows below) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
   | E1–E9 | `scenarios/awareness.md`, architect-c (E1–E7 written; E8–E9 reserved) |
+  | F1–F9 | `scenarios/spawn-boundary.md`, architect-c (F1–F5 written; F6 the Rail's `stray` badge; F7–F9 reserved) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
