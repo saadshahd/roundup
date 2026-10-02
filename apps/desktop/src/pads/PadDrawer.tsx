@@ -26,7 +26,7 @@ const PadBody = (props: {
   let pendingActor: Actor | null = null;
   let closed = false;
 
-  /** The baseline a draft is judged dirty or clean against: the last text the Drawer loaded or saved. */
+  /** Moves the dirty/clean baseline forward and drops any conflict line; skip either and a resolved change still looks unresolved. */
   const settle = (next: Pad) => {
     setShown(next.text);
     setConflictActor(null);
@@ -70,12 +70,6 @@ const PadBody = (props: {
         if (sameContent(current, pad())) return;
 
         setPad(current);
-
-        if (!editing()) {
-          settle(current);
-
-          return;
-        }
 
         const typed = textField?.value ?? shown();
 

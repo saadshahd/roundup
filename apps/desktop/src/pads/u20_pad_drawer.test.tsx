@@ -3,21 +3,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AGENT,
   deferred,
+  openPad,
   openShelf,
   padOf,
   RpcError,
+  waitForReload,
 } from "./padsFixture";
 import { USER } from "../testing/nodes";
 import type { Pad } from "@contracts/pad/Pad";
 import styles from "../styles.css?inline";
 
 afterEach(cleanup);
-
-const openPad = async (name: string) => {
-  fireEvent.click(await screen.findByText(name));
-
-  return screen.findByLabelText<HTMLTextAreaElement>("text");
-};
 
 const edit = (field: HTMLTextAreaElement, value: string) => {
   fireEvent.focus(field);
@@ -313,7 +309,7 @@ describe("u20 open and edit", () => {
     fireEvent.input(field, { target: { value: "mine, typing" } });
     state.pads = [padOf("release-checklist", USER, "mine plus agent")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
-    await waitFor(() => expect(app.calls.filter((call) => call.method === "pad.list").length).toBeGreaterThan(1));
+    await waitForReload(app);
 
     fireEvent.input(field, { target: { value: "mine" } });
     fireEvent.blur(field);
@@ -352,11 +348,7 @@ describe("u20 open and edit", () => {
       name: "pad.changed",
       data: { name: "release-checklist" },
     });
-    await waitFor(() =>
-      expect(
-        app.calls.filter((call) => call.method === "pad.list").length,
-      ).toBeGreaterThan(1),
-    );
+    await waitForReload(app);
 
     fireEvent.blur(field);
 
@@ -377,11 +369,7 @@ describe("u20 open and edit", () => {
       name: "pad.changed",
       data: { name: "release-checklist" },
     });
-    await waitFor(() =>
-      expect(
-        app.calls.filter((call) => call.method === "pad.list").length,
-      ).toBeGreaterThan(1),
-    );
+    await waitForReload(app);
 
     fireEvent.blur(field);
 

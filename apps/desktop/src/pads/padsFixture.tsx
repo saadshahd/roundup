@@ -1,10 +1,12 @@
-import { render } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { expect } from "vitest";
 import type { Actor } from "@contracts/Actor";
 import type { Touch } from "@contracts/Touch";
 import type { Pad } from "@contracts/pad/Pad";
 import { RpcError } from "../app/seam";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { createFakeApp } from "../testing/fakeApp";
+import type { FakeApp } from "../testing/fakeApp";
 import { padHandlers } from "../testing/stores";
 import type { PadStore } from "../testing/stores";
 import {
@@ -87,3 +89,17 @@ export const openShelf = async (pads: Pad[]) => {
     calls: () => app.calls.map((call) => call.method),
   };
 };
+
+export const openPad = async (name: string) => {
+  fireEvent.click(await screen.findByText(name));
+
+  return screen.findByLabelText<HTMLTextAreaElement>("text");
+};
+
+/** `pad.list` is refetched on every `pad.changed`, so a test waits for that count to pass `atLeast` rather than for a specific call index. */
+export const waitForReload = (app: FakeApp, atLeast = 1) =>
+  waitFor(() =>
+    expect(
+      app.calls.filter((call) => call.method === "pad.list").length,
+    ).toBeGreaterThan(atLeast),
+  );
