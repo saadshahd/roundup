@@ -10,7 +10,16 @@ import { connectEvents } from "./events";
 import { RpcError } from "./seam";
 import { createTauriApp } from "./tauri";
 
-const TODO: Todo = { id: 1, title: "t", body: "", done: false, blockers: [], blocked: false, created_at: 0 };
+const TODO: Todo = {
+  id: 1,
+  title: "t",
+  body: "",
+  done: false,
+  blockers: [],
+  blocked: false,
+  created_at: 0,
+  creator: { kind: "user", id: "you", parent: null },
+};
 
 const NOT_FOUND = -32001;
 
