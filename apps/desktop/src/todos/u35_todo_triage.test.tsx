@@ -54,6 +54,18 @@ describe("u35 Todo triage without the Drawer", () => {
     expect(screen.queryByText("complete")).toBeNull();
   });
 
+  it("u35_complete_is_hidden_again_once_focus_moves_to_another_row", async () => {
+    await mountTodos([todo(3), todo(4)]);
+    const row3Button = await screen.findByRole("button", { name: /#3/ });
+    row3Button.focus();
+    await within(rowOf(3)).findByText("complete");
+    const row4Button = screen.getByRole("button", { name: /#4/ });
+
+    row4Button.focus();
+
+    expect(within(rowOf(3)).queryByText("complete")).toBeNull();
+  });
+
   it("u35_complete_logs_no_read_touch_and_does_not_open_the_drawer", async () => {
     const { app, connected } = await mountTodos([todo(3)]);
     await screen.findByText(/todo 3/);
@@ -188,7 +200,7 @@ describe("u35 Todo triage without the Drawer", () => {
     expect(screen.queryByText(/cannot complete/)).toBeNull();
   });
 
-  it("u35_tabbing_from_the_row_to_complete_keeps_keyboard_focus_on_it", async () => {
+  it("u35_moving_focus_from_the_row_to_complete_keeps_it_visible_and_clickable", async () => {
     const { app } = await mountTodos([todo(3)]);
     const row = await screen.findByRole("button", { name: /#3/ });
 
