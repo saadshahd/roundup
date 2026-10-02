@@ -23,9 +23,12 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui-persist.md` | `apps/desktop` (the webview) | U100 |
 | `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
+| `decisions.md` | `crates/agents` (Decisions), `crates/rup` (`rup permission`), `spikes/hooks-permission` | every `H` heading in the file |
+| `control.md` | `crates/agents` (`agent.prompt`, `agent.interrupt`, `ask_user`), `crates/rup` | every `H` heading in the file |
 | `awareness.md` | `crates/agents` (Brief file, `claude_code/`), `crates/rupd` (`agent.context`, `agent.brief`), `crates/rup` | E1–E7 |
-| `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | F1–F5 |
+| `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | every `F` heading in the file |
 | `rpc.md` | `crates/rpc` | C1 |
+| `worktrees.md` | `crates/agents` (`src/worktree.rs`); end-to-end tests in `crates/rup/tests` | G1–G7 |
 | `workspace.md` | root files | W1 |
 | `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | every `R` and `K` heading in the file |
 

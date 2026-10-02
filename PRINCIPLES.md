@@ -1,6 +1,6 @@
 # Principles
 
-What roundup is for, beyond a lean, extensible, fast workbench. Every design and UX choice serves these. Terms are in `CONTEXT.md`; **Thread** and **Card** are named here and defined there after the naming pass (`/shape`).
+What roundup is for, beyond a lean, extensible, fast workbench. Every design and UX choice serves these. Terms are in `CONTEXT.md`; **Thread**, **Card** and **Decision** are named here and defined there after the naming pass (`/shape`).
 
 A PR body lists the principle ids it serves and answers each gate below. A gate is a yes/no question. The answer must be "no" to merge, unless the principle says it is a goal. The Reviewer checks the answers against the diff (`AGENTS.md` rule 1).
 
@@ -22,16 +22,16 @@ Observer: a test that spawns two Agents and compares their cwds.
 
 ## P3 Cards over chatter
 
-Agents run in the background until they cannot continue. The only interruption is a Card: one blocking question in the Inbox. Answering clears it and the Agent resumes. Every Agent with Kind `needs-you` has exactly one Card, and a Card exists only for that Kind.
+Agents run in the background until they cannot continue. The only interruption is a Decision: one blocking question in the Inbox. Answering clears it and the Agent resumes. Every Agent with Kind `needs-you` has exactly one Decision, and a Decision exists only for that Kind.
 
-A Card is valid when all of these hold:
+A Decision is valid when all of these hold:
 
 1. its Agent's Kind is `needs-you`;
 2. it holds one question and the answers that unblock the Agent;
-3. no other Card from the same Agent is open (a repeat updates it).
+3. no other Decision from the same Agent is open (a repeat updates it).
 
-Gate: does anything interrupt the user except a valid Card (a bell, an OS alert, ink on a routine Kind), or does an Observation of routine progress yield `needs-you`?
-Observer: replay `spikes/hooks-state/*.jsonl`; routine transitions produce no Card, each `needs-you` produces one valid Card.
+Gate: does anything interrupt the user except a valid Decision (a bell, an OS alert, ink on a routine Kind), or does an Observation of routine progress yield `needs-you`?
+Observer: replay `spikes/hooks-state/*.jsonl`; routine transitions produce no Decision, each `needs-you` produces one valid Decision.
 
 ## P4 Black-box harness
 
