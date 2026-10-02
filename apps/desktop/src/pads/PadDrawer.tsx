@@ -1,5 +1,6 @@
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import type { Actor } from "@contracts/Actor";
 import type { Pad } from "@contracts/pad/Pad";
 import { ItemDrawer } from "../drawer/ItemDrawer";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -17,24 +18,46 @@ const PadBody = (props: {
   const name = props.initial.name;
   const [pad, setPad] = createSignal(props.initial);
   const [shown, setShown] = createSignal(props.initial.text);
+  const [origin, setOrigin] = createSignal(props.initial.text);
   const [editing, setEditing] = createSignal(false);
+  const [conflictActor, setConflictActor] = createSignal<Actor | null>(null);
   const actionFailure = createFailure();
   const [deleted, setDeleted] = createSignal(false);
-  let missedWhileEditing = false;
+  let textField: HTMLTextAreaElement | undefined;
+  let pendingActor: Actor | null = null;
   let closed = false;
 
-  /** Server state always lands in `pad`; the text field only follows it while the user is not typing, or their keystrokes would vanish. */
+  /** Moves the field and the dirty/clean baseline forward together and drops any conflict line; skip either and a resolved change still looks unresolved. The field is written directly because `shown()` can already equal `next.text` while the user's keystrokes left the real DOM value stale, and Solid skips the write when the signal itself does not change. */
+  const settle = (next: Pad) => {
+    setOrigin(next.text);
+    setShown(next.text);
+
+    if (textField) textField.value = next.text;
+
+    setConflictActor(null);
+  };
+
+  /** The baseline always moves to the last loaded or saved text, even mid-edit, so a later dirty-check stays correct; the field itself only follows while the user is not typing, or their keystrokes would vanish. */
   const adopt = (next: Pad) => {
     setPad(next);
+    setOrigin(next.text);
 
-    if (editing()) missedWhileEditing = true;
-    else setShown(next.text);
+    if (!editing()) settle(next);
   };
 
   const sameContent = (left: Pad, right: Pad) =>
     left.text === right.text &&
     left.owner.kind === right.owner.kind &&
     left.owner.id === right.owner.id;
+
+  /** The DOM field is the draft's source of truth while mounted; `shown()` only covers the gap before the ref attaches. */
+  const currentDraft = () => textField?.value ?? shown();
+
+  onCleanup(
+    connected.events.subscribe((event) => {
+      if (event.name === "pad.changed" && event.data.name === name) pendingActor = event.actor;
+    }),
+  );
 
   createEffect(
     on(
@@ -44,7 +67,26 @@ const PadBody = (props: {
 
         setDeleted(current === undefined);
 
-        if (current && !sameContent(current, pad())) adopt(current);
+        const actor = pendingActor;
+        pendingActor = null;
+
+        if (!current) {
+          setConflictActor(null);
+
+          return;
+        }
+
+        if (sameContent(current, pad())) return;
+
+        setPad(current);
+
+        if (currentDraft() === origin()) {
+          settle(current);
+
+          return;
+        }
+
+        if (actor && actor.kind !== "user") setConflictActor(actor);
       },
       { defer: true },
     ),
@@ -70,7 +112,7 @@ const PadBody = (props: {
 
   const write = (text: string) =>
     act(async () => {
-      if (text !== shown())
+      if (text !== origin())
         adopt(await connected.app.rpc("pad.write", { name, text }));
     });
 
@@ -90,13 +132,20 @@ const PadBody = (props: {
     if (!editing()) return;
 
     setEditing(false);
-    await write(typed);
 
-    if (missedWhileEditing && !editing()) {
-      missedWhileEditing = false;
-      setShown(pad().text);
-    }
+    if (conflictActor()) return;
+
+    await write(typed);
   };
+
+  const keepMine = () =>
+    act(async () => {
+      adopt(await connected.app.rpc("pad.write", { name, text: currentDraft() }));
+      // adopt alone won't clear this while a quick refocus keeps the field dirty.
+      setConflictActor(null);
+    });
+
+  const useTheirs = () => settle(pad());
 
   return (
     <>
@@ -126,6 +175,7 @@ const PadBody = (props: {
         <ErrorLine message={`pad ${name} was deleted`} />
       </Show>
       <textarea
+        ref={(element) => (textField = element)}
         aria-label="text"
         style={{
           "font-family": "var(--mono)",
@@ -134,9 +184,38 @@ const PadBody = (props: {
         }}
         readOnly={!ownedByUser()}
         value={shown()}
-        onInput={() => setEditing(ownedByUser())}
+        onInput={(typed) => {
+          setEditing(ownedByUser());
+
+          if (typed.currentTarget.value === origin()) settle(pad());
+        }}
         onBlur={(blurred) => void leaveField(blurred.currentTarget.value)}
       />
+      <Show when={conflictActor()}>
+        {(actor) => (
+          <p style={markedLine}>
+            <span class="light" style={wholeWord}>
+              changed by {connected.rail.nameOf(actor())}
+            </span>
+            <button
+              type="button"
+              class="word"
+              style={wholeWord}
+              onClick={() => void keepMine()}
+            >
+              keep mine
+            </button>
+            <button
+              type="button"
+              class="word"
+              style={wholeWord}
+              onClick={useTheirs}
+            >
+              use theirs
+            </button>
+          </p>
+        )}
+      </Show>
       <Show when={!ownedByUser()}>
         <input
           aria-label="append"
