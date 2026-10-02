@@ -4,6 +4,7 @@ import { App } from "../App";
 import { createReducedMotion } from "../app/reducedMotion";
 import { isSeedName, SEEDS, seedApp } from "./seeds";
 import type { Controls } from "./seeds";
+import "../tokens.css";
 import "../styles.css";
 
 declare global {
