@@ -25,7 +25,7 @@ export type Screens = {
   dispose(): void;
 };
 
-type Holder = { emulator: Emulator; atBottom: Accessor<boolean>; setAtBottom: (value: boolean) => void };
+type Holder = { emulator: Emulator; atBottom: Accessor<boolean>; returnToBottom: () => void };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
@@ -75,18 +75,22 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       }
     };
 
+    const returnToBottom = () => {
+      emulator.scrollToBottom();
+      setAtBottom(true);
+    };
+
     emulator.onScroll(() => setAtBottom(emulator.isAtBottom()));
     emulator.onInput((bytes) => {
       if (exited(id) || daemonExit() !== null) return;
 
-      emulator.scrollToBottom();
-      setAtBottom(true);
+      returnToBottom();
 
       for (const byte of bytes) typed.push(byte);
 
       if (!writing) void flush();
     });
-    const holder: Holder = { emulator, atBottom, setAtBottom };
+    const holder: Holder = { emulator, atBottom, returnToBottom };
 
     holders.set(id, holder);
 
@@ -120,12 +124,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       }
     },
     isAtBottom: (id) => holders.get(id)?.atBottom() ?? true,
-    returnToBottom: (id) => {
-      const holder = holderFor(id);
-
-      holder.emulator.scrollToBottom();
-      holder.setAtBottom(true);
-    },
+    returnToBottom: (id) => holderFor(id).returnToBottom(),
     failure,
     dispose: () => {
       stopListening();
