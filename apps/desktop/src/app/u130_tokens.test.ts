@@ -19,13 +19,17 @@ const TOKENS = [
 ] as const;
 
 function valueOf(section: string, token: string): string | undefined {
-  return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;]+);`))?.[1];
+  return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
 }
 
 describe("u130 tokens", () => {
   it("u130_token_lookup_does_not_match_a_longer_property_name", () => {
     const css = "--row--hover: red;\n--hover: blue;\n";
     expect(valueOf(css, "--hover")).toBe("blue");
+  });
+
+  it("u130_an_empty_token_value_does_not_count", () => {
+    expect(valueOf("--sunken: ;\n", "--sunken")).toBeUndefined();
   });
 
   it("u130_every_design_system_token_has_a_light_and_a_dark_value", () => {

@@ -1,3 +1,4 @@
+import tokenStyles from "../tokens.css?inline";
 import appStyles from "../styles.css?inline";
 import railStyles from "../rail/styles.css?inline";
 
@@ -114,11 +115,15 @@ export const tokensOf = (css: string): ReadonlyMap<string, string> => {
 
   const tokens = new Map<string, string>();
 
-  for (const declaration of root[1]!.matchAll(/--([\w-]+):\s*([^;]+);/g))
+  for (const declaration of root[1]!.matchAll(/--([\w-]+):\s*([^;\s][^;]*);/g))
     tokens.set(declaration[1]!, declaration[2]!.trim());
 
   return tokens;
 };
+
+/** Every `:root` token across several stylesheets, later sheets winning a name both define. */
+export const tokensFrom = (...sheets: string[]): ReadonlyMap<string, string> =>
+  new Map(sheets.flatMap((css) => [...tokensOf(css)]));
 
 /** Resolves a computed-style value that may still read as `var(--name)`: jsdom does not substitute custom properties, so tests must. */
 export const resolveToken = (value: string, tokens: ReadonlyMap<string, string>): string => {
@@ -136,7 +141,7 @@ export const resolveToken = (value: string, tokens: ReadonlyMap<string, string>)
 
 /** The real `:root` tokens and the selected-row band, read off the stylesheets this PR ships, never a hard-coded copy. */
 export const loadTokens = () => {
-  const tokens = tokensOf(appStyles);
+  const tokens = tokensFrom(tokenStyles, appStyles);
   const ground = resolveToken("var(--ground)", tokens);
 
   const band = /\.rail-row\[data-selected="true"\]\s*\{\s*background:\s*rgba\(\s*0,\s*0,\s*0,\s*([\d.]+)\s*\)/.exec(
@@ -151,7 +156,7 @@ export const loadTokens = () => {
 /** Injects the real stylesheets into jsdom, as the Drawer tests already do, so `getComputedStyle` reflects the shipped rules. */
 export const withStylesheets = async <T,>(run: () => T | Promise<T>): Promise<T> => {
   const sheet = document.head.appendChild(document.createElement("style"));
-  sheet.textContent = `${appStyles}\n${railStyles}`;
+  sheet.textContent = `${tokenStyles}\n${appStyles}\n${railStyles}`;
 
   try {
     return await run();

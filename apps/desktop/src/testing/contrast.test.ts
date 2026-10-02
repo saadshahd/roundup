@@ -28,6 +28,13 @@ describe("contrast", () => {
     expect([tokens.get("ground"), tokens.get("grey")]).toEqual(["#ffffff", "#6e6e73"]);
   });
 
+  it("tokensOf_ignores_a_token_with_no_value", () => {
+    const tokens = tokensOf(":root { --x: ; --y: #000000; }");
+
+    expect(tokens.has("x")).toBe(false);
+    expect(tokens.get("y")).toBe("#000000");
+  });
+
   it("resolveToken_follows_a_chain_of_var_references_to_a_literal", () => {
     const tokens = new Map([
       ["live", "var(--grey)"],
