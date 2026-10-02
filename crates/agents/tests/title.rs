@@ -153,15 +153,15 @@ impl Replay {
     }
 }
 
-/// Replay a run. The code driving the adapter must deliver a Tick at `tick_at()`, so whenever one
-/// falls before the next observation (or after the last) it is delivered first.
-fn replay(run: Run) -> Vec<Step> {
+/// Replay `items`. The code driving the adapter must deliver a Tick at `tick_at()`, so whenever
+/// one falls before the next observation (or after the last) it is delivered first.
+fn replay_timeline(items: Vec<(f64, Observation)>) -> Vec<Step> {
     let mut replay = Replay {
         clocked: Clocked::new(),
         steps: vec![],
         current: None,
     };
-    for (ts, observation) in timeline(run) {
+    for (ts, observation) in items {
         replay.deliver_due_ticks(millis(ts));
         let event = match &observation {
             Observation::Signal(payload) => payload["hook_event_name"].as_str().unwrap().to_owned(),
@@ -172,6 +172,24 @@ fn replay(run: Run) -> Vec<Step> {
     }
     replay.deliver_due_ticks(i64::MAX);
     replay.steps
+}
+
+fn replay(run: Run) -> Vec<Step> {
+    replay_timeline(timeline(run))
+}
+
+/// `replay`, but with every Signal for `dropped` removed from the timeline first: what Claude Code
+/// actually sends once `STATE_EVENTS` (`launch.rs`) no longer registers a hook for it. The titles
+/// are untouched: the terminal renders the same glyphs whether or not a hook fires for them.
+fn replay_without(run: Run, dropped: &str) -> Vec<Step> {
+    replay_timeline(
+        timeline(run)
+            .into_iter()
+            .filter(|(_, observation)| {
+                !matches!(observation, Observation::Signal(payload) if payload["hook_event_name"] == dropped)
+            })
+            .collect(),
+    )
 }
 
 /// The Kinds the Agent changed to, in order, between `from` and `to` (seconds).
@@ -237,6 +255,52 @@ fn a2_a_dialog_goes_working_to_needs_you_with_no_idle_between() {
     }
 }
 
+/// H15 dropped `PreToolUse` from `STATE_EVENTS`, so Claude Code never runs a hook for it; these
+/// replay the same fixtures with its Signal removed, which is what the Agent actually sees in
+/// production. The star hold must not depend on that Signal, or a dialog reads `idle` first.
+#[test]
+fn a2_a_dialog_goes_working_to_needs_you_with_no_idle_between_once_pre_tool_use_is_unhooked() {
+    for run in [RUN1, RUN2, RUN3, RUN6, RUN7] {
+        let steps = replay_without(run, "PreToolUse");
+        let kinds: Vec<_> = changes(&steps, 0.0, f64::MAX);
+        let into_needs_you: Vec<_> = kinds
+            .windows(2)
+            .filter(|w| w[1] == Kind::NeedsYou)
+            .collect();
+        assert!(!into_needs_you.is_empty());
+        assert!(
+            into_needs_you.iter().all(|w| w[0] == Kind::Working),
+            "{kinds:?}"
+        );
+    }
+}
+
+#[test]
+fn a2_esc_during_an_auto_allowed_tool_reads_idle_only_after_the_hold_once_pre_tool_use_is_unhooked()
+{
+    for run in [RUN4, RUN5] {
+        let steps = replay_without(run, "PreToolUse");
+        let esc = mark(run.1, "esc");
+        let star = steps
+            .iter()
+            .find(|s| s.ts > esc && s.event.starts_with("title ✳"))
+            .unwrap()
+            .ts;
+        let idle = steps
+            .iter()
+            .find(|s| s.ts > esc && s.kind == Some(Kind::Idle))
+            .unwrap();
+        assert_eq!(idle.event, "Tick");
+        assert!(
+            idle.ts - star >= STAR_HOLD as f64 / 1000.0 - 0.001,
+            "idle {}s after the star",
+            idle.ts - star
+        );
+        let working = steps.iter().rev().find(|s| s.ts < idle.ts).unwrap();
+        assert_eq!(working.kind, Some(Kind::Working), "{}", working.event);
+    }
+}
+
 #[test]
 fn a2_a_permission_request_within_the_hold_goes_straight_to_needs_you() {
     let mut a = Clocked::new();
@@ -272,13 +336,17 @@ fn a2_a_spinner_after_the_held_star_cancels_the_hold() {
     assert_eq!(a.at(20 + STAR_HOLD, Observation::Tick), None);
 }
 
+/// No hook fires for `PreToolUse` in production, so the hold can no longer tell "a star that
+/// might precede a dialog" from "a star after the tool already finished": every star seen while
+/// `Working` is held the same way, resolved by the Tick once nothing else arrives.
 #[test]
-fn a2_post_tool_use_ends_the_hold_so_a_later_star_is_idle_at_once() {
+fn a2_a_star_after_post_tool_use_is_held_like_any_other_star() {
     let mut a = Clocked::new();
     a.signal(0, "UserPromptSubmit");
     a.signal(10, "PreToolUse");
     a.signal(20, "PostToolUse");
-    assert_eq!(a.title(30, "✳ Done"), Some(Kind::Idle));
+    assert_eq!(a.title(30, "✳ Done"), None);
+    assert_eq!(a.at(30 + STAR_HOLD, Observation::Tick), Some(Kind::Idle));
 }
 
 #[test]

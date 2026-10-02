@@ -44,9 +44,7 @@ enum Ending {
 pub struct ClaudeCode {
     status: Option<Status>,
     ending: Ending,
-    /// The latest recognised Signal was `PreToolUse`: a dialog may be about to open.
-    after_pre_tool_use: bool,
-    /// When a star after `PreToolUse` was first seen and not yet resolved.
+    /// When a star seen while `Working` was first seen and not yet resolved.
     star_held_since: Option<i64>,
     clock: Box<dyn Fn() -> i64 + Send>,
 }
@@ -57,7 +55,6 @@ impl ClaudeCode {
         Self {
             status: None,
             ending: Ending::Running,
-            after_pre_tool_use: false,
             star_held_since: None,
             clock: Box::new(clock),
         }
@@ -96,10 +93,11 @@ impl ClaudeCode {
     /// Claude Code spins ◐/◑ while it works and shows ✳ whenever it is not, a permission dialog
     /// included. A spinner means working, but never ends `needs-you` (a denied dialog resumes the
     /// spinner with no hook). A star means idle only for a working Agent, so it never ends
-    /// `needs-you`, `error` or `done`. The one star not read at once follows `PreToolUse`: it may
-    /// be the dialog's, which precedes its `PermissionRequest`, so it is held for `STAR_HOLD`;
-    /// reading it as idle would flicker `idle` before `needs-you`. A spinner after that star shows
-    /// the tool still running and drops the hold.
+    /// `needs-you`, `error` or `done`. No hook fires for `PreToolUse` (`STATE_EVENTS` in
+    /// `launch.rs`), so a star seen while `Working` is always held for `STAR_HOLD`: it may be a
+    /// dialog's, which precedes its `PermissionRequest`; reading it as idle at once would flicker
+    /// `idle` before `needs-you`. A spinner after that star shows the tool still running and drops
+    /// the hold.
     fn retitle(&mut self, title: &str) -> Option<Status> {
         let kind = self.status.as_ref().map(|status| status.kind);
         match title.chars().next()? {
@@ -110,12 +108,11 @@ impl ClaudeCode {
                 }
                 self.settle(Kind::Working, "working".into())
             }
-            '✳' if kind == Some(Kind::Working) && self.after_pre_tool_use => {
+            '✳' if kind == Some(Kind::Working) => {
                 let now = (self.clock)();
                 self.star_held_since.get_or_insert(now);
                 None
             }
-            '✳' if kind == Some(Kind::Working) => self.settle(Kind::Idle, "idle".into()),
             _ => None,
         }
     }
@@ -130,7 +127,6 @@ impl ClaudeCode {
 
     fn signal(&mut self, payload: &Value) -> Option<Status> {
         let (kind, label) = hook_status(payload)?;
-        self.after_pre_tool_use = payload["hook_event_name"] == "PreToolUse";
         self.star_held_since = None;
         self.settle(kind, label)
     }
