@@ -285,40 +285,17 @@ describe("u1 calls and events", () => {
     });
   });
 
-  it("u1_the_adapter_file_is_the_only_door_to_tauri", async () => {
-    type FsModule = {
-      readdirSync: (path: string, options: { withFileTypes: true }) => { name: string; isDirectory(): boolean }[];
-      readFileSync: (path: string, encoding: "utf8") => string;
-    };
+  it("u1_the_adapter_file_is_the_only_door_to_tauri", () => {
+    // so the only-door check sees adapters added after this test was written
+    const sourceFiles = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
 
-    type PathModule = { dirname: (path: string) => string; join: (...paths: string[]) => string };
-
-    type UrlModule = { fileURLToPath: (url: string) => string };
-
-    // SAFETY: this app has no @types/node; specifier is non-literal so tsc cannot resolve the real "node:*" shape, and the three node: built-ins loaded below are typed by hand instead.
-    const nodeModule = <T>(specifier: string): Promise<T> => import(specifier) as Promise<T>;
-
-    const fs = await nodeModule<FsModule>("node:fs");
-    const path = await nodeModule<PathModule>("node:path");
-    const url = await nodeModule<UrlModule>("node:url");
-
-    const thisFile = url.fileURLToPath(import.meta.url);
-    const srcDir = path.join(path.dirname(thisFile), "..");
-
-    const sourceFiles = (dir: string): string[] =>
-      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const entryPath = path.join(dir, entry.name);
-
-        if (entry.isDirectory()) return sourceFiles(entryPath);
-
-        return /\.(ts|tsx)$/.test(entry.name) && !/\.test\.(ts|tsx)$/.test(entry.name) ? [entryPath] : [];
-      });
-
-    const tauriFile = path.join(srcDir, "app", "tauri.ts");
-
-    const importers = sourceFiles(srcDir).filter(
-      (p) => p !== tauriFile && p !== thisFile && fs.readFileSync(p, "utf8").includes("@tauri-apps"),
-    );
+    const importers = Object.entries(sourceFiles)
+      .filter(([path, text]) => path !== "./tauri.ts" && text.includes("@tauri-apps"))
+      .map(([path]) => path);
 
     expect(importers).toEqual([]);
   });
