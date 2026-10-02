@@ -9,16 +9,16 @@ A squad is one scenario writer, its Builders and its reviewer pool. It writes sc
 | Squad | Module directories | Scenario files | New ids it allocates |
 |---|---|---|---|
 | ui-rail | `apps/desktop/src/rail`, `drawer`, `todos`, `pads` | `ui-rail.md` | U61 to U79 |
-| ui-surfaces | `apps/desktop/src` outside those four (switcher, first run, help, pane, empty and error states) | `ui-surfaces.md` | U80 to U99 |
+| ui-surfaces | `apps/desktop/src` outside those four (switcher, first run, help, pane, empty and error states, and the keystroke probe) | `ui-surfaces.md` | U80 to U99 |
 | daemon | `crates/agents`, `crates/terminal`, `crates/todos`, `crates/pads`, `crates/rupd`, `crates/rup`, `crates/rpc`, `crates/desktop` | `agents.md`, `terminal.md`, `todos.md`, `pads.md`, `daemon.md`, `mcp.md`, `rpc.md`, `app.md` | A17 to A29, X11 to X20, T9 to T15, P10 to P14, D5 to D9, M4 to M6, C2 to C9, S7 to S12 |
 | loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L26 to L39 |
-| perf | `crates/perf`, the keystroke probe, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
+| perf | `crates/perf`, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
 
-The architects hold ranges for scenarios they write themselves, and no squad allocates from them: A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59. Ids already in `.work/queue.md` stay with their holders. A squad that runs out of ids asks the committee for the next block. Two squads never edit one scenario file. A scenario that needs a file another squad owns names it, and the owning squad's writer adds that part.
+The architects hold ranges for scenarios they write themselves, and no squad allocates from them: A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59. Ids already in `.work/queue.md` stay with their holders. A squad that runs out of ids asks the committee for the next block. Two squads never edit one scenario file. `ui.md` (U1 to U60) is no squad's file for new ids; an edit to one of its existing scenarios belongs to the squad whose module directory that scenario owns, and the other squads' scenarios go in their own files. A scenario that needs a file another squad owns names it, and the owning squad's writer adds that part.
 
 ## Architect committee
 
-Three architects, each with its own id. The committee approves what no single squad owns:
+Three architects: `architect-swarm` (contracts, ids, queue), `architect-b` (UI and product) and `architect-c` (daemon, rpc and loop). The committee approves what no single squad owns:
 
 - any edit under `contracts/`, including a new RPC method, an event or a field;
 - any App seam command (a Tauri command or capability);
@@ -27,7 +27,7 @@ Three architects, each with its own id. The committee approves what no single sq
 - a change to a scenario that a merged test asserts, when it crosses squads;
 - a conflict between squads.
 
-An approval is one architect whose id differs from the author of the PR or scenario. If a second architect disagrees, the third decides, and the decision is recorded as a PR comment. The approval is a comment `ARCHITECT: approve <full sha>` or `ARCHITECT: reject <full sha>`, naming what was checked, and it counts for the head it names. A squad does not wait for the committee on anything outside this list. The committee is not a gate on scenarios inside a squad's range, and it does not read every PR.
+An approval is one architect whose id differs from the author of the PR or scenario. If a second architect disagrees, the third decides, and the decision is recorded as a PR comment; when the third is the author, the user decides. The approval is a comment `ARCHITECT: approve <full sha>` or `ARCHITECT: reject <full sha>`, naming what was checked, and it counts for the head it names. A squad does not wait for the committee on anything outside this list. The committee is not a gate on scenarios inside a squad's range, and it does not read every PR.
 
 ## Unchanged
 

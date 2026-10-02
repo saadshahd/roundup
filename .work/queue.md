@@ -75,7 +75,8 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
-| held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
+| contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
+| notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -89,6 +90,10 @@ The coverage audit: every scenario id in `scenarios/*.md` has a test with its lo
 - packaging (a signed `.app`).
 
 ## Swarm protocol
+
+**Stacking.** A Builder may branch from an unmerged base PR's branch when its scenario says "after X" or "may stack", opens its PR against `main` as `AGENTS.md` says, and merges only after its base has merged. Its own commits touch no file its base's commits touch, so the two stay reviewable apart.
+
+**Writers.** A writer is an agent that writes scenarios and no code: the Architect gives it one scenario file and one id range, and records both in the id table below. It owns the scenario file and the id range the Architect gave it, edits no other scenario file and not this file, and never decides a contract change, a new RPC method or an App seam command; those and any change to a merged scenario go to the Architect.
 
 Agents coordinate only through this repo: this file, `scenarios/`, PRs and their commit trailers. The WIP limit, the `Claimed-by:` line and the one-day claim expiry are queue policy added by the Architect, not `AGENTS.md` rules; change them here.
 
@@ -125,12 +130,15 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
+  | U55 | empty-Terminal notch diagnosis |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
+  | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
+  | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
