@@ -127,14 +127,16 @@ describe("u27 focus returns", () => {
 
     connected.rail.select("a");
 
+    connected.drawer.open(() => <input aria-label="field" />);
+    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
+
     const other = document.body.appendChild(document.createElement("input"));
 
     other.focus();
-    connected.drawer.open(() => <input aria-label="field" />);
-    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     connected.drawer.close();
 
     await Promise.resolve();
+    expect(document.activeElement).toBe(other);
     expect(focused).toEqual([]);
     other.remove();
   });
