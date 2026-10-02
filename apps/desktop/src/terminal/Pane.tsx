@@ -10,9 +10,9 @@ import "./styles.css";
 /**
  * The selected row's Terminal. Every error line of the centre lives in the pane's one fixed-height slot, so the
  * screen never moves after it was fitted: `notice` (the Daemon or Rail failure) wins over the pane's own failure.
- * `createEmulator` is the edge tests replace; the App passes none.
+ * `createEmulator` is the edge tests replace; the App passes none, except the keystroke run (`scenarios/perf.md` K3).
  */
-export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorFactory }) => {
+export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorFactory | undefined }) => {
   const connected = useConnectedProject();
   const { rail } = connected;
   const screens = createScreens(connected, props.createEmulator ?? createXtermEmulators());

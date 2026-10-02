@@ -9,7 +9,7 @@
 #   loop/boxd.sh swarm <build|review> <prompt-file>...  # one isolated VM per prompt (ru-builder-<n> / ru-reviewer-<n>), at most BOXD_MAX_VMS at once; one status line each
 #   loop/boxd.sh status                      # every ru- VM with what it is doing
 #   loop/boxd.sh kill <name|all>             # remove ru-<name>; `all` removes only swarm VMs (ru-builder-*, ru-reviewer-*)
-# review checks out $BOXD_REF (default HEAD). BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_MODEL overrides the model (build: sonnet, review: opus).
+# review checks out $BOXD_REF (default HEAD). BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_AGENT_TIMEOUT (seconds, at most 1800) bounds the agent run. BOXD_MODEL overrides the model (build: sonnet, review: opus).
 # Auth is the boxd secret CLAUDE_CODE_OAUTH_TOKEN (sealed, host-scoped): each VM sees only a placeholder, boxd swaps in the real token for *.anthropic.com, *.claude.com and claude.ai.
 # Exit codes: 0 ok, 1 failure, 75 paused (limit hit, or loop/out/PAUSED exists).
 set -euo pipefail
@@ -20,6 +20,9 @@ OUT=loop/out
 PAUSED=$OUT/PAUSED
 EX_PAUSED=75
 MAX_VMS=${BOXD_MAX_VMS:-12}
+# The agent and the check each get up to AGENT_TIMEOUT / 1800 s; VM_TTL must outlast both plus the reboot wait (at most 60 attempts of 5 s plus 1 s, 360 s), upload and the patch step.
+AGENT_TIMEOUT=${BOXD_AGENT_TIMEOUT:-1800}
+VM_TTL=4200
 VM=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
@@ -115,6 +118,7 @@ release_lock() {
 
 # <name> becomes a VM name and a file name; <prompt-file> is passed to `boxd machine cp` as a positional argument.
 validate_args() {
+  [[ $AGENT_TIMEOUT =~ ^[0-9]+$ && $AGENT_TIMEOUT -le 1800 ]] || { echo "boxd.sh: BOXD_AGENT_TIMEOUT must be a number of seconds, at most 1800, got: $AGENT_TIMEOUT" >&2; exit 2; }
   [[ $MAX_VMS =~ ^[0-9]+$ ]] || { echo "boxd.sh: BOXD_MAX_VMS must be a number, got: $MAX_VMS" >&2; exit 2; }
   local name=$1 prompt=$2
   [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: name must match ^[a-z0-9][a-z0-9-]*\$, got: $name" >&2; exit 2; }
@@ -137,9 +141,9 @@ start_vm() {
   mkdir -p "$OUT/runs"
   acquire_lock
   [ "$(vm_count)" -lt "$MAX_VMS" ] || { echo "boxd.sh: $MAX_VMS ru- VMs already exist" >&2; exit 1; }
-  # The timer outlasts everything that runs after creation (reboot wait 60 s, upload, an agent run of up to 570 s, then run_check's 1800 s).
+  # The timer outlasts everything that runs after creation (reboot wait of at most 360 s, upload, an agent run of up to AGENT_TIMEOUT, then run_check's 1800 s).
   # Own the name only once `new` succeeds, so a failed create never removes someone else's VM.
-  boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout 3600 >/dev/null </dev/null
+  boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout $VM_TTL >/dev/null </dev/null
   VM="ru-$name"
   release_lock
   # A VM restored from a memory snapshot wedges claude and tsc until it is rebooted (measured: tsc hangs before, 0.4 s after).
@@ -160,8 +164,17 @@ upload_checkout() {
   git archive --format=tar.gz --end-of-options "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
   git archive --format=tar.gz --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
   [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
+  # Replay the PR's own commits, so a Reviewer sees the real messages, authors and trailers. A series cannot carry a merge
+  # commit, so a range with one (or a series that does not apply) falls back to one `head` commit holding the ref's tree.
+  if [ -n "$(git rev-list --merges --end-of-options "$base_ref..$ref")" ]; then
+    echo "boxd.sh: $ref contains a merge commit; the checkout gets one commit named head instead of the PR's commits" >&2
+  else
+    git format-patch --stdout --binary --end-of-options "$base_ref..$ref" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
+  fi
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
+    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q --empty=keep /tmp/series.mbox ||
+      { git am --abort; echo "boxd.sh: the PR commits did not replay; the checkout gets one commit named head" >&2; }; } &&
     git rm -rqf . && tar xzf /tmp/src.tgz -C ~/roundup && git add -A >/dev/null &&
     { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
 }
@@ -169,9 +182,10 @@ upload_checkout() {
 # Run claude on the VM with /tmp/prompt.md; JSON lands in <result>. Exits unless the run succeeded.
 run_agent() {
   local model=$1 result=$2
+  # A feature-sized task outlasts 570 s (measured: V7 Todo triage hit it and returned nothing), so wait as long as the check may.
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
   # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
-  boxd machine exec "$VM" --timeout 570 -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
+  boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
     "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" || true
   [ -s "$result" ] || { echo "boxd.sh: agent produced no output" >&2; exit 1; }
   guard_limits "$result"

@@ -63,8 +63,15 @@ export const xtermOptions: ITerminalOptions = {
   scrollback: SCROLLBACK_LINES,
 };
 
+/** What the keystroke run (`scenarios/perf.md` K1 to K3) watches: each chunk the emulator has parsed, each render, and which renderer drew. A build without the run passes none. */
+export type EchoProbe = {
+  written(bytes: Uint8Array): void;
+  rendered(): void;
+  renderer(webgl: boolean): void;
+};
+
 /** The real emulators (xterm.js). WebGL is tried until the webview first refuses it, then every later Terminal goes straight to the DOM renderer. */
-export const createXtermEmulators = (): EmulatorFactory => {
+export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
   let webglDenied = false;
 
   return () => {
@@ -75,6 +82,7 @@ export const createXtermEmulators = (): EmulatorFactory => {
 
     element.style.height = "100%";
     terminal.loadAddon(fitter);
+    terminal.onRender(() => probe?.rendered());
 
     const size = (): Size => {
       fitter.fit();
@@ -83,7 +91,7 @@ export const createXtermEmulators = (): EmulatorFactory => {
     };
 
     return {
-      write: (bytes) => terminal.write(bytes),
+      write: (bytes) => terminal.write(bytes, probe && (() => probe.written(bytes))),
       onInput: (listener) => {
         terminal.onData((text) => listener(encoder.encode(text)));
         terminal.onBinary((text) => listener(Uint8Array.from(text, (char) => char.charCodeAt(0))));
@@ -96,6 +104,8 @@ export const createXtermEmulators = (): EmulatorFactory => {
           opened = true;
 
           if (!webglDenied) webglDenied = !attachRenderer(terminal, () => new WebglAddon(), console.warn);
+
+          probe?.renderer(!webglDenied);
         }
 
         terminal.focus();
