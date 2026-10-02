@@ -12,7 +12,11 @@ export type Screens = {
   resize(id: string, size: Size): void;
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
   stop(node: RailNode): void;
-  /** Whether the Terminal's view sits at its newest line; false once the user has scrolled up, true for an id with no emulator yet. */
+  /**
+   * Whether the Terminal's view sits at its newest line; false once the user has scrolled up, true for an id with
+   * no emulator yet. Reactive only from the point `emulatorFor` was called for that id: call it first in the same
+   * reactive scope, or a memo reading this never updates for an id it has not yet seen.
+   */
   isAtBottom(id: string): boolean;
   /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
   returnToBottom(id: string): void;
