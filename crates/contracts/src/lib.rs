@@ -7,6 +7,7 @@ pub mod common;
 pub mod event;
 pub mod methods;
 pub mod pad;
+pub mod project;
 pub mod terminal;
 pub mod todo;
 

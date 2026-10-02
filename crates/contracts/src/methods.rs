@@ -72,6 +72,8 @@ pub const METHODS: &[Method] = &[
         "agent_SpawnTerminalParams",
         "agent_RailNode",
     ),
+    m("project.setWorktrees", "project_Worktrees", "null"),
+    m("project.get", "null", "project_ProjectSettings"),
 ];
 
 /// Render `METHODS` as `contracts/generated/methods.ts`.

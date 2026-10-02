@@ -3,9 +3,10 @@
 
 use std::path::Path;
 
-use contracts::agent::{NodeKind, RailNode};
+use contracts::agent::{NodeKind, RailNode, Worktree};
+use contracts::project::Worktrees;
 use rpc::{OpenError, RpcError};
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 /// Structure only: a node's `status` is the Agents module's to fill in.
 pub struct Rail {
@@ -25,8 +26,25 @@ impl Rail {
                 ord INTEGER NOT NULL,
                 meta INTEGER NOT NULL DEFAULT 0,
                 terminal_id TEXT
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY CHECK (id = 0),
+                worktrees_on INTEGER NOT NULL DEFAULT 0,
+                worktrees_check TEXT
             );",
         )?;
+        // SQLite's `ALTER TABLE` has no `ADD COLUMN IF NOT EXISTS`, so a column a Project's
+        // `agents.db` already has (from before G2) is skipped by hand.
+        for (column, decl) in [
+            ("worktree_path", "TEXT"),
+            ("worktree_branch", "TEXT"),
+            ("worktree_base", "TEXT"),
+            // 'provisioning' from before `git worktree add` runs until the Terminal is about to
+            // start, then 'ready'; no RPC returns it (G2, G6).
+            ("worktree_state", "TEXT"),
+        ] {
+            add_column_if_missing(&db, "nodes", column, decl)?;
+        }
         // Terminal ids restart at 1 with the Daemon, so a stored id could name an unrelated Terminal.
         db.execute("UPDATE nodes SET terminal_id = NULL", [])?;
         Ok(Self { db })
@@ -179,10 +197,105 @@ impl Rail {
     pub fn node(&self, id: &str) -> Result<RailNode, RpcError> {
         find(&load(&self.db)?, id).cloned()
     }
+
+    /// The Project's `worktrees` setting; `{on: false, check: null}` for a Project that never
+    /// had it set (G1).
+    pub fn get_worktrees(&self) -> Result<Worktrees, RpcError> {
+        self.db
+            .query_row(
+                "SELECT worktrees_on, worktrees_check FROM settings WHERE id = 0",
+                [],
+                |row| {
+                    Ok(Worktrees {
+                        on: row.get(0)?,
+                        check: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql)
+            .map(|found| {
+                found.unwrap_or(Worktrees {
+                    on: false,
+                    check: None,
+                })
+            })
+    }
+
+    pub fn set_worktrees(&mut self, worktrees: &Worktrees) -> Result<(), RpcError> {
+        self.db
+            .execute(
+                "INSERT INTO settings (id, worktrees_on, worktrees_check) VALUES (0, ?, ?)
+                 ON CONFLICT (id) DO UPDATE SET worktrees_on = excluded.worktrees_on,
+                    worktrees_check = excluded.worktrees_check",
+                params![worktrees.on, worktrees.check],
+            )
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    /// Mark `id` as provisioning a Worktree, before `git` runs (G2, G6).
+    pub fn mark_worktree_provisioning(&mut self, id: &str) -> Result<(), RpcError> {
+        self.db
+            .execute(
+                "UPDATE nodes SET worktree_state = 'provisioning' WHERE id = ?",
+                params![id],
+            )
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    /// Record a Worktree Provisioning made for `id`, just before its Terminal starts.
+    pub fn set_worktree(&mut self, id: &str, worktree: &Worktree) -> Result<(), RpcError> {
+        let path = worktree.path.as_str();
+        self.db
+            .execute(
+                "UPDATE nodes SET worktree_path = ?, worktree_branch = ?, worktree_base = ?,
+                    worktree_state = 'ready' WHERE id = ?",
+                params![path, worktree.branch, worktree.base, id],
+            )
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    /// Undo `mark_worktree_provisioning`/`set_worktree` for a node that keeps its place on the
+    /// Rail (`rail.promote`'s own failure path; a failed `agent.spawn` deletes the node outright).
+    pub fn clear_worktree(&mut self, id: &str) -> Result<(), RpcError> {
+        self.db
+            .execute(
+                "UPDATE nodes SET worktree_path = NULL, worktree_branch = NULL,
+                    worktree_base = NULL, worktree_state = NULL WHERE id = ?",
+                params![id],
+            )
+            .map_err(sql)?;
+        Ok(())
+    }
 }
 
 fn sql(err: rusqlite::Error) -> RpcError {
     RpcError::internal(err)
+}
+
+/// Add `column` to `table` unless it is already there (a migration run against a Project's
+/// existing `agents.db`).
+fn add_column_if_missing(
+    db: &Connection,
+    table: &str,
+    column: &str,
+    decl: &str,
+) -> rusqlite::Result<()> {
+    let has_column = db
+        .prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?")?
+        .query_row(params![table, column], |_| Ok(()))
+        .optional()?
+        .is_some();
+    if !has_column {
+        db.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"),
+            [],
+        )?;
+    }
+    Ok(())
 }
 
 fn kind_name(kind: NodeKind) -> &'static str {
@@ -195,7 +308,10 @@ fn kind_name(kind: NodeKind) -> &'static str {
 
 fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let mut query = db
-        .prepare("SELECT id, kind, name, parent, ord, meta, terminal_id FROM nodes")
+        .prepare(
+            "SELECT id, kind, name, parent, ord, meta, terminal_id,
+                worktree_path, worktree_branch, worktree_base FROM nodes",
+        )
         .map_err(sql)?;
     let rows = query
         .query_map([], |row| {
@@ -203,6 +319,14 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 "group" => NodeKind::Group,
                 "agent" => NodeKind::Agent,
                 _ => NodeKind::Terminal,
+            };
+            let worktree = match (
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+            ) {
+                (Some(path), Some(branch), Some(base)) => Some(Worktree { path, branch, base }),
+                _ => None,
             };
             Ok(RailNode {
                 id: row.get::<_, i64>(0)?.to_string(),
@@ -213,6 +337,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 status: None,
                 meta: row.get(5)?,
                 terminal_id: row.get(6)?,
+                worktree,
             })
         })
         .map_err(sql)?;

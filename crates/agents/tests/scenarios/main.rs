@@ -6,3 +6,4 @@ mod rail;
 mod signal;
 mod spawn;
 mod terminal_node;
+mod worktrees;

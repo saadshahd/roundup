@@ -19,6 +19,8 @@ import type { PadName as pad_PadName } from "./pad/PadName";
 import type { SetOwnerParams as pad_SetOwnerParams } from "./pad/SetOwnerParams";
 import type { SetStorageParams as pad_SetStorageParams } from "./pad/SetStorageParams";
 import type { WriteParams as pad_WriteParams } from "./pad/WriteParams";
+import type { ProjectSettings as project_ProjectSettings } from "./project/ProjectSettings";
+import type { Worktrees as project_Worktrees } from "./project/Worktrees";
 import type { ResizeParams as terminal_ResizeParams } from "./terminal/ResizeParams";
 import type { SpawnParams as terminal_SpawnParams } from "./terminal/SpawnParams";
 import type { TerminalId as terminal_TerminalId } from "./terminal/TerminalId";
@@ -66,6 +68,8 @@ export type RpcMethods = {
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
   "rail.promote": { params: agent_NodeId; result: agent_RailNode };
   "rail.spawnTerminal": { params: agent_SpawnTerminalParams; result: agent_RailNode };
+  "project.setWorktrees": { params: project_Worktrees; result: null };
+  "project.get": { params: null; result: project_ProjectSettings };
 };
 
 export type RpcMethodName = keyof RpcMethods;
