@@ -194,11 +194,15 @@ async fn d4_a_miss_names_the_not_idle_agents_their_last_status_and_the_rail_tree
         line.contains("rail.tree shows Some(Status { kind: Working"),
         "{line}"
     );
+    assert!(
+        !line.contains("(Idle in the tree but not seen on the stream)"),
+        "{line}"
+    );
 }
 
 /// The `ids` guard: a Status for an Agent nobody is waiting on must not count toward the wait.
 #[tokio::test]
-async fn d4_wait_until_idle_ignores_status_events_for_agents_it_is_not_watching() {
+async fn d4_an_agent_not_in_ids_does_not_count_toward_idle() {
     let project = start(&[]);
     let mut client = project.subscribed().await;
     let watched = project.spawn_agent(&client).await;
@@ -294,7 +298,7 @@ async fn d4_an_event_not_seen_on_the_stream_is_told_from_a_slow_daemon() {
 /// A connection that closes mid-wait is reported as closed, not folded into the usual report
 /// (which would need `rail.tree` on a connection that can no longer answer).
 #[tokio::test]
-async fn d4_a_closed_connection_is_reported_without_blaming_the_deadline() {
+async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
     let project = start(&[]);
     let mut client = project.subscribed().await;
     let agent = project.spawn_agent(&client).await;

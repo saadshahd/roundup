@@ -139,16 +139,19 @@ pub async fn next_kind(client: &mut Client) -> Kind {
 /// Hand Agent `id` a Signal directly over RPC, the way `rup signal` does, bypassing the fake
 /// `claude` process so a test can drive one Agent's Status without the others.
 pub async fn signal(client: &Client, id: &str, payload: Value) {
-    client
-        .request(
+    tokio::time::timeout(
+        BOUND,
+        client.request(
             "agent.signal",
             SignalParams {
                 id: id.to_owned(),
                 payload,
             },
-        )
-        .await
-        .unwrap();
+        ),
+    )
+    .await
+    .expect("agent.signal answered within the bound")
+    .unwrap();
 }
 
 /// The Daemon's own view of the Rail, bounded like every other call across the socket.
@@ -175,9 +178,6 @@ pub async fn wait_until_idle(
     let mut last_seen: HashMap<String, Status> = HashMap::new();
     while idle.len() < ids.len() {
         let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            break;
-        }
         let event = match tokio::time::timeout(remaining, client.next_event()).await {
             Ok(Some(event)) => event,
             Ok(None) => {
