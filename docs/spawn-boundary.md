@@ -23,8 +23,8 @@ Scope: Meta-agents only, as the user decided. Chosen: the tool allowlist as the 
 
 - A shell can launch anything. With a shell, F4 and F5 stop and flag the common cases; they do not make a guarantee. The guarantee is that a Meta-agent has no shell (F2), and it holds inside Claude Code's tools only.
 - The model works round a block (`h_blocked`: renamed the command, then asked a subagent). A layer that refuses one path is not a stop while another exists, which is why `Agent` is removed with `Bash`.
-- Headless observation: the spike ran `claude -p` on one version. Interactive behaviour of `--tools` and `settings.env` is the vendor's docs, not observed.
-- The user's own `.claude/settings.json` can set its own `permissions`. The spike did not test whether it can override flags; `--tools` is a flag, not a setting, which is why F2 uses it.
+- Headless observation: the spike ran `claude -p` on one version. The interactive TUI is F7 (`i_base`, `i_shim`, `i_proj`, `i_user`); `settings.env` there was observed for a direct `claude` only.
+- The user's own `.claude/settings.json` can set its own `permissions`. F7 observed that a project and a user settings file allowing `Bash(*)` did not bring a shell back to a `--tools` allowlist; `--tools` is a flag, not a setting, which is why F2 uses it.
 - A Meta-agent has no `Edit` or `Write`: it places and coordinates, and its children do the work. The user accepted a Meta-agent with no shell.
 
 ## Seam (rule 4, with the first Builder PR)

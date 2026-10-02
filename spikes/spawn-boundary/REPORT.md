@@ -1,6 +1,6 @@
 # Spike: keeping a Claude Code Agent from starting children by shell
 
-Raw outputs were not kept; the rows below are the author's reading of one run. Ran 2026-10-02 on an isolated boxd VM (`ru-spike-sb`, destroyed after), Claude Code 2.1.283, `--model haiku`, headless (`claude -p`, `--output-format stream-json --verbose`), one short prompt per case: `run.sh`. Not run: an interactive session (a PTY), the built-in sandbox, and any path through the user's own settings files. Headless and interactive may differ; the interactive claims below are the vendor's docs, not observed here.
+Raw outputs were not kept; the rows below are the author's reading of one run. Ran 2026-10-02 on an isolated boxd VM (`ru-spike-sb`, destroyed after), Claude Code 2.1.283, `--model haiku`, headless (`claude -p`, `--output-format stream-json --verbose`), one short prompt per case: `run.sh`. Not run here: the built-in sandbox. The interactive TUI (a PTY under `tmux`) is recorded in F7 and `raw-interactive/`; the claims below are headless only.
 
 | Case | Setup | Observed |
 |---|---|---|
