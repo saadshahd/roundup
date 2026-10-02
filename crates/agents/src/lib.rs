@@ -64,6 +64,10 @@ struct Shared {
 
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
+/// What `Shared::apply` leaves to do once its locks are let go: the Terminal id and prompt to
+/// type at the first idle, and when, on `clock`, the adapter wants its next `Observation::Tick`.
+type Applied = (Option<(String, String)>, Option<i64>);
+
 impl Shared {
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
         self.rail.lock().expect("rail lock")
@@ -141,32 +145,14 @@ impl Shared {
                 }
                 None => return Err(RpcError::not_found(format!("agent {id}"))),
             };
-            let changed = run.adapter.observe(observation);
-            let idle = changed
-                .as_ref()
-                .is_some_and(|status| status.kind == Kind::Idle);
-            // Announced while `runs` is held, so announcements leave in the order the Status
-            // changed; `emit` never blocks.
-            if let Some(status) = changed {
-                let event = StatusEvent {
-                    id: id.to_owned(),
-                    status,
-                };
-                self.bus.emit(actor.clone(), EventData::AgentStatus(event));
-            }
-            if let (Some(rail), Some(name)) = (rail.as_mut(), first_prompt)
-                && !std::mem::replace(&mut run.named, true)
-                && let Some(name) = name
-                && !rail.node(id)?.meta
-            {
-                rail.rename(id, &name)?;
-                self.bus.emit(actor.clone(), EventData::RailChanged);
-            }
-            let prompt = run.prompt.take_if(|_| idle);
-            (
-                prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
-                run.adapter.tick_at(),
-            )
+            self.apply(
+                rail.as_deref_mut(),
+                run,
+                id,
+                &actor,
+                observation,
+                first_prompt,
+            )?
         };
         if let Some((terminal_id, prompt)) = prompt {
             tokio::spawn(type_prompt(
@@ -176,6 +162,79 @@ impl Shared {
             ));
         }
         Ok(tick_at)
+    }
+
+    /// Fold `observation` into `run`, which `observe` has already found `Running`; `rail`, when
+    /// given, is locked by the caller, never here, so a caller draining several Signals under
+    /// one `rail`-then-`runs` lock section (`finish_starting`) is never asked to lock it twice.
+    fn apply(
+        &self,
+        rail: Option<&mut rail::Rail>,
+        run: &mut Run,
+        id: &str,
+        actor: &Actor,
+        observation: Observation,
+        first_prompt: Option<Option<String>>,
+    ) -> Result<Applied, RpcError> {
+        let changed = run.adapter.observe(observation);
+        let idle = changed
+            .as_ref()
+            .is_some_and(|status| status.kind == Kind::Idle);
+        // Announced while `runs` is held, so announcements leave in the order the Status
+        // changed; `emit` never blocks.
+        if let Some(status) = changed {
+            let event = StatusEvent {
+                id: id.to_owned(),
+                status,
+            };
+            self.bus.emit(actor.clone(), EventData::AgentStatus(event));
+        }
+        if let (Some(rail), Some(name)) = (rail, first_prompt)
+            && !std::mem::replace(&mut run.named, true)
+            && let Some(name) = name
+            && !rail.node(id)?.meta
+        {
+            rail.rename(id, &name)?;
+            self.bus.emit(actor.clone(), EventData::RailChanged);
+        }
+        let prompt = run.prompt.take_if(|_| idle);
+        Ok((
+            prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
+            run.adapter.tick_at(),
+        ))
+    }
+
+    /// Swap `id` from `Starting` to `Running` (the Run `build` makes, told whether a
+    /// `rail.rename` already settled its name) and apply every Signal held for it, in arrival
+    /// order, all under one `rail`-then-`runs` lock section: a Signal that arrives once the
+    /// Agent is registered can never be applied ahead of one still held for it (A14), and
+    /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
+    /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
+    /// that left the Agent idle, to type once the locks are let go.
+    fn finish_starting(&self, id: &str, build: impl FnOnce(bool) -> Run) -> Vec<(String, String)> {
+        let mut rail = self.rail();
+        let mut runs = self.runs();
+        let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
+            unreachable!("spawn marks {id} Starting before run_agent runs")
+        };
+        let mut run = build(named);
+        let mut prompts = Vec::new();
+        for (actor, payload) in held {
+            let first_prompt = claude_code::submitted_prompt(&payload).map(name::from_prompt);
+            let (prompt, _tick_at) = self
+                .apply(
+                    Some(&mut *rail),
+                    &mut run,
+                    id,
+                    &actor,
+                    Observation::Signal(payload),
+                    first_prompt,
+                )
+                .expect(REGISTERED);
+            prompts.extend(prompt);
+        }
+        runs.insert(id.to_owned(), Slot::Running(run));
+        prompts
     }
 }
 
@@ -447,27 +506,19 @@ impl Agents {
             }
         };
         let clock = Arc::clone(&self.shared.clock);
-        // Replaced for `Running` in the same lock section it is read from, so `agent.signal`
-        // never finds `id` missing between the two (A14: it is never `NOT_FOUND` for an id that
-        // was spawned).
-        let held = {
-            let mut runs = self.shared.runs();
-            let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
-                unreachable!("spawn marks {id} Starting before run_agent runs")
-            };
-            let run = Run {
-                adapter: ClaudeCode::starting(move || clock()),
+        let terminal_id = spawned.id.clone();
+        let prompts = self.shared.finish_starting(id, move |named| Run {
+            adapter: ClaudeCode::starting(move || clock()),
+            prompt,
+            named,
+            terminal_id,
+        });
+        for (terminal_id, prompt) in prompts {
+            tokio::spawn(type_prompt(
+                Arc::clone(&self.shared.terminals),
+                terminal_id,
                 prompt,
-                named,
-                terminal_id: spawned.id.clone(),
-            };
-            runs.insert(id.to_owned(), Slot::Running(run));
-            held
-        };
-        for (actor, payload) in held {
-            self.shared
-                .observe(actor, id, Observation::Signal(payload))
-                .expect(REGISTERED);
+            ));
         }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
@@ -616,7 +667,7 @@ impl Module for Agents {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -775,5 +826,78 @@ mod tests {
         assert_eq!(name(Some("fish")), "fish");
         assert_eq!(name(Some("")), "shell");
         assert_eq!(name(None), "shell");
+    }
+
+    /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its
+    /// drain of what was held, so a Signal released the instant the Agent is registered still
+    /// cannot land ahead of the one held for it. A lock-ordering race like this is a coin flip
+    /// per attempt (AGENTS.md exempts shared locked state in one process from this repo's usual
+    /// determinism bar for exactly this reason), so this runs many trials with one racer each:
+    /// before the fix, roughly 1 in 150 reordered the held Signal after the late one; a single
+    /// racer, rather than a burst, keeps every trial under `HELD_BOUND` so a trial can never fail
+    /// for the unrelated, correct reason that the held Signal's own bound dropped it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let clock: Clock = Arc::new(|| 0);
+        let shared = Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
+            clock,
+            opened: 0,
+        });
+        let mut events = bus.subscribe();
+        for i in 0..2000 {
+            let id = i.to_string();
+            shared.runs().insert(
+                id.clone(),
+                Slot::Starting {
+                    since: 0,
+                    named: false,
+                    held: VecDeque::from([(
+                        Actor::daemon(),
+                        json!({"hook_event_name": "PreToolUse", "tool_name": "Bash"}),
+                    )]),
+                },
+            );
+            // Released the moment `finish_starting` itself starts racing for `rail` and `runs`,
+            // not once it is done, so it truly contends with it for who reaches them first.
+            let gate = Arc::new(tokio::sync::Semaphore::new(0));
+            let late = {
+                let shared = Arc::clone(&shared);
+                let id = id.clone();
+                let gate = Arc::clone(&gate);
+                tokio::spawn(async move {
+                    let _permit = gate.acquire().await.unwrap();
+                    shared.observe(
+                        Actor::daemon(),
+                        &id,
+                        Observation::Signal(
+                            json!({"hook_event_name": "Stop", "tool_name": "Bash"}),
+                        ),
+                    )
+                })
+            };
+            gate.add_permits(1);
+            shared.finish_starting(&id, |named| Run {
+                adapter: ClaudeCode::starting(|| 0),
+                prompt: None,
+                named,
+                terminal_id: id.clone(),
+            });
+            late.await.unwrap().unwrap();
+            let mut kinds = vec![];
+            while let Ok(event) = events.try_recv() {
+                if let EventData::AgentStatus(s) = event.data
+                    && s.id == id
+                {
+                    kinds.push(s.status.kind);
+                }
+            }
+            assert_eq!(kinds, [Kind::Working, Kind::Idle], "trial {i}");
+        }
     }
 }

@@ -75,6 +75,7 @@ async fn a14_a_signal_for_an_id_that_was_never_spawned_is_still_not_found() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a14_a_failed_spawn_discards_the_signals_it_held() {
     let f = Arc::new(Fixture::running("sleep 30"));
+    let mut events = f.bus.subscribe();
     let config = hold_starts(&f);
     let spawning = {
         let f = Arc::clone(&f);
@@ -105,6 +106,11 @@ async fn a14_a_failed_spawn_discards_the_signals_it_held() {
         err.code,
         code::NOT_FOUND,
         "nothing was held for a later Agent to inherit at this id"
+    );
+    assert!(
+        std::iter::from_fn(|| events.try_recv().ok())
+            .all(|event| !matches!(event.data, EventData::AgentStatus(_))),
+        "the discarded Signal's Status is never announced"
     );
 }
 
