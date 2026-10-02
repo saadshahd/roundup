@@ -29,7 +29,7 @@ Rule 7's 10% regression test is enforced for five metrics on Linux and five on m
 
 ## macOS baseline
 
-Recorded on one Apple M4 Max laptop (16 cores); the key is the OS only, so the numbers are valid for that machine class: `macos-latest` in CI or a slower Mac would be judged against an M4 Max and needs its own baseline before it is gated. The machine was in ordinary use: load average 4 to 7, which is 0.25 to 0.45 per core, not idle (a developer's laptop is never idle). The baseline is 9 invocations of 11 runs each. The spread of the 9 medians against their median:
+Recorded on one Apple M4 Max laptop (16 cores); the key is the OS only, so the numbers are valid for that machine class: `macos-latest` in CI or a slower Mac would be judged against an M4 Max and needs its own baseline before it is gated. The machine was in ordinary use, not idle (a developer's laptop is never idle). Its load average was 4 to 7, which is 0.25 to 0.45 per core. The baseline is 9 invocations of 11 runs each. The spread of the 9 medians against their median:
 
 | Metric | max / median | Gate on macOS |
 |---|---|---|
