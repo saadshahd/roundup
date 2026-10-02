@@ -59,15 +59,14 @@
   color: var(--text);
   background: var(--ground);
   border: 1px solid var(--lightest);
-  border-radius: 6px;
 }
 
 .spawn-prompt-field:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--lightest);
 }
 
 .spawn-prompt-field:active {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--light);
 }
 
 .spawn-prompt-field:focus {
