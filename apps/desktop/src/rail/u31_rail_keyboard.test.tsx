@@ -1,16 +1,32 @@
-import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
-import { createFakeApp } from "../testing/fakeApp";
-import { agent, event, group, NOW, terminal } from "../testing/nodes";
-import { Pane } from "../terminal/Pane";
-import { Rail } from "./Rail";
+import { agent, event, group, terminal } from "../testing/nodes";
+import type { EmulatorFactory } from "../terminal/emulator";
 import styles from "./styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
 
 afterEach(cleanup);
 
 const press = (key: string) => fireEvent.keyDown(document.activeElement ?? document, { key });
+
+/** A terminal screen that is actually focusable, standing in for xterm's real helper textarea. */
+const focusableEmulator = (): EmulatorFactory => () => {
+  const field = document.createElement("textarea");
+
+  return {
+    write: () => {},
+    onInput: () => {},
+    show: (host) => {
+      host.replaceChildren(field);
+      field.focus();
+
+      return { cols: 80, rows: 24 };
+    },
+    fit: () => ({ cols: 80, rows: 24 }),
+    focus: () => field.focus(),
+    dispose: () => {},
+  };
+};
 
 describe("u31 rail keyboard", () => {
   it("u31_arrow_down_in_the_rename_field_does_not_cancel_the_rename", async () => {
@@ -44,21 +60,56 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_up_moves_focus_to_the_previous_row", async () => {
-    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rowOf("b").focus();
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
+    rail.select("b");
+    rowOf("c").focus();
 
     press("ArrowUp");
 
-    expect(document.activeElement).toBe(rowOf("a"));
+    expect(document.activeElement).toBe(rowOf("b"));
   });
 
   it("u31_down_does_not_wrap_past_the_last_row", async () => {
-    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rowOf("b").focus();
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
+    rail.select("a");
+    rowOf("c").focus();
+
+    press("ArrowDown");
+
+    expect(document.activeElement).toBe(rowOf("c"));
+  });
+
+  it("u31_enter_after_reclicking_the_already_selected_row_selects_the_focused_row", async () => {
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
+    fireEvent.click(rowOf("a"));
+    press("ArrowDown");
+    fireEvent.click(rowOf("a"));
+
+    press("Enter");
+
+    expect(rail.selected()).toBe("a");
+  });
+
+  it("u31_down_after_that_enter_moves_from_the_row_that_has_focus", async () => {
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
+    fireEvent.click(rowOf("a"));
+    press("ArrowDown");
+    fireEvent.click(rowOf("a"));
+    press("Enter");
 
     press("ArrowDown");
 
     expect(document.activeElement).toBe(rowOf("b"));
+    expect(rail.selected()).toBe("a");
+  });
+
+  it("u31_arrow_down_moves_from_a_row_focused_directly_even_when_another_row_is_tabbable", async () => {
+    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
+    rowOf("b").focus();
+
+    press("ArrowDown");
+
+    expect(document.activeElement).toBe(rowOf("c"));
   });
 
   it("u31_up_does_not_wrap_past_the_first_row", async () => {
@@ -144,18 +195,72 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_typing_j_into_the_pane_never_reaches_the_rail", async () => {
-    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rail.select("a");
-    const outside = document.body.appendChild(document.createElement("input"));
-    outside.focus();
+    const { rail } = await mountRail(
+      [agent("a", "idle", "x"), agent("b", "idle", "x")],
+      [],
+      undefined,
+      undefined,
+      { paneEmulator: focusableEmulator() },
+    );
 
-    fireEvent.keyDown(outside, { key: "j" });
-    fireEvent.keyDown(outside, { key: "ArrowDown" });
+    rail.select("a");
+
+    press("j");
 
     expect(rail.selected()).toBe("a");
-    expect(document.activeElement).toBe(outside);
+  });
+
+  it("u31_arrow_down_into_the_pane_never_moves_the_rails_focus", async () => {
+    const { rail } = await mountRail(
+      [agent("a", "idle", "x"), agent("b", "idle", "x")],
+      [],
+      undefined,
+      undefined,
+      { paneEmulator: focusableEmulator() },
+    );
+
+    rail.select("a");
+
+    press("ArrowDown");
+
+    expect(rowOf("a").tabIndex).toBe(0);
     expect(rowOf("b").tabIndex).toBe(-1);
-    outside.remove();
+  });
+
+  it("u31_typing_j_into_a_drawer_never_reaches_the_rail", async () => {
+    const { rail, connected } = await mountRail(
+      [agent("a", "idle", "x"), agent("b", "idle", "x")],
+      [],
+      undefined,
+      undefined,
+      { drawer: true },
+    );
+
+    rail.select("a");
+    connected.drawer.open(() => <input aria-label="field" />);
+    screen.getByLabelText("field").focus();
+
+    press("j");
+
+    expect(rail.selected()).toBe("a");
+  });
+
+  it("u31_arrow_down_into_a_drawer_never_moves_the_rails_focus", async () => {
+    const { connected } = await mountRail(
+      [agent("a", "idle", "x"), agent("b", "idle", "x")],
+      [],
+      undefined,
+      undefined,
+      { drawer: true },
+    );
+
+    connected.drawer.open(() => <input aria-label="field" />);
+    screen.getByLabelText("field").focus();
+
+    press("ArrowDown");
+
+    expect(rowOf("a").tabIndex).toBe(0);
+    expect(rowOf("b").tabIndex).toBe(-1);
   });
 
   it("u31_the_rail_does_not_reorder", async () => {
@@ -247,22 +352,13 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_enter_selecting_a_row_shows_its_terminal", async () => {
-    const app = createFakeApp();
-
-    const tree = [
-      agent("a", "idle", "x", { terminal_id: null }),
-      agent("b", "idle", "x", { terminal_id: null }),
-    ];
-
-    app.handlers["rail.tree"] = () => tree;
-    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => NOW);
-
-    render(() => (
-      <ConnectedProjectContext.Provider value={connected}>
-        <Rail />
-        <Pane />
-      </ConnectedProjectContext.Provider>
-    ));
+    await mountRail(
+      [agent("a", "idle", "x", { terminal_id: null }), agent("b", "idle", "x", { terminal_id: null })],
+      [],
+      undefined,
+      undefined,
+      { pane: true },
+    );
     rowOf("a").focus();
     press("ArrowDown");
 

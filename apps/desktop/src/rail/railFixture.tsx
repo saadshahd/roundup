@@ -1,5 +1,5 @@
 import { render, screen } from "@solidjs/testing-library";
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { DaemonExit } from "../app/seam";
 import type { RailNode } from "@contracts/agent/RailNode";
@@ -7,11 +7,17 @@ import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { createFakeApp } from "../testing/fakeApp";
 import { info, NOW } from "../testing/nodes";
 import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
+import { DrawerHost } from "../drawer/DrawerHost";
+import { Pane } from "../terminal/Pane";
+import type { EmulatorFactory } from "../terminal/emulator";
 import { AttentionChip } from "./AttentionChip";
 import { Rail } from "./Rail";
 
 export const exitedTerminal = (id: string, exit_code: number | null): TerminalInfo =>
   info(`t-${id}`, { running: false, exit_code });
+
+/** What else to mount alongside the Rail: a Pane (`paneEmulator` for one with a focusable screen) or the DrawerHost. */
+type RailNeighbors = { pane?: boolean; paneEmulator?: EmulatorFactory; drawer?: boolean };
 
 /** The Rail on a fake Daemon whose tree is `tree` and whose clock is a signal the test can advance. */
 export const mountRail = async (
@@ -19,6 +25,7 @@ export const mountRail = async (
   terminals: TerminalInfo[] = [],
   daemonExit: Accessor<DaemonExit | null> = () => null,
   reducedMotion: () => boolean = () => false,
+  neighbors: RailNeighbors = {},
 ) => {
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => tree;
@@ -31,10 +38,16 @@ export const mountRail = async (
     <ConnectedProjectContext.Provider value={connected}>
       <AttentionChip />
       <Rail />
+      <Show when={neighbors.pane || neighbors.paneEmulator}>
+        <Pane createEmulator={neighbors.paneEmulator} />
+      </Show>
+      <Show when={neighbors.drawer}>
+        <DrawerHost drawer={connected.drawer} reducedMotion={reducedMotion} />
+      </Show>
     </ConnectedProjectContext.Provider>
   ));
 
-  return { app, rail: connected.rail, setNow };
+  return { app, rail: connected.rail, connected, setNow };
 };
 
 export const rowOf = (name: string): HTMLElement => {

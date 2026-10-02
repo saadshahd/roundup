@@ -29,6 +29,7 @@ export const Rail = () => {
   );
 
   const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
+  const nodeIds = createMemo(() => nodeRows().map((row) => row.node.id));
   const layoutKey = createMemo(() => nodeRows().map((row) => `${row.key}@${row.depth}`).join());
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
@@ -55,7 +56,7 @@ export const Rail = () => {
   createEffect(on(rail.selected, () => setFocusOverride(null)));
 
   const tabbableId = createMemo(() => {
-    const ids = nodeRows().map((row) => row.node.id);
+    const ids = nodeIds();
     const override = focusOverride();
 
     if (override !== null && ids.includes(override)) return override;
@@ -68,8 +69,8 @@ export const Rail = () => {
     focusRow(id);
   };
 
-  const moveFocus = (direction: 1 | -1) => {
-    const next = adjacentId(nodeRows().map((row) => row.node.id), tabbableId(), direction);
+  const moveFocus = (current: string | null, direction: 1 | -1) => {
+    const next = adjacentId(nodeIds(), current, direction);
 
     if (next !== null) {
       setFocusOverride(next);
@@ -80,15 +81,15 @@ export const Rail = () => {
   const onRailKeyDown = (press: KeyboardEvent) => {
     if (!(press.target instanceof HTMLElement) || press.target.getAttribute("role") !== "treeitem") return;
 
+    const focusedId = press.target.dataset.id ?? null;
+
     if (press.key === "ArrowDown" || press.key === "ArrowUp") {
       press.preventDefault();
-      moveFocus(press.key === "ArrowDown" ? 1 : -1);
+      moveFocus(focusedId, press.key === "ArrowDown" ? 1 : -1);
     } else if (press.key === "Enter") {
       press.preventDefault();
 
-      const id = tabbableId();
-
-      if (id !== null) selectRow(id);
+      if (focusedId !== null) selectRow(focusedId);
     }
   };
 
