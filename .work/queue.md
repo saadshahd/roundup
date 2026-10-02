@@ -36,13 +36,13 @@ Status as of this file: the MVP slice is merged except the MVP gate, which QA an
 | #75 | `ux-spawn`, spawn shortcuts and pinned actions | U32 |
 | #67 | boxd.md corrections | docs |
 | #69 | X8 made deterministic | X8 |
-| #77, #92, #103 | loop: agent exec timeout 1800 s, the Reviewer VM replays the PR's commits, an empty approval commit replays | L5, L9, L16 |
+| #77, #92, #103 | loop: agent exec timeout 1800 s, the Reviewer VM replays the PR's commits, an empty approval commit replays | L9, L15, L16 |
 | #79, #82 | architect: next batches, wording follow-ups | docs |
 | #83 | `rpc`: a dropped call is `UNKNOWN_OUTCOME` | C1 |
 | #84, #104 | `agents`: refuse a symlinked `.roundup/agents`; its test compares canonical paths | A13 |
 | #85 | `audit-pads` coverage | P2, P3, P7 |
-| #86 | `u45-chip`: `⌘J` chord rules and the chip's look | U45, U48 |
-| #87 | `ux-todos`: Todo triage | U35 |
+| #86 | `builder/u45-u48-attention-chip`: `⌘J` chord rules and the chip's look | U45, U48 |
+| #87 | `builder/u35-todo-triage`: Todo triage | U35 |
 | #93, #95, #98 | perf: keystroke probe, macOS baselines, R12 pinned | R11, R12, K1–K3 |
 | #96, #97, #99, #100, #101 | architect: U39 retired, R13 text, queue rows, R13 prompt, where a verdict is recorded | docs |
 | #105, #107 | architect: D4 deadline and Builder prompt, U33 open-field rules | D4, U33 |
@@ -66,7 +66,7 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 
 ## Next batch
 
-Text for these ids is in `scenarios/` (U37–U41 in `ui.md`). Reserved ids whose text is not on main yet: U31 (arrives with #81), L17–L20 (with #106), L21 (after #106 merges) and A14 (only if the D4 Builder proves a lost status event). A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
+Text for these ids is in `scenarios/` (U37, U38, U40 and U41 in `ui.md`; U39 is retired). Reserved ids whose text is not on main yet: U31 (arrives with #81), L17–L20 (with #106), L21 (after #106 merges) and A14 (only if the D4 Builder proves a lost status event). A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
