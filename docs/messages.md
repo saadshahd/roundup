@@ -1,6 +1,6 @@
 # Messages between Actors
 
-Design for `scenarios/messages.md` (B1 to B18) and A30. Serves `PRINCIPLES.md` P1, P3 and P4 (the ids in `PRINCIPLES.md`, not `pads.md`'s). Terms are in `CONTEXT.md`; nothing here adds a term.
+Design for `scenarios/messages.md` (B1 to B23) and A30. Serves `PRINCIPLES.md` P1, P3 and P4 (the ids in `PRINCIPLES.md`, not `pads.md`'s). Terms are in `CONTEXT.md`; nothing here adds a term.
 
 ## What exists and what does not
 
@@ -39,6 +39,10 @@ Bounds, from the codes `rpc::code` already has: 32 `pending` or `held` Messages 
 ## Escalation
 
 Serves P1 and P3. P1: the user can still address any Agent, and a question never reaches the user through an Agent that owns the Thread's place. P1 also: a hop `held` for a Takeover waits, so a Takeover is never cut short. P3: the landing is a Held Message, with no signal beyond the event, and a permission Card skips the chain, so only a valid Card interrupts. Added contract: `message.pass`, `passedFrom` on `Message`, and the Held reason `escalated`; the clock is injected, as B14's fake clock needs. A Meta-agent's hop uses the Meta-agent's own Agent, so nothing here adds a seam.
+
+## Child summaries
+
+Serves P1 and P3. P3: pushes go to a Meta-agent as `note` Messages, never to the user, and change no Kind. P1: a Meta-agent learns its children through a tool and Messages, so nothing makes the user address the Thread through it. P4: the envelope reads Status labels, Messages, Todos and Pads, never Terminal output or a vendor string. Added contract: `agent.summary` and the type `Summary`; the MCP tool `agent_summary` is offered to Meta-agents only. Tool set per kind of Agent, for this PR alone: M1's tools and B12's four for every Agent, plus `agent_summary` for a Meta-agent. The composer is `crates/messages`, which listens to `agent.status` and the Todo and Pad events; it reads no new input.
 
 ## Contract timing
 
