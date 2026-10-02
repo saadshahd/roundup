@@ -864,8 +864,8 @@ mod tests {
     }
 
     /// A second connection holding a write transaction makes a write through `Rail`'s own
-    /// connection fail with a real SQLite error (`busy_timeout` defaults to 0), without reaching
-    /// into `Rail`'s private `db` field.
+    /// connection fail with a real SQLite error once rusqlite's default 5 s `busy_timeout`
+    /// elapses, without reaching into `Rail`'s private `db` field.
     fn lock_db_for_writes(dir: &std::path::Path) -> rusqlite::Connection {
         let lock = rusqlite::Connection::open(dir.join("agents.db")).unwrap();
         lock.execute_batch("BEGIN IMMEDIATE;").unwrap();
@@ -909,8 +909,8 @@ mod tests {
     /// How many trials `a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one`
     /// runs. Measured against a `finish_starting` that lets go of `rail` and `runs` right after
     /// the swap into `Running`, then re-locks `runs` once per held Signal to apply it — the
-    /// regression this test catches if the one `rail`-then-`runs` lock section is ever split
-    /// again: over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
+    /// regression this test catches if the one `rail`-then-`runs` lock section is ever split:
+    /// over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
     /// `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug would need to be
     /// dramatically harder to hit than the one measured to slip past a run.
     const TRIALS: usize = 20_000;
