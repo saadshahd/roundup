@@ -101,6 +101,45 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     expect(screen.queryByText(/changed by/)).toBeNull();
   });
 
+  it("u36_a_later_agent_change_refreshes_the_field_after_keep_mine_with_no_blur", async () => {
+    const { app, field, state } = await openConflict();
+
+    fireEvent.click(screen.getByText("keep mine"));
+    await waitFor(() =>
+      expect(app.calls.some((call) => call.method === "pad.write")).toBe(true),
+    );
+
+    state.pads = [padOf("release-checklist", USER, "mine, edited\nagent again")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "release-checklist" },
+    });
+
+    await waitFor(() =>
+      expect(field.value).toBe("mine, edited\nagent again"),
+    );
+    expect(screen.queryByText(/changed by/)).toBeNull();
+  });
+
+  it("u36_leaving_the_field_after_keep_mine_with_no_blur_sends_no_second_write", async () => {
+    const { app, field } = await openConflict();
+
+    fireEvent.click(screen.getByText("keep mine"));
+    await waitFor(() =>
+      expect(
+        app.calls.filter((call) => call.method === "pad.write").length,
+      ).toBe(1),
+    );
+
+    fireEvent.blur(field);
+    await new Promise((done) => setTimeout(done, 0));
+
+    expect(
+      app.calls.filter((call) => call.method === "pad.write"),
+    ).toHaveLength(1);
+  });
+
   it("u36_use_theirs_loads_the_latest_text_and_calls_nothing_else", async () => {
     const { app, field, state } = await openConflict();
 

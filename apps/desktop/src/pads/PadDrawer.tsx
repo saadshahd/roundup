@@ -135,8 +135,7 @@ const PadBody = (props: {
     act(async () => {
       const typed = textField?.value ?? shown();
 
-      setConflictActor(null);
-      adopt(await connected.app.rpc("pad.write", { name, text: typed }));
+      settle(await connected.app.rpc("pad.write", { name, text: typed }));
     });
 
   const useTheirs = () => settle(pad());
