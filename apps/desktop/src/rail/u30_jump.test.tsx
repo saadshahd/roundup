@@ -161,13 +161,21 @@ describe("u45 cmd+j follows u32's chord rules", () => {
     expect(await pressed({ key: "j", metaKey: true, altKey: true })).toBeNull();
   });
 
+  it("u45_cmd_with_another_key_changes_nothing", async () => {
+    expect(await pressed({ key: "k", metaKey: true })).toBeNull();
+  });
+
   it("u45_cmd_j_is_handled_by_the_webview_so_the_browser_never_sees_it", async () => {
     await mountRail([since("a", "needs-you", 1)]);
 
     const handled = fireEvent.keyDown(document, { key: "j", metaKey: true });
     const ignored = fireEvent.keyDown(document, { key: "j" });
+    const ctrlCmd = fireEvent.keyDown(document, { key: "j", metaKey: true, ctrlKey: true });
+    const altCmd = fireEvent.keyDown(document, { key: "j", metaKey: true, altKey: true });
+    const shiftCmd = fireEvent.keyDown(document, { key: "J", metaKey: true, shiftKey: true });
+    const cmdOther = fireEvent.keyDown(document, { key: "k", metaKey: true });
 
-    expect([handled, ignored]).toEqual([false, true]);
+    expect([handled, ignored, ctrlCmd, altCmd, shiftCmd, cmdOther]).toEqual([false, true, true, true, true, true]);
   });
 });
 
@@ -186,6 +194,16 @@ describe("u48 the attention chip looks like the control it is", () => {
 
   it("u48_the_chip_has_a_hover_rule", () => {
     expect(chipStyles).toMatch(/\.attention-chip:hover\s*\{[^}]*text-decoration:\s*underline/);
+  });
+
+  it("u48_the_rendered_chip_carries_the_class_the_hover_rule_targets", async () => {
+    await mountRail([since("a", "needs-you", 1)]);
+
+    const loaded = Array.from(document.styleSheets).some((sheet) =>
+      Array.from(sheet.cssRules).some((rule) => rule.cssText.includes(".attention-chip:hover")),
+    );
+
+    expect([loaded, screen.getByText("1 need you").classList.contains("attention-chip")]).toEqual([true, true]);
   });
 
   it("u48_it_still_shows_nothing_at_zero", async () => {
