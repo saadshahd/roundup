@@ -80,11 +80,25 @@ impl KillsTerminals for Terminals {
     }
 }
 
-/// Kill a Terminal's program and return only once it is observably not running (A16): `kill`
-/// itself returns as soon as the program is reaped, which can race the Terminal's own reader
-/// thread noticing the program's end and flipping `terminal.list`'s `running`. Subscribed before
-/// `kill` runs, so the exit event not already racing is never missed; `terminal_id` may already be
-/// gone, from `kill` or from the subscribe, which is not a failure.
+/// How long `kill_or_already_gone` waits for the Terminal's own exit event once the program is
+/// reaped, before giving up on it. `kill` sends SIGHUP then, after a ~250ms grace period
+/// (`portable_pty`'s own `Child::kill`), SIGKILL to the program's single pid, never to its
+/// process group; a descendant the program backgrounded before dying inherits the slave end of
+/// the PTY and, if it also inherited SIGHUP ignored, outlives the signal that was meant to end
+/// it, which would otherwise keep this wait from ever ending. Comfortably above that grace period
+/// and the reader thread's scheduling delay under load (`a16_a_running_terminal_is_killed_and_removed`'s
+/// stress run).
+pub const KILL_WAIT_BOUND: Duration = Duration::from_secs(2);
+
+/// Kill a Terminal's program and return once it is observably not running (A16) or
+/// `KILL_WAIT_BOUND` has passed, whichever comes first: `kill` itself returns as soon as the
+/// program is reaped, which can race the Terminal's own reader thread noticing the program's end
+/// and flipping `terminal.list`'s `running`, and a descendant left holding the PTY open can keep
+/// that race from ever resolving (see `KILL_WAIT_BOUND`). `terminal::Shared::subscribe` checks
+/// `handle` under the same lock `finish` clears it under, so subscribing before `kill` runs means
+/// the exit event is never missed: either the receiver exists before `finish` publishes it, or
+/// `subscribe` already found the Terminal gone and returned `NOT_FOUND`. `terminal_id` may already
+/// be gone, from `kill` or from the subscribe, which is not a failure.
 async fn kill_or_already_gone(
     kill: &dyn KillsTerminals,
     terminals: &Terminals,
@@ -96,13 +110,15 @@ async fn kill_or_already_gone(
         _ => {}
     }
     if let Some(mut exit) = exit {
-        wait_for_exit(&mut exit).await;
+        let _ = tokio::time::timeout(KILL_WAIT_BOUND, wait_for_exit(&mut exit)).await;
     }
     Ok(())
 }
 
-/// Wait for a Terminal's own exit event. A lag never loses it, since it is always the last event a
-/// Terminal sends; a closed channel means it is already gone some other way.
+/// Wait for a Terminal's own exit event, bounded by the caller. A lag never loses it, since it is
+/// always the last event a Terminal sends. `Terminals` lives in an `Arc` for as long as the Daemon
+/// does, so the channel this reads never closes while this can run; `Closed` is unreachable but
+/// still has to be matched to satisfy `RecvError`.
 async fn wait_for_exit(events: &mut Receiver<EventData>) {
     loop {
         match events.recv().await {
@@ -760,12 +776,13 @@ mod tests {
 
     use async_trait::async_trait;
     use contracts::agent::NodeKind;
-    use contracts::terminal::{ExitedEvent, TitleEvent};
+    use contracts::terminal::{ExitedEvent, SpawnParams, TitleEvent};
     use contracts::{Actor, Event, EventData, Kind};
     use rpc::Bus;
     use serde_json::json;
     use terminal::Terminals;
     use tokio::sync::broadcast;
+    use tokio::sync::broadcast::error::TryRecvError;
     use tokio::task::JoinHandle;
     use tokio::time::Instant;
 
@@ -1263,5 +1280,61 @@ mod tests {
             .await
             .expect("the watch ends")
             .unwrap();
+    }
+
+    /// A lag skips the events it dropped, but must not end the wait on its own: only
+    /// `TerminalExited` may. With capacity 1, every send before a read overwrites the one before
+    /// it, so the receiver sees exactly one `Lagged`, then the last message sent.
+    #[tokio::test]
+    async fn wait_for_exit_keeps_waiting_past_a_lag() {
+        let (tx, mut rx) = broadcast::channel(1);
+        tx.send(EventData::TerminalTitle(TitleEvent {
+            id: "1".into(),
+            title: "a".into(),
+        }))
+        .unwrap();
+        tx.send(EventData::TerminalTitle(TitleEvent {
+            id: "1".into(),
+            title: "b".into(),
+        }))
+        .unwrap();
+        tx.send(EventData::TerminalExited(ExitedEvent {
+            id: "1".into(),
+            code: Some(0),
+        }))
+        .unwrap();
+
+        super::wait_for_exit(&mut rx).await;
+
+        // Had the lag ended the wait instead of being skipped past, `TerminalExited` would still
+        // be sitting unread here.
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    /// A kill that fails must return its error at once, not wait for an exit event from a program
+    /// the kill never touched: a real Terminal that is never killed proves the wait is skipped,
+    /// since it would otherwise run out `KILL_WAIT_BOUND` before returning.
+    #[tokio::test]
+    async fn kill_or_already_gone_returns_a_failed_kills_error_without_waiting() {
+        let dir = tempfile::tempdir().unwrap();
+        let terminals = Terminals::open(dir.path(), Bus::new()).unwrap();
+        let spawned = terminals
+            .spawn(SpawnParams {
+                cwd: dir.path().to_string_lossy().into_owned(),
+                command: Some(vec!["sleep".into(), "30".into()]),
+                env: Default::default(),
+                cols: 80,
+                rows: 24,
+            })
+            .await
+            .unwrap();
+        let began = Instant::now();
+
+        let err = super::kill_or_already_gone(&FailingKill, &terminals, &spawned.id)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code, rpc::code::INTERNAL);
+        assert!(began.elapsed() < super::KILL_WAIT_BOUND / 2);
     }
 }
