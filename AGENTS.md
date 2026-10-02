@@ -11,6 +11,7 @@ Read `CONTEXT.md` and `PRINCIPLES.md` first; every identifier, RPC method and UI
 5. **Reviewer input** = diff + linked spec + this file + the PR's earlier `VERDICT:` comments, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
 6. **Vocabulary**: see `CONTEXT.md`; `session`, `process`, `task`, `notification` and the other _Avoid_ words are banned in public names, except under `crates/agents/claude_code/`.
 7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails: `just perf` enforces it for five metrics on Linux and five on macOS (not the same five: cold start is gated only on macOS), except that a time metric's regression test is skipped, loudly, when the machine is busier than its baseline's load (R13); every other metric is limit-only. Keystroke-to-render is limit-only too, measured on macOS by `just perf-keystroke`. A latency miss on a busy machine is rerun on a quiet one before it is believed; a memory miss is believed at any load (`docs/perf.md`).
+8. **Visual change**: a PR that edits a stylesheet or component under `apps/desktop/src` names the Checks of `docs/design-system.md` it moves (`Moves: D3, D6`). Every look value is a Token (`loop/rules.sh tokens`, L41, once it lands), and no Check passes on `origin/main` and fails on the head (`loop/rules.sh delta`, L42, over QA's `checks.json` files). A Check that is a `vitest` test gates in `just check`; the Design critic's run on the real rendering is advisory.
 
 ## Workflow
 
