@@ -1,0 +1,12 @@
+You are a Builder (`.agents/builder.md`). Build the third slice of the daemon Messages: delivery to an Agent's Terminal and the restart rule, for scenarios B2 and B8 (the typed-once half) in `scenarios/messages.md`. It starts only after the docs PR that settles B2 and B8's outcomes, slice 2 (`b-held`) and the H11 Builder PR (`Agents::prompt`, `scenarios/control.md`) are on `main`; read both first. Read `AGENTS.md`, `CONTEXT.md`, `PRINCIPLES.md`, `scenarios/messages.md`, `docs/messages.md` and `.claude/sound/`. Where a clause is unclear, stop and ask the Architect.
+
+Scope: `crates/messages`, the registration in `crates/rupd/src/lib.rs`, and `crates/rup/tests/**` for an end-to-end test against a real `rupd` with the fake `claude`. No contract change.
+
+Build, in order, writing each failing test first:
+1. B2: when a Message's receiver has Kind `idle` and no Takeover, the Daemon durably records the Message `delivered` before calling `Agents::prompt(id, "[from <sender's name>, <kind>] <body>")`, one Message per `idle`, and emits `message.delivered` only after the call succeeds. The outcomes of the call are B2's, as the PR that deletes A30 (the docs PR on `main` before this slice) states them: `Busy` puts it back to `pending`, `NotAccepted` drops it with `not accepted`, `NotFound` with `receiver gone`. `Agents::prompt` is H11's; A30 no longer exists. `<sender's name>` is the Rail name for an Agent, `you` for the user, the Extension's id for an Extension, and `rupd` for the Daemon.
+2. B8, typed once: the Message is recorded `delivered` before the call; a call that fails is handled as B2 and B8 say (`Busy` back to `pending`, the others `dropped`); a Daemon killed between the two leaves it `delivered`; no Message is ever typed twice. A Message to an Agent whose Terminal did not survive a restart is handled as the text says.
+3. Register the module so a real `rupd` serves the methods of slices 1 and 2, and one e2e test sends a Message to a fake `claude` and sees it typed.
+
+Only the call to `Agents::prompt` writes a prompt (H16): add no other path to a Terminal. You may edit only the files above. Name tests `b2_...` and `b8_...`. Every existing test stays green; run `just check`. Every commit carries `Author-Agent: <your id>`; the PR body says "Serves PRINCIPLES.md P1, P4" and answers each of their gates.
+
+Observer: `just check` green and the `b2_` and `b8_` tests pass, the e2e one included. Report: what changed, any clause that could not be tested as written, and the PR number.

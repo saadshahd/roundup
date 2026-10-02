@@ -20,6 +20,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `messages.md` | `crates/messages` (with the tools in `crates/rup`) | every `B` heading in the file |
 | `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | every `S` heading in the file |
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
+| `ui-surfaces.md` | `apps/desktop` (the webview); the window half is S7 in `app.md` | U80–U85 |
 | `ui-persist.md` | `apps/desktop` (the webview) | U100 |
 | `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
