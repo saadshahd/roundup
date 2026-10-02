@@ -12,6 +12,7 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 | Item | Ids | Owns | Observer | Claimed by |
 |---|---|---|---|---|
+| EXP-b | experiment row b | none | none | none |
 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop/src/rail/spawn*`, `Rail.tsx`, `u32_` and `u33_` tests | `u33_` tests pass; the U32 case "cmd and shift" keeps `⇧⌘T` doing nothing | boxd-agents |
 | reopen, App half | S5 | `crates/desktop/**` | `s5_` tests pass; `s1_` and `s3_` tests stay green | boxd-agents |
 | D4 flake: one deadline and a readable failure | D4 | `crates/rup/tests/**` | the Builder reproduces first; `just check` | boxd-agents |
