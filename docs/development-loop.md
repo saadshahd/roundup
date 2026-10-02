@@ -28,7 +28,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | Reviewer | Reads the diff, the linked scenario, `AGENTS.md` and, on a re-review, the earlier verdicts, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
 | Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
 | QA | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
-| Design critic | After a UI PR is approved, drives the app in the harness, captures screenshots and motion frames, scores them against the written rules in its prompt and writes `artifacts/ux/<id>/report.md`. Files a Todo per broken rule. | Edits code; gates a merge. |
+| Design critic | After a UI PR is approved, drives the app in the harness, captures screenshots and motion frames, scores them against the written rules in its prompt and writes `artifacts/ux/<id>/report.md`. Lists each broken rule in its report; the Driver files a Todo for it. | Edits code; gates a merge. |
 | Slop sweeper | Deletes dead code and duplication (rule 2). | Adds features. |
 | Triage | Tags each failure with a class and files a Todo; assigns reverts of red main. | Fixes forward. |
 
@@ -42,7 +42,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | 4 | CI | GitHub | macOS runner | `check` job (`just check`: fmt, clippy, nextest, machete, oxlint + anti-slop, tsc, fallow) |
 | 5 | Review | Reviewer, a different id | laptop | an empty commit carrying only `Reviewed-by-Agent: <id>`; `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities); the verdict is posted first as a PR comment, by the Reviewer if it has `gh`, else by the Driver, and the same actor then pushes the approval commit (`docs/boxd.md`, "Where a Reviewer's verdict goes"); the Merger checks the comment by hand |
 | 6 | Merge when rule 1 holds | Driver | laptop | all checks green |
-| 7 | UX observers: screenshots, snapshot diff, critic score | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
+| 7 | UX observers: screenshots, snapshot diff, critic report, run after the merge and gating nothing | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
 | 8 | Red main | Triage | laptop | `gh run list` shows failure; revert, never fix forward |
 
 ## Driving the App in a browser
