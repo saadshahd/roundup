@@ -1,7 +1,15 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { AGENT, openPad, openShelf, padOf, waitForReload } from "./padsFixture";
+import {
+  AGENT,
+  deferred,
+  openPad,
+  openShelf,
+  padOf,
+  waitForReload,
+} from "./padsFixture";
 import { USER } from "../testing/nodes";
+import type { Pad } from "@contracts/pad/Pad";
 
 afterEach(cleanup);
 
@@ -99,6 +107,25 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
       expect(app.calls.some((call) => call.method === "pad.write")).toBe(true),
     );
     expect(screen.queryByText(/changed by/)).toBeNull();
+  });
+
+  it("u36_keep_mine_never_overwrites_text_typed_after_a_quick_refocus", async () => {
+    const { app, field } = await openConflict();
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+
+    fireEvent.click(screen.getByText("keep mine"));
+    await waitFor(() =>
+      expect(app.calls.some((call) => call.method === "pad.write")).toBe(true),
+    );
+
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "mine, edited more" } });
+    reply.resolve(padOf("release-checklist", USER, "mine, edited"));
+    await reply.promise;
+    await new Promise((done) => setTimeout(done, 0));
+
+    expect(field.value).toBe("mine, edited more");
   });
 
   it("u36_a_later_agent_change_refreshes_the_field_after_keep_mine_with_no_blur", async () => {
@@ -287,5 +314,73 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
 
     expect(screen.queryByText(/changed by/)).toBeNull();
     expect(field.value).toBe("mine, edited");
+  });
+
+  it("u36_a_reload_with_no_tracked_actor_does_not_clear_a_showing_conflict_line", async () => {
+    const { app, state } = await openConflict();
+
+    state.pads = [padOf("release-checklist", USER, "mine\nagent line\nmore")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "other-pad" },
+    });
+    await waitForReload(app, 2);
+
+    expect(screen.getByText("changed by auth-refactor")).toBeTruthy();
+  });
+
+  it("u36_a_save_that_settles_while_editing_moves_the_starting_text_forward_without_disturbing_the_draft", async () => {
+    const { app } = await openShelf([
+      padOf("release-checklist", USER, "old"),
+    ]);
+
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "new" } });
+    fireEvent.blur(field);
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "newer" } });
+    reply.resolve(padOf("release-checklist", USER, "new"));
+    await reply.promise;
+    await new Promise((done) => setTimeout(done, 0));
+
+    fireEvent.input(field, { target: { value: "old" } });
+
+    expect(field.value).toBe("old");
+    expect(screen.queryByText(/changed by/)).toBeNull();
+  });
+
+  it("u36_a_save_that_settles_while_editing_lets_typing_back_to_the_saved_text_refresh_on_another_actors_change", async () => {
+    const { app, state } = await openShelf([
+      padOf("release-checklist", USER, "old"),
+    ]);
+
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "new" } });
+    fireEvent.blur(field);
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "newer" } });
+    reply.resolve(padOf("release-checklist", USER, "new"));
+    await reply.promise;
+    await new Promise((done) => setTimeout(done, 0));
+
+    fireEvent.input(field, { target: { value: "new" } });
+    state.pads = [padOf("release-checklist", USER, "new plus agent")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "release-checklist" },
+    });
+
+    expect(await screen.findByDisplayValue("new plus agent")).toBe(field);
+    expect(screen.queryByText(/changed by/)).toBeNull();
   });
 });

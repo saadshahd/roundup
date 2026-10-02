@@ -18,6 +18,7 @@ const PadBody = (props: {
   const name = props.initial.name;
   const [pad, setPad] = createSignal(props.initial);
   const [shown, setShown] = createSignal(props.initial.text);
+  const [origin, setOrigin] = createSignal(props.initial.text);
   const [editing, setEditing] = createSignal(false);
   const [conflictActor, setConflictActor] = createSignal<Actor | null>(null);
   const actionFailure = createFailure();
@@ -26,15 +27,17 @@ const PadBody = (props: {
   let pendingActor: Actor | null = null;
   let closed = false;
 
-  /** Moves the dirty/clean baseline forward and drops any conflict line; skip either and a resolved change still looks unresolved. */
+  /** Moves the field and the dirty/clean baseline forward together and drops any conflict line; skip either and a resolved change still looks unresolved. */
   const settle = (next: Pad) => {
+    setOrigin(next.text);
     setShown(next.text);
     setConflictActor(null);
   };
 
-  /** Server state always lands in `pad`; the text field only follows it while the user is not typing, or their keystrokes would vanish. */
+  /** The baseline always moves to the last loaded or saved text, even mid-edit, so a later dirty-check stays correct; the field itself only follows while the user is not typing, or their keystrokes would vanish. */
   const adopt = (next: Pad) => {
     setPad(next);
+    setOrigin(next.text);
 
     if (!editing()) settle(next);
   };
@@ -73,7 +76,7 @@ const PadBody = (props: {
 
         const typed = textField?.value ?? shown();
 
-        if (typed === shown()) {
+        if (typed === origin()) {
           settle(current);
 
           return;
@@ -105,7 +108,7 @@ const PadBody = (props: {
 
   const write = (text: string) =>
     act(async () => {
-      if (text !== shown())
+      if (text !== origin())
         adopt(await connected.app.rpc("pad.write", { name, text }));
     });
 
@@ -135,7 +138,9 @@ const PadBody = (props: {
     act(async () => {
       const typed = textField?.value ?? shown();
 
-      settle(await connected.app.rpc("pad.write", { name, text: typed }));
+      adopt(await connected.app.rpc("pad.write", { name, text: typed }));
+      // adopt alone won't clear this while a quick refocus keeps the field dirty.
+      setConflictActor(null);
     });
 
   const useTheirs = () => settle(pad());
@@ -180,7 +185,7 @@ const PadBody = (props: {
         onInput={(typed) => {
           setEditing(ownedByUser());
 
-          if (typed.currentTarget.value === shown()) settle(pad());
+          if (typed.currentTarget.value === origin()) settle(pad());
         }}
         onBlur={(blurred) => void leaveField(blurred.currentTarget.value)}
       />
