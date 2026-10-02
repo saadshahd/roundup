@@ -156,4 +156,98 @@ new_dirs
 expect_exit 2 "L42 delta: no checks files exits 2" delta base head
 expect_exit 2 "L42 delta: a directory that does not exist exits 2" delta base nope
 
+# tokens
+expect_contains() {
+  local want=$1 name=$2 out
+  shift 2
+  out=$("$@" 2>/dev/null || true)
+  if [[ $out == *"$want"* ]]; then echo "ok:   $name"; else echo "FAIL: $name (stdout: $out)"; failures=$((failures + 1)); fi
+}
+
+new_ui_repo() {
+  new_repo
+  mkdir -p apps/desktop/src
+  printf ':root {\n  --accent: #0a60d8;\n}\n' >apps/desktop/src/tokens.css
+}
+
+new_repo; mkdir -p apps/desktop/src
+expect fail "L41 tokens: missing tokens.css fails loudly" rules tokens
+
+new_ui_repo; commit base
+expect pass "L41 tokens: clean tree with only tokens.css exits 0" rules tokens
+
+new_ui_repo; printf 'a { color: #ff0000; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: 6-digit hex literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: 6-digit hex prints file:line" rules tokens
+
+new_ui_repo; printf 'a { color: #f00; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: 3-digit hex literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: 3-digit hex prints file:line" rules tokens
+
+new_ui_repo; printf 'a { background: rgba(0,0,0,.5); }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: rgba() literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: rgba() prints file:line" rules tokens
+
+new_ui_repo; printf 'a { font-size: 14px; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: font-size literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: font-size prints file:line" rules tokens
+
+new_ui_repo; printf 'a { border-radius: 4px; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: border-radius literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: border-radius prints file:line" rules tokens
+
+new_ui_repo; printf 'a { box-shadow: inset 0 0 4px 2px; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: box-shadow literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: box-shadow prints file:line" rules tokens
+
+new_ui_repo; printf 'a { transition-duration: 200ms; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: transition-duration literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: transition-duration prints file:line" rules tokens
+
+new_ui_repo; printf 'a { animation-duration: 1.2s; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: animation-duration literal fails" rules tokens
+expect_contains "apps/desktop/src/a.css:1" "L41 tokens: animation-duration prints file:line" rules tokens
+
+new_ui_repo; printf 'export const X = () => <div style="color:red" />;\n' >apps/desktop/src/b.tsx; commit x
+expect fail "L41 tokens: inline style attribute in a .tsx file fails" rules tokens
+expect_contains "apps/desktop/src/b.tsx:1" "L41 tokens: inline style attribute prints file:line" rules tokens
+
+new_ui_repo; printf 'export const X = () => <div style={{color:"red"}} />;\n' >apps/desktop/src/b.tsx; commit x
+expect fail "L41 tokens: style={...} in a .tsx file fails" rules tokens
+expect_contains "apps/desktop/src/b.tsx:1" "L41 tokens: style={...} prints file:line" rules tokens
+
+new_ui_repo; printf 'const s = style="color:red";\n' >apps/desktop/src/c.ts; commit x
+expect pass "L41 tokens: a style attribute outside a .tsx file is not checked" rules tokens
+
+new_ui_repo
+{
+  echo 'a { font-size: 0; }'
+  echo 'a { border-radius: inherit; }'
+  echo 'a { box-shadow: none; }'
+  echo 'a { transition-duration: transparent; }'
+  echo 'a { animation-duration: currentColor; }'
+  echo 'a { font-size: var(--text-body); }'
+} >apps/desktop/src/clean.css
+commit x
+expect pass "L41 tokens: 0, inherit, none, transparent, currentColor and var(...) all pass" rules tokens
+
+new_ui_repo; printf '/* color: #ff0000; */\n' >apps/desktop/src/commented.css; commit x
+expect pass "L41 tokens: a line in a CSS comment passes" rules tokens
+
+new_ui_repo; printf '// style={{color: "#fff"}}\n' >apps/desktop/src/commented.tsx; commit x
+expect pass "L41 tokens: a line in a // comment passes" rules tokens
+
+new_ui_repo; printf ':root { --accent: #0a60d8; font-size: 15px; }\n' >>apps/desktop/src/tokens.css; commit x
+expect pass "L41 tokens: tokens.css itself is exempt" rules tokens
+
+new_ui_repo; mkdir -p apps/desktop/src/components; printf 'a { color: #ff0000; }\n' >apps/desktop/src/components/x.css; commit x
+expect fail "L41 tokens: nested files under src are scanned" rules tokens
+
+new_ui_repo; printf 'a { color: #ff0000; }\n' >crates/outside.css; commit x
+expect pass "L41 tokens: files outside apps/desktop/src are ignored" rules tokens
+
+new_ui_repo; printf 'a { font-size: 14px; }\nb { border-radius: 4px; }\n' >apps/desktop/src/multi.css; commit x
+expect_contains "apps/desktop/src/multi.css:1" "L41 tokens: first offence prints its own file:line" rules tokens
+expect_contains "apps/desktop/src/multi.css:2" "L41 tokens: second offence prints its own file:line" rules tokens
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

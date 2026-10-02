@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md rules 1, 3, 6 and 8. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir>
+# Machine checks for AGENTS.md rules 1, 3, 6 and 8. Usage: loop/rules.sh size|trailers|vocab [base-ref] | tokens | delta <base-dir> <head-dir>
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -117,6 +117,66 @@ vocab() {
   return "$bad"
 }
 
+# Rule 8 (Tokens, D1): a colour, font-size, border-radius, box-shadow, transition-duration or
+# animation-duration literal, or an inline style in a .tsx file, means a look value that is not
+# the Token docs/design-system.md requires. Only apps/desktop/src/tokens.css may hold one.
+tokens_dir="apps/desktop/src"
+tokens_file="$tokens_dir/tokens.css"
+tokens_pass_values='0 inherit transparent currentColor none'
+tokens_color_re='#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b|\b(rgb|rgba|hsl|hsla)\('
+tokens_prop_re='(font-size|border-radius|box-shadow|transition-duration|animation-duration)[[:space:]]*:[[:space:]]*([^;]+)'
+tokens_style_re='style=(\{|")'
+
+tokens_lstrip() {
+  local s=$1
+  while [ "${s:0:1}" = " " ] || [ "${s:0:1}" = $'\t' ]; do s=${s:1}; done
+  printf '%s' "$s"
+}
+
+# A line whose literal never reaches a computed style is not a finding.
+tokens_is_comment() {
+  case "$(tokens_lstrip "$1")" in
+    //* | /\** | \**) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+tokens_value_passes() {
+  local v
+  v=$(tokens_lstrip "$1")
+  v=$(printf '%s' "$v" | sed -E 's/[[:space:]]+$//')
+  case " $tokens_pass_values " in *" $v "*) return 0 ;; esac
+  case "$v" in var\(*) return 0 ;; esac
+  return 1
+}
+
+tokens() {
+  [ -f "$tokens_file" ] || { echo "rule 8 tokens: $tokens_file not found" >&2; return 1; }
+  local files file lineno text bad=0 value
+  files=$(find "$tokens_dir" -type f ! -path "$tokens_file" 2>/dev/null | sort)
+  while read -r file; do
+    [ -n "$file" ] || continue
+    lineno=0
+    while IFS= read -r text || [ -n "$text" ]; do
+      lineno=$((lineno + 1))
+      tokens_is_comment "$text" && continue
+      if [[ $text =~ $tokens_color_re ]]; then
+        echo "$file:$lineno: colour literal, use a Token"
+        bad=1
+      fi
+      if [[ $text =~ $tokens_prop_re ]]; then
+        value=${BASH_REMATCH[2]}
+        tokens_value_passes "$value" || { echo "$file:$lineno: ${BASH_REMATCH[1]} '$value', use a Token"; bad=1; }
+      fi
+      if [[ $file == *.tsx ]] && [[ $text =~ $tokens_style_re ]]; then
+        echo "$file:$lineno: inline style, use a Token"
+        bad=1
+      fi
+    done <"$file"
+  done <<<"$files"
+  return "$bad"
+}
+
 visual_check_ids="D1 D2 D3 D4 D5 D6 D7 D8 D9 D10"
 
 # A directory argument names a path from where the script was run, not from the repo root it moves to.
@@ -164,6 +224,7 @@ case "${1:-}" in
   size) size ;;
   trailers) trailers ;;
   vocab) vocab ;;
+  tokens) tokens ;;
   delta) delta "${2:-}" "${3:-}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;
 esac
