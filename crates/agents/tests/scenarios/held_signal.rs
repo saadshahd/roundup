@@ -8,7 +8,7 @@ use rpc::{RpcError, code};
 use serde_json::{Value, json};
 use tokio::sync::broadcast::Receiver;
 
-use crate::common::{Fixture, hold_starts, release};
+use crate::common::{Fixture, hold_starts, release, until_file};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -63,6 +63,57 @@ async fn a14_signals_held_while_starting_are_applied_in_arrival_order() {
     }
     let kinds = next_kinds(&mut events, 3).await;
     assert_eq!(kinds, [Kind::Working, Kind::NeedsYou, Kind::Idle]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a14_a_held_user_prompt_submit_still_names_the_agent() {
+    let f = Arc::new(Fixture::running("sleep 30"));
+    let config = hold_starts(&f);
+    let spawning = {
+        let f = Arc::clone(&f);
+        tokio::spawn(async move { f.spawn(None, None).await })
+    };
+    let tree = f.until(|t| !t.is_empty()).await;
+    let id = tree[0].id.clone();
+
+    let payload = json!({"hook_event_name": "UserPromptSubmit", "prompt": "fix the build"});
+    let held = f
+        .call("agent.signal", json!({"id": id, "payload": payload}))
+        .await;
+
+    release(config).await;
+    let node = spawning.await.unwrap().unwrap();
+
+    assert!(held.is_ok(), "{held:?}");
+    let tree = f.tree().await;
+    assert_eq!(
+        tree.iter().find(|n| n.id == node.id).unwrap().name,
+        "fix-build"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a14_a_held_signal_that_leaves_the_agent_idle_still_types_its_spawn_prompt() {
+    let f = Arc::new(Fixture::running(
+        "read p; echo \"$p\" > \"$(dirname \"$0\")/typed\"; sleep 30",
+    ));
+    let config = hold_starts(&f);
+    let typed = f.dir.path().join("typed");
+    let spawning = {
+        let f = Arc::clone(&f);
+        tokio::spawn(async move { f.spawn(None, Some("hello there")).await })
+    };
+    let tree = f.until(|t| !t.is_empty()).await;
+    let id = tree[0].id.clone();
+
+    // "Stop" leaves the Agent idle (A5), the only Kind that types the spawn prompt (A4).
+    let held = signal(&f, &id, "Stop").await;
+
+    release(config).await;
+    spawning.await.unwrap().unwrap();
+
+    assert!(held.is_ok(), "{held:?}");
+    assert_eq!(until_file(&typed).await.trim(), "hello there");
 }
 
 #[tokio::test]

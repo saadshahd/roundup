@@ -230,7 +230,7 @@ impl Shared {
                     Observation::Signal(payload),
                     first_prompt,
                 )
-                .expect(REGISTERED);
+                .expect(STILL_IN_RAIL);
             prompts.extend(prompt);
         }
         runs.insert(id.to_owned(), Slot::Running(run));
@@ -307,6 +307,10 @@ async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: Str
 
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
 const REGISTERED: &str = "a watched Agent is registered";
+
+/// A Starting id's Rail node is removed only by its own failed spawn, which never reaches
+/// `finish_starting`, so the node a held Signal renames is still there to rename.
+const STILL_IN_RAIL: &str = "a Starting id still has its Rail node once registration finishes";
 
 /// Feed one Terminal's titles and its exit to the Agent behind it, and a Tick at the time its
 /// adapter asks for one. Only a held star asks, so the watcher of an idle Agent never wakes.
@@ -668,7 +672,8 @@ impl Module for Agents {
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, VecDeque};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::thread;
     use std::time::Duration;
 
     use contracts::terminal::{ExitedEvent, TitleEvent};
@@ -828,16 +833,62 @@ mod tests {
         assert_eq!(name(None), "shell");
     }
 
-    /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its
-    /// drain of what was held, so a Signal released the instant the Agent is registered still
-    /// cannot land ahead of the one held for it. A lock-ordering race like this is a coin flip
-    /// per attempt (AGENTS.md exempts shared locked state in one process from this repo's usual
-    /// determinism bar for exactly this reason), so this runs many trials with one racer each:
-    /// before the fix, roughly 1 in 150 reordered the held Signal after the late one; a single
-    /// racer, rather than a burst, keeps every trial under `HELD_BOUND` so a trial can never fail
-    /// for the unrelated, correct reason that the held Signal's own bound dropped it.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one() {
+    /// `watch` only starts once an Agent is `Running`, so in production a non-Signal Observation
+    /// never reaches a `Starting` id; reached directly here, it must still answer the way
+    /// `agent.signal` answers any other unknown id, not pretend the id is already registered.
+    #[test]
+    fn a14_a_non_signal_observation_for_a_starting_id_is_still_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let clock: Clock = Arc::new(|| 0);
+        let shared = Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
+            bus,
+            clock,
+            opened: 0,
+        };
+        shared.runs().insert(
+            "1".into(),
+            Slot::Starting {
+                since: 0,
+                named: false,
+                held: VecDeque::new(),
+            },
+        );
+
+        let err = shared
+            .observe(Actor::daemon(), "1", Observation::Tick)
+            .unwrap_err();
+
+        assert_eq!(err.code, rpc::code::NOT_FOUND);
+    }
+
+    /// How many trials `a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one`
+    /// runs. Measured by reverting `finish_starting` to let go of `rail` and `runs` right after
+    /// the swap into `Running`, then re-locking `runs` once per held Signal to apply it (the old
+    /// bug this test exists to catch): over 30 runs of the mutated binary, every run failed, the
+    /// latest at trial 5536. `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug
+    /// would need to be dramatically harder to hit than the one measured to slip past a run.
+    const TRIALS: usize = 20_000;
+
+    /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its drain
+    /// of what was held, so a Signal released the instant the Agent is registered still cannot
+    /// land ahead of the one held for it (A14). AGENTS.md says the taste rules against shared
+    /// locked state in one process, and against an in-file test of a private function, are both
+    /// "not installed" for this daemon; it says nothing about a determinism bar, and neither
+    /// exemption excuses a flaky test. So this does not race blindly: a rendezvous over a
+    /// zero-capacity channel holds the late call at the threshold of its own call to `observe`
+    /// until `finish_starting`'s `build` hook — already a plain closure argument, not a new
+    /// public seam — confirms, by having been called at all, that both locks are still held.
+    /// Only then are both sides let go. That leaves exactly the race the fix is answerable for:
+    /// once released, a correct `finish_starting` never lets go of `runs` until every held Signal
+    /// is applied, so the late call cannot win no matter how the OS schedules it; a regressed one
+    /// drops `runs` early and must then win a second, real race to re-lock it before the already-
+    /// waiting late call does — a race this test cannot referee, only repeat (`TRIALS`).
+    #[test]
+    fn a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one() {
         let dir = tempfile::tempdir().unwrap();
         let bus = Bus::new();
         let clock: Clock = Arc::new(|| 0);
@@ -850,7 +901,7 @@ mod tests {
             opened: 0,
         });
         let mut events = bus.subscribe();
-        for i in 0..2000 {
+        for i in 0..TRIALS {
             let id = i.to_string();
             shared.runs().insert(
                 id.clone(),
@@ -863,15 +914,37 @@ mod tests {
                     )]),
                 },
             );
-            // Released the moment `finish_starting` itself starts racing for `rail` and `runs`,
-            // not once it is done, so it truly contends with it for who reaches them first.
-            let gate = Arc::new(tokio::sync::Semaphore::new(0));
+
+            // `build` is called with both locks already held, so reaching here and blocking
+            // proves `finish_starting` cannot have let either go yet.
+            let (holding_tx, holding_rx) = mpsc::sync_channel::<()>(0);
+            let (go_tx, go_rx) = mpsc::sync_channel::<()>(0);
+            let registering = {
+                let shared = Arc::clone(&shared);
+                let id = id.clone();
+                thread::spawn(move || {
+                    shared.finish_starting(&id, |named| {
+                        holding_tx.send(()).unwrap();
+                        go_rx.recv().unwrap();
+                        Run {
+                            adapter: ClaudeCode::starting(|| 0),
+                            prompt: None,
+                            named,
+                            terminal_id: id.clone(),
+                        }
+                    })
+                })
+            };
+            holding_rx.recv().unwrap();
+
+            // A zero-capacity send only completes once this thread is received by the line
+            // below, so by the time it does, the late call's very next step is `observe`.
+            let (about_tx, about_rx) = mpsc::sync_channel::<()>(0);
             let late = {
                 let shared = Arc::clone(&shared);
                 let id = id.clone();
-                let gate = Arc::clone(&gate);
-                tokio::spawn(async move {
-                    let _permit = gate.acquire().await.unwrap();
+                thread::spawn(move || {
+                    about_tx.send(()).unwrap();
                     shared.observe(
                         Actor::daemon(),
                         &id,
@@ -881,14 +954,12 @@ mod tests {
                     )
                 })
             };
-            gate.add_permits(1);
-            shared.finish_starting(&id, |named| Run {
-                adapter: ClaudeCode::starting(|| 0),
-                prompt: None,
-                named,
-                terminal_id: id.clone(),
-            });
-            late.await.unwrap().unwrap();
+            about_rx.recv().unwrap();
+            go_tx.send(()).unwrap();
+
+            registering.join().unwrap();
+            late.join().unwrap().unwrap();
+
             let mut kinds = vec![];
             while let Ok(event) = events.try_recv() {
                 if let EventData::AgentStatus(s) = event.data
