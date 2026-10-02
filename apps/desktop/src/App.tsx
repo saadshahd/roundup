@@ -13,6 +13,7 @@ import { createNow } from "./state/clock";
 import type { Clock } from "./state/clock";
 import { createProjectState } from "./state/project";
 import { connectProject, ConnectedProjectContext } from "./state/connectedProject";
+import type { EmulatorFactory } from "./terminal/emulator";
 import { Pane } from "./terminal/Pane";
 import { Todos } from "./todos/Todos";
 
@@ -25,6 +26,7 @@ const OpenProject = (props: {
   daemonExit: DaemonExit | null;
   reducedMotion: Accessor<boolean>;
   now: Accessor<number>;
+  createEmulator?: EmulatorFactory | undefined;
 }) => {
   const [connected] = createResource(() =>
     connectProject(props.app, props.project, props.reducedMotion, props.now, () => props.daemonExit),
@@ -52,7 +54,7 @@ const OpenProject = (props: {
               }
               rail={<Rail />}
               centre={
-                <Pane notice={open().rail.failure()} />
+                <Pane notice={open().rail.failure()} createEmulator={props.createEmulator} />
               }
               shelf={
                 <>
@@ -69,7 +71,12 @@ const OpenProject = (props: {
   );
 };
 
-export const App = (props: { app: AppSeam; reducedMotion: Accessor<boolean>; clock: Clock }) => {
+export const App = (props: {
+  app: AppSeam;
+  reducedMotion: Accessor<boolean>;
+  clock: Clock;
+  createEmulator?: EmulatorFactory | undefined;
+}) => {
   const project = createProjectState(props.app);
   const now = createNow(props.clock);
 
@@ -106,6 +113,7 @@ export const App = (props: { app: AppSeam; reducedMotion: Accessor<boolean>; clo
             daemonExit={phase().daemonExit}
             reducedMotion={props.reducedMotion}
             now={now}
+            createEmulator={props.createEmulator}
           />
         )}
       </Show>

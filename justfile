@@ -57,7 +57,19 @@ app-release project:
     cargo build --release -p desktop --features custom-protocol
     cargo run --release -p desktop --features custom-protocol -- "$path"
 
-# Rule 7 as a command: measures a fresh Daemon (median of 7 runs), writes target/perf.json, fails on a miss against crates/perf/budgets.json.
+# Rule 7 as a command: measures a fresh Daemon (median of 11 runs), writes target/perf.json, fails on a miss against crates/perf/budgets.json.
 perf *args:
     cargo build --release -p rupd -p perf
     ./target/release/perf {{args}}
+
+# Keystroke-to-render p95 in the real App's WKWebView (macOS only; scenarios/perf.md K1-K3, R11). Builds the App with the probe into target/perf-app and opens its window, kept above every other window and Space, for about 40 s per run, and refuses unless ROUNDUP_ALLOW_WINDOW=1.
+perf-keystroke *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "${ROUNDUP_ALLOW_WINDOW:-}" = 1 ] || { echo "perf-keystroke opens a window over your screen for about 40 s per run and types into it; set ROUNDUP_ALLOW_WINDOW=1 only when the user asked for the run" >&2; exit 2; }
+    dist={{quote(justfile_directory())}}/target/perf-dist
+    VITE_ROUNDUP_PERF=1 pnpm --filter desktop exec vite build --outDir "$dist" --emptyOutDir
+    TAURI_CONFIG=$(jq -nc --arg dist "$dist" '{build: {frontendDist: $dist}, app: {windows: [{title: "roundup", alwaysOnTop: true, visibleOnAllWorkspaces: true}]}}') \
+        cargo build --release -p rupd -p desktop --features desktop/custom-protocol --target-dir target/perf-app
+    cargo build --release -p perf
+    ./target/release/perf-keystroke {{args}}

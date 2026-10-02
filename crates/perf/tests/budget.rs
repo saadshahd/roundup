@@ -155,3 +155,35 @@ fn r9_the_regression_ceiling_is_inclusive_and_exact_at_the_float_edge() {
     assert_eq!(judge(ceiling, &b, "linux"), None);
     assert!(judge(next_up(ceiling), &b, "linux").is_some());
 }
+
+#[test]
+fn r8_the_committed_baselines_are_the_recorded_values() {
+    let recorded = [
+        ("cold_start_ms", "macos", 7.1),
+        ("rss_extra_mb", "linux", 1.6),
+        ("rss_extra_mb", "macos", 3.1),
+        ("write_to_output_p95_ms", "linux", 0.066),
+        ("write_to_output_p95_ms", "macos", 0.056),
+        ("terminal_write_p95_ms", "linux", 0.055),
+        ("terminal_write_p95_ms", "macos", 0.0365),
+        ("ping_p95_ms", "linux", 0.025),
+        ("rail_tree_40_p95_ms", "linux", 0.265),
+        ("rail_tree_40_p95_ms", "macos", 0.1345),
+    ];
+    let budgets = committed();
+    let committed_count: usize = budgets.values().map(|budget| budget.baseline.len()).sum();
+
+    assert_eq!(
+        committed_count,
+        recorded.len(),
+        "a baseline was added or removed"
+    );
+
+    for (name, os, value) in recorded {
+        assert_eq!(
+            budgets[name].baseline.get(os),
+            Some(&value),
+            "{name} on {os}"
+        );
+    }
+}

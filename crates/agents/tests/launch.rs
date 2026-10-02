@@ -257,6 +257,54 @@ fn a4_a_symlinked_config_is_written_through_and_stays_a_link() {
 }
 
 #[test]
+fn a13_a_symlinked_agents_directory_is_refused() {
+    let s = setup();
+    let elsewhere = s.root.path().join("elsewhere");
+    std::fs::create_dir(&elsewhere).unwrap();
+    let agents = s.dir.join("agents");
+    std::os::unix::fs::symlink(&elsewhere, &agents).unwrap();
+
+    let err = s.prepare("1").unwrap_err();
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    let real_agents = s.dir.canonicalize().unwrap().join("agents");
+    assert!(
+        err.message
+            .contains(&real_agents.to_string_lossy().into_owned()),
+        "{}",
+        err.message
+    );
+    assert!(agents.symlink_metadata().unwrap().file_type().is_symlink());
+    assert!(std::fs::read_dir(&elsewhere).unwrap().next().is_none());
+    assert!(!s.dir.join("1.settings.json").exists());
+    assert!(!s.dir.join("1.mcp.json").exists());
+    assert!(!s.claude_json.exists());
+}
+
+#[test]
+fn a13_a_real_agents_directory_works_as_before() {
+    let s = setup();
+    let agents = s.dir.join("agents");
+    std::fs::create_dir(&agents).unwrap();
+
+    let argv = s.prepare("1").unwrap();
+
+    assert!(Path::new(&argv[2]).starts_with(&agents));
+    assert!(Path::new(&argv[4]).starts_with(&agents));
+}
+
+#[test]
+fn a13_a_missing_agents_directory_is_created_as_before() {
+    let s = setup();
+    let agents = s.dir.join("agents");
+    assert!(!agents.exists());
+
+    s.prepare("1").unwrap();
+
+    assert!(agents.is_dir());
+}
+
+#[test]
 fn a4_concurrent_spawns_each_get_their_cwd_trusted() {
     let s = setup();
     let launcher = Arc::new(s.launcher());
