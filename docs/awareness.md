@@ -34,7 +34,7 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## The gates
 
-- **P1.** An Agent can ask its Meta-agent, a peer or the user; the Thread becomes one more `ask.to` when it exists. No Agent is reachable only through the Thread.
+- **P1.** An Agent can ask its Meta-agent (the Agent that serves the Thread about that Home, `CONTEXT.md`), a peer or the user, so asking the Meta-agent is how an Agent reaches the Thread. No Agent is reachable only through the Thread.
 - **P3.** Nothing interrupts the user: `missing` changes no Kind and rings nothing, and a question to the user is B10's Inbox Message.
 - **P4.** Everything Claude-specific (the flag, the hook JSON) sits in `claude_code/`: `rup context` prints a string the Daemon built and parses nothing. `agent.context` and the tool are vendor-neutral, and `AgentAdapter` gains no seam.
 
