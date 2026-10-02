@@ -20,7 +20,7 @@ Read on 2026-10-02 (`code.claude.com/docs`): `--append-system-prompt-file` works
 | Parent, peers, Todos at start | `SessionStart` hook, `rup context` (E3) | the vendor's own injection point; live at the moment of start |
 | The same again later | MCP tool `agent_context` (E4) | the Agent pulls when it wants; peers change (`rail.move`) |
 | Ask the parent or a peer | `message_send` to `ask.to` or a peer id (E5) | B's channel; no second one |
-| Never connected | Chip `no channel` (E6) | visible, never an interruption |
+| Never connected | `RailNode.channel` and the event `agent.channel` (E6); the Rail's `no channel` Chip is E8 | visible, never an interruption |
 
 Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing the context into the Terminal, because `agent.context` is exact and typing would interleave with the user (P4's "black box" means the vendor is not parsed). One method serves all three readers: `agent.context`.
 
@@ -30,12 +30,12 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## Contract change (rule 4, with the first Builder PR)
 
-`agent.context {id}` returns `{self, parent, ask, peers, todos}`; the MCP tool `agent_context` and the `rup context` subcommand are its callers. E6 needs the Daemon to learn that `rup mcp <id>` connected; the contract PR decides whether that is a field on `daemon.identify` or a method, and states every caller. `rpc::code` gains nothing.
+`agent.context {id}` returns `{self, parent, ask, peers, todos}`; the MCP tool `agent_context` and the `rup context` subcommand are its callers. E6 adds `RailNode.channel` (`pending`, `up`, `missing`) and the event `agent.channel`, and needs the Daemon to learn that `rup mcp <id>` connected; the contract PR decides whether that is a field on `daemon.identify` or a method, and states every caller, including the webview's `RailNode` fixtures. E8, the Chip, is a webview scenario written after this lands. `rpc::code` gains nothing.
 
 ## The gates
 
 - **P1.** An Agent can ask its Meta-agent, a peer or the user; the Thread becomes one more `ask.to` when it exists. No Agent is reachable only through the Thread.
-- **P3.** Nothing interrupts the user: `no channel` is a Chip, and a question to the user is B10's Inbox Message.
+- **P3.** Nothing interrupts the user: `missing` changes no Kind and rings nothing, and a question to the user is B10's Inbox Message.
 - **P4.** Everything Claude-specific (the flag, the hook JSON) sits in `claude_code/`. `agent.context` and the tool are vendor-neutral, and `AgentAdapter` gains no seam.
 
 ## Open
