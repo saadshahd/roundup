@@ -102,6 +102,6 @@ function summarize(ss: Sample[]) {
       out[name + "_raw"] = ss;
     }
   } catch (e) { out.error = String(e); }
-  await invoke("save_results", { path: "/Users/saad.shahd/repos/meta-harness/spikes/tauri-latency/results.json", json: JSON.stringify(out) });
+  await invoke("save_results", { path: "results.json", json: JSON.stringify(out) });
   await invoke("quit");
 })();

@@ -246,6 +246,7 @@ loop/boxd.sh review r prompt.md feat >out 2>err
 printf 'From 0 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] x\n\n---\n nope | 1 +\n 1 file changed\n\ndiff --git a/nope b/nope\n--- a/nope\n+++ b/nope\n@@ -1 +1,2 @@\n a\n+b\n' >cp/series.mbox
 replay_on_vm "$dir/vm"
 expect_true "L9 a series that does not apply falls back to one head commit" test "$(vm_log "$dir/vm" '%s')" = head
+if [ -e "$dir/vm/roundup/.git/rebase-apply" ]; then { git --version; cat "$dir/vm/replay.err"; ls -la "$dir/vm/roundup/.git/rebase-apply"; } >&2; fi
 expect_true "L9 the fallback leaves no am in progress" test ! -e "$dir/vm/roundup/.git/rebase-apply"
 expect_true "L9 the fallback says so" grep -q 'did not replay' "$dir/vm/replay.err"
 expect_log '--auto-destroy-timeout 4200' "L5 VM has an auto-destroy timer"
@@ -255,7 +256,7 @@ expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
 # L15: `check` merges on this machine and runs on an isolated VM. The origin lives beside the repo, not inside it.
 check_repo() {
   new_repo
-  git init -q --bare "$dir-origin.git"
+  git init -q -b main --bare "$dir-origin.git"
   git remote add origin "$dir-origin.git"
   git push -q origin HEAD:main HEAD:refs/pull/54/head HEAD:refs/heads/builder/x
   git fetch -q origin
