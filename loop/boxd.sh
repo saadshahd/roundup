@@ -164,14 +164,14 @@ upload_checkout() {
   git archive --format=tar.gz --end-of-options "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
   git archive --format=tar.gz --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
   [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
-  # The VM's one `head` commit carries the PR's real messages and author, so a Reviewer can check trailers.
-  { git log --format=%B --end-of-options "$base_ref..$ref"; echo head; } | boxd machine cp - "$VM:/tmp/head-msg.txt" >/dev/null
-  git log -1 --format='%an%n%ae' --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/head-author.txt" >/dev/null
-  # shellcheck disable=SC2016 # the substitutions expand on the VM
+  # Replay the PR's own commits, so a Reviewer sees the real messages, authors and trailers. A trailing `head` commit
+  # appears only when the tree still differs from the ref (a merge commit's content is not in the series).
+  git format-patch --stdout --binary --end-of-options "$base_ref..$ref" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
+    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q /tmp/series.mbox; } &&
     git rm -rqf . && tar xzf /tmp/src.tgz -C ~/roundup && git add -A >/dev/null &&
-    { git diff --cached --quiet || git -c user.name="$(sed -n 1p /tmp/head-author.txt)" -c user.email="$(sed -n 2p /tmp/head-author.txt)" commit -qF /tmp/head-msg.txt; }' </dev/null
+    { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
 }
 
 # Run claude on the VM with /tmp/prompt.md; JSON lands in <result>. Exits unless the run succeeded.

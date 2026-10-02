@@ -152,9 +152,8 @@ loop/boxd.sh review r prompt.md feat >out 2>err
 expect_true "L9 base archive is the merge-base (no feature file)" bash -c '! tar tzf cp/base.tgz | grep -q "^g$"'
 expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
 expect_log 'git tag base' "L9 base is tagged"
-expect_true "L9 the head commit carries the PR's own message" grep -q '^feat$' cp/head-msg.txt
-expect_log 'commit -qF /tmp/head-msg.txt' "L9 the VM commits with the PR's message"
-expect_true "L9 the head commit carries the PR's author" test "$(sed -n 1p cp/head-author.txt)" = t
+expect_true "L9 the PR's commits are uploaded as a series" grep -q '^Subject: \[PATCH\] feat$' cp/series.mbox
+expect_log 'git .*am -q /tmp/series.mbox' "L9 the VM replays the PR's commits"
 expect_log '--auto-destroy-timeout 4200' "L5 VM has an auto-destroy timer"
 expect_log 'machine exec ru-r --timeout 1800 .*claude' "L5 the agent may run as long as the check"
 expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
