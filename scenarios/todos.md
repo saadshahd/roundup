@@ -13,3 +13,5 @@
 **T6 delete.** Given Todo 2 blocked by 1, when Todo 1 is deleted, then `todo.deleted {id: 1}` is emitted, Todo 2's blocker list no longer contains 1, `blocked` is false, and `todo.unblocked {id: 2}` is emitted.
 
 **T7 update.** Given Todo 1, when `todo.update {id: 1, title: "x"}` is called, then the title changes, the body is untouched, `todo.updated` is emitted, and a `wrote` Touch is logged; an update with neither field is `INVALID_PARAMS`.
+
+**T9 a rejected call leaves no trace.** Given Todos 1 and 2 and a subscribed client, when `todo.create` names a blocker that does not exist (`NOT_FOUND`), `todo.setBlockers` would make a cycle (`CONFLICT`, T4), `todo.update` has neither field (`INVALID_PARAMS`) or `todo.complete` names an unknown id (`NOT_FOUND`), then after each call `todo.list` is unchanged, no event arrived, no Touch was logged, and the next `todo.create` returns id 3: a failed create never uses an id. After deleting the newest Todo and reopening with `Todos::open`, the next create still does not reuse its id. Owns `crates/todos/**`. It keeps T4 and T5 green and narrows none: T5 says the next id continues the sequence, and T9 says what continues it.
