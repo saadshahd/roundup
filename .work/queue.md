@@ -60,6 +60,9 @@ Scenario text is on main. The row starts when what it waits on has merged.
 | U132, U133 | visual pass 2, colour and click targets: Kind tones, `--accent`, hover, pressed and focus states, 24 px hit areas | `apps/desktop/src/rail/**`, `apps/desktop/src/drawer/**`, `apps/desktop/src/todos/**`, `apps/desktop/src/pads/**` | every test of those folders | after U130, U137, U35 and U36 merge |
 | U134, U135 | visual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency | `apps/desktop/src/**/*.css`, `apps/desktop/src/drawer/**` | every existing test | after U132 and U133 merge |
 | U136 | the finish line: D1 to D10 pass on `first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`; QA and the critic's baseline shows each check `fixed`, none `regressed` | no Builder; QA, Design critic and Driver | `u136_` | after U134 and U135 merge |
+| G contract | `project.setWorktrees`, `project.get`, `agent.worktreeStatus`, `agent.land`, `agent.discard`, `RailNode.worktree` (docs/worktrees.md) | `crates/contracts/**` with `contracts/generated/**`, and every `RailNode` literal (the webview fixtures, `seeds.ts`, the e2e tests) | `cargo test -p contracts`, `just check` | after the worktrees docs PR merges; committee approval (rule 4) |
+| G1, G2, G3 | the `worktrees` setting, spawn provisions a Worktree, status | `crates/agents/src/worktree.rs`, `crates/agents/src/rail.rs` and `lib.rs` (shared with A16: merges after it), `crates/rup/tests/**` e2e (shared with D4: merges after it) | the `a4_` tests, `just check` | after G contract and A16 merge |
+| G4, G5, G6 | Landing, safe removal and discard, restart | the same files as G1 to G3 | the `g1_` to `g3_` tests | after G1, G2, G3 merge |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -150,6 +153,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
+  | G1–G9 | `scenarios/worktrees.md`, architect-c (G1–G6 written; G7–G9 reserved for the UI half) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
