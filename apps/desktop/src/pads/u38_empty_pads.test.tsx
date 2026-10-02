@@ -73,7 +73,7 @@ describe("u38 empty Pads", () => {
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
     await waitFor(() => expect(replies.length).toBe(2));
 
-    replies[0]?.resolve([padOf("auth-notes", AGENT)]);
+    replies[0]?.resolve([]);
     await new Promise((done) => setTimeout(done, 0));
 
     expect(screen.queryByText("no pads yet")).toBeNull();
@@ -82,6 +82,53 @@ describe("u38 empty Pads", () => {
 
     expect(await screen.findByText("auth-notes")).toBeTruthy();
     expect(screen.queryByText("no pads yet")).toBeNull();
+  });
+
+  it("u38_a_stale_pad_list_failure_after_a_newer_empty_reply_leaves_no_pads_yet_alone", async () => {
+    const app = createFakeApp();
+    const replies: ReturnType<typeof deferred<Pad[]>>[] = [];
+
+    app.handlers["pad.list"] = () => {
+      const reply = deferred<Pad[]>();
+
+      replies.push(reply);
+
+      return reply.promise;
+    };
+
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+
+    render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
+        <Pads />
+      </ConnectedProjectContext.Provider>
+    ));
+
+    await waitFor(() => expect(replies.length).toBe(1));
+
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+    await waitFor(() => expect(replies.length).toBe(2));
+
+    replies[1]?.resolve([]);
+    expect(await screen.findByText("no pads yet")).toBeTruthy();
+
+    replies[0]?.reject(new Error("stale boom"));
+    await new Promise((done) => setTimeout(done, 0));
+
+    expect(screen.getByText("no pads yet")).toBeTruthy();
+    expect(screen.queryByText(/stale boom/)).toBeNull();
+  });
+
+  it("u38_no_pads_yet_returns_once_the_last_pad_is_removed", async () => {
+    const { app, state } = await openShelf([padOf("auth-notes", AGENT)]);
+
+    await screen.findByText("auth-notes");
+
+    state.pads = [];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
+
+    expect(await screen.findByText("no pads yet")).toBeTruthy();
+    expect(screen.queryByText("auth-notes")).toBeNull();
   });
 
   it("u38_a_retry_after_a_failed_pad_list_keeps_the_failure_until_the_reply_arrives", async () => {
