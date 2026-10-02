@@ -46,3 +46,10 @@ An Agent never pushes the shared branch. Its changes rebase, pass `check`, and f
 
 Gate: does a path write `main` other than rebase, `check` green, then fast-forward? Does a rejected Agent leave an entry in `git worktree list` or `git branch`?
 Observer: a test comparing both lists before spawn and after reject.
+
+## P6 A topic holds everything
+
+A Group or Meta-agent is a topic. Everything about the topic sits in it: Agents, Terminals, Todos, Pads and every view or tool added later. Each item has one Home, and the user can change any item's Home at any time. A Meta-agent's Agent places the children it makes; the user's own move always wins.
+
+Gate: does a new kind of item lack a Home, or can the user not change its Home? Does an Agent's placement override a placement the user made?
+Observer: a scenario that makes one item of each kind in Home A, changes its Home to B, and finds it only in B, with the change logged in Provenance.
