@@ -2,79 +2,44 @@
 
 This is the queue until roundup can hold its own Todos (`docs/development-loop.md`). One line per item: scenario ids, module, owned files and the observer that says the item is done (`AGENTS.md` rule 1). An item without scenario ids and an observer is not ready and is not dispatched. Scenarios with the same PR key ship as one PR in one worktree. Line counts are estimates, sized to the guide of about 2000 lines (#39).
 
-Status as of this file: the MVP slice is merged except the MVP gate, which QA and the Driver run in parallel with UX work; see "Open" for what is left.
+Volatile state is not kept here (it goes stale within hours): no PR numbers, verdicts or merge status. Find a PR with `gh pr list --search "<id> in:title"`; `gh pr list --state merged` and `git log origin/main` are the record of what is done. A row names ids, an owner, owned files and an observer. Text for an id is its heading in `scenarios/` (`grep -n '^\*\*<id>[ .]' scenarios/*.md`); an id with no heading there is reserved in the id table below and its text arrives with its own PR, so check before dispatching it.
 
-## Merged
+A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page.
 
-| PR | Item | Scenarios |
-|---|---|---|
-| #42 | MVP queue and scenarios | |
-| #43 | contract `rail.spawnTerminal` | serves A10, U9 |
-| #44 | contract JSON schemas for Todo and Pad params | serves M1 |
-| #45 | `workspace`, the check covers the App | W1 |
-| #46 | `daemon-attached` (`crates/rupd`) | D1 |
-| #47 | `ui-shell` | U1–U5 |
-| #48 | `app` (`crates/desktop`) | S1–S3 |
-| #49 | `ui-pads` | U18–U21 |
-| #50 | `ui-todos` | U15–U17 |
-| #51 | `ui-rail` | U6–U10 |
-| #52 | `mcp` (`crates/rup`) | M1–M3 |
-| #53 | `ui-terminal` | U11–U14 |
-| #56 | X8 fix: the slow-subscriber test streams 2 MB | X8 |
-| #36, #40 | pads-4, terminal-6 | P5, P8, P9, X9, X10 |
-| #54, #55 | `agents-stack`, `agents-mvp` | A1–A12 |
-| #57 | `ui-drag` | U22 |
-| #58, #72 | swarm board and UX scenarios; id reservations | docs |
-| #59, #66, #71, #73 | boxd: review, check and bake, `BOXD_MAX_VMS`, swarm, status, kill | L1–L15 |
-| #60, #61 | `ux-layout`, `ux-daemon` | U23–U25 |
-| #62 | `chrome-harness` | U26 |
-| #63, #64 | `ux-drawer`, `ux-pads` | U27–U29 |
-| #65 | `app-dev`, the window loads the webview | S4 |
-| #68 | perf: `just perf` and budgets | R1–R7 |
-| #70 | `daemon-e2e` | D2–D4 |
-| #74 | `u30-chip`, jump to what needs you | U30 (was V1) |
-| #75 | `ux-spawn`, spawn shortcuts and pinned actions | U32 |
+## In flight
 
-## Open
+A Builder holds each row and its PR is in review. Nothing below is dispatched again.
 
-Every row points at a PR number where one exists; `gh pr list` is the truth when this file and it disagree.
-
-| PR | Item | Scenarios | Module | Observer | State |
-|---|---|---|---|---|---|
-| #67 | boxd.md corrections | docs | `docs` | reviewer approval | open |
-| #81 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight, rejected by a boxd Reviewer (verdict `/tmp/verdict-pr81.md`), being fixed: `↓` in the rename field cancels the rename and Enter on a row's collapse or promote button selects the row (both fixed by acting only on keys whose target is a row); six guards and the `Enter` shows-the-Terminal clause are untested, and the "selected row is tabbable" test selects the first row |
-| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass, and the U32 test case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | #80, Claimed-by: boxd-agents 2026-10-01; in flight, rejected by a boxd Reviewer (verdict `/tmp/verdict-pr80.md`), being fixed: three clauses untested (the browser never sees the chord, focus goes to the pane, the field opens at the top of the Rail), two mutants survive (any key closes the field, trimming), and three comments restate code. The prompt is trimmed by the spec (decided), and `⌘N` is ignored while the field is open |
-| none yet | scrollback (V5) | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; `just check` green; QA RSS with ten Terminals printing 100 000 lines each | ready, ids reserved; no existing test narrowed |
-| none yet | Todo triage (V7) | U35 | `apps/desktop`: only `src/todos/**` | `u35_` tests pass; `just check` green; `u15_todo_list.test.tsx` unchanged and green | ready, ids reserved; row text at rest and the second line's text must stay exactly as U15 asserts |
-| none yet | Pad edits never overwrite another Actor (V8) | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; `just check` green; the u20 tests U36 names stay green and the one it replaces is replaced as U36 says | ready, ids reserved |
-| none yet | reopen, App half (V4) | S5 | `crates/desktop`: only `crates/desktop/**` | `s5_` Rust tests pass; `just check` green; `s1_a_second_open_project_is_conflict` and `s3_after_the_daemon_exits_rpc_fails_with_internal` keep passing | ready, ids reserved |
-| none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
-
-## Next batch
-
-Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, C1 in `rpc.md`). A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
-
-| Id | Item | Owns | Keeps green | Starts |
+| Item | Ids | Owns | Observer | Claimed by |
 |---|---|---|---|---|
-| C1 | a dropped call is `UNKNOWN_OUTCOME`, not a failure | `crates/rpc/**`, plus every caller of `request` that matches `INTERNAL` for a drop, listed in the PR | `s3_after_the_daemon_exits_rpc_fails_with_internal` | now |
-| A13 | refuse a symlinked `.roundup/agents` | `crates/agents/**` | `a4_a_symlinked_config_is_written_through_and_stays_a_link`, `a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through` | now |
-| audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now |
-| audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests | now |
-| audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | now |
-| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**`; not `crates/perf/**` (audit-perf owns it) | every existing test unchanged | now; the Architect has not verified where the duplicates are, so the Builder first lists each duplicated block in the PR, and stops and reports if sharing needs a new crate |
-| R13 | load-aware perf comparison: `max_load_per_cpu` (OS to number, beside `baseline`) in `crates/perf/budgets.json`, skipped regression tests printed and listed in `target/perf.json`; also amends AGENTS.md rule 7 and docs/perf.md | `crates/perf/**`, `AGENTS.md` rule 7, `docs/perf.md` | the R1–R12 and K tests, and #95's baselines in `budgets.json` | after #95 merges (same crate, same files; #93 is merged); no Builder yet, the lead dispatches |
-| U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
-| U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
-| U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
-| U38 | empty states (V6) | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal`; narrows U14's test | U2's tests | after U34, U35 and U36 merge (they edit those directories) |
+| spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop/src/rail/spawn*`, `Rail.tsx`, `u32_` and `u33_` tests | `u33_` tests pass; the U32 case "cmd and shift" keeps `⇧⌘T` doing nothing | boxd-agents |
+| reopen, App half | S5 | `crates/desktop/**` | `s5_` tests pass; `s1_` and `s3_` tests stay green | boxd-agents |
+| D4 flake: one deadline and a readable failure | D4 | `crates/rup/tests/**` | the Builder reproduces first; `just check` | boxd-agents |
+| hold an early Signal until the Agent is registered | A14 | `crates/agents/**` | `a14_` tests fail before the fix and pass after | boxd-agents |
+| `review` keeps the branch's trailers across a merge | L22 | `loop/boxd.sh` and its tests | `loop/boxd.test.sh` | boxd-agents |
+| the boxd check does not depend on files outside the checkout | L40 | `loop/boxd.sh` (shared with L22: merges after it), the tsc setup and their tests | `loop/boxd.test.sh` | boxd-agents |
+| empty states | U38 | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal` (`src/rail` shares `Rail.tsx` with U33: merges after it) | U2's tests; narrows U14's test | boxd-agents |
+| the Drawer takes and gives back focus | U40 | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests | boxd-agents |
+| MVP gate | U2-U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | QA |
 
-From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`). The audit's browser driver left Enter held down after `press Enter`, which faked U42 (a Todo Drawer loop); U43 (rename) was a double-click that landed on the Live line. Both are dropped. The auditor re-checked the rest with dispatched events and confirms U44, U45 and U46; U47 to U50 do not depend on key events. A create-then-open call-count test (one `todo.get`) may be added as a test-only guard. A double-click on the Live line does nothing, which U9 allows. Each Builder of a row below reproduces the defect first, with dispatched events, and stops and reports if it does not reproduce.
+## Ready now
 
-| Id | Item | Owns | Keeps green | Starts |
+Scenario text is on main and nothing it needs is unmerged. Every row owns a directory no ready or in-flight row owns, so all start at once. Start the first row you have a free Builder for.
+
+| Id | Item | Owns | Keeps green |
+|---|---|---|---|
+| audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests |
+| audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests |
+| audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests |
+| U41 | Rail by keyboard, the rest | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests |
+
+## Waiting
+
+Scenario text is on main. The row starts when what it waits on has merged.
+
+| Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
-| U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
-| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
 | U101, U102 | Terminal copy and paste; Terminal text size | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
 | A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
 | A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd`; its `a16_` tests in `crates/agents/tests/scenarios/**` and `crates/rup/tests/**` | the `a` tests | after #114 lands (both edit `crates/agents/src/lib.rs`) |
@@ -82,6 +47,9 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests; the U4 computed-colour test drops the pane header | after U56 merges (or in its PR) |
 | U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
 | U59 | the terminal blends with the app | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
+| U37 | reopen, webview half | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
+| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test | after D4 merges |
+| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U38 merges (it adds a pads file) |
 | T8 | `Todo.creator` (contract change approved) | `crates/todos/**`, `crates/contracts/**` and generated files, `crates/rup/tests/e2e.rs`, the webview Todo fixtures T8 lists | `t` tests, `u15_`, `u17_` tests | after A15 and A16 merge (A15 edits `crates/rup/tests/e2e.rs`, A16 edits `src/testing/seeds.ts`) |
 | U60 | an Agent's Todos under it | `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
@@ -95,11 +63,11 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
+
 ## Deferred past the MVP (no scenario yet)
 
 - motion.md rows other than the Drawer slide and drag;
 - Terminals named from their first command;
-- Screen 11's recent folders and its `claude` version / not-found line;
 - the `● 1 below` line (U30 covers jumping, not the pinned line), provenance letters, the Todo `on` field and the Pad storage switch;
 - Inbox, Messages, Routes, Extensions and history;
 - packaging (a signed `.app`).
