@@ -17,7 +17,7 @@ Read on 2026-10-02 (`code.claude.com/docs`): `--append-system-prompt-file` works
 | Need | Seam | Why |
 |---|---|---|
 | Who am I, what are my tools | the Brief, `--append-system-prompt-file` (E1) | static, so it never goes stale |
-| Parent, peers, Todos at start | `SessionStart` hook, `rup context` printing `agent.contextHook` (E3) | the vendor's own injection point; live at the moment of start |
+| Parent, peers, Todos at start | `SessionStart` hook, `rup context` printing `agent.brief` (E3) | the vendor's own injection point; live at the moment of start |
 | The same again later | MCP tool `agent_context` (E4) | the Agent pulls when it wants; peers change (`rail.move`) |
 | Ask the parent or a peer | `message_send` to `ask.to` or a peer id (E5) | B's channel; no second one |
 | Never connected | `agent.channelUp`, `RailNode.channel` and the event `agent.channel` (E6); the Rail's `no channel` Chip is E8 | visible, never an interruption |
@@ -30,7 +30,7 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## Contract change (rule 4, with the first Builder PR)
 
-`agent.context {id}` returns `{self, parent, ask, peers, todos}`; the MCP tool `agent_context` is its caller. `agent.contextHook {id}` returns `{stdout}`, the hook output built in `claude_code/`, which `rup context` prints verbatim, so `rup` holds no vendor string (P4), as `rup signal` forwards a vendor payload it does not parse. `agent.channelUp {id}` is called once by `rup mcp` at start (E6); `daemon.identify` is not used for it, because hooks identify too. E6 adds `RailNode.channel` (`pending`, `up`, `missing`, `null`) and the event `agent.channel`. The contract PR states every caller, including the webview's `RailNode` fixtures. E8, the Chip, is a webview scenario written after this lands. `rpc::code` gains nothing.
+`agent.context {id}` returns `{self, parent, ask, peers, todos}`; the MCP tool `agent_context` is its caller. `agent.brief {id}` returns `{stdout}`, the hook output built in `claude_code/`, which `rup context` prints verbatim, so `rup` holds no vendor string (P4), as `rup signal` forwards a vendor payload it does not parse. `agent.channelUp {id}` is called once by `rup mcp` at start (E6); `daemon.identify` is not used for it, because hooks identify too. E6 adds `RailNode.channel` (`pending`, `up`, `missing`, `null`) and the event `agent.channel`. The contract PR states every caller, including the webview's `RailNode` fixtures. E8, the Chip, is a webview scenario written after this lands. `rpc::code` gains nothing.
 
 ## The gates
 
