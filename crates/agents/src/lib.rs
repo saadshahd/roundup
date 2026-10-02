@@ -1,6 +1,6 @@
 //! Agents, the Rail tree and the Claude Code adapter. Owner: agents Builder.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -64,6 +64,10 @@ struct Shared {
 
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
+/// What `Shared::apply` leaves to do once its locks are let go: the Terminal id and prompt to
+/// type at the first idle, and when, on `clock`, the adapter wants its next `Observation::Tick`.
+type Applied = (Option<(String, String)>, Option<i64>);
+
 impl Shared {
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
         self.rail.lock().expect("rail lock")
@@ -80,6 +84,7 @@ impl Shared {
             Slot::Starting {
                 since,
                 named: false,
+                held: VecDeque::new(),
             },
         );
     }
@@ -126,36 +131,28 @@ impl Shared {
         let mut rail = first_prompt.is_some().then(|| self.rail());
         let (prompt, tick_at) = {
             let mut runs = self.runs();
-            let run = runs
-                .get_mut(id)
-                .and_then(Slot::run_mut)
-                .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
-            let changed = run.adapter.observe(observation);
-            let idle = changed
-                .as_ref()
-                .is_some_and(|status| status.kind == Kind::Idle);
-            // Announced while `runs` is held, so announcements leave in the order the Status
-            // changed; `emit` never blocks.
-            if let Some(status) = changed {
-                let event = StatusEvent {
-                    id: id.to_owned(),
-                    status,
-                };
-                self.bus.emit(actor.clone(), EventData::AgentStatus(event));
-            }
-            if let (Some(rail), Some(name)) = (rail.as_mut(), first_prompt)
-                && !std::mem::replace(&mut run.named, true)
-                && let Some(name) = name
-                && !rail.node(id)?.meta
-            {
-                rail.rename(id, &name)?;
-                self.bus.emit(actor.clone(), EventData::RailChanged);
-            }
-            let prompt = run.prompt.take_if(|_| idle);
-            (
-                prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
-                run.adapter.tick_at(),
-            )
+            let run = match runs.get_mut(id) {
+                Some(Slot::Running(run)) => run,
+                // A14: a Signal here is held, in arrival order, for when the Agent is
+                // registered, instead of `NOT_FOUND`; anything else cannot arrive this early
+                // (`watch` only starts once the Agent is `Running`).
+                Some(Slot::Starting { held, .. }) => {
+                    let Observation::Signal(payload) = observation else {
+                        return Err(RpcError::not_found(format!("agent {id}")));
+                    };
+                    hold(id, held, actor, payload);
+                    return Ok(None);
+                }
+                None => return Err(RpcError::not_found(format!("agent {id}"))),
+            };
+            self.apply(
+                rail.as_deref_mut(),
+                run,
+                id,
+                &actor,
+                observation,
+                first_prompt,
+            )?
         };
         if let Some((terminal_id, prompt)) = prompt {
             tokio::spawn(type_prompt(
@@ -166,6 +163,86 @@ impl Shared {
         }
         Ok(tick_at)
     }
+
+    /// Fold `observation` into `run`, which `observe` has already found `Running`; `rail`, when
+    /// given, is locked by the caller, never here, so a caller draining several Signals under
+    /// one `rail`-then-`runs` lock section (`finish_starting`) is never asked to lock it twice.
+    fn apply(
+        &self,
+        rail: Option<&mut rail::Rail>,
+        run: &mut Run,
+        id: &str,
+        actor: &Actor,
+        observation: Observation,
+        first_prompt: Option<Option<String>>,
+    ) -> Result<Applied, RpcError> {
+        let changed = run.adapter.observe(observation);
+        let idle = changed
+            .as_ref()
+            .is_some_and(|status| status.kind == Kind::Idle);
+        // Announced while `runs` is held, so announcements leave in the order the Status
+        // changed; `emit` never blocks.
+        if let Some(status) = changed {
+            let event = StatusEvent {
+                id: id.to_owned(),
+                status,
+            };
+            self.bus.emit(actor.clone(), EventData::AgentStatus(event));
+        }
+        if let (Some(rail), Some(name)) = (rail, first_prompt)
+            && !std::mem::replace(&mut run.named, true)
+            && let Some(name) = name
+            && !rail.node(id)?.meta
+        {
+            rail.rename(id, &name)?;
+            self.bus.emit(actor.clone(), EventData::RailChanged);
+        }
+        let prompt = run.prompt.take_if(|_| idle);
+        Ok((
+            prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
+            run.adapter.tick_at(),
+        ))
+    }
+
+    /// Swap `id` from `Starting` to `Running` (the Run `build` makes, told whether a
+    /// `rail.rename` already settled its name) and apply every Signal held for it, in arrival
+    /// order, all under one `rail`-then-`runs` lock section: a Signal that arrives once the
+    /// Agent is registered can never be applied ahead of one still held for it (A14), and
+    /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
+    /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
+    /// that left the Agent idle, to type once the locks are let go.
+    fn finish_starting(&self, id: &str, build: impl FnOnce(bool) -> Run) -> Vec<(String, String)> {
+        let mut rail = self.rail();
+        let mut runs = self.runs();
+        let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
+            unreachable!("spawn marks {id} Starting before run_agent runs")
+        };
+        let mut run = build(named);
+        let mut prompts = Vec::new();
+        for (actor, payload) in held {
+            let first_prompt = claude_code::submitted_prompt(&payload).map(name::from_prompt);
+            // Logged, not panicked: a panic here would unwind while `rail` and `runs` are both
+            // still locked, poisoning them and taking every later `rail()`/`runs()` call down
+            // with it. `rail.node(id)` itself cannot be `NOT_FOUND` (a Starting id's Rail node is
+            // removed only by its own failed spawn, which never reaches here), but the write a
+            // held rename makes can still fail on its own account.
+            match self.apply(
+                Some(&mut *rail),
+                &mut run,
+                id,
+                &actor,
+                Observation::Signal(payload),
+                first_prompt,
+            ) {
+                Ok((prompt, _tick_at)) => prompts.extend(prompt),
+                Err(err) => eprintln!(
+                    "agents: could not apply a Signal held for {id} while it was starting: {err}"
+                ),
+            }
+        }
+        runs.insert(id.to_owned(), Slot::Running(run));
+        prompts
+    }
 }
 
 /// A node's place in `Shared::runs`.
@@ -175,6 +252,9 @@ enum Slot {
         since: i64,
         /// A `rail.rename` came while it started; its first prompt must not undo it.
         named: bool,
+        /// Signals that reached `agent.signal` in this window, in arrival order, applied once
+        /// the Agent is registered (A14).
+        held: VecDeque<(Actor, Value)>,
     },
     Running(Run),
 }
@@ -187,13 +267,21 @@ impl Slot {
             Self::Starting { named, .. } => *named = true,
         }
     }
+}
 
-    fn run_mut(&mut self) -> Option<&mut Run> {
-        match self {
-            Self::Running(run) => Some(run),
-            Self::Starting { .. } => None,
-        }
+/// How many Signals a `Slot::Starting` holds (A14); past this, the oldest is dropped and logged,
+/// as A5 does for a payload the adapter refuses.
+const HELD_BOUND: usize = 8;
+
+fn hold(id: &str, held: &mut VecDeque<(Actor, Value)>, actor: Actor, payload: Value) {
+    if held.len() >= HELD_BOUND {
+        held.pop_front();
+        eprintln!(
+            "agents: dropping the oldest Signal held for {id}: more than {HELD_BOUND} arrived \
+             before it was registered"
+        );
     }
+    held.push_back((actor, payload));
 }
 
 /// An Agent's program and what is left to tell it.
@@ -423,17 +511,20 @@ impl Agents {
             }
         };
         let clock = Arc::clone(&self.shared.clock);
-        let named = matches!(
-            self.shared.runs().get(id),
-            Some(Slot::Starting { named: true, .. })
-        );
-        let run = Run {
+        let terminal_id = spawned.id.clone();
+        let prompts = self.shared.finish_starting(id, move |named| Run {
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
             named,
-            terminal_id: spawned.id.clone(),
-        };
-        self.shared.runs().insert(id.to_owned(), Slot::Running(run));
+            terminal_id,
+        });
+        for (terminal_id, prompt) in prompts {
+            tokio::spawn(type_prompt(
+                Arc::clone(&self.shared.terminals),
+                terminal_id,
+                prompt,
+            ));
+        }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
@@ -581,8 +672,9 @@ impl Module for Agents {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::thread;
     use std::time::Duration;
 
     use contracts::terminal::{ExitedEvent, TitleEvent};
@@ -601,6 +693,22 @@ mod tests {
     /// Spelled out, not `STAR_HOLD`, so a changed hold fails these tests.
     const HOLD: Duration = Duration::from_millis(200);
 
+    /// A `Shared` wired to a fresh temp-dir Rail and Terminals, paired with the `Bus` it was built
+    /// from so a caller can subscribe to the same events.
+    fn shared_over_temp_dir(clock: Clock) -> (tempfile::TempDir, Bus, Arc<Shared>) {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let shared = Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
+            clock,
+            opened: 0,
+        });
+        (dir, bus, shared)
+    }
+
     /// Agent `1`, watched over a stand-in for its Terminal's events, on tokio's clock, which these
     /// tests pause.
     struct Watched {
@@ -613,19 +721,10 @@ mod tests {
 
     impl Watched {
         fn start() -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let bus = Bus::new();
             let begun = Instant::now();
             let clock: Clock = Arc::new(move || begun.elapsed().as_millis() as i64);
             let adapter_clock = Arc::clone(&clock);
-            let shared = Arc::new(Shared {
-                rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
-                runs: Mutex::new(HashMap::new()),
-                bus: bus.clone(),
-                terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
-                clock,
-                opened: 0,
-            });
+            let (dir, bus, shared) = shared_over_temp_dir(clock);
             let run = Run {
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
@@ -740,5 +839,165 @@ mod tests {
         assert_eq!(name(Some("fish")), "fish");
         assert_eq!(name(Some("")), "shell");
         assert_eq!(name(None), "shell");
+    }
+
+    /// `watch` only starts once an Agent is `Running`, so in production a non-Signal Observation
+    /// never reaches a `Starting` id; reached directly here, it must still answer the way
+    /// `agent.signal` answers any other unknown id, not pretend the id is already registered.
+    #[test]
+    fn a14_a_non_signal_observation_for_a_starting_id_is_still_not_found() {
+        let (_dir, _bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        shared.runs().insert(
+            "1".into(),
+            Slot::Starting {
+                since: 0,
+                named: false,
+                held: VecDeque::new(),
+            },
+        );
+
+        let err = shared
+            .observe(Actor::daemon(), "1", Observation::Tick)
+            .unwrap_err();
+
+        assert_eq!(err.code, rpc::code::NOT_FOUND);
+    }
+
+    /// A second connection holding a write transaction makes a write through `Rail`'s own
+    /// connection fail with a real SQLite error once rusqlite's default 5 s `busy_timeout`
+    /// elapses, without reaching into `Rail`'s private `db` field.
+    fn lock_db_for_writes(dir: &std::path::Path) -> rusqlite::Connection {
+        let lock = rusqlite::Connection::open(dir.join("agents.db")).unwrap();
+        lock.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        lock
+    }
+
+    /// A held Signal whose `rail.rename` fails (here, because another connection holds the
+    /// write lock) must not panic while `finish_starting` still holds `rail` and `runs`: a panic
+    /// there would poison both mutexes, so every later `rail()`/`runs()` call would panic too.
+    #[test]
+    fn a14_a_failed_rail_write_for_a_held_signal_does_not_poison_the_locks() {
+        let (dir, _bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        let id = shared
+            .rail()
+            .insert(contracts::agent::NodeKind::Agent, "new-agent", None, None)
+            .unwrap()
+            .id;
+        shared.mark_starting(&id);
+        if let Some(Slot::Starting { held, .. }) = shared.runs().get_mut(&id) {
+            held.push_back((
+                Actor::daemon(),
+                json!({"hook_event_name": "UserPromptSubmit", "prompt": "fix the build"}),
+            ));
+        }
+        let lock = lock_db_for_writes(dir.path());
+
+        let prompts = shared.finish_starting(&id, |named| Run {
+            adapter: ClaudeCode::starting(|| 0),
+            prompt: None,
+            named,
+            terminal_id: "1".into(),
+        });
+
+        drop(lock);
+        assert_eq!(prompts, Vec::new());
+        // Neither lock was poisoned by the failed write: both can still be acquired.
+        assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
+        shared.rail().tree().unwrap();
+    }
+
+    /// How many trials `a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one`
+    /// runs. Measured against a `finish_starting` that lets go of `rail` and `runs` right after
+    /// the swap into `Running`, then re-locks `runs` once per held Signal to apply it — the
+    /// regression this test catches if the one `rail`-then-`runs` lock section is ever split:
+    /// over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
+    /// `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug would need to be
+    /// dramatically harder to hit than the one measured to slip past a run.
+    const TRIALS: usize = 20_000;
+
+    /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its drain
+    /// of what was held, so a Signal released the instant the Agent is registered still cannot
+    /// land ahead of the one held for it (A14). So this does not race blindly: a rendezvous over a
+    /// zero-capacity channel holds the late call at the threshold of its own call to `observe`
+    /// until `finish_starting`'s `build` hook — already a plain closure argument, not a new
+    /// public seam — confirms, by having been called at all, that both locks are still held.
+    /// Only then are both sides let go. That leaves exactly the race the fix is answerable for:
+    /// once released, a correct `finish_starting` never lets go of `runs` until every held Signal
+    /// is applied, so the late call cannot win no matter how the OS schedules it; a regressed one
+    /// drops `runs` early and must then win a second, real race to re-lock it before the already-
+    /// waiting late call does — a race this test cannot referee, only repeat (`TRIALS`).
+    #[test]
+    fn a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one() {
+        let (_dir, bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        let mut events = bus.subscribe();
+        for i in 0..TRIALS {
+            let id = i.to_string();
+            shared.runs().insert(
+                id.clone(),
+                Slot::Starting {
+                    since: 0,
+                    named: false,
+                    held: VecDeque::from([(
+                        Actor::daemon(),
+                        json!({"hook_event_name": "PreToolUse", "tool_name": "Bash"}),
+                    )]),
+                },
+            );
+
+            // `build` is called with both locks already held, so reaching here and blocking
+            // proves `finish_starting` cannot have let either go yet.
+            let (holding_tx, holding_rx) = mpsc::sync_channel::<()>(0);
+            let (go_tx, go_rx) = mpsc::sync_channel::<()>(0);
+            let registering = {
+                let shared = Arc::clone(&shared);
+                let id = id.clone();
+                thread::spawn(move || {
+                    shared.finish_starting(&id, |named| {
+                        holding_tx.send(()).unwrap();
+                        go_rx.recv().unwrap();
+                        Run {
+                            adapter: ClaudeCode::starting(|| 0),
+                            prompt: None,
+                            named,
+                            terminal_id: id.clone(),
+                        }
+                    })
+                })
+            };
+            holding_rx.recv().unwrap();
+
+            // A zero-capacity send only completes once this thread is received by the line
+            // below, so by the time it does, the late call's very next step is `observe`.
+            let (about_tx, about_rx) = mpsc::sync_channel::<()>(0);
+            let late = {
+                let shared = Arc::clone(&shared);
+                let id = id.clone();
+                thread::spawn(move || {
+                    about_tx.send(()).unwrap();
+                    shared.observe(
+                        Actor::daemon(),
+                        &id,
+                        Observation::Signal(
+                            json!({"hook_event_name": "Stop", "tool_name": "Bash"}),
+                        ),
+                    )
+                })
+            };
+            about_rx.recv().unwrap();
+            go_tx.send(()).unwrap();
+
+            registering.join().unwrap();
+            late.join().unwrap().unwrap();
+
+            let mut kinds = vec![];
+            while let Ok(event) = events.try_recv() {
+                if let EventData::AgentStatus(s) = event.data
+                    && s.id == id
+                {
+                    kinds.push(s.status.kind);
+                }
+            }
+            assert_eq!(kinds, [Kind::Working, Kind::Idle], "trial {i}");
+        }
     }
 }

@@ -44,6 +44,6 @@ New under `crates/contracts`: type `Decision {id, agent, tool, args, opened_at}`
 ## Limits and open questions
 
 - An App quit ends the Daemon and its Agents (D1), so a Decision cannot survive it. H5 covers a webview reload.
-- H1 and H1b recorded the reply shape, the timeout, Esc, concurrent requests and the `Notification` timing. Still unobserved: option "No", Tab-amend, two dialogs open at once, and macOS.
+- H1 to H1d recorded the reply shape, the timeout, Esc, No, always-allow, Tab-amend, concurrent requests, late replies, `AskUserQuestion` and the `Notification` timing (report findings 1 to 23). Still unobserved: whether "always allow" persists, two dialogs open at once, what `AskUserQuestion` returns after an answer, whether Esc on its choice UI changes the title, and macOS.
 - A Daemon that outlives the App (so a Decision survives a quit) is out of scope: the user ruled that a Decision survives a webview reload and not an App quit (D1, S3).
 - Out of scope: "always allow" rules, edited tool input, deny messages beyond what H1 shows works.
