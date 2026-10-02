@@ -21,13 +21,21 @@ type FakeEmulator = Emulator & {
   fits: number;
   disposed: boolean;
   type(bytes: Uint8Array): void;
+  /** How many times `scrollToBottom` was called. */
+  scrollsToBottom: number;
+  /** Simulates the user scrolling the view, as a wheel or drag would. */
+  scroll(atBottom: boolean): void;
 };
 
 const fakeEmulators = () => {
   const made = new Map<string, FakeEmulator>();
 
   const factory: EmulatorFactory = (id) => {
-    let listener: (bytes: Uint8Array) => void = () => {};
+    let inputListener: (bytes: Uint8Array) => void = () => {};
+
+    let scrollListener: () => void = () => {};
+
+    let atBottom = true;
 
     const emulator: FakeEmulator = {
       written: [],
@@ -35,11 +43,15 @@ const fakeEmulators = () => {
       size: { cols: 100, rows: 30 },
       fits: 0,
       disposed: false,
+      scrollsToBottom: 0,
       write: (bytes) => {
         emulator.written.push(bytes);
       },
       onInput: (next) => {
-        listener = next;
+        inputListener = next;
+      },
+      onScroll: (next) => {
+        scrollListener = next;
       },
       show: (host) => {
         emulator.host = host;
@@ -53,10 +65,19 @@ const fakeEmulators = () => {
         return emulator.size;
       },
       focus: () => {},
+      isAtBottom: () => atBottom,
+      scrollToBottom: () => {
+        emulator.scrollsToBottom += 1;
+        atBottom = true;
+      },
       dispose: () => {
         emulator.disposed = true;
       },
-      type: (bytes) => listener(bytes),
+      type: (bytes) => inputListener(bytes),
+      scroll: (toBottom) => {
+        atBottom = toBottom;
+        scrollListener();
+      },
     };
 
     made.set(id, emulator);

@@ -90,7 +90,18 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
       <div class="pane-failure">
         <Show when={props.notice ?? screens.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
-      <div class="pane-screen" ref={setScreen} />
+      <div class="pane-body">
+        <div class="pane-screen" ref={setScreen} />
+        <Show when={terminalId()}>
+          {(id) => (
+            <Show when={!screens.isAtBottom(id())}>
+              <button type="button" class="word pane-latest" onClick={() => screens.returnToBottom(id())}>
+                ↓ latest
+              </button>
+            </Show>
+          )}
+        </Show>
+      </div>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import type { ITerminalAddon } from "@xterm/xterm";
+import type { ITerminalAddon, ITerminalOptions } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 export type Size = { cols: number; rows: number };
@@ -17,6 +17,12 @@ export type Emulator = {
   focus(): void;
   /** The size that fills the emulator's current host. */
   fit(): Size;
+  /** Whether the view sits at the newest line; false once the user has scrolled up. */
+  isAtBottom(): boolean;
+  /** Fires whenever the view's scroll position changes. */
+  onScroll(listener: () => void): void;
+  /** Moves the view to the newest line. */
+  scrollToBottom(): void;
   dispose(): void;
 };
 
@@ -49,12 +55,22 @@ export const attachRenderer = (
 
 const encoder = new TextEncoder();
 
+/** Rule 7's 150 MB budget for ten idle Agents must hold under a Terminal that prints without end. */
+export const SCROLLBACK_LINES = 10_000;
+
+/** What every real xterm emulator is constructed with. */
+export const xtermOptions: ITerminalOptions = {
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+  fontSize: 13,
+  scrollback: SCROLLBACK_LINES,
+};
+
 /** The real emulators (xterm.js). WebGL is tried until the webview first refuses it, then every later Terminal goes straight to the DOM renderer. */
 export const createXtermEmulators = (): EmulatorFactory => {
   let webglDenied = false;
 
   return () => {
-    const terminal = new Terminal({ fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontSize: 13 });
+    const terminal = new Terminal(xtermOptions);
     const fitter = new FitAddon();
     const element = document.createElement("div");
     let opened = false;
@@ -90,6 +106,9 @@ export const createXtermEmulators = (): EmulatorFactory => {
       },
       fit: size,
       focus: () => terminal.focus(),
+      isAtBottom: () => terminal.buffer.active.viewportY === terminal.buffer.active.baseY,
+      onScroll: (listener) => terminal.onScroll(() => listener()),
+      scrollToBottom: () => terminal.scrollToBottom(),
       dispose: () => terminal.dispose(),
     };
   };

@@ -12,6 +12,10 @@ export type Screens = {
   resize(id: string, size: Size): void;
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
   stop(node: RailNode): void;
+  /** Whether the Terminal's view sits at its newest line; false once the user has scrolled up. */
+  isAtBottom(id: string): boolean;
+  /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
+  returnToBottom(id: string): void;
   /** The last call or `terminal.output` that failed, until a later call succeeds. */
   failure: Accessor<string | null>;
   dispose(): void;
@@ -20,6 +24,7 @@ export type Screens = {
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
   const emulators = new Map<string, Emulator>();
+  const bottoms = new Map<string, [Accessor<boolean>, (value: boolean) => void]>();
   const [failure, setFailure] = createSignal<string | null>(null);
 
   const exited = (id: string): boolean => {
@@ -45,6 +50,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     if (known) return known;
 
     const emulator = createEmulator(id);
+    const [atBottom, setAtBottom] = createSignal(true);
     // Tauri may run two `rpc` calls out of order, so at most one write is in flight; what is typed meanwhile goes as one write.
     let typed: number[] = [];
     let writing = false;
@@ -64,14 +70,19 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       }
     };
 
+    emulator.onScroll(() => setAtBottom(emulator.isAtBottom()));
     emulator.onInput((bytes) => {
       if (exited(id) || daemonExit() !== null) return;
+
+      emulator.scrollToBottom();
+      setAtBottom(true);
 
       for (const byte of bytes) typed.push(byte);
 
       if (!writing) void flush();
     });
     emulators.set(id, emulator);
+    bottoms.set(id, [atBottom, setAtBottom]);
 
     return emulator;
   };
@@ -100,6 +111,15 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
       }
     },
+    isAtBottom: (id) => {
+      emulatorFor(id);
+
+      return bottoms.get(id)?.[0]() ?? true;
+    },
+    returnToBottom: (id) => {
+      emulatorFor(id).scrollToBottom();
+      bottoms.get(id)?.[1](true);
+    },
     failure,
     dispose: () => {
       stopListening();
@@ -107,6 +127,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       for (const emulator of emulators.values()) emulator.dispose();
 
       emulators.clear();
+      bottoms.clear();
     },
   };
 };
