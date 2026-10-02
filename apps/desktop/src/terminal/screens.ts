@@ -12,7 +12,7 @@ export type Screens = {
   resize(id: string, size: Size): void;
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
   stop(node: RailNode): void;
-  /** Whether the Terminal's view sits at its newest line; false once the user has scrolled up. */
+  /** Whether the Terminal's view sits at its newest line; false once the user has scrolled up, true for an id with no emulator yet. */
   isAtBottom(id: string): boolean;
   /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
   returnToBottom(id: string): void;
@@ -115,7 +115,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
       }
     },
-    isAtBottom: (id) => holderFor(id).atBottom(),
+    isAtBottom: (id) => holders.get(id)?.atBottom() ?? true,
     returnToBottom: (id) => {
       const holder = holderFor(id);
 

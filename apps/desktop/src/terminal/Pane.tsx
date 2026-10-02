@@ -49,6 +49,18 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     untrack(() => screens.resize(id, screens.emulatorFor(id).show(host)));
   });
 
+  // Solid settles every memo before it runs any effect, so an effect that creates the emulator would still be
+  // unrun the first time this reads `isAtBottom` for a newly selected Terminal; ensure it inside the memo instead.
+  const atBottom = createMemo(() => {
+    const id = terminalId();
+
+    if (id === null) return true;
+
+    screens.emulatorFor(id);
+
+    return screens.isAtBottom(id);
+  });
+
   // Closing a Drawer drops focus off the terminal; give it back unless the user is typing in another field.
   createEffect(
     on(
@@ -94,7 +106,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         <div class="pane-screen" ref={setScreen} />
         <Show when={terminalId()}>
           {(id) => (
-            <Show when={!screens.isAtBottom(id())}>
+            <Show when={!atBottom()}>
               <button type="button" class="word pane-latest" onClick={() => screens.returnToBottom(id())}>
                 ↓ latest
               </button>

@@ -83,7 +83,7 @@ describe("u34 screens keep the latest control hidden through the real emulator's
     const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
     const screens = createScreens(connected, createXtermEmulators());
 
-    screens.isAtBottom("t-a");
+    screens.emulatorFor("t-a");
 
     // SAFETY: the one Terminal the spy observed is the instance createScreens just constructed for "t-a".
     const terminal = spy.mock.instances[0] as Terminal;
@@ -112,17 +112,19 @@ describe("u34 output regardless of selection (U11)", () => {
   });
 });
 
-describe("u34 screens creates the emulator on demand", () => {
-  it("u34_isAtBottom_creates_the_emulator_for_an_unseen_terminal_instead_of_throwing", async () => {
+describe("u34 isAtBottom never creates an emulator", () => {
+  it("u34_isAtBottom_answers_true_for_an_unseen_terminal_without_creating_its_emulator", async () => {
     const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
     const { factory, made } = fakeEmulators();
     const screens = createScreens(connected, factory);
 
     const atBottom = screens.isAtBottom("t-a");
 
-    expect([atBottom, made.size]).toEqual([true, 1]);
+    expect([atBottom, made.size]).toEqual([true, 0]);
   });
+});
 
+describe("u34 screens creates the emulator on demand", () => {
   it("u34_returnToBottom_creates_the_emulator_for_an_unseen_terminal_instead_of_throwing", async () => {
     const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
     const { factory, made } = fakeEmulators();
@@ -182,6 +184,16 @@ describe("u34 the latest control", () => {
 
   it("u34_an_exited_terminal_does_not_scroll_on_input", async () => {
     const { connected, emulators } = await mountPane([terminal("a")], [info("t-a", { running: false, exit_code: 0 })]);
+
+    connected.rail.select("a");
+    emulators.get("t-a")?.scroll(false);
+    emulators.get("t-a")?.type(Uint8Array.of(108));
+
+    expect([emulators.get("t-a")?.scrollsToBottom, screen.queryByText("↓ latest") !== null]).toEqual([0, true]);
+  });
+
+  it("u34_after_the_daemon_exits_typing_does_not_scroll", async () => {
+    const { connected, emulators } = await mountPane([terminal("a")], [info("t-a")], 0, () => ({ code: 0 }));
 
     connected.rail.select("a");
     emulators.get("t-a")?.scroll(false);

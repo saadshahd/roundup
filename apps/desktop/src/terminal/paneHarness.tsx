@@ -34,7 +34,7 @@ export const fakeEmulators = () => {
 
     let scrollListener: () => void = () => {};
 
-    let atBottom = true;
+    let bottom = true;
 
     const emulator: FakeEmulator = {
       written: [],
@@ -64,17 +64,17 @@ export const fakeEmulators = () => {
         return emulator.size;
       },
       focus: () => {},
-      isAtBottom: () => atBottom,
+      isAtBottom: () => bottom,
       scrollToBottom: () => {
         emulator.scrollsToBottom += 1;
-        atBottom = true;
+        bottom = true;
       },
       dispose: () => {
         emulator.disposed = true;
       },
       type: (bytes) => inputListener(bytes),
-      scroll: (toBottom) => {
-        atBottom = toBottom;
+      scroll: (atBottom) => {
+        bottom = atBottom;
         scrollListener();
       },
     };
