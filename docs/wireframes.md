@@ -390,4 +390,4 @@ Each region is labelled in place with what will live there; there is no tutorial
 10. File-backed Pads live in the Project and are not auto-ignored; flipping back to app-only re-imports.
 11. Rows nest only under Groups and Meta-agents; nesting never silently promotes.
 12. Worktree-per-agent is a per-Project default, off, with no choice at spawn time.
-13. The Shelf is project-wide and does not filter by selection.
+13. The Shelf shows the selected node's Home and has a one-click view of the whole Project (reverses the earlier project-wide Shelf; `PRINCIPLES.md` P6).
