@@ -3,6 +3,7 @@
 set -euo pipefail
 
 script="$(cd "$(dirname "$0")" && pwd)/boxd.sh"
+rules_script="$(cd "$(dirname "$0")" && pwd)/rules.sh"
 failures=0
 
 new_repo() {
@@ -13,6 +14,7 @@ new_repo() {
   git config user.name t
   mkdir loop bin
   cp "$script" loop/boxd.sh
+  cp "$rules_script" loop/rules.sh
   echo x >f
   git add -A
   git commit -qm base
@@ -170,7 +172,9 @@ replay_on_vm() {
   mkdir -p "$w"
   cp cp/base.tgz cp/src.tgz "$w"/
   [ ! -e cp/series.mbox ] || cp cp/series.mbox "$w"/
-  awk '/^machine exec ru-r -- mkdir/ { p = 1; sub(/^machine exec ru-r -- /, "") } p { print } /-qm head;/ { p = 0 }' log | sed "s#/tmp/#$w/#g" >"$w/replay.sh"
+  [ ! -e cp/head-msg.txt ] || cp cp/head-msg.txt "$w"/
+  [ ! -e cp/approval.mbox ] || cp cp/approval.mbox "$w"/
+  awk '/^machine exec ru-r -- mkdir/ { p = 1; sub(/^machine exec ru-r -- /, "") } p { print } /approval\.mbox; \}$/ { p = 0 }' log | sed "s#/tmp/#$w/#g" >"$w/replay.sh"
   HOME=$w bash "$w/replay.sh" 2>"$w/replay.err"
 }
 vm_log() { git -C "$1/roundup" log --format="$2" base..HEAD; }
@@ -191,14 +195,50 @@ expect_true "L16 an empty approval commit is in the series" grep -q '^Subject: \
 replay_on_vm "$dir/vm"
 expect_true "L16 the VM keeps the empty approval commit on top" test "$(vm_log "$dir/vm" '%s' | paste -sd, -)" = "review: approve,feat"
 
-# A series cannot carry a merge commit: the range falls back to one `head` commit with the ref's tree.
-new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
-git switch -q main; echo z >h; git add h; git commit -qm other; git switch -q feat; git merge -q --no-edit main
+# L22: a series cannot carry a merge commit, so the range replays its non-merge commits and stands one further
+# commit in for the merge's resolution, citing only Author-Agent trailers a real commit already carries, kept
+# below the approval commit so loop/rules.sh trailers reads the checkout exactly as it reads the real branch.
+norm_hashes() { sed -E 's/\b[0-9a-f]{7,40}\b/<hash>/g'; }
+# merge_trailers_repo [no-bob-trailer]: feat (alice, Author-Agent), a merge of main (bob, Author-Agent unless
+# asked to omit it) resolved with an extra edit to g, then an empty approval commit (carol, Reviewed-by-Agent).
+merge_trailers_repo() {
+  local bob_trailer=$'\n\nAuthor-Agent: bob-agent'
+  [ "${1:-}" != no-bob-trailer ] || bob_trailer=''
+  git switch -qc feat; echo y >g; git add g
+  git -c user.name=alice -c user.email=a@a commit -qm 'feat
+
+Author-Agent: alice-agent'
+  git switch -q main; echo z >h; git add h
+  git -c user.name=bob -c user.email=b@b commit -qm "other$bob_trailer"
+  git switch -q feat; git merge -q --no-edit main
+  echo extra >>g; git commit -qa --amend --no-edit
+  git commit -q --allow-empty -m 'review: approve
+
+Reviewed-by-Agent: carol-agent'
+  git tag base "$(git merge-base origin/main feat)"
+}
+
+new_repo; merge_trailers_repo
 loop/boxd.sh review r prompt.md feat >out 2>err
-expect_true "L9 a range with a merge commit uploads no series" test ! -e cp/series.mbox
-expect_true "L9 the merge fallback says so" grep -q 'merge commit' err
+expect_true "L22 the merge fallback says so" grep -q 'merge commit' err
 replay_on_vm "$dir/vm"
-expect_true "L9 a merge range gets one head commit holding the ref's tree" bash -c "test \"\$(git -C '$dir/vm/roundup' log --format=%s base..HEAD)\" = head && test -e '$dir/vm/roundup/g' && test -e '$dir/vm/roundup/h'"
+expect_true "L22 the checkout tree still matches the ref" bash -c "test -e '$dir/vm/roundup/g' && test -e '$dir/vm/roundup/h' && grep -qx extra '$dir/vm/roundup/g'"
+expect_true "L22 the approval commit is still newest" test "$(vm_log "$dir/vm" '%s' | head -1)" = "review: approve"
+expect_true "L22 the merge's resolution commit invents no trailer" bash -c "diff <(git -C '$dir/vm/roundup' log --no-merges --format='%(trailers:key=Author-Agent,valueonly)' base..HEAD | sed '/^\$/d' | sort -u) <(printf 'alice-agent\nbob-agent\n' | sort -u) >/dev/null"
+real_rc=0; real_out=$(loop/rules.sh trailers base 2>&1) || real_rc=$?
+vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || vm_rc=$?
+expect_true "L22 trailers passes on the real branch" test "$real_rc" = 0
+expect_true "L22 the VM's trailers exit code matches the real branch" test "$vm_rc" = "$real_rc"
+expect_true "L22 the VM's trailers findings match the real branch" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
+
+new_repo; merge_trailers_repo no-bob-trailer
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+real_rc=0; real_out=$(loop/rules.sh trailers base 2>&1) || real_rc=$?
+vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || vm_rc=$?
+expect_true "L22 a commit missing Author-Agent is rejected on the real branch" test "$real_rc" != 0
+expect_true "L22 the VM rejects it the same way" test "$vm_rc" = "$real_rc"
+expect_true "L22 the rejection matches once hashes are normalized" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
 
 # A series that does not apply also falls back to the head commit.
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
