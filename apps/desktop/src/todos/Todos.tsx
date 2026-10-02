@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -22,6 +22,14 @@ const OpenRow = (props: {
 
   const complete = async () => setFailure(await props.onComplete(props.todo));
 
+  // Matches U9's rule: a failure clears on the next click anywhere, not only inside its own row.
+  onMount(() => {
+    const clear = () => setFailure(null);
+
+    document.addEventListener("click", clear, true);
+    onCleanup(() => document.removeEventListener("click", clear, true));
+  });
+
   return (
     <div
       data-id={props.todo.id}
@@ -29,7 +37,6 @@ const OpenRow = (props: {
       onMouseLeave={() => setHovered(false)}
       onFocusIn={() => setFocused(true)}
       onFocusOut={() => setFocused(false)}
-      onClick={() => setFailure(null)}
     >
       <div style={{ display: "flex", "justify-content": "space-between", gap: "1ch" }}>
         <RowButton onClick={() => props.onOpen(props.todo)}>
@@ -49,9 +56,9 @@ const OpenRow = (props: {
               waits on <For each={waitingOn()}>{(blocker, index) => (
                 <>
                   <Show when={index() > 0}>{", "}</Show>
-                  <span class="word" onClick={() => props.onOpen(blocker)}>
+                  <button type="button" class="word" onClick={() => props.onOpen(blocker)}>
                     #{blocker.id}
-                  </span>
+                  </button>
                 </>
               )}</For>
             </p>

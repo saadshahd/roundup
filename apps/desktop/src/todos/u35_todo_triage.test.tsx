@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { RpcError } from "../app/seam";
-import { callsTo, mountTodos, rowOf, todo } from "./testHarness";
+import { callsTo, mountTodos, rowOf, todo, todoEvent } from "./testHarness";
 
 afterEach(cleanup);
 
@@ -78,6 +78,28 @@ describe("u35 Todo triage without the Drawer", () => {
     ]).toEqual([null, "⏸ #5  session store"]);
   });
 
+  it("u35_a_blockers_id_click_opens_the_drawer_exactly_once", async () => {
+    const { connected } = await mountTodos(shelf());
+    await screen.findByText(/^waits on/);
+    const opened: unknown[] = [];
+    const open = connected.drawer.open.bind(connected.drawer);
+    connected.drawer.open = (content) => {
+      opened.push(content);
+      open(content);
+    };
+
+    fireEvent.click(screen.getByText("#4"));
+
+    expect(opened).toHaveLength(1);
+  });
+
+  it("u35_the_blockers_id_is_reachable_by_keyboard", async () => {
+    await mountTodos(shelf());
+    await screen.findByText(/^waits on/);
+
+    expect(screen.getByText("#4").closest("button")).not.toBeNull();
+  });
+
   it("u35_a_failed_complete_shows_its_message_in_place_of_the_second_line", async () => {
     const { app } = await mountTodos(shelf());
     await screen.findByText(/^waits on/);
@@ -88,6 +110,7 @@ describe("u35 Todo triage without the Drawer", () => {
 
     expect((await screen.findByText(/cannot complete/)).textContent).toBe("✕ cannot complete");
     expect(screen.queryByText(/^waits on/)).toBeNull();
+    expect(callsTo(app, "todo.complete")).toEqual([{ method: "todo.complete", params: { id: 5 } }]);
   });
 
   it("u35_a_failed_completes_message_clears_on_the_next_click", async () => {
@@ -108,5 +131,38 @@ describe("u35 Todo triage without the Drawer", () => {
     await mountTodos([todo(3)]);
 
     expect(await screen.findByRole("button", { name: "· #3 todo 3" })).toBeTruthy();
+  });
+
+  it("u35_a_successful_complete_leaves_the_row_unchanged_until_todo_updated_refetches_the_list", async () => {
+    const { app, store } = await mountTodos([todo(3)]);
+    await screen.findByText(/todo 3/);
+
+    fireEvent.mouseEnter(rowOf(3));
+    fireEvent.click(screen.getByText("complete"));
+    await waitFor(() => expect(callsTo(app, "todo.complete")).toHaveLength(1));
+
+    expect([callsTo(app, "todo.list"), screen.getByRole("button", { name: /#3/ }).textContent]).toEqual([
+      [{ method: "todo.list", params: null }],
+      "· #3 todo 3",
+    ]);
+
+    store.todos = [todo(3, { done: true })];
+    app.emit(todoEvent("todo.updated", todo(3, { done: true })));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: /#3/ })).toBeNull());
+    expect(callsTo(app, "todo.list")).toHaveLength(2);
+  });
+
+  it("u35_a_click_anywhere_in_the_shelf_clears_another_rows_failure", async () => {
+    const { app } = await mountTodos(shelf());
+    await screen.findByText(/^waits on/);
+    app.handlers["todo.complete"] = () => Promise.reject(new RpcError(-32000, "cannot complete"));
+    fireEvent.mouseEnter(rowOf(5));
+    fireEvent.click(screen.getByText("complete"));
+    await screen.findByText(/cannot complete/);
+
+    fireEvent.click(rowOf(4));
+
+    expect(screen.queryByText(/cannot complete/)).toBeNull();
   });
 });
