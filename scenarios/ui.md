@@ -140,7 +140,7 @@ Ordered by what each needs; each names its owner files in `.work/queue.md`.
 
 **U48 the attention chip looks like the control it is.** Given the header's `<n> need you` (U30), then it is in Ink weight, has a hover state, and its `title` names the chord (`⌘J`). It still shows nothing at zero and still jumps on click and on `⌘J`. In U25's state (after `daemon-exited`) it stays and `⌘J` still selects, since selecting a row calls nothing.
 
-**U49 a Live line never hides what the Agent asked.** Given an Agent whose Status label is longer than the Rail row (`asks: keep v1 routes? …` in a 252px Rail), then the Live line shows `…` (U23) and its `title` is the full label and elapsed time. The pane header (U14) is unchanged.
+**U49 a Live line never hides what the Agent asked.** Given an Agent whose Status label is longer than the Rail row (`asks: keep v1 routes? …` in a 252px Rail), then the Live line shows `…` (U23) and its `title` is the full label and elapsed time.
 
 **U50 the Pad's text fills its Drawer.** Given a Pad's Drawer (U20), then the text field takes the Drawer's remaining height, with no native resize grip, below the owner line and above the last-touch line, whether the user owns the Pad (an editable field) or an Agent does (a read-only field above the `append` field). Found: it was fixed at about 219px of a 769px Drawer. Everything U20 says about owning, editing and appending is unchanged.
 
