@@ -27,10 +27,13 @@ const PadBody = (props: {
   let pendingActor: Actor | null = null;
   let closed = false;
 
-  /** Moves the field and the dirty/clean baseline forward together and drops any conflict line; skip either and a resolved change still looks unresolved. */
+  /** Moves the field and the dirty/clean baseline forward together and drops any conflict line; skip either and a resolved change still looks unresolved. The field is written directly because `shown()` can already equal `next.text` while the user's keystrokes left the real DOM value stale, and Solid skips the write when the signal itself does not change. */
   const settle = (next: Pad) => {
     setOrigin(next.text);
     setShown(next.text);
+
+    if (textField) textField.value = next.text;
+
     setConflictActor(null);
   };
 

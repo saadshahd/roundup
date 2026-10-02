@@ -9,6 +9,7 @@ import {
   waitForReload,
 } from "./padsFixture";
 import { USER } from "../testing/nodes";
+import type { Event as DaemonEvent } from "@contracts/Event";
 import type { Pad } from "@contracts/pad/Pad";
 
 afterEach(cleanup);
@@ -382,5 +383,109 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
 
     expect(await screen.findByDisplayValue("new plus agent")).toBe(field);
     expect(screen.queryByText(/changed by/)).toBeNull();
+  });
+
+  it("u36_use_theirs_redraws_the_field_when_the_latest_text_matches_a_stale_draft_baseline", async () => {
+    const { app, state } = await openShelf([
+      padOf("release-checklist", USER, "mine"),
+    ]);
+
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "mine, edited" } });
+    state.pads = [padOf("release-checklist", USER, "x")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "release-checklist" },
+    });
+    await waitForReload(app);
+    state.pads = [padOf("release-checklist", USER, "mine")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "release-checklist" },
+    });
+    await waitForReload(app, 2);
+
+    fireEvent.click(screen.getByText("use theirs"));
+
+    expect(field.value).toBe("mine");
+    expect(screen.queryByText(/changed by/)).toBeNull();
+
+    fireEvent.blur(field);
+
+    expect(app.calls.some((call) => call.method === "pad.write")).toBe(false);
+    expect(state.pads[0]?.text).toBe("mine");
+  });
+
+  it("u36_a_change_that_lands_while_a_save_from_an_earlier_edit_is_still_in_flight_redraws_the_field_even_when_it_matches_the_stale_draft", async () => {
+    const { app, state } = await openShelf([
+      padOf("release-checklist", USER, "mine"),
+    ]);
+
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "mine, edited" } });
+    fireEvent.blur(field);
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "mine, edited" } });
+    reply.resolve(padOf("release-checklist", USER, "mine, edited"));
+    await reply.promise;
+    await new Promise((done) => setTimeout(done, 0));
+
+    state.pads = [padOf("release-checklist", USER, "mine")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "release-checklist" },
+    });
+    await waitForReload(app);
+
+    expect(field.value).toBe("mine");
+
+    fireEvent.blur(field);
+
+    expect(app.calls.filter((call) => call.method === "pad.write")).toHaveLength(1);
+    expect(state.pads[0]?.text).toBe("mine");
+  });
+
+  it("u36_an_unrelated_event_sharing_the_pads_name_is_never_mistaken_for_a_pad_changed", async () => {
+    const { app, state } = await openShelf([
+      padOf("release-checklist", USER, "mine"),
+    ]);
+
+    const field = await openPad("release-checklist");
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "mine, edited" } });
+    state.pads = [padOf("release-checklist", USER, "mine\nagent line")];
+    app.emit({
+      actor: AGENT,
+      name: "pad.changed",
+      data: { name: "release-checklist" },
+    });
+    // SAFETY: no real Event member carries `data.name`, except pad.changed itself, so this
+    // shape is built the way a boundary value would arrive (round-tripped through JSON, as
+    // the Daemon's own notifications do) rather than asserted straight from an object literal.
+    // Fired in the same tick, before pad.list's reply resolves and the effect reads
+    // pendingActor: it proves the subscribe filter at PadDrawer.tsx:52 keys on event.name,
+    // not just the coincidence that data.name matches the Pad's name.
+
+    const impostor = JSON.parse(
+      JSON.stringify({
+        actor: USER,
+        name: "rail.changed",
+        data: { name: "release-checklist" },
+      }),
+    ) as DaemonEvent;
+
+    app.emit(impostor);
+    await waitForReload(app);
+
+    expect(screen.getByText("changed by auth-refactor")).toBeTruthy();
+    expect(field.value).toBe("mine, edited");
   });
 });
