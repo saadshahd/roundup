@@ -6,10 +6,10 @@
 #                                           # writes the Reviewer's answer to loop/out/verdicts/<name>.md. The checkout is a
 #                                           # git repo with tag `base`, so the Reviewer can run `loop/rules.sh size base`.
 #   loop/boxd.sh check <pr-number|branch>   # merge it into origin/main here, run `just check` on a fresh isolated VM
-#   loop/boxd.sh swarm <build|review> <prompt-file>...  # one isolated VM per prompt (ru-builder-<n> / ru-reviewer-<n>), at most BOXD_MAX_VMS at once; one status line each
+#   loop/boxd.sh swarm <build|review> <prompt-file>[@<ref>]...  # one isolated VM per prompt (ru-builder-<n> / ru-reviewer-<n>), at most BOXD_MAX_VMS at once; one status line each; a review prompt takes its own ref, else BOXD_REF
 #   loop/boxd.sh status                      # every ru- VM with what it is doing
 #   loop/boxd.sh kill <name|all>             # remove ru-<name>; `all` removes only swarm VMs (ru-builder-*, ru-reviewer-*)
-# review checks out $BOXD_REF (default HEAD). BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_AGENT_TIMEOUT (seconds, at most 1800) bounds the agent run. BOXD_MODEL overrides the model (build: sonnet, review: opus).
+# review checks out its ref argument (default HEAD; a swarm review without `@<ref>` uses $BOXD_REF). A swarm child waits up to $BOXD_SLOT_WAIT s (default 900) for a free VM slot; a single run does not wait. Every run's log is <name>-<UTC time>-<pid>.* under loop/out/runs; loop/out/events.log records wedges, no-output and deadline events with the VM and phase. BOXD_MAX_VMS caps concurrent ru- VMs (default 12). BOXD_AGENT_TIMEOUT (seconds, at most 1800) bounds the agent run. BOXD_MODEL overrides the model (build: sonnet, review: opus).
 # Auth is the boxd secret CLAUDE_CODE_OAUTH_TOKEN (sealed, host-scoped): each VM sees only a placeholder, boxd swaps in the real token for *.anthropic.com, *.claude.com and claude.ai.
 # Exit codes: 0 ok, 1 failure, 75 paused (limit hit, or loop/out/PAUSED exists).
 set -euo pipefail
@@ -23,6 +23,11 @@ MAX_VMS=${BOXD_MAX_VMS:-12}
 # The agent and the check each get up to AGENT_TIMEOUT / 1800 s; VM_TTL must outlast both plus the reboot wait (at most 60 attempts of 5 s plus 1 s, 360 s), upload and the patch step.
 AGENT_TIMEOUT=${BOXD_AGENT_TIMEOUT:-1800}
 VM_TTL=4200
+SLOT_WAIT=${BOXD_SLOT_WAIT:-0}
+REBOOT_ATTEMPTS=${BOXD_REBOOT_ATTEMPTS:-60}
+EVENTS=$OUT/events.log
+RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)-$$
+PROVISION_RETRY_WITHIN=${BOXD_RETRY_WITHIN:-30}
 VM=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
@@ -119,6 +124,8 @@ release_lock() {
 # <name> becomes a VM name and a file name; <prompt-file> is passed to `boxd machine cp` as a positional argument.
 validate_args() {
   [[ $AGENT_TIMEOUT =~ ^[0-9]+$ && $AGENT_TIMEOUT -le 1800 ]] || { echo "boxd.sh: BOXD_AGENT_TIMEOUT must be a number of seconds, at most 1800, got: $AGENT_TIMEOUT" >&2; exit 2; }
+  [[ $SLOT_WAIT =~ ^[0-9]+$ ]] || { echo "boxd.sh: BOXD_SLOT_WAIT must be a number of seconds, got: $SLOT_WAIT" >&2; exit 2; }
+  [[ $REBOOT_ATTEMPTS =~ ^[0-9]+$ && $REBOOT_ATTEMPTS -ge 1 && $REBOOT_ATTEMPTS -le 60 ]] || { echo "boxd.sh: BOXD_REBOOT_ATTEMPTS must be 1 to 60, got: $REBOOT_ATTEMPTS" >&2; exit 2; }
   [[ $MAX_VMS =~ ^[0-9]+$ ]] || { echo "boxd.sh: BOXD_MAX_VMS must be a number, got: $MAX_VMS" >&2; exit 2; }
   local name=$1 prompt=$2
   [[ $name =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: name must match ^[a-z0-9][a-z0-9-]*\$, got: $name" >&2; exit 2; }
@@ -135,26 +142,41 @@ require_claude() {
   [ ! -e "$PAUSED" ] || pause "paused since $(cat "$PAUSED")"
 }
 
-# Create the isolated VM for <name>, enforcing the cap. Sets $VM.
-start_vm() {
-  local name=$1
+# Append one line to the events log: UTC time, VM, phase, event.
+record_event() {
+  mkdir -p "$OUT"
+  printf '%s %s %s %s\n' "$(date -u +%FT%TZ)" "${VM:-none}" "$1" "$2" >>"$EVENTS"
+}
+
+# Create the isolated VM for <name>, enforcing the cap. Sets $VM. Waits up to SLOT_WAIT s for a free slot, then exits 1 naming the cap.
+create_vm() {
+  local name=$1 waited=0
   mkdir -p "$OUT/runs"
   acquire_lock
-  [ "$(vm_count)" -lt "$MAX_VMS" ] || { echo "boxd.sh: $MAX_VMS ru- VMs already exist" >&2; exit 1; }
+  while [ "$(vm_count)" -ge "$MAX_VMS" ]; do
+    if [ "$waited" -ge "$SLOT_WAIT" ]; then echo "boxd.sh: $MAX_VMS ru- VMs already exist (cap BOXD_MAX_VMS=$MAX_VMS); no slot freed within ${SLOT_WAIT} s" >&2; exit 1; fi
+    release_lock
+    sleep 1
+    waited=$((waited + 1))
+    acquire_lock
+  done
   # The timer outlasts everything that runs after creation (reboot wait of at most 360 s, upload, an agent run of up to AGENT_TIMEOUT, then run_check's 1800 s).
   # Own the name only once `new` succeeds, so a failed create never removes someone else's VM.
   boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout $VM_TTL >/dev/null </dev/null
   VM="ru-$name"
   release_lock
-  # A VM restored from a memory snapshot wedges claude and tsc until it is rebooted (measured: tsc hangs before, 0.4 s after).
-  boxd machine reboot "$VM" >/dev/null </dev/null
+}
+
+# A VM restored from a memory snapshot wedges claude and tsc until it is rebooted (measured: tsc hangs before, 0.4 s after).
+# Returns 3 when the VM never answers (at most REBOOT_ATTEMPTS of a 5 s exec plus 1 s).
+await_reboot() {
+  boxd machine reboot "$VM" >/dev/null </dev/null || return 3
   local _
-  for _ in $(seq 60); do
+  for _ in $(seq "$REBOOT_ATTEMPTS"); do
     boxd machine exec "$VM" --timeout 5 -- true </dev/null >/dev/null 2>&1 && return 0
     sleep 1
   done
-  echo "boxd.sh: $VM did not answer after reboot" >&2
-  exit 1
+  return 3
 }
 
 # Put <ref> in ~/roundup on the VM as a git repo: tag `base` is <base-ref>'s tree, HEAD is <ref>'s tree. A non-empty
@@ -179,6 +201,36 @@ upload_checkout() {
     { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
 }
 
+# Create <name>'s VM and put the checkout on it. A VM that never answers after its reboot, or an upload that fails within
+# PROVISION_RETRY_WITHIN s, is retried once on a fresh VM, before any agent has run (retrying after one ran would cost a second verdict).
+provision() {
+  local name=$1 base_ref=$2 ref=$3 prompt=$4 attempt reason rc started
+  for attempt in 1 2; do
+    create_vm "$name"
+    reason='' rc=0
+    if ! await_reboot; then
+      reason="$VM did not answer after reboot"
+      rc=1
+    else
+      started=$SECONDS
+      set +e
+      ( set -e; upload_checkout "$base_ref" "$ref" "$prompt" )
+      rc=$?
+      set -e
+      if [ "$rc" -ne 0 ]; then
+        [ $((SECONDS - started)) -le "$PROVISION_RETRY_WITHIN" ] || { echo "boxd.sh: the upload to $VM failed (exit $rc)" >&2; exit "$rc"; }
+        reason="the upload to $VM failed within ${PROVISION_RETRY_WITHIN} s (exit $rc)"
+      fi
+    fi
+    [ "$rc" -ne 0 ] || return 0
+    record_event provision "$reason"
+    [ "$attempt" -eq 1 ] || { echo "boxd.sh: $reason; giving up after one retry" >&2; exit 1; }
+    echo "boxd.sh: $reason; retrying once on a fresh VM" >&2
+    boxd machine remove "$VM" -y >/dev/null </dev/null || echo "boxd.sh: LEAKED VM $VM; remove it by hand" >&2
+    VM=
+  done
+}
+
 # Run claude on the VM with /tmp/prompt.md; JSON lands in <result>. Exits unless the run succeeded.
 run_agent() {
   local model=$1 result=$2
@@ -186,8 +238,10 @@ run_agent() {
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
   # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
   boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
-    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" || true
-  [ -s "$result" ] || { echo "boxd.sh: agent produced no output" >&2; exit 1; }
+    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" 2>"${result%.json}.err" || true
+  cat "${result%.json}.err" >&2
+  ! grep -q DeadlineExceeded "${result%.json}.err" || record_event agent deadline-exceeded
+  [ -s "$result" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
   guard_limits "$result"
   jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
 }
@@ -200,11 +254,10 @@ run_check() {
 review() {
   local name=$1 prompt=$2 ref=${3:-HEAD}
   validate_args "$name" "$prompt"
-  local result="$OUT/runs/$name.json" verdict="$OUT/verdicts/$name.md" base
+  local result="$OUT/runs/$name-$RUN_ID.json" verdict="$OUT/verdicts/$name.md" base
   base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   require_claude
-  start_vm "$name"
-  upload_checkout "$base" "$ref" "$prompt"
+  provision "$name" "$base" "$ref" "$prompt"
   run_agent "${BOXD_MODEL:-opus}" "$result"
   jq -r .result "$result" >"$verdict"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
@@ -213,15 +266,15 @@ review() {
 build() {
   local name=$1 prompt=$2
   validate_args "$name" "$prompt"
-  local result="$OUT/runs/$name.json" patch="$OUT/patches/$name.patch" checklog="$OUT/runs/$name.check.log"
+  local result="$OUT/runs/$name-$RUN_ID.json" patch="$OUT/patches/$name.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log"
   require_claude
-  start_vm "$name"
-  upload_checkout HEAD HEAD "$prompt"
+  provision "$name" HEAD HEAD "$prompt"
   run_agent "${BOXD_MODEL:-sonnet}" "$result"
   # The observer is our own check, not the Builder's claim that it passed.
   local rc=0
   run_check >"$checklog" 2>&1 || rc=$?
   tail -n 15 "$checklog" >&2
+  ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
   [ "$rc" -eq 0 ] || exit "$rc"
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
@@ -244,7 +297,7 @@ check() {
   local ref=$1 refspec slug log base sha tree
   refspec=$(ref_to_refspec "$ref")
   slug=$(printf '%s' "$ref" | tr -c 'A-Za-z0-9\n' - | tr '[:upper:]' '[:lower:]' | cut -c1-30)
-  log="$OUT/runs/check-$slug.log"
+  log="$OUT/runs/check-$slug-$RUN_ID.log"
   # Per-run ref names (not origin/main, not FETCH_HEAD) so checks started in parallel from one clone cannot race.
   git fetch -q origin -- "+refs/heads/main:refs/boxd-check/$slug-base" "+$refspec:refs/boxd-check/$slug"
   base=$(git rev-parse "refs/boxd-check/$slug-base")
@@ -252,11 +305,11 @@ check() {
   git update-ref -d "refs/boxd-check/$slug-base"
   git update-ref -d "refs/boxd-check/$slug"
   tree=$(git merge-tree --write-tree "$base" "$sha") || { echo "boxd.sh: $ref conflicts with origin/main:" >&2; echo "$tree" >&2; exit 1; }
-  start_vm "chk-$slug"
-  upload_checkout "$base" "$tree" ""
+  provision "chk-$slug-$$" "$base" "$tree" ""
   local rc=0
   run_check 2>&1 | mask_github_tokens >"$log" || rc=${PIPESTATUS[0]}
   tail -n 25 "$log" >&2
+  ! grep -q DeadlineExceeded "$log" || record_event check deadline-exceeded
   echo "boxd.sh: check $ref (merged into origin/main) exit $rc; full log $log" >&2
   exit "$rc"
 }
@@ -267,18 +320,30 @@ swarm() {
   shift
   case $role in build) prefix=builder ;; review) prefix=reviewer ;; *) echo "boxd.sh: swarm role must be build or review, got: $role" >&2; exit 2 ;; esac
   [ "$#" -gt 0 ] || { echo "boxd.sh: swarm needs at least one prompt file" >&2; exit 2; }
-  local pids=() names=() prompt
+  local pids=() names=() prompts=() refs=() spec prompt ref
   mkdir -p "$OUT/runs"
-  # Refuse every bad prompt file before the first VM exists.
-  for prompt in "$@"; do validate_args "$prefix-1" "$prompt"; done
+  # `<prompt-file>@<ref>` gives that prompt its own ref; an existing file named with an `@` is still a plain prompt file.
+  for spec in "$@"; do
+    prompt=$spec ref=${BOXD_REF:-HEAD}
+    if [ ! -f "$spec" ] && [[ $spec == *@* ]]; then prompt=${spec%@*} ref=${spec##*@}; fi
+    prompts+=("$prompt")
+    refs+=("$ref")
+  done
+  # Refuse every bad prompt file and ref before the first VM exists.
+  for i in "${!prompts[@]}"; do
+    validate_args "$prefix-1" "${prompts[$i]}"
+    [ "$role" = build ] || git rev-parse --verify -q --end-of-options "${refs[$i]}^{commit}" >/dev/null || { echo "boxd.sh: no such ref: ${refs[$i]}" >&2; exit 2; }
+  done
+  # Children wait for a slot, so a VM that is not theirs cannot make the last one fail at create.
+  export BOXD_SLOT_WAIT=${BOXD_SLOT_WAIT:-900}
   # Background children ignore SIGINT, so TERM them; each one's exit trap then removes the VM it created and nothing else.
   trap 'stop_swarm "${pids[@]+"${pids[@]}"}"' INT TERM
-  for prompt in "$@"; do
+  for i in "${!prompts[@]}"; do
     n=$((n + 1))
     while [ "$(running_children ${pids[@]+"${pids[@]}"})" -ge "$MAX_VMS" ]; do sleep 1; done
     names+=("$prefix-$n")
-    if [ "$role" = review ]; then "$0" review "$prefix-$n" "$prompt" "${BOXD_REF:-HEAD}" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
-    else "$0" build "$prefix-$n" "$prompt" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
+    if [ "$role" = review ]; then "$0" review "$prefix-$n" "${prompts[$i]}" "${refs[$i]}" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
+    else "$0" build "$prefix-$n" "${prompts[$i]}" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
     fi
     pids+=($!)
   done

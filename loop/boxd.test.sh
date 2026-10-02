@@ -22,11 +22,12 @@ new_repo() {
   cat >bin/boxd <<'S'
 #!/usr/bin/env bash
 echo "$*" >>"$STUB_LOG"
-if [ "$1 $2 $3" = "machine cp -" ]; then cat >"$STUB_DIR/$(basename "$4")"; else cat >/dev/null 2>&1 || true; fi
+if [ "$1 $2 $3" = "machine cp -" ]; then vm=${4%%:*}; mkdir -p "$STUB_DIR/by-vm/$vm"; tee "$STUB_DIR/by-vm/$vm/$(basename "$4")" >"$STUB_DIR/$(basename "$4")"; else cat >/dev/null 2>&1 || true; fi
 case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
-    if [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
+    if [ -n "${STUB_BUSY_LISTS:-}" ] && { echo x >>"$STUB_DIR/listcalls"; [ "$(wc -l <"$STUB_DIR/listcalls")" -le "$STUB_BUSY_LISTS" ]; }; then jq -nc --argjson n "${BOXD_MAX_VMS:-12}" '[range($n) | {name: "ru-other-\(.)"}]'
+    elif [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
     elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'
     elif [ "${STUB_MODE:-}" = mixed ]; then echo '[{"name":"ru-builder-1"},{"name":"ru-reviewer-2"},{"name":"ru-x8-1"},{"name":"ru-builderx"},{"name":"ru-x-builder-9"},{"name":"ru-builder-x"},{"name":"ru-builder-1x"},{"name":"ru-builder-3"}]'
     else (cd "$STUB_DIR" && ls alive-* 2>/dev/null || true) | jq -Rnc '[inputs | {name: sub("^alive-"; "")}]'; fi ;;
@@ -40,10 +41,18 @@ case "$1 $2" in
     if [ -e "$STUB_DIR/exec-$3.pid" ]; then kill "$(cat "$STUB_DIR/exec-$3.pid")" 2>/dev/null || true; fi ;;
   "machine exec")
     case "$*" in
+      *" -- true")
+        echo x >>"$STUB_DIR/trues"
+        [ "$(wc -l <"$STUB_DIR/trues")" -gt "${STUB_NOANSWER:-0}" ] || exit 1 ;;
+      *"tar xzf /tmp/base.tgz"*)
+        echo x >>"$STUB_DIR/tars"
+        if [ "$(wc -l <"$STUB_DIR/tars")" -le "${STUB_TARFAIL:-0}" ]; then sleep "${STUB_TARFAIL_SLEEP:-0}"; exit 2; fi ;;
       *pgrep*)
         case "$3" in ru-builder-1) echo agent-running ;; ru-reviewer-2) echo idle ;; *) exit 1 ;; esac ;;
       *claude*)
         case "${STUB_MODE:-}" in
+          no-output) exit 1 ;;
+          deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;;
           limit) echo '{"is_error":true,"api_error_status":429,"result":"x"}'; exit 1 ;;
           *)
             echo $$ >"$STUB_DIR/exec-$3.pid"
@@ -53,7 +62,7 @@ case "$1 $2" in
       *"grep -rlF /tmp/warm"*) [ "${STUB_MODE:-}" != warm-dirty ] || exit 1 ;;
       *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
       *"just check"*)
-        case "${STUB_MODE:-}" in check-fails) exit 7 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
+        case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -219,9 +228,11 @@ run_check_ref() { STUB_MODE=${STUB_MODE:-} loop/boxd.sh check "$1" >out 2>err; }
 
 check_repo; got=0; run_check_ref 54 || got=$?
 expect_true "L15 check of a PR number succeeds" test "$got" -eq 0
-expect_log 'machine new ru-chk-54 .*--isolated' "L15 the check VM is isolated"
-expect_log 'machine new ru-chk-54 .*--auto-destroy-timeout 4200' "L15 the check VM has an auto-destroy timer"
-expect_log 'machine remove ru-chk-54' "L15 VM destroyed after success"
+expect_log 'machine new ru-chk-54-[0-9]+ .*--isolated' "L15 the check VM is isolated"
+expect_log 'machine new ru-chk-54-[0-9]+ .*--auto-destroy-timeout 4200' "L15 the check VM has an auto-destroy timer"
+expect_log 'machine remove ru-chk-54-[0-9]+' "L15 VM destroyed after success"
+got=0; run_check_ref 54 || got=$?
+expect_true "L17 two checks of one ref use two different VM names" test "$(grep -oE 'machine new ru-chk-54-[0-9]+' log | sort -u | wc -l | tr -d ' ')" = 2
 expect_true "L15 nothing is cloned or fetched on the VM" bash -c '! grep -qE "git (clone|fetch)" log'
 expect_true "L15 the check installs from the lockfile" grep -q -- '--frozen-lockfile' log
 expect_true "L15 the ref reaches git fetch after --" grep -q '^fetch -q origin -- +refs/heads/main:refs/boxd-check/54-base +pull/54/head:refs/boxd-check/54$' "$STUB_GIT_LOG"
@@ -241,13 +252,15 @@ expect_true "L15 the base is origin/main without the PR" bash -c 'tar tzf cp/bas
 # The VM name is the ref lower-cased, non-alphanumerics as dashes, at most 30 characters.
 check_repo; git push -q origin HEAD:refs/heads/My_Branch HEAD:refs/heads/builder/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 run_check_ref My_Branch || true
-expect_log 'machine new ru-chk-my-branch ' "L15 the VM name is the ref lower-cased with dashes"
+expect_log 'machine new ru-chk-my-branch-[0-9]+ ' "L15 the VM name is the ref lower-cased with dashes"
 : >log; run_check_ref builder/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa || true
-expect_log 'machine new ru-chk-builder-aaaaaaaaaaaaaaaaaaaaaa ' "L15 the VM name is cut at 30 characters"
+expect_log 'machine new ru-chk-builder-aaaaaaaaaaaaaaaaaaaaaa-[0-9]+ ' "L15 the VM name is cut at 30 characters"
 
+check_repo; got=0; STUB_MODE=check-deadline run_check_ref builder/x || got=$?
+expect_true "L19 a check run that hits the deadline is recorded with VM and phase" grep -qE ' ru-chk-builder-x-[0-9]+ check deadline-exceeded' loop/out/events.log
 check_repo; got=0; STUB_MODE=check-fails run_check_ref builder/x || got=$?
 expect_true "L15 failed check keeps its exit code" test "$got" -eq 7
-expect_log 'machine remove ru-chk-builder-x' "L15 VM destroyed after a failed check"
+expect_log 'machine remove ru-chk-builder-x-[0-9]+' "L15 VM destroyed after a failed check"
 
 check_repo; got=0; STUB_MODE=token-output run_check_ref 54 || got=$?
 expect_true "L15 a GitHub token in the check output is masked" bash -c '! grep -rq gho_abcdefgh err loop/out/runs'
@@ -291,6 +304,70 @@ bake_repo; loop/boxd.sh bake >out 2>err
 bake_repo; got=0; STUB_MODE=bake-leak loop/boxd.sh bake >out 2>err || got=$?
 expect_true "L15 a token in the bake VM refuses the snapshot" test "$got" -eq 1
 if grep -q 'snapshots save' log; then echo "FAIL: L15 snapshot saved with a token"; failures=$((failures + 1)); else echo "ok:   L15 no snapshot saved with a token"; fi
+
+# L17: every run keeps its own log, named by VM name, UTC time and pid, so a relaunch never overwrites a failed run's log.
+new_repo; loop/boxd.sh build t prompt.md >out 2>err; loop/boxd.sh build t prompt.md >out 2>err
+expect_true "L17 two runs with one name keep two run logs" test "$(printf '%s\n' loop/out/runs/* | grep -cE '/t-[0-9]{8}T[0-9]{6}Z-[0-9]+\.json$')" = 2
+expect_true "L17 two runs with one name keep two check logs" test "$(printf '%s\n' loop/out/runs/* | grep -cE '/t-[0-9]{8}T[0-9]{6}Z-[0-9]+\.check\.log$')" = 2
+expect_true "L17 the patch keeps its stable name" test -e loop/out/patches/t.patch
+
+# L18: a run waits for a free slot below BOXD_MAX_VMS when asked to, and says so when none frees.
+new_repo; BOXD_MAX_VMS=2 BOXD_SLOT_WAIT=10 STUB_BUSY_LISTS=3 STUB_MODE='' expect_code 0 "L18 a run waits for a slot taken by an outside VM"
+new_repo; BOXD_MAX_VMS=2 BOXD_SLOT_WAIT=2 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 a wait that never ends exits 1"
+expect_true "L18 the failed wait names the cap" grep -q 'cap BOXD_MAX_VMS=2' err
+if grep -q 'machine new' log; then echo "FAIL: L18 VM created without a slot"; failures=$((failures + 1)); else echo "ok:   L18 no VM without a slot"; fi
+started=$SECONDS; new_repo; BOXD_MAX_VMS=2 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 a single run does not wait by default"
+expect_true "L18 the default wait is 0 s, not a pause" test $((SECONDS - started)) -lt 3
+new_repo; BOXD_SLOT_WAIT=x STUB_MODE='' expect_code 2 "L18 non-numeric BOXD_SLOT_WAIT is refused"
+new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
+BOXD_MAX_VMS=2 STUB_BUSY_LISTS=4 loop/boxd.sh swarm build prompt.md p2.md >out 2>err || true
+expect_true "L18 swarm children wait for a slot an outside VM holds" test "$(grep -c ' ok$' out)" = 2
+
+# L19: a VM that never answers after its reboot, or a failed upload in the first seconds, is retried once on a fresh VM, before the agent runs.
+count_log() { grep -c -- "$1" log || true; }
+new_repo; BOXD_REBOOT_ATTEMPTS=2 STUB_NOANSWER=2 STUB_MODE='' expect_code 0 "L19 a VM that never answers is retried once"
+expect_true "L19 the retry made a second VM" test "$(count_log 'machine new ru-t ')" = 2
+expect_true "L19 the first VM was destroyed before the retry" test "$(count_log 'machine remove ru-t')" = 2
+expect_true "L19 the retry is visible in the output" grep -q 'did not answer after reboot; retrying once' err
+expect_true "L19 the retry is recorded with the VM and phase" grep -q ' ru-t provision ru-t did not answer after reboot' loop/out/events.log
+new_repo; BOXD_REBOOT_ATTEMPTS=3 STUB_NOANSWER=99 STUB_MODE='' expect_code 1 "L19 a VM that never answers twice fails"
+expect_true "L19 a failed retry gives up after two VMs" test "$(count_log 'machine new ru-t ')" = 2
+expect_true "L19 each VM is asked for exactly BOXD_REBOOT_ATTEMPTS answers" test "$(count_log ' -- true$')" = 6
+expect_true "L19 the give-up is named" grep -q 'giving up after one retry' err
+new_repo; STUB_NOANSWER=5 STUB_MODE='' expect_code 0 "L19 a VM that answers on its sixth try needs no retry by default"
+expect_true "L19 the default allows more than three attempts" test "$(count_log 'machine new ru-t ')" = 1
+new_repo; BOXD_REBOOT_ATTEMPTS=61 STUB_MODE='' expect_code 2 "L19 more than 60 reboot attempts is refused"
+new_repo; BOXD_REBOOT_ATTEMPTS=0 STUB_MODE='' expect_code 2 "L19 zero reboot attempts is refused"
+new_repo; STUB_TARFAIL=1 STUB_MODE='' expect_code 0 "L19 a tar failure in the first seconds is retried once"
+expect_true "L19 the tar retry made a second VM" test "$(count_log 'machine new ru-t ')" = 2
+expect_true "L19 the upload retry is visible in the output" grep -q 'upload to ru-t failed within 30 s (exit 2); retrying once' err
+new_repo; STUB_TARFAIL=99 STUB_MODE='' expect_code 1 "L19 two tar failures fail the run"
+new_repo; BOXD_RETRY_WITHIN=1 STUB_TARFAIL=1 STUB_TARFAIL_SLEEP=2 STUB_MODE='' expect_code 2 "L19 a late upload failure is not retried"
+expect_true "L19 a late failure made one VM" test "$(count_log 'machine new ru-t ')" = 1
+new_repo; STUB_MODE=no-output expect_code 1 "L19 a run whose agent produced nothing is not retried"
+expect_true "L19 no second VM after the agent ran" test "$(count_log 'machine new ru-t ')" = 1
+expect_true "L19 the no-output event is recorded with VM and phase" grep -q ' ru-t agent no-output' loop/out/events.log
+new_repo; STUB_MODE=deadline expect_code 1 "L19 a wedged agent run fails"
+expect_true "L19 the deadline event is recorded, not retried" bash -c "grep -q ' ru-t agent deadline-exceeded' loop/out/events.log && test \"\$(grep -c 'machine new ru-t ' log)\" = 1"
+new_repo; STUB_MODE=check-deadline expect_code 1 "L19 a build whose check hits the deadline fails"
+expect_true "L19 the build check's deadline event is recorded with VM and phase" grep -q ' ru-t check deadline-exceeded' loop/out/events.log
+
+# L20: each swarm review prompt may carry its own ref after an @; without one it uses BOXD_REF.
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
+export BOXD_LOCK_WAIT=30
+loop/boxd.sh swarm review prompt.md@feat p2.md >out 2>err
+expect_true "L20 the prompt with @feat reviews feat" bash -c 'tar tzf cp/by-vm/ru-reviewer-1/src.tgz | grep -q "^g$"'
+expect_true "L20 the prompt without a ref reviews HEAD" bash -c '! tar tzf cp/by-vm/ru-reviewer-2/src.tgz | grep -q "^g$"'
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
+export BOXD_LOCK_WAIT=30
+BOXD_REF=feat loop/boxd.sh swarm review prompt.md@main p2.md >out 2>err
+expect_true "L20 an explicit ref beats BOXD_REF" bash -c '! tar tzf cp/by-vm/ru-reviewer-1/src.tgz | grep -q "^g$"'
+expect_true "L20 a prompt without a ref falls back to BOXD_REF" bash -c 'tar tzf cp/by-vm/ru-reviewer-2/src.tgz | grep -q "^g$"'
+new_repo; echo p >'a@b.md'; loop/boxd.sh swarm review 'a@b.md' >out 2>err || true
+expect_true "L20 an existing file with an @ in its name is a plain prompt" grep -qx 'ru-reviewer-1 ok' out
+new_repo; got=0; loop/boxd.sh swarm review prompt.md@nope >out 2>err || got=$?
+expect_true "L20 an unknown ref is refused" test "$got" -eq 2
+if grep -q 'machine new' log; then echo "FAIL: L20 VM created for an unknown ref"; failures=$((failures + 1)); else echo "ok:   L20 no VM for an unknown ref"; fi
 
 # swarm, status, kill
 new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md; echo p >p3.md
