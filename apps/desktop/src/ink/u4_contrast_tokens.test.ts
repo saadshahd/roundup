@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-
 /** Every rule block (`selector { body }`) in a stylesheet's text, so a check can see which selector owns a declaration. */
 const rulesOf = (css: string): { selector: string; body: string }[] =>
   [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((rule) => ({ selector: rule[1]!.trim(), body: rule[2]! }));
@@ -32,11 +31,13 @@ describe("u4 stylesheet text-colour allowlist", () => {
 
   it("u4_the_light_inline_override_is_limited_to_the_pad_drawers_export_button", () => {
     const INLINE = /var\(--(?:light|lightest)\)/;
+
     const sources = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
       query: "?raw",
       import: "default",
       eager: true,
     });
+
     const matches = Object.entries(sources)
       .filter(([, text]) => INLINE.test(text))
       .map(([path]) => path.slice("../".length));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blendBlackOver, contrastRatio, grayscale, resolveToken, tokensOf } from "./contrast";
+import { applyFilter, blendBlackOver, contrastRatio, grayscale, greyedRailFilter, resolveToken, tokensOf } from "./contrast";
 
 describe("contrast", () => {
   it("contrastRatio_black_on_white_is_21_to_1", () => {
@@ -39,5 +39,25 @@ describe("contrast", () => {
 
   it("resolveToken_a_literal_value_passes_through_unchanged", () => {
     expect(resolveToken("#c4262e", new Map())).toBe("#c4262e");
+  });
+
+  it("applyFilter_grayscale_1_matches_the_grayscale_helper", () => {
+    expect(applyFilter("#9a5b00", "grayscale(1)")).toBe(grayscale("#9a5b00"));
+  });
+
+  it("applyFilter_contrast_pulls_every_channel_toward_mid_grey", () => {
+    expect(applyFilter("#ffffff", "contrast(0.4)")).toBe("#b3b3b3");
+  });
+
+  it("applyFilter_runs_functions_in_the_order_the_declaration_lists_them", () => {
+    const sequential = applyFilter(applyFilter("#9a5b00", "grayscale(1)"), "contrast(0.4)");
+
+    expect(applyFilter("#9a5b00", "grayscale(1) contrast(0.4)")).toBe(sequential);
+  });
+
+  it("greyedRailFilter_reads_the_filter_declaration_off_the_aria_disabled_rule", () => {
+    const css = '.rail-tree [role="tree"][aria-disabled="true"] {\n  filter: grayscale(1);\n}';
+
+    expect(greyedRailFilter(css)).toBe("grayscale(1)");
   });
 });

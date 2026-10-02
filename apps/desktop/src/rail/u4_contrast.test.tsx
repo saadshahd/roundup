@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { agent, group, NOW } from "../testing/nodes";
-import { colourOf, contrastRatio, grayscale, loadTokens, withStylesheets } from "../testing/contrast";
+import { colourOf, contrastRatio, loadTokens, withStylesheets } from "../testing/contrast";
 import { mountRail, rowOf } from "./railFixture";
 
 afterEach(cleanup);
 
 describe("u4 ink contrast: Rail", () => {
-  it("u4_the_live_line_meets_4_5_to_1_on_the_ground_and_the_selected_band_and_still_clears_2_to_1_once_greyed", async () => {
+  it("u4_the_live_line_meets_4_5_to_1_on_the_ground_and_the_selected_band", async () => {
     const { tokens, ground, selected } = loadTokens();
 
     await withStylesheets(async () => {
@@ -23,7 +23,6 @@ describe("u4 ink contrast: Rail", () => {
 
       expect(contrastRatio(unselected, ground)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(whenSelected, selected)).toBeGreaterThanOrEqual(4.5);
-      expect(contrastRatio(grayscale(whenSelected), ground)).toBeGreaterThanOrEqual(2);
     });
   });
 

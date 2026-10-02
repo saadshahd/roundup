@@ -57,6 +57,50 @@ export const grayscale = (hex: string): string => {
   return `#${channel}${channel}${channel}`;
 };
 
+const FILTER_FUNCTION = /([\w-]+)\(([^)]+)\)/g;
+
+const clampChannel = (channel: number): number => Math.min(255, Math.max(0, channel));
+
+/** Applies a `filter` declaration's functions, in the order written, to a resolved colour: the same per-channel math a browser runs on pixels (CSS Filter Effects). Reading the real declaration, instead of reimplementing one function by hand, catches a filter a test never named. */
+export const applyFilter = (hex: string, filter: string): string => {
+  let { r, g, b } = parseHex(hex);
+
+  for (const [, name, arg] of filter.matchAll(FILTER_FUNCTION)) {
+    const amount = Number(arg);
+
+    if (name === "grayscale") {
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+      r += (luma - r) * amount;
+      g += (luma - g) * amount;
+      b += (luma - b) * amount;
+    } else if (name === "contrast") {
+      const adjust = (channel: number) => (channel - 127.5) * amount + 127.5;
+
+      r = adjust(r);
+      g = adjust(g);
+      b = adjust(b);
+    } else {
+      throw new Error(`applyFilter does not know the filter function ${name}`);
+    }
+  }
+
+  return `#${toHex2(clampChannel(r))}${toHex2(clampChannel(g))}${toHex2(clampChannel(b))}`;
+};
+
+/** The `filter` declaration on the greyed Rail's own rule, straight from `rail/styles.css`'s text, never a hard-coded copy. */
+export const greyedRailFilter = (railCss: string): string => {
+  const rule = /\[aria-disabled="true"\]\s*\{([^}]*)\}/.exec(railCss)?.[1];
+
+  if (!rule) throw new Error("no [aria-disabled] rule in rail/styles.css");
+
+  const filter = /filter:\s*([^;]+);/.exec(rule)?.[1];
+
+  if (!filter) throw new Error("no filter declaration in the greyed-Rail rule");
+
+  return filter.trim();
+};
+
 /** The `:root` custom properties straight out of a stylesheet's own text, so a test resolves tokens from the real file instead of a hard-coded copy. */
 export const tokensOf = (css: string): ReadonlyMap<string, string> => {
   const root = /:root\s*\{([^}]*)\}/.exec(css);
