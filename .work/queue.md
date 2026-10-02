@@ -54,19 +54,19 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 
 | PR | Item | Scenarios | Module | Observer | State |
 |---|---|---|---|---|---|
-| #80 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass; the U32 case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green | Claimed-by: boxd-agents 2026-10-01. Spec is on main (#107). Resumes: rebase, a `u33_` test that a successful spawn ends the field, reuse `paneHarness` |
-| #81 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in fix rounds after a boxd Reviewer's rejection: act only on keys whose target is a row (`↓` in the rename field, Enter on collapse or promote), and cover six untested guards |
+| #80 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop/src/rail`: `SpawnPromptField.tsx`, `Rail.tsx`, `u32_spawn_shortcuts.test.tsx`, `u33_spawn_with_prompt.test.tsx` | `u33_` tests pass; the U32 case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green | Claimed-by: boxd-agents 2026-10-01. Spec is on main (#107). Resumes: rebase, a `u33_` test that a successful spawn ends the field, reuse `paneHarness` |
+| #81 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop/src/rail`: `Rail.tsx`, `RailRow.tsx`, `keys.ts`, `railFixture.tsx`, `styles.css`, `u31_`/`keys` tests; its U31 text goes into `scenarios/ui.md` in this PR | `u31_` tests pass; #80 and #81 both edit `Rail.tsx`: whichever merges second merges main first | in fix rounds after a boxd Reviewer's rejection: act only on keys whose target is a row (`↓` in the rename field, Enter on collapse or promote), and cover six untested guards |
 | #88 | Pad edits never overwrite another Actor | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; the u20 tests U36 names stay green | in fix rounds |
 | #89 | reopen, App half | S5 | `crates/desktop` | `s5_` tests pass; `s1_` and `s3_` tests stay | in fix rounds |
 | #94 | scrollback | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; QA RSS with ten Terminals | in VM review (conflict with #93 resolved) |
-| #102 | load-aware perf comparison; amends rule 7 and `docs/perf.md` | R13 | `crates/perf`, `AGENTS.md` rule 7, `docs/perf.md` | `r13_` tests; the R1–R12 and K tests stay | in review |
+| #102 | load-aware perf comparison; amends rule 7 and `docs/perf.md` | R13 | `crates/perf`, `AGENTS.md` rule 7, `docs/perf.md` (`budgets.json`, `budget.rs`, `gate.rs`, `tests/r13.rs`); `audit-perf` waits for it | `r13_` tests; the R1–R12 and K tests stay | in review |
 | #106 | loop hardening: unique run logs and check VM names, slot wait, retry before the agent, per-prompt ref | L17–L20 | `loop/boxd.sh` | `loop/boxd.test.sh` | in review |
 | none | D4 flake: one deadline, a readable failure, a state-based wait if a lost event is proven | D4 (a proven lost event: A14) | `crates/rup/tests/**` | the Builder reproduces first (about 30 runs, once under load); `just check` | ready: prompt `.work/prompts/d4-flake.md`; the Builder never edits the Daemon |
 | none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
 ## Next batch
 
-Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, C1 in `rpc.md`). A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
+Text for these ids is in `scenarios/` (U37–U41 in `ui.md`). Reserved ids whose text is not on main yet: U31 (arrives with #81), L17–L20 (with #106), L21 (after #106 merges) and A14 (only if the D4 Builder proves a lost status event). A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
