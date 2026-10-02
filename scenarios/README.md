@@ -24,6 +24,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
 | `decisions.md` | `crates/agents` (Decisions), `crates/rup` (`rup permission`), `spikes/hooks-permission` | every `H` heading in the file |
+| `control.md` | `crates/agents` (`agent.prompt`, `agent.interrupt`, `ask_user`), `crates/rup` | every `H` heading in the file |
 | `awareness.md` | `crates/agents` (Brief file, `claude_code/`), `crates/rupd` (`agent.context`, `agent.brief`), `crates/rup` | E1–E7 |
 | `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | F1–F5 |
 | `rpc.md` | `crates/rpc` | C1 |
