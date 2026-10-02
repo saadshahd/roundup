@@ -62,7 +62,7 @@ Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, 
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests | now |
 | audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | now |
 | sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**`; not `crates/perf/**` (audit-perf owns it) | every existing test unchanged | now; the Architect has not verified where the duplicates are, so the Builder first lists each duplicated block in the PR, and stops and reports if sharing needs a new crate |
-| R13 | load-aware perf comparison: `max_load_per_cpu` (OS to number, beside `baseline`) in `crates/perf/budgets.json`, skipped regression tests printed and listed in `target/perf.json`; also amends AGENTS.md rule 7 and docs/perf.md | `crates/perf/**`, `AGENTS.md` rule 7, `docs/perf.md` | the R1–R12 and K tests | after #93 and #95 merge (same crate, same files); no Builder yet, the lead dispatches |
+| R13 | load-aware perf comparison: `max_load_per_cpu` (OS to number, beside `baseline`) in `crates/perf/budgets.json`, skipped regression tests printed and listed in `target/perf.json`; also amends AGENTS.md rule 7 and docs/perf.md | `crates/perf/**`, `AGENTS.md` rule 7, `docs/perf.md` | the R1–R12 and K tests, and #95's baselines in `budgets.json` | after #95 merges (same crate, same files; #93 is merged); no Builder yet, the lead dispatches |
 | U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
 | U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
 | U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
@@ -125,7 +125,8 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
-  | R13 | load-aware perf comparison (R11 and R12 are #93's) |
+  | R11, R12 | #93, keystroke probe (merged) |
+  | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
