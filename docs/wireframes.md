@@ -10,7 +10,7 @@ Applied corrections (the drawings predate some of them):
 
 - **Live line** (the second line under a rail row) is hidden by default. It shows on hover or selection, and unprompted when kind is `blocked`, `needs-you` or `error`. Every wireframe draws it on every row for illustration only.
 - **Provenance letter** (last toucher) shows on hover or selection only. Every wireframe draws it always-on for illustration only.
-- Removed from earlier drafts: sparkline column, `lead→` arrows, separate prompt row, band above the prompt, Overview grid, command palette and shortcuts.
+- Removed from earlier drafts: sparkline column, `lead→` arrows, separate prompt row, band above the prompt, Overview grid, command palette and shortcuts (superseded: U30, U32, U33 and U51 in `scenarios/ui.md` add chords and a switcher).
 - Collapsed by default: done todos and agents, pad bodies, detail, history, inbox.
 
 ## Ink vocabulary (one set on every screen)
