@@ -1,6 +1,6 @@
 # Control channel
 
-Status: provisional until the lead and the user confirm the recommendation and architect-b's steering series agrees on the seam. Scenarios: `scenarios/control.md` (H11 to H16). Evidence: `spikes/hooks-permission/REPORT.md` (Claude Code 2.1.287, macOS).
+Status: provisional until the lead and the user confirm the recommendation and architect-b's steering series agrees on the seam. Scenarios: `scenarios/control.md` (H11 to H17). Evidence: `spikes/hooks-permission/REPORT.md` (Claude Code 2.1.287, macOS).
 
 ## Seams today
 
@@ -42,6 +42,10 @@ Recommendation: hooks plus the existing MCP server plus one keystroke path with 
 ## Principles served
 
 P1 (only the user answers a Card; steering follows the Thread rules of architect-b's series), P3 (one Card per `needs-you` Agent, `ask_user` included), P4 (the vendor strings, the paste markers and the Esc byte stay in `crates/agents/src/claude_code/`; `agent.prompt` and `agent.interrupt` are the existing inject seam with a result, not a fourth seam).
+
+## Known limitation
+
+The terminal title is the only acknowledgement of an Interrupt, because Claude Code fires no hook on Esc. It is the one screen read left. It fails loudly: `NOT_ACKED` after a bound, never a silent retry (H13, H17).
 
 ## Open
 
