@@ -4,6 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::common::Actor;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "todo/")]
 pub struct Todo {
@@ -16,8 +18,11 @@ pub struct Todo {
     pub blocked: bool,
     #[ts(type = "number")]
     pub created_at: i64,
+    /// The Actor whose `todo.create` made this Todo. A Todo from before this field reads as `Actor::user()`.
+    pub creator: Actor,
 }
 
+/// The creator is the calling Actor; a `creator` field sent here is ignored.
 #[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "todo/")]
 pub struct CreateParams {

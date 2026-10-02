@@ -31,6 +31,7 @@ impl Todos {
             &p.title,
             &p.body.unwrap_or_default(),
             &p.blockers.unwrap_or_default(),
+            &ctx.actor,
         )?;
         ctx.touch(Verb::Wrote, &item(todo.id))?;
         ctx.emit(EventData::TodoCreated(todo.clone()));
@@ -143,7 +144,7 @@ impl Module for Todos {
 mod tests {
     use std::sync::Arc;
 
-    use contracts::{Actor, Event};
+    use contracts::{Actor, ActorKind, Event};
     use provenance::Touches;
     use rpc::code;
     use serde_json::json;
@@ -177,6 +178,20 @@ mod tests {
             self.todos.call(&self.ctx, method, params).await
         }
 
+        async fn call_as(
+            &self,
+            actor: Actor,
+            method: &str,
+            params: Value,
+        ) -> Result<Value, RpcError> {
+            let ctx = Ctx {
+                actor,
+                bus: self.ctx.bus.clone(),
+                touches: self.ctx.touches.clone(),
+            };
+            self.todos.call(&ctx, method, params).await
+        }
+
         /// `"<name> <id>"` for each event, oldest first.
         fn events(&mut self) -> Vec<String> {
             let mut seen = Vec::new();
@@ -189,6 +204,12 @@ mod tests {
                 ));
             }
             seen
+        }
+
+        /// The `data` of the next event, for asserting on a field beyond `id`.
+        fn event_data(&mut self) -> Value {
+            let event = self.events.try_recv().unwrap();
+            serde_json::to_value(&event.data).unwrap()["data"].clone()
         }
 
         fn touches(&self, id: u32) -> Vec<(Verb, String)> {
@@ -412,5 +433,137 @@ mod tests {
         let reply = h.call("todo.delete", json!({"id": 2})).await.unwrap();
         assert_eq!(reply, Value::Null);
         assert_eq!(h.events(), ["todo.deleted 2"]);
+    }
+
+    fn agent(id: &str) -> Actor {
+        Actor {
+            kind: ActorKind::Agent,
+            id: id.into(),
+            parent: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn t8_creator_is_the_calling_actor_on_create_list_get_and_the_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path());
+
+        let by_user = h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        assert_eq!(
+            by_user["creator"],
+            serde_json::to_value(Actor::user()).unwrap()
+        );
+        assert_eq!(
+            h.event_data()["creator"],
+            serde_json::to_value(Actor::user()).unwrap()
+        );
+
+        // A `creator` sent in the params is ignored: the caller's own Actor wins.
+        let by_agent = h
+            .call_as(
+                agent("a"),
+                "todo.create",
+                json!({"title": "b", "creator": Actor::user()}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            by_agent["creator"],
+            serde_json::to_value(agent("a")).unwrap()
+        );
+        assert_eq!(
+            h.event_data()["creator"],
+            serde_json::to_value(agent("a")).unwrap()
+        );
+
+        let listed = h.call("todo.list", json!({})).await.unwrap();
+        assert_eq!(
+            listed[1]["creator"],
+            serde_json::to_value(agent("a")).unwrap()
+        );
+        let got = h
+            .call("todo.get", json!({"id": by_agent["id"]}))
+            .await
+            .unwrap();
+        assert_eq!(got["creator"], serde_json::to_value(agent("a")).unwrap());
+    }
+
+    #[tokio::test]
+    async fn t8_update_complete_and_set_blockers_never_change_creator() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path());
+        h.call_as(agent("a"), "todo.create", json!({"title": "x"}))
+            .await
+            .unwrap();
+        h.call("todo.create", json!({"title": "y"})).await.unwrap();
+        let expected = serde_json::to_value(agent("a")).unwrap();
+
+        let updated = h
+            .call("todo.update", json!({"id": 1, "title": "z"}))
+            .await
+            .unwrap();
+        assert_eq!(updated["creator"], expected);
+
+        let completed = h.call("todo.complete", json!({"id": 1})).await.unwrap();
+        assert_eq!(completed["creator"], expected);
+
+        let reblocked = h
+            .call("todo.setBlockers", json!({"id": 1, "blockers": [2]}))
+            .await
+            .unwrap();
+        assert_eq!(reblocked["creator"], expected);
+    }
+
+    #[tokio::test]
+    async fn t8_creator_persists_across_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let h = Harness::new(dir.path());
+            h.call_as(agent("a"), "todo.create", json!({"title": "x"}))
+                .await
+                .unwrap();
+        }
+        let h = Harness::new(dir.path());
+        let got = h.call("todo.get", json!({"id": 1})).await.unwrap();
+        assert_eq!(got["creator"], serde_json::to_value(agent("a")).unwrap());
+    }
+
+    /// A `todos.db` written before `creator` existed, by hand, as T8 asks.
+    #[tokio::test]
+    async fn t8_a_todo_from_before_this_field_reads_as_the_user() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("todos.db");
+        {
+            let old = rusqlite::Connection::open(&db_path).unwrap();
+            old.execute_batch(
+                "CREATE TABLE todos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    done INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE TABLE blockers (
+                    todo INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+                    blocker INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+                    PRIMARY KEY (todo, blocker)
+                );
+                INSERT INTO todos (title, body, created_at) VALUES ('old', '', 0);",
+            )
+            .unwrap();
+        }
+
+        let h = Harness::new(dir.path());
+        let got = h.call("todo.get", json!({"id": 1})).await.unwrap();
+        assert_eq!(got["creator"], serde_json::to_value(Actor::user()).unwrap());
+
+        let created = h
+            .call("todo.create", json!({"title": "new"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            created["creator"],
+            serde_json::to_value(Actor::user()).unwrap()
+        );
     }
 }

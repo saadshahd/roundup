@@ -6,6 +6,7 @@ import { DrawerHost } from "../drawer/DrawerHost";
 import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import { createFakeApp } from "../testing/fakeApp";
 import { event } from "../testing/nodes";
+import { USER } from "../testing/nodes";
 import { todoHandlers } from "../testing/stores";
 import type { TodoStore } from "../testing/stores";
 import { Todos } from "./Todos";
@@ -18,6 +19,7 @@ export const todo = (id: number, over: Partial<Todo> = {}): Todo => ({
   blockers: [],
   blocked: false,
   created_at: 0,
+  creator: USER,
   ...over,
 });
 

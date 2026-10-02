@@ -18,7 +18,7 @@ const USER: Actor = { kind: "user", id: "you", parent: null };
 
 const AGENT: Actor = { kind: "agent", id: "a", parent: null };
 
-const TODO: Todo = { id: 3, title: "refresh tokens", body: "", done: false, blockers: [], blocked: false, created_at: 0 };
+const TODO: Todo = { id: 3, title: "refresh tokens", body: "", done: false, blockers: [], blocked: false, created_at: 0, creator: USER };
 
 const names = (actor: Actor) => (actor.kind === "agent" ? "auth-refactor" : "you");
 

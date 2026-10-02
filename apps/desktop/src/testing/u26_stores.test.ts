@@ -14,6 +14,7 @@ const todo = (id: number, over: Partial<Todo> = {}): Todo => ({
   blockers: [],
   blocked: false,
   created_at: 0,
+  creator: USER,
   ...over,
 });
 
