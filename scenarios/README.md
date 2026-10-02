@@ -22,6 +22,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui-persist.md` | `apps/desktop` (the webview) | U100 |
 | `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
+| `cards.md` | `crates/agents` (Cards), `crates/rup` (`rup permission`), `spikes/hooks-permission` | every `H` heading in the file |
 | `rpc.md` | `crates/rpc` | C1 |
 | `workspace.md` | root files | W1 |
 | `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | every `R` and `K` heading in the file |

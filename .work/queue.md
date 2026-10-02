@@ -60,6 +60,9 @@ Scenario text is on main. The row starts when what it waits on has merged.
 | U132, U133 | visual pass 2, colour and click targets: Kind tones, `--accent`, hover, pressed and focus states, 24 px hit areas | `apps/desktop/src/rail/**`, `apps/desktop/src/drawer/**`, `apps/desktop/src/todos/**`, `apps/desktop/src/pads/**` | every test of those folders | after U130, U137, U35 and U36 merge |
 | U134, U135 | visual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency | `apps/desktop/src/**/*.css`, `apps/desktop/src/drawer/**` | every existing test | after U132 and U133 merge |
 | U136 | the finish line: D1 to D10 pass on `first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`; QA and the critic's baseline shows each check `fixed`, none `regressed` | no Builder; QA, Design critic and Driver | `u136_` | after U134 and U135 merge |
+| H1 | permission reply spike: the real `PermissionRequest` reply recorded | `spikes/hooks-permission/**` | the report and `*.jsonl` | none (needs a login and network; not in `just check`) |
+| H2–H9 | permission Cards in the Daemon: `Card`, `agent.permission`, `card.list`, `card.answer`, `card.opened`, `card.cleared`; `rup permission`; the settings hook line (contract change) | `crates/contracts/**` and generated files, `crates/agents/src/card.rs` (new), `crates/agents/src/claude_code/**`, `crates/agents/src/lib.rs`, `crates/rup/src/main.rs`, `crates/rup/tests/**`, `apps/desktop/src/testing/seeds.ts` | `a1_`, `a4_`, `d2_` tests named for the `PermissionRequest` line | after H1 merges, and after the A14 (#114), A15 and A16 Builder PRs (they edit `crates/agents/src/lib.rs`) |
+| (UI half of Cards) | the Card in the App: its text, `allow` and `deny`, clearing | architect-b writes the scenario; ids from `U100` to `U129` | | after H2–H9 merge |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -151,6 +154,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
+  | H1–H12 | `scenarios/cards.md`, permission Cards, architect-swarm (H1–H9 written; the UI half is architect-b's, from the `U` ranges) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
