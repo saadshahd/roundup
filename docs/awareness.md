@@ -1,6 +1,6 @@
 # Agent awareness
 
-Design for `scenarios/awareness.md` (E1 to E7). Term: Brief (`CONTEXT.md`). Series B (Messages, `docs/messages.md`) and the permission Cards (H) share the channel this uses; nothing here adds a second seam.
+Design for `scenarios/awareness.md` (E1 to E7). Terms: Brief and Channel (`CONTEXT.md`). Series B (Messages, `docs/messages.md`) and the permission Cards (H) share the channel this uses; nothing here adds a second seam.
 
 ## What exists
 
@@ -41,4 +41,4 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 ## Open
 
 - "Its Todos" means Todos the Agent created (T8). A Todo has no assignee; if the user wants assignment, that is a Todo change, not this series.
-- The 15 seconds of E6 is a guess until E7 shows when Claude Code connects.
+- The 15 seconds of E6 is a guess for the interactive TUI until E7 shows when it starts MCP servers; headless starts the server before the first prompt (`spikes/spawn-boundary/REPORT.md`, row `e7`).
