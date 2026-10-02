@@ -35,7 +35,19 @@
   text-overflow: ellipsis;
 }
 
-.pane-screen {
+.pane-body {
+  position: relative;
   flex: 1;
   min-height: 0;
+}
+
+.pane-screen {
+  height: 100%;
+}
+
+.pane-latest {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
 }
