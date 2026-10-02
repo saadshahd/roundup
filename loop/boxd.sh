@@ -20,7 +20,7 @@ OUT=loop/out
 PAUSED=$OUT/PAUSED
 EX_PAUSED=75
 MAX_VMS=${BOXD_MAX_VMS:-12}
-# The agent and the check each get up to AGENT_TIMEOUT / 1800 s; VM_TTL must outlast both plus reboot, upload and the patch step.
+# The agent and the check each get up to AGENT_TIMEOUT / 1800 s; VM_TTL must outlast both plus the reboot wait (at most 60 attempts of 5 s plus 1 s, 360 s), upload and the patch step.
 AGENT_TIMEOUT=${BOXD_AGENT_TIMEOUT:-1800}
 VM_TTL=4200
 VM=
@@ -141,7 +141,7 @@ start_vm() {
   mkdir -p "$OUT/runs"
   acquire_lock
   [ "$(vm_count)" -lt "$MAX_VMS" ] || { echo "boxd.sh: $MAX_VMS ru- VMs already exist" >&2; exit 1; }
-  # The timer outlasts everything that runs after creation (reboot wait 60 s, upload, an agent run of up to AGENT_TIMEOUT, then run_check's 1800 s).
+  # The timer outlasts everything that runs after creation (reboot wait of at most 360 s, upload, an agent run of up to AGENT_TIMEOUT, then run_check's 1800 s).
   # Own the name only once `new` succeeds, so a failed create never removes someone else's VM.
   boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout $VM_TTL >/dev/null </dev/null
   VM="ru-$name"
