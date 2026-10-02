@@ -98,15 +98,19 @@ pub fn conclude(
         skipped: Vec::new(),
     };
 
-    let outcome = misses(&result, budgets)?;
+    let outcome = misses(&result, budgets);
 
-    result.skipped = outcome.skipped.clone();
+    if let Ok(outcome) = &outcome {
+        result.skipped = outcome.skipped.clone();
+    }
 
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
 
     std::fs::write(out, serde_json::to_vec_pretty(&result)?)?;
+
+    let outcome = outcome?;
 
     for line in render(&result, &outcome, out) {
         println!("{line}");

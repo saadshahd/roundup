@@ -166,13 +166,12 @@ fn r8_committed_max_load_per_cpu_pins_the_thresholds_and_exempts_memory_only() {
         );
     }
 
-    assert!(
-        budgets["rss_extra_mb"].max_load_per_cpu.is_empty(),
-        "rss_extra_mb must stay exempt from the load threshold"
-    );
-
     for (name, budget) in &budgets {
-        if name == "rss_extra_mb" {
+        if !name.ends_with("_ms") {
+            assert!(
+                budget.max_load_per_cpu.is_empty(),
+                "{name} is not a time metric and must stay exempt from the load threshold"
+            );
             continue;
         }
 

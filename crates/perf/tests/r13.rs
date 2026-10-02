@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use perf::budget::{Budget, Budgets, Miss, Report, Skipped, misses};
+use perf::budget::{Budget, Budgets, Miss, Report, Skipped, load_per_cpu, misses};
 use perf::gate::{conclude, render};
 
 fn budget(
@@ -51,7 +51,6 @@ fn r13_skipped_above_the_threshold_says_not_compared_with_the_load_and_max() {
         "write_to_output_p95_ms".to_string(),
         budget(None, 0.0, &[("linux", 1.0)], &[("linux", 2.0)]),
     )]);
-    // load per cpu 3.0 on 1 cpu, above the 2.0 threshold.
     let result = report("linux", 1, &[3.0], &[("write_to_output_p95_ms", 1.0)]);
     let outcome = misses(&result, &budgets).unwrap();
 
@@ -78,7 +77,6 @@ fn r13_at_the_threshold_the_regression_test_still_compares() {
         "write_to_output_p95_ms".to_string(),
         budget(None, 0.0, &[("linux", 1.0)], &[("linux", 2.0)]),
     )]);
-    // load per cpu exactly 2.0: at the threshold, not above it.
     let result = report("linux", 1, &[2.0], &[("write_to_output_p95_ms", 2.0)]);
     let outcome = misses(&result, &budgets).unwrap();
 
@@ -92,6 +90,54 @@ fn r13_at_the_threshold_the_regression_test_still_compares() {
                 ceiling: 1.1
             }
         )]
+    );
+}
+
+#[test]
+fn r13_a_threshold_for_another_os_does_not_skip_this_os() {
+    let budgets: Budgets = BTreeMap::from([(
+        "write_to_output_p95_ms".to_string(),
+        budget(None, 0.0, &[("linux", 1.0)], &[("macos", 0.45)]),
+    )]);
+    let result = report("linux", 1, &[50.0], &[("write_to_output_p95_ms", 2.0)]);
+    let outcome = misses(&result, &budgets).unwrap();
+
+    assert!(outcome.skipped.is_empty());
+    assert_eq!(
+        outcome.misses,
+        vec![(
+            "write_to_output_p95_ms".to_string(),
+            Miss::Regressed {
+                baseline: 1.0,
+                ceiling: 1.1
+            }
+        )]
+    );
+}
+
+#[test]
+fn r13_load_per_cpu_is_the_median_of_the_runs_divided_by_cpu_count() {
+    assert_eq!(load_per_cpu(&[1.0, 5.0, 3.0], 2), 1.5);
+}
+
+#[test]
+fn r13_the_skip_summary_reports_the_median_load_per_cpu_over_multiple_runs() {
+    let budgets: Budgets = BTreeMap::from([(
+        "write_to_output_p95_ms".to_string(),
+        budget(None, 0.0, &[("linux", 1.0)], &[("linux", 2.0)]),
+    )]);
+    let result = report(
+        "linux",
+        2,
+        &[10.0, 2.0, 6.0],
+        &[("write_to_output_p95_ms", 1.0)],
+    );
+    let outcome = misses(&result, &budgets).unwrap();
+    let lines = render(&result, &outcome, Path::new("target/perf.json"));
+
+    assert_eq!(
+        lines.last().unwrap(),
+        "skipped 1 regression tests: load 3.00 per cpu"
     );
 }
 
@@ -115,12 +161,28 @@ fn r13_a_limit_still_fails_while_its_regression_test_is_skipped() {
 }
 
 #[test]
+fn r13_a_limit_miss_is_shown_together_with_the_skip_reason() {
+    let budgets: Budgets = BTreeMap::from([(
+        "write_to_output_p95_ms".to_string(),
+        budget(Some(16.0), 0.0, &[("linux", 1.0)], &[("linux", 2.0)]),
+    )]);
+    let result = report("linux", 1, &[3.0], &[("write_to_output_p95_ms", 20.0)]);
+    let outcome = misses(&result, &budgets).unwrap();
+    let lines = render(&result, &outcome, Path::new("target/perf.json"));
+
+    assert!(
+        lines[0].contains("FAIL over limit 16")
+            && lines[0].contains("not compared: load 3.00 per cpu, above 2"),
+        "{lines:?}"
+    );
+}
+
+#[test]
 fn r13_memory_is_compared_whatever_the_load() {
     let budgets: Budgets = BTreeMap::from([(
         "rss_extra_mb".to_string(),
         budget(Some(150.0), 0.05, &[("linux", 1.6)], &[]),
     )]);
-    // load per cpu 50.0: far above every time metric's threshold, but rss_extra_mb has none.
     let result = report("linux", 1, &[50.0], &[("rss_extra_mb", 2.0)]);
     let outcome = misses(&result, &budgets).unwrap();
 
@@ -152,6 +214,58 @@ fn r13_the_skipped_key_is_present_and_empty_when_nothing_was_skipped() {
     let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
 
     assert_eq!(written["skipped"], serde_json::json!([]));
+}
+
+#[test]
+fn r13_the_skipped_key_in_perf_json_holds_the_skipped_metrics() {
+    let cpus = std::thread::available_parallelism().unwrap().get() as f64;
+    let load = cpus * 3.0;
+    let budgets: Budgets = BTreeMap::from([(
+        "write_to_output_p95_ms".to_string(),
+        budget(None, 0.0, &[("linux", 1.0)], &[("linux", 2.0)]),
+    )]);
+    let per_run = BTreeMap::from([("write_to_output_p95_ms".to_string(), vec![1.0])]);
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("perf.json");
+
+    assert!(conclude(per_run, vec![load], &budgets, &out).unwrap());
+
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+
+    assert_eq!(
+        written["skipped"],
+        serde_json::json!([{
+            "metric": "write_to_output_p95_ms",
+            "load_per_cpu": 3.0,
+            "max_load_per_cpu": 2.0,
+        }])
+    );
+}
+
+#[test]
+fn r13_conclude_returns_false_when_a_metric_misses_its_budget() {
+    let budgets: Budgets = BTreeMap::from([(
+        "write_to_output_p95_ms".to_string(),
+        budget(Some(16.0), 0.0, &[], &[]),
+    )]);
+    let per_run = BTreeMap::from([("write_to_output_p95_ms".to_string(), vec![20.0])]);
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("perf.json");
+
+    assert!(!conclude(per_run, vec![0.1], &budgets, &out).unwrap());
+}
+
+#[test]
+fn r13_perf_json_is_still_written_when_the_budget_check_errors() {
+    let budgets: Budgets = BTreeMap::from([(
+        "cold_start_ms".to_string(),
+        budget(Some(300.0), 0.0, &[], &[]),
+    )]);
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("perf.json");
+
+    assert!(conclude(BTreeMap::new(), vec![0.1], &budgets, &out).is_err());
+    assert!(out.exists());
 }
 
 #[test]
@@ -198,7 +312,6 @@ fn r13_exits_0_when_every_metric_was_skipped_and_nothing_exceeded_its_limit() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("perf.json");
 
-    // load per cpu 5.0 on 1 cpu: above both metrics' 2.0 threshold.
     assert!(conclude(per_run, vec![5.0], &budgets, &out).unwrap());
 }
 
