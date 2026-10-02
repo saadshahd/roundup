@@ -24,6 +24,9 @@ const focusableEmulator = (): EmulatorFactory => () => {
     },
     fit: () => ({ cols: 80, rows: 24 }),
     focus: () => field.focus(),
+    isAtBottom: () => true,
+    onScroll: () => {},
+    scrollToBottom: () => {},
     dispose: () => {},
   };
 };
