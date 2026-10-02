@@ -28,7 +28,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | Reviewer | Reads the diff, the linked scenario and `AGENTS.md`, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
 | Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
 | QA | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
-| Design critic | Scores each screenshot against the checklist in its prompt (from `docs/wireframes.md`). Files Todos. | Edits code. |
+| Design critic | After a UI PR is approved, drives the app in the harness, captures screenshots and motion frames, scores them against the written rules in its prompt and writes `artifacts/ux/<id>/report.md`. Files a Todo per broken rule. | Edits code; gates a merge. |
 | Slop sweeper | Deletes dead code and duplication (rule 2). | Adds features. |
 | Triage | Tags each failure with a class and files a Todo; assigns reverts of red main. | Fixes forward. |
 
