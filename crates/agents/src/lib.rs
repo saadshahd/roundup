@@ -1,6 +1,6 @@
 //! Agents, the Rail tree and the Claude Code adapter. Owner: agents Builder.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -55,6 +55,10 @@ struct Shared {
     runs: Mutex<HashMap<String, Slot>>,
     bus: Bus,
     terminals: Arc<Terminals>,
+    /// The same Terminals, behind the seam `stop` and `remove` kill through: real in production,
+    /// a fake in the one test that proves a failed kill deletes nothing (A16), since `Terminals`
+    /// is a concrete type a test cannot otherwise make fail on demand.
+    kill: Arc<dyn KillsTerminals>,
     /// Milliseconds since the Unix epoch. Adapters stamp Statuses with it and the watchers time
     /// Ticks by it, so the two never disagree about when a hold ends.
     clock: Clock,
@@ -62,7 +66,36 @@ struct Shared {
     opened: i64,
 }
 
+/// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
+/// kill that fails without a real process refusing to die.
+#[async_trait]
+trait KillsTerminals: Send + Sync {
+    async fn kill(&self, id: &str) -> Result<(), RpcError>;
+}
+
+#[async_trait]
+impl KillsTerminals for Terminals {
+    async fn kill(&self, id: &str) -> Result<(), RpcError> {
+        Terminals::kill(self, id).await
+    }
+}
+
+/// Kill a Terminal's program; it may have already exited on its own, which is not a failure.
+async fn kill_or_already_gone(
+    kill: &dyn KillsTerminals,
+    terminal_id: &str,
+) -> Result<(), RpcError> {
+    match kill.kill(terminal_id).await {
+        Err(err) if err.code != code::NOT_FOUND => Err(err),
+        _ => Ok(()),
+    }
+}
+
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
+
+/// What `Shared::apply` leaves to do once its locks are let go: the Terminal id and prompt to
+/// type at the first idle, and when, on `clock`, the adapter wants its next `Observation::Tick`.
+type Applied = (Option<(String, String)>, Option<i64>);
 
 impl Shared {
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
@@ -80,6 +113,7 @@ impl Shared {
             Slot::Starting {
                 since,
                 named: false,
+                held: VecDeque::new(),
             },
         );
     }
@@ -126,36 +160,28 @@ impl Shared {
         let mut rail = first_prompt.is_some().then(|| self.rail());
         let (prompt, tick_at) = {
             let mut runs = self.runs();
-            let run = runs
-                .get_mut(id)
-                .and_then(Slot::run_mut)
-                .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
-            let changed = run.adapter.observe(observation);
-            let idle = changed
-                .as_ref()
-                .is_some_and(|status| status.kind == Kind::Idle);
-            // Announced while `runs` is held, so announcements leave in the order the Status
-            // changed; `emit` never blocks.
-            if let Some(status) = changed {
-                let event = StatusEvent {
-                    id: id.to_owned(),
-                    status,
-                };
-                self.bus.emit(actor.clone(), EventData::AgentStatus(event));
-            }
-            if let (Some(rail), Some(name)) = (rail.as_mut(), first_prompt)
-                && !std::mem::replace(&mut run.named, true)
-                && let Some(name) = name
-                && !rail.node(id)?.meta
-            {
-                rail.rename(id, &name)?;
-                self.bus.emit(actor.clone(), EventData::RailChanged);
-            }
-            let prompt = run.prompt.take_if(|_| idle);
-            (
-                prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
-                run.adapter.tick_at(),
-            )
+            let run = match runs.get_mut(id) {
+                Some(Slot::Running(run)) => run,
+                // A14: a Signal here is held, in arrival order, for when the Agent is
+                // registered, instead of `NOT_FOUND`; anything else cannot arrive this early
+                // (`watch` only starts once the Agent is `Running`).
+                Some(Slot::Starting { held, .. }) => {
+                    let Observation::Signal(payload) = observation else {
+                        return Err(RpcError::not_found(format!("agent {id}")));
+                    };
+                    hold(id, held, actor, payload);
+                    return Ok(None);
+                }
+                None => return Err(RpcError::not_found(format!("agent {id}"))),
+            };
+            self.apply(
+                rail.as_deref_mut(),
+                run,
+                id,
+                &actor,
+                observation,
+                first_prompt,
+            )?
         };
         if let Some((terminal_id, prompt)) = prompt {
             tokio::spawn(type_prompt(
@@ -166,6 +192,142 @@ impl Shared {
         }
         Ok(tick_at)
     }
+
+    /// Fold `observation` into `run`, which `observe` has already found `Running`; `rail`, when
+    /// given, is locked by the caller, never here, so a caller draining several Signals under
+    /// one `rail`-then-`runs` lock section (`finish_starting`) is never asked to lock it twice.
+    fn apply(
+        &self,
+        rail: Option<&mut rail::Rail>,
+        run: &mut Run,
+        id: &str,
+        actor: &Actor,
+        observation: Observation,
+        first_prompt: Option<Option<String>>,
+    ) -> Result<Applied, RpcError> {
+        let changed = run.adapter.observe(observation);
+        let idle = changed
+            .as_ref()
+            .is_some_and(|status| status.kind == Kind::Idle);
+        // Announced while `runs` is held, so announcements leave in the order the Status
+        // changed; `emit` never blocks.
+        if let Some(status) = changed {
+            let event = StatusEvent {
+                id: id.to_owned(),
+                status,
+            };
+            self.bus.emit(actor.clone(), EventData::AgentStatus(event));
+        }
+        if let (Some(rail), Some(name)) = (rail, first_prompt)
+            && !std::mem::replace(&mut run.named, true)
+            && let Some(name) = name
+            && !rail.node(id)?.meta
+        {
+            rail.rename(id, &name)?;
+            self.bus.emit(actor.clone(), EventData::RailChanged);
+        }
+        let prompt = run.prompt.take_if(|_| idle);
+        Ok((
+            prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
+            run.adapter.tick_at(),
+        ))
+    }
+
+    /// Swap `id` from `Starting` to `Running` (the Run `build` makes, told whether a
+    /// `rail.rename` already settled its name) and apply every Signal held for it, in arrival
+    /// order, all under one `rail`-then-`runs` lock section: a Signal that arrives once the
+    /// Agent is registered can never be applied ahead of one still held for it (A14), and
+    /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
+    /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
+    /// that left the Agent idle, to type once the locks are let go.
+    fn finish_starting(&self, id: &str, build: impl FnOnce(bool) -> Run) -> Vec<(String, String)> {
+        let mut rail = self.rail();
+        let mut runs = self.runs();
+        let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
+            unreachable!("spawn marks {id} Starting before run_agent runs")
+        };
+        let mut run = build(named);
+        let mut prompts = Vec::new();
+        for (actor, payload) in held {
+            let first_prompt = claude_code::submitted_prompt(&payload).map(name::from_prompt);
+            // Logged, not panicked: a panic here would unwind while `rail` and `runs` are both
+            // still locked, poisoning them and taking every later `rail()`/`runs()` call down
+            // with it. `rail.node(id)` itself cannot be `NOT_FOUND` (a Starting id's Rail node is
+            // removed only by its own failed spawn, which never reaches here), but the write a
+            // held rename makes can still fail on its own account.
+            match self.apply(
+                Some(&mut *rail),
+                &mut run,
+                id,
+                &actor,
+                Observation::Signal(payload),
+                first_prompt,
+            ) {
+                Ok((prompt, _tick_at)) => prompts.extend(prompt),
+                Err(err) => eprintln!(
+                    "agents: could not apply a Signal held for {id} while it was starting: {err}"
+                ),
+            }
+        }
+        runs.insert(id.to_owned(), Slot::Running(run));
+        prompts
+    }
+
+    /// Stop an Agent's program; it stays in the Rail as `done`, unless its program had already
+    /// ended, in which case it keeps the Status that ending gave it. A Meta-agent's children
+    /// move up to where it was and keep running (A7).
+    async fn stop(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
+        let (node, run) = {
+            let rail = self.rail();
+            let node = rail.node(id)?;
+            let run = self.runs().get(id).map(|slot| match slot {
+                Slot::Running(run) => Some(run.terminal_id.clone()),
+                Slot::Starting { .. } => None,
+            });
+            (node, run)
+        };
+        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
+            return Err(RpcError::conflict(format!("{id} is not an Agent")));
+        }
+        match run {
+            Some(Some(terminal_id)) => {
+                self.observe(actor.clone(), id, Observation::Stopped)?;
+                kill_or_already_gone(&*self.kill, &terminal_id).await?;
+            }
+            Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
+            // An earlier Daemon ran it; its Terminal ended with that Daemon.
+            None => {}
+        }
+        if node.kind == NodeKind::Group && self.rail().lift_children(id)? {
+            self.bus.emit(actor, EventData::RailChanged);
+        }
+        Ok(())
+    }
+
+    /// Delete a node from the Rail (A16). An Agent or a Meta-agent is stopped first, as `stop`
+    /// does (A7's lift of a Meta-agent's children included); a plain Terminal is killed instead,
+    /// since `stop` refuses one. Either failing returns its error and deletes nothing, so a
+    /// second `rail.remove` can retry. A plain Group's children move to its own parent, at its
+    /// place, with the delete itself in one transaction (`Rail::remove`): a failed delete there
+    /// leaves them still under it. A Meta-agent's children are already lifted by `stop` by the
+    /// time the delete runs, so a failed delete after that just leaves the node `done` on the
+    /// Rail with no children of its own left to lose. A successful delete also drops `id` from
+    /// `runs`, so a removed Agent's Slot does not sit there forever and a later `agent.signal`
+    /// for it is `NOT_FOUND` again, instead of quietly applying to a node no longer on the Rail.
+    async fn remove(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
+        let node = self.rail().node(id)?;
+        if node.kind == NodeKind::Agent || node.meta {
+            self.stop(actor.clone(), id).await?;
+        } else if node.kind == NodeKind::Terminal
+            && let Some(terminal_id) = &node.terminal_id
+        {
+            kill_or_already_gone(&*self.kill, terminal_id).await?;
+        }
+        self.rail().remove(id)?;
+        self.runs().remove(id);
+        self.bus.emit(actor, EventData::RailChanged);
+        Ok(())
+    }
 }
 
 /// A node's place in `Shared::runs`.
@@ -175,6 +337,9 @@ enum Slot {
         since: i64,
         /// A `rail.rename` came while it started; its first prompt must not undo it.
         named: bool,
+        /// Signals that reached `agent.signal` in this window, in arrival order, applied once
+        /// the Agent is registered (A14).
+        held: VecDeque<(Actor, Value)>,
     },
     Running(Run),
 }
@@ -187,13 +352,21 @@ impl Slot {
             Self::Starting { named, .. } => *named = true,
         }
     }
+}
 
-    fn run_mut(&mut self) -> Option<&mut Run> {
-        match self {
-            Self::Running(run) => Some(run),
-            Self::Starting { .. } => None,
-        }
+/// How many Signals a `Slot::Starting` holds (A14); past this, the oldest is dropped and logged,
+/// as A5 does for a payload the adapter refuses.
+const HELD_BOUND: usize = 8;
+
+fn hold(id: &str, held: &mut VecDeque<(Actor, Value)>, actor: Actor, payload: Value) {
+    if held.len() >= HELD_BOUND {
+        held.pop_front();
+        eprintln!(
+            "agents: dropping the oldest Signal held for {id}: more than {HELD_BOUND} arrived \
+             before it was registered"
+        );
     }
+    held.push_back((actor, payload));
 }
 
 /// An Agent's program and what is left to tell it.
@@ -241,9 +414,13 @@ async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>)
             () = sleep_until(tick.unwrap_or_else(Instant::now)), if tick.is_some() => Observation::Tick,
         };
         let exited = matches!(observation, Observation::Exit { .. });
-        let tick_at = shared
-            .observe(Actor::daemon(), &id, observation)
-            .expect(REGISTERED);
+        let tick_at = match shared.observe(Actor::daemon(), &id, observation) {
+            Ok(tick_at) => tick_at,
+            // `rail.remove` evicts `id` from `runs` once it deletes the node (A16); an Exit
+            // already in flight when that happened has nothing left to watch.
+            Err(err) if err.code == code::NOT_FOUND => return,
+            Err(err) => panic!("{REGISTERED}: {err}"),
+        };
         if exited {
             return;
         }
@@ -278,6 +455,7 @@ impl Agents {
                 rail: Mutex::new(rail::Rail::open(&dir.join("agents.db"))?),
                 runs: Mutex::new(HashMap::new()),
                 bus,
+                kill: Arc::clone(&terminals) as Arc<dyn KillsTerminals>,
                 terminals,
                 clock: Arc::new(now_ms),
                 opened: now_ms(),
@@ -367,42 +545,6 @@ impl Agents {
         Ok(self.shared.present(self.shared.rail().node(id)?))
     }
 
-    /// Stop an Agent's program; it stays in the Rail as `done`, unless its program had already
-    /// ended: then it keeps the Status that ending gave it. A Meta-agent's children move up to
-    /// where it was and keep running.
-    async fn stop(&self, ctx: &Ctx, id: &str) -> Result<(), RpcError> {
-        let (node, run) = {
-            let rail = self.shared.rail();
-            let node = rail.node(id)?;
-            let run = self.shared.runs().get(id).map(|slot| match slot {
-                Slot::Running(run) => Some(run.terminal_id.clone()),
-                Slot::Starting { .. } => None,
-            });
-            (node, run)
-        };
-        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
-            return Err(RpcError::conflict(format!("{id} is not an Agent")));
-        }
-        match run {
-            Some(Some(terminal_id)) => {
-                self.shared
-                    .observe(ctx.actor.clone(), id, Observation::Stopped)?;
-                match self.shared.terminals.kill(&terminal_id).await {
-                    Err(err) if err.code != code::NOT_FOUND => return Err(err),
-                    // It exited on its own first.
-                    _ => {}
-                }
-            }
-            Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
-            // An earlier Daemon ran it; its Terminal ended with that Daemon.
-            None => {}
-        }
-        if node.kind == NodeKind::Group && self.shared.rail().lift_children(id)? {
-            ctx.emit(EventData::RailChanged);
-        }
-        Ok(())
-    }
-
     /// Start Claude Code for node `id`, marked as starting, in a Terminal recorded in the Rail,
     /// then register and watch it; returns the Terminal's id. A failure leaves no settings file
     /// and no Terminal, and the caller unmarks `id`.
@@ -423,17 +565,20 @@ impl Agents {
             }
         };
         let clock = Arc::clone(&self.shared.clock);
-        let named = matches!(
-            self.shared.runs().get(id),
-            Some(Slot::Starting { named: true, .. })
-        );
-        let run = Run {
+        let terminal_id = spawned.id.clone();
+        let prompts = self.shared.finish_starting(id, move |named| Run {
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
             named,
-            terminal_id: spawned.id.clone(),
-        };
-        self.shared.runs().insert(id.to_owned(), Slot::Running(run));
+            terminal_id,
+        });
+        for (terminal_id, prompt) in prompts {
+            tokio::spawn(type_prompt(
+                Arc::clone(&self.shared.terminals),
+                terminal_id,
+                prompt,
+            ));
+        }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
@@ -525,7 +670,7 @@ impl Module for Agents {
             "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
             "agent.stop" => {
                 let NodeId { id } = params(value)?;
-                self.stop(ctx, &id).await?;
+                shared.stop(ctx.actor.clone(), &id).await?;
                 reply(&())
             }
             "rail.promote" => {
@@ -574,6 +719,11 @@ impl Module for Agents {
                 ctx.emit(EventData::RailChanged);
                 reply(&())
             }
+            "rail.remove" => {
+                let NodeId { id } = params(value)?;
+                shared.remove(ctx.actor.clone(), &id).await?;
+                reply(&())
+            }
             _ => Err(RpcError::method_not_found(method)),
         }
     }
@@ -581,10 +731,13 @@ impl Module for Agents {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::thread;
     use std::time::Duration;
 
+    use async_trait::async_trait;
+    use contracts::agent::NodeKind;
     use contracts::terminal::{ExitedEvent, TitleEvent};
     use contracts::{Actor, Event, EventData, Kind};
     use rpc::Bus;
@@ -595,11 +748,29 @@ mod tests {
     use tokio::time::Instant;
 
     use super::claude_code::ClaudeCode;
-    use super::{Clock, Observation, Run, Shared, Slot, rail, shell_name, watch};
+    use super::{Clock, KillsTerminals, Observation, Run, Shared, Slot, rail, shell_name, watch};
 
     const PATIENCE: Duration = Duration::from_secs(60);
     /// Spelled out, not `STAR_HOLD`, so a changed hold fails these tests.
     const HOLD: Duration = Duration::from_millis(200);
+
+    /// A `Shared` wired to a fresh temp-dir Rail and Terminals, paired with the `Bus` it was built
+    /// from so a caller can subscribe to the same events.
+    fn shared_over_temp_dir(clock: Clock) -> (tempfile::TempDir, Bus, Arc<Shared>) {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let terminals = Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap());
+        let shared = Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            kill: Arc::clone(&terminals) as Arc<dyn super::KillsTerminals>,
+            terminals,
+            clock,
+            opened: 0,
+        });
+        (dir, bus, shared)
+    }
 
     /// Agent `1`, watched over a stand-in for its Terminal's events, on tokio's clock, which these
     /// tests pause.
@@ -613,19 +784,10 @@ mod tests {
 
     impl Watched {
         fn start() -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let bus = Bus::new();
             let begun = Instant::now();
             let clock: Clock = Arc::new(move || begun.elapsed().as_millis() as i64);
             let adapter_clock = Arc::clone(&clock);
-            let shared = Arc::new(Shared {
-                rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
-                runs: Mutex::new(HashMap::new()),
-                bus: bus.clone(),
-                terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
-                clock,
-                opened: 0,
-            });
+            let (dir, bus, shared) = shared_over_temp_dir(clock);
             let run = Run {
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
@@ -740,5 +902,344 @@ mod tests {
         assert_eq!(name(Some("fish")), "fish");
         assert_eq!(name(Some("")), "shell");
         assert_eq!(name(None), "shell");
+    }
+
+    /// `watch` only starts once an Agent is `Running`, so in production a non-Signal Observation
+    /// never reaches a `Starting` id; reached directly here, it must still answer the way
+    /// `agent.signal` answers any other unknown id, not pretend the id is already registered.
+    #[test]
+    fn a14_a_non_signal_observation_for_a_starting_id_is_still_not_found() {
+        let (_dir, _bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        shared.runs().insert(
+            "1".into(),
+            Slot::Starting {
+                since: 0,
+                named: false,
+                held: VecDeque::new(),
+            },
+        );
+
+        let err = shared
+            .observe(Actor::daemon(), "1", Observation::Tick)
+            .unwrap_err();
+
+        assert_eq!(err.code, rpc::code::NOT_FOUND);
+    }
+
+    /// A second connection holding a write transaction makes a write through `Rail`'s own
+    /// connection fail with a real SQLite error once rusqlite's default 5 s `busy_timeout`
+    /// elapses, without reaching into `Rail`'s private `db` field.
+    fn lock_db_for_writes(dir: &std::path::Path) -> rusqlite::Connection {
+        let lock = rusqlite::Connection::open(dir.join("agents.db")).unwrap();
+        lock.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        lock
+    }
+
+    /// A held Signal whose `rail.rename` fails (here, because another connection holds the
+    /// write lock) must not panic while `finish_starting` still holds `rail` and `runs`: a panic
+    /// there would poison both mutexes, so every later `rail()`/`runs()` call would panic too.
+    #[test]
+    fn a14_a_failed_rail_write_for_a_held_signal_does_not_poison_the_locks() {
+        let (dir, _bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        let id = shared
+            .rail()
+            .insert(contracts::agent::NodeKind::Agent, "new-agent", None, None)
+            .unwrap()
+            .id;
+        shared.mark_starting(&id);
+        if let Some(Slot::Starting { held, .. }) = shared.runs().get_mut(&id) {
+            held.push_back((
+                Actor::daemon(),
+                json!({"hook_event_name": "UserPromptSubmit", "prompt": "fix the build"}),
+            ));
+        }
+        let lock = lock_db_for_writes(dir.path());
+
+        let prompts = shared.finish_starting(&id, |named| Run {
+            adapter: ClaudeCode::starting(|| 0),
+            prompt: None,
+            named,
+            terminal_id: "1".into(),
+        });
+
+        drop(lock);
+        assert_eq!(prompts, Vec::new());
+        // Neither lock was poisoned by the failed write: both can still be acquired.
+        assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
+        shared.rail().tree().unwrap();
+    }
+
+    /// How many trials `a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one`
+    /// runs. Measured against a `finish_starting` that lets go of `rail` and `runs` right after
+    /// the swap into `Running`, then re-locks `runs` once per held Signal to apply it — the
+    /// regression this test catches if the one `rail`-then-`runs` lock section is ever split:
+    /// over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
+    /// `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug would need to be
+    /// dramatically harder to hit than the one measured to slip past a run.
+    const TRIALS: usize = 20_000;
+
+    /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its drain
+    /// of what was held, so a Signal released the instant the Agent is registered still cannot
+    /// land ahead of the one held for it (A14). So this does not race blindly: a rendezvous over a
+    /// zero-capacity channel holds the late call at the threshold of its own call to `observe`
+    /// until `finish_starting`'s `build` hook — already a plain closure argument, not a new
+    /// public seam — confirms, by having been called at all, that both locks are still held.
+    /// Only then are both sides let go. That leaves exactly the race the fix is answerable for:
+    /// once released, a correct `finish_starting` never lets go of `runs` until every held Signal
+    /// is applied, so the late call cannot win no matter how the OS schedules it; a regressed one
+    /// drops `runs` early and must then win a second, real race to re-lock it before the already-
+    /// waiting late call does — a race this test cannot referee, only repeat (`TRIALS`).
+    #[test]
+    fn a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one() {
+        let (_dir, bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        let mut events = bus.subscribe();
+        for i in 0..TRIALS {
+            let id = i.to_string();
+            shared.runs().insert(
+                id.clone(),
+                Slot::Starting {
+                    since: 0,
+                    named: false,
+                    held: VecDeque::from([(
+                        Actor::daemon(),
+                        json!({"hook_event_name": "PreToolUse", "tool_name": "Bash"}),
+                    )]),
+                },
+            );
+
+            // `build` is called with both locks already held, so reaching here and blocking
+            // proves `finish_starting` cannot have let either go yet.
+            let (holding_tx, holding_rx) = mpsc::sync_channel::<()>(0);
+            let (go_tx, go_rx) = mpsc::sync_channel::<()>(0);
+            let registering = {
+                let shared = Arc::clone(&shared);
+                let id = id.clone();
+                thread::spawn(move || {
+                    shared.finish_starting(&id, |named| {
+                        holding_tx.send(()).unwrap();
+                        go_rx.recv().unwrap();
+                        Run {
+                            adapter: ClaudeCode::starting(|| 0),
+                            prompt: None,
+                            named,
+                            terminal_id: id.clone(),
+                        }
+                    })
+                })
+            };
+            holding_rx.recv().unwrap();
+
+            // A zero-capacity send only completes once this thread is received by the line
+            // below, so by the time it does, the late call's very next step is `observe`.
+            let (about_tx, about_rx) = mpsc::sync_channel::<()>(0);
+            let late = {
+                let shared = Arc::clone(&shared);
+                let id = id.clone();
+                thread::spawn(move || {
+                    about_tx.send(()).unwrap();
+                    shared.observe(
+                        Actor::daemon(),
+                        &id,
+                        Observation::Signal(
+                            json!({"hook_event_name": "Stop", "tool_name": "Bash"}),
+                        ),
+                    )
+                })
+            };
+            about_rx.recv().unwrap();
+            go_tx.send(()).unwrap();
+
+            registering.join().unwrap();
+            late.join().unwrap().unwrap();
+
+            let mut kinds = vec![];
+            while let Ok(event) = events.try_recv() {
+                if let EventData::AgentStatus(s) = event.data
+                    && s.id == id
+                {
+                    kinds.push(s.status.kind);
+                }
+            }
+            assert_eq!(kinds, [Kind::Working, Kind::Idle], "trial {i}");
+        }
+    }
+
+    /// A Terminal kill that always fails, so A16's stop-failure clause doesn't depend on a real
+    /// process refusing to die: `Terminals` is a concrete type, so this is the one seam that can
+    /// make its kill fail on demand.
+    struct FailingKill;
+
+    #[async_trait]
+    impl KillsTerminals for FailingKill {
+        async fn kill(&self, _id: &str) -> Result<(), rpc::RpcError> {
+            Err(rpc::RpcError::internal("the kill failed"))
+        }
+    }
+
+    /// `Shared` wired like `shared_over_temp_dir`, but every kill fails.
+    fn shared_with_a_failing_kill() -> Arc<Shared> {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            terminals: Arc::new(Terminals::open(dir.path(), bus).unwrap()),
+            kill: Arc::new(FailingKill),
+            clock: Arc::new(|| 0),
+            opened: 0,
+        })
+    }
+
+    /// A Running Agent node, with no watcher: the tests here drive `stop`/`remove` directly, so
+    /// nothing reaps its Terminal's events.
+    fn running_agent(shared: &Shared, parent: Option<&str>) -> String {
+        let id = shared
+            .rail()
+            .insert(NodeKind::Agent, "a", parent, Some("1"))
+            .unwrap()
+            .id;
+        shared.runs().insert(
+            id.clone(),
+            Slot::Running(Run {
+                adapter: ClaudeCode::starting(|| 0),
+                prompt: None,
+                named: true,
+                terminal_id: "1".into(),
+            }),
+        );
+        id
+    }
+
+    #[tokio::test]
+    async fn a16_a_failed_stop_returns_the_error_and_deletes_nothing() {
+        let shared = shared_with_a_failing_kill();
+        let id = running_agent(&shared, None);
+
+        let err = shared.remove(Actor::daemon(), &id).await.unwrap_err();
+
+        assert_eq!(err.code, rpc::code::INTERNAL);
+        assert_eq!(shared.rail().tree().unwrap().len(), 1);
+    }
+
+    /// A Meta-agent whose kill fails must not have its children lifted either: `stop` returning
+    /// early before it calls `lift_children` is what this proves.
+    #[tokio::test]
+    async fn a16_a_failed_stop_of_a_meta_agent_leaves_its_children_in_place() {
+        let shared = shared_with_a_failing_kill();
+        let group = shared
+            .rail()
+            .insert(NodeKind::Group, "g", None, None)
+            .unwrap()
+            .id;
+        shared.rail().reserve_meta(&group).unwrap();
+        shared.runs().insert(
+            group.clone(),
+            Slot::Running(Run {
+                adapter: ClaudeCode::starting(|| 0),
+                prompt: None,
+                named: true,
+                terminal_id: "1".into(),
+            }),
+        );
+        let child = shared
+            .rail()
+            .insert(NodeKind::Group, "child", Some(&group), None)
+            .unwrap()
+            .id;
+
+        shared.remove(Actor::daemon(), &group).await.unwrap_err();
+
+        let tree = shared.rail().tree().unwrap();
+        let child_node = tree.iter().find(|n| n.id == child).unwrap();
+        assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    }
+
+    /// A plain Terminal node, with no watcher, for a test that drives `remove` directly.
+    fn terminal_node(shared: &Shared, parent: Option<&str>) -> String {
+        shared
+            .rail()
+            .insert(NodeKind::Terminal, "t", parent, Some("1"))
+            .unwrap()
+            .id
+    }
+
+    #[tokio::test]
+    async fn a16_a_failed_kill_of_a_terminal_returns_the_error_and_deletes_nothing() {
+        let shared = shared_with_a_failing_kill();
+        let id = terminal_node(&shared, None);
+
+        let err = shared.remove(Actor::daemon(), &id).await.unwrap_err();
+
+        assert_eq!(err.code, rpc::code::INTERNAL);
+        assert_eq!(shared.rail().tree().unwrap().len(), 1);
+    }
+
+    /// A Terminal kill that fails once, then succeeds, so a test can retry a stop that failed.
+    struct FlakyKill(std::sync::atomic::AtomicBool);
+
+    #[async_trait]
+    impl KillsTerminals for FlakyKill {
+        async fn kill(&self, _id: &str) -> Result<(), rpc::RpcError> {
+            if self.0.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(rpc::RpcError::internal("the kill failed"))
+            }
+        }
+    }
+
+    /// `Shared` wired like `shared_with_a_failing_kill`, but its kill succeeds from the second
+    /// call on, so a retried `remove` can succeed.
+    fn shared_with_a_flaky_kill() -> (tempfile::TempDir, Arc<Shared>) {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let shared = Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            terminals: Arc::new(Terminals::open(dir.path(), bus).unwrap()),
+            kill: Arc::new(FlakyKill(std::sync::atomic::AtomicBool::new(false))),
+            clock: Arc::new(|| 0),
+            opened: 0,
+        });
+        (dir, shared)
+    }
+
+    /// The Status a failed stop leaves (`done`, from `agent.stop`'s own Stopped observation, set
+    /// before the kill that then fails) is exactly what lets a second `rail.remove` retry and
+    /// succeed.
+    #[tokio::test]
+    async fn a16_a_failed_stops_done_status_lets_a_second_remove_retry_and_succeed() {
+        let (_dir, shared) = shared_with_a_flaky_kill();
+        let id = running_agent(&shared, None);
+
+        let err = shared.remove(Actor::daemon(), &id).await.unwrap_err();
+
+        assert_eq!(err.code, rpc::code::INTERNAL);
+        let node = shared.present(shared.rail().node(&id).unwrap());
+        assert_eq!(node.status.unwrap().kind, Kind::Done);
+
+        shared.remove(Actor::daemon(), &id).await.unwrap();
+
+        assert!(shared.rail().tree().unwrap().is_empty());
+    }
+
+    /// `remove`'s eviction of `id` from `runs` can race a Terminal exit already in flight: the
+    /// watcher must end quietly, not panic through `REGISTERED`'s `.expect`.
+    #[tokio::test(start_paused = true)]
+    async fn a16_a_terminal_exit_after_its_id_is_evicted_from_runs_does_not_panic_the_watcher() {
+        let w = Watched::start();
+        w.shared.runs().remove("1");
+
+        w.send(EventData::TerminalExited(ExitedEvent {
+            id: "1".into(),
+            code: Some(0),
+        }));
+
+        tokio::time::timeout(PATIENCE, w.watcher)
+            .await
+            .expect("the watch ends")
+            .unwrap();
     }
 }

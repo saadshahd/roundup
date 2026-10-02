@@ -177,6 +177,22 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
     return changed(null);
   };
 
+  app.handlers["rail.remove"] = ({ id }) => {
+    const node = find(id);
+
+    if (node.kind === "agent" || node.meta) exit(node.terminal_id ?? `t-${id}`);
+    else if (node.kind === "terminal" && node.terminal_id) exit(node.terminal_id);
+
+    const siblings = nodes.filter((other) => other.parent === node.parent).sort((left, right) => left.order - right.order);
+    const at = siblings.findIndex((other) => other.id === id);
+    const children = nodes.filter((other) => other.parent === id).sort((left, right) => left.order - right.order);
+    siblings.splice(at, 1, ...children.map((child) => Object.assign(child, { parent: node.parent })));
+    siblings.forEach((sibling, order) => Object.assign(sibling, { order }));
+    nodes.splice(nodes.indexOf(node), 1);
+
+    return changed(null);
+  };
+
   app.handlers["terminal.resize"] = () => null;
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.kill"] = (terminalId) => {
