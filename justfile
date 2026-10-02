@@ -57,7 +57,7 @@ app-release project:
     cargo build --release -p desktop --features custom-protocol
     cargo run --release -p desktop --features custom-protocol -- "$path"
 
-# Rule 7 as a command: measures a fresh Daemon (median of 7 runs), writes target/perf.json, fails on a miss against crates/perf/budgets.json.
+# Rule 7 as a command: measures a fresh Daemon (median of 11 runs), writes target/perf.json, fails on a miss against crates/perf/budgets.json.
 perf *args:
     cargo build --release -p rupd -p perf
     ./target/release/perf {{args}}
