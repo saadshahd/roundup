@@ -95,6 +95,16 @@ After the daemon and modules demo (Phase 2), the UI screenshot pack (Phase 3), a
 
 Optional, never required to merge. Use it for unattended Builders (the VM is the sandbox for `--dangerously-skip-permissions`), for parallel Builders (up to `BOXD_MAX_VMS`, default 12), and for web-UI QA runs. See `docs/boxd.md`. The rules for agents using it are in `AGENTS.md`.
 
+## Sweeps, round caps and re-reviews
+
+Three rules that apply to every squad and every PR. They are loop policy, not `AGENTS.md` rules; change them here.
+
+**A sweep's observer counts copies, not lines.** A sweep PR (slop, duplication) passes when each duplicate its queue row names ends as one copy, and the PR adds no new copy of an existing idea. The changed-line count is advisory only, as rule 3 treats PR size: a sweep that adds more lines than it deletes is not a defect when it merges real duplication. A Reviewer checks the named duplicates by reading the diff and `pnpm slop`, not by the line count. (PR #91 closed over +52/-20 although it removed real duplication.)
+
+**A round cap never closes a PR silently.** After a PR's second reject, an architect other than the author picks exactly one of: amend the observer (the row's observer was wrong or unreachable), split the PR (the work is two things), or retire it. The architect writes the reason in the PR's queue row, so the work and what was learned stay in the repo. A PR is never closed by a round count alone, by any squad, and an architect does not choose for a PR they authored.
+
+**A re-review gets the earlier findings.** After a reject, the next Reviewer's input is the diff, the linked scenario, `AGENTS.md` and the earlier verdict comments, and it checks each earlier finding is fixed, then reviews the delta since the head it rejected. Findings on text the new commits did not touch count only when they are correctness defects; a style or taste finding on unchanged text is noted and does not block. Rule 5 bans only the author's rationale, which stays out. The cost is accepted: earlier findings may anchor the Reviewer, and without them docs PRs took up to seven rounds, each finding a new thing in text it had passed.
+
 ## Loop on the loop
 
 Triage tags each failure with a class (contract-drift, flaky-test, vocab, perf, slop-rule, ux-checklist). When one class recurs 3 times in a cycle, the Architect studies the cases, writes the rule as a yes/no question or a machine check, and lands it as a contract-change PR. A rule with no recurrence for 3 cycles is deleted. Each human-gate report lists what changed and why.
