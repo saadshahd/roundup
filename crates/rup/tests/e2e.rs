@@ -162,6 +162,37 @@ async fn d4_ten_idle_agents_cost_the_daemon_less_than_150_mb() {
     assert!(growth_kb < BUDGET_MB * 1024);
 }
 
+/// A test that passes by waiting longer is not a pass (scenario D4): the wait must return once
+/// every watched Agent is Idle, not sit until the deadline.
+#[tokio::test]
+async fn d4_wait_returns_once_every_watched_agent_is_idle_not_at_the_deadline() {
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let mut ids = Vec::new();
+    for _ in 0..3 {
+        let agent = project.spawn_agent(&client).await;
+        signal(
+            &client,
+            &agent.id,
+            json!({ "hook_event_name": "SessionStart" }),
+        )
+        .await;
+        ids.push(agent.id);
+    }
+
+    let started = Instant::now();
+    wait_until_idle(&mut client, &ids, started + TEN_IDLE_BOUND)
+        .await
+        .unwrap();
+
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < TEN_IDLE_BOUND / 3,
+        "wait_until_idle took {elapsed:?} to return once every Agent was Idle, \
+         with a deadline of {TEN_IDLE_BOUND:?} still ahead of it"
+    );
+}
+
 /// Scenario D4's failure output: a miss names each Agent not yet Idle, the status last seen on
 /// the event stream and the Daemon's own `rail.tree` view of it.
 #[tokio::test]

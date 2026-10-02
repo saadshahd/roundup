@@ -154,7 +154,6 @@ pub async fn signal(client: &Client, id: &str, payload: Value) {
     .unwrap();
 }
 
-/// The Daemon's own view of the Rail, bounded like every other call across the socket.
 pub async fn rail_tree(client: &Client) -> Vec<RailNode> {
     let tree = tokio::time::timeout(BOUND, client.request("rail.tree", Value::Null))
         .await
