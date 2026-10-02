@@ -54,19 +54,13 @@ export const Rail = () => {
     const selected = rail.selected();
     const ids = nodeIds();
 
-    if (selected !== null && ids.includes(selected)) return selected;
-
-    return ids[0] ?? null;
+    return ids.find((id) => id === selected) ?? ids[0] ?? null;
   });
-
-  const selectRow = (id: string) => rail.select(id);
 
   const moveFocus = (current: string, direction: 1 | -1) => focusRow(adjacentId(nodeIds(), current, direction));
 
   const onRailKeyDown = (press: KeyboardEvent) => {
-    if (!(press.target instanceof HTMLElement)) return;
-
-    const focusedId = press.target.dataset.id;
+    const focusedId = press.target instanceof HTMLElement ? press.target.dataset.id : undefined;
 
     if (focusedId === undefined) return;
 
@@ -75,7 +69,7 @@ export const Rail = () => {
       moveFocus(focusedId, press.key === "ArrowDown" ? 1 : -1);
     } else if (press.key === "Enter") {
       press.preventDefault();
-      selectRow(focusedId);
+      rail.select(focusedId);
     }
   };
 
@@ -206,7 +200,7 @@ export const Rail = () => {
                           selected={rail.selected() === view().node.id}
                           tabbable={tabbableId() === view().node.id}
                           now={now}
-                          onSelect={() => selectRow(view().node.id)}
+                          onSelect={() => rail.select(view().node.id)}
                           onToggle={() => setCollapsed((open) => toggled(open, view().node.id))}
                           onRename={(name) =>
                             void attempt(() => app.rpc("rail.rename", { id: view().node.id, name }))
