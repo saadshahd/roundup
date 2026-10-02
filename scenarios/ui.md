@@ -142,7 +142,7 @@ Ordered by what each needs; each names its owner files in `.work/queue.md`.
 
 **U49 a Live line never hides what the Agent asked.** Given an Agent whose Status label is longer than the Rail row (`asks: keep v1 routes? …` in a 252px Rail), then the Live line shows `…` (U23) and its `title` is the full label and elapsed time. The pane header (U14) is unchanged.
 
-**U50 the Pad's text fills its Drawer.** Given a Pad's Drawer (U20), then the text field takes the Drawer's remaining height, with no native resize grip, below the owner line and above the last-touch line, whether the user owns the Pad (an editable field) or an Agent does (a read-only field above the `append` field), and the `export .md` button reads in `--grey`. Found: it was fixed at about 219px of a 769px Drawer. Everything U20 says about owning, editing and appending is unchanged. The same PR removes the `PadDrawer.tsx` entry from U4's contrast allowlist, so the `append` word reads in `--grey`.
+**U50 the Pad's text fills its Drawer.** Given a Pad's Drawer (U20), then the text field takes the Drawer's remaining height, with no native resize grip, below the owner line and above the last-touch line, whether the user owns the Pad (an editable field) or an Agent does (a read-only field above the `append` field), and the `export .md` button reads in `--grey`. Found: it was fixed at about 219px of a 769px Drawer. Everything U20 says about owning, editing and appending is unchanged. The same PR removes the `PadDrawer.tsx` entry from U4's contrast allowlist, so the `export .md` button reads in `--grey`.
 
 ## Empty Terminal notch, a diagnosis (U55)
 
