@@ -11,7 +11,7 @@ A squad is one scenario writer, its Builders and its reviewer pool. It writes sc
 | ui-rail | `apps/desktop/src/rail`, `drawer`, `todos`, `pads` | `ui-rail.md` | U61 to U79 |
 | ui-surfaces | `apps/desktop/src` outside those four (switcher, first run, help, pane, empty and error states, and the keystroke probe) | `ui-surfaces.md` | U80 to U99 |
 | daemon | `crates/agents`, `crates/terminal`, `crates/todos`, `crates/pads`, `crates/rupd`, `crates/rup`, `crates/rpc`, `crates/desktop` | `agents.md`, `terminal.md`, `todos.md`, `pads.md`, `daemon.md`, `mcp.md`, `rpc.md`, `app.md` | A17 to A29, X11 to X20, T9 to T15, P10 to P14, D5 to D9, M4 to M6, C2 to C9, S7 to S12 |
-| loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L26 to L39 |
+| loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L32 to L39 (L26 to L31 stay with their holders) |
 | perf | `crates/perf`, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
 
 The architects hold ranges for scenarios they write themselves, and no squad allocates from them: A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59. Ids already in `.work/queue.md` stay with their holders. A squad that runs out of ids asks the committee for the next block. Two squads never edit one scenario file. `ui.md` (U1 to U60) is no squad's file for new ids; an edit to one of its existing scenarios belongs to the squad whose module directory that scenario owns, and the other squads' scenarios go in their own files. A scenario that needs a file another squad owns names it, and the owning squad's writer adds that part.
