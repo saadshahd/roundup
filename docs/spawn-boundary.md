@@ -13,7 +13,7 @@ If a Meta-agent runs Claude Code, it can start children with `bash -c 'claude -p
 | Remove `Bash`, `Agent` and everything unnamed: `--tools Read,Grep,Glob` | Every shell and subagent path in Claude Code's own tools. MCP tools stay. | Tools the user's own MCP servers add; a Meta-agent that must run commands | `t_nobash`, `a_toolsro`, `m_tools`: **guarantee** |
 | Deny rule `Bash(claude:*)` | A direct `claude ...` | `bash -c 'claude ...'` (ran and printed a version) | `d_direct`, `d_bashc`: best effort, weak |
 | `PreToolUse` hook that refuses the command | Any command whose text names a CLI, including inside `bash -c` | Absolute paths, obfuscation; costs one process per Bash call; the model rewrote the command and asked a subagent to run it | `h_blocked`: works, not chosen |
-| `PATH` shim for `claude`, `codex`, `gemini` through `settings.env` | A lookup by name, including inside `bash -c`; fails loud with a message | An absolute path, a renamed copy, a script the Agent writes | `p_shim`: best effort |
+| `PATH` shim for the Adapters' program names (today `claude`) through `settings.env` | A lookup by name; fails loud with a message | An absolute path, a renamed copy, a script the Agent writes | `p_shim`: best effort |
 | Process-tree scan | Nothing; it flags a vendor binary not registered as a Terminal | A renamed binary | not run here; best effort detection |
 | OS sandbox (Seatbelt) with a network allowlist | Could stop a vendor CLI reaching its API from Bash | Escapes, MCP servers and hooks run outside it; it restricts the Agent's real network use | not run: not chosen now |
 
