@@ -57,6 +57,8 @@ export const RailRowView = (props: {
   row: NodeRow;
   exit: ExitState | null;
   selected: boolean;
+  /** Roving tabindex: exactly one row in the Rail is reachable by Tab. */
+  tabbable: boolean;
   now: Accessor<number>;
   onSelect: () => void;
   onToggle: () => void;
@@ -100,6 +102,7 @@ export const RailRowView = (props: {
       data-id={props.row.node.id}
       data-lifted={props.lifted}
       data-shift={props.shift}
+      tabIndex={props.tabbable ? 0 : -1}
       style={{ "padding-left": `${props.row.depth * 2}ch` }}
       onClick={props.onSelect}
       onPointerDown={(press) => {

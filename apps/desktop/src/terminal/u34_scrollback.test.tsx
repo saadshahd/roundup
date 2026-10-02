@@ -1,6 +1,7 @@
 import * as xtermModule from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
 import { cleanup, screen } from "@solidjs/testing-library";
+import { createMemo, createRoot } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SCROLLBACK_LINES, createXtermEmulators, xtermOptions } from "./emulator";
 import type { Emulator } from "./emulator";
@@ -112,15 +113,29 @@ describe("u34 output regardless of selection (U11)", () => {
   });
 });
 
-describe("u34 isAtBottom never creates an emulator", () => {
-  it("u34_isAtBottom_answers_true_for_an_unseen_terminal_without_creating_its_emulator", async () => {
+describe("u34 isAtBottom creates the emulator on demand", () => {
+  it("u34_isAtBottom_creates_the_emulator_for_an_unseen_terminal_and_reports_at_the_bottom", async () => {
     const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
     const { factory, made } = fakeEmulators();
     const screens = createScreens(connected, factory);
 
     const atBottom = screens.isAtBottom("t-a");
 
-    expect([atBottom, made.size]).toEqual([true, 0]);
+    expect([atBottom, made.size]).toEqual([true, 1]);
+  });
+
+  it("u34_isAtBottom_called_before_emulatorFor_still_reacts_to_later_scrolling", async () => {
+    const { app, connected } = await connectFakeProject([node("a")], [info("t-a")]);
+    const { factory, made } = fakeEmulators();
+    const screens = createScreens(connected, factory);
+
+    const atBottom = createRoot(() => createMemo(() => screens.isAtBottom("t-a")));
+    const first = atBottom();
+
+    app.emit(output("t-a", "x"));
+    made.get("t-a")?.scroll(false);
+
+    expect([first, atBottom()]).toEqual([true, false]);
   });
 });
 

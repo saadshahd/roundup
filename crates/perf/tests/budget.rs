@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use perf::budget::{Budget, Budgets, Miss, Report, judge, median, misses};
+use perf::budget::{Budget, Budgets, Miss, Outcome, Report, judge, judge_all, median};
 
 fn budget(limit: Option<f64>, noise: f64, baseline: &[(&str, f64)]) -> Budget {
     Budget {
@@ -12,6 +12,7 @@ fn budget(limit: Option<f64>, noise: f64, baseline: &[(&str, f64)]) -> Budget {
             .iter()
             .map(|(os, value)| (os.to_string(), *value))
             .collect(),
+        max_load_per_cpu: BTreeMap::new(),
     }
 }
 
@@ -26,6 +27,7 @@ fn report(os: &str, metrics: &[(&str, f64)]) -> Report {
             .map(|(name, value)| (name.to_string(), *value))
             .collect(),
         per_run: BTreeMap::new(),
+        skipped: Vec::new(),
     }
 }
 
@@ -85,10 +87,13 @@ fn r6_a_platform_without_a_baseline_is_held_to_the_limit_only() {
 fn r7_a_budget_for_a_metric_that_was_not_measured_is_an_error() {
     let budgets = BTreeMap::from([("cold_start_ms".to_string(), budget(Some(300.0), 0.0, &[]))]);
 
-    assert!(misses(&report("linux", &[]), &budgets).is_err());
+    assert!(judge_all(&report("linux", &[]), &budgets).is_err());
     assert_eq!(
-        misses(&report("linux", &[("cold_start_ms", 20.0)]), &budgets),
-        Ok(vec![])
+        judge_all(&report("linux", &[("cold_start_ms", 20.0)]), &budgets),
+        Ok(Outcome {
+            misses: vec![],
+            skipped: vec![]
+        })
     );
 }
 
@@ -127,6 +132,60 @@ fn r8_every_committed_baseline_gates_within_fifteen_percent_and_the_rest_have_a_
             assert!(
                 ceiling <= baseline * 1.15,
                 "{name} on {os}: ceiling {ceiling} is more than 15% over {baseline}"
+            );
+        }
+    }
+}
+
+#[test]
+fn r8_committed_max_load_per_cpu_pins_the_thresholds_and_exempts_memory_only() {
+    let budgets = committed();
+    let recorded = [
+        ("cold_start_ms", "macos", 0.45),
+        ("write_to_output_p95_ms", "linux", 2.0),
+        ("write_to_output_p95_ms", "macos", 0.45),
+        ("terminal_write_p95_ms", "linux", 2.0),
+        ("terminal_write_p95_ms", "macos", 0.45),
+        ("rail_tree_40_p95_ms", "linux", 2.0),
+        ("rail_tree_40_p95_ms", "macos", 0.45),
+        ("ping_p95_ms", "linux", 2.0),
+    ];
+    let committed_count: usize = budgets.values().map(|b| b.max_load_per_cpu.len()).sum();
+
+    assert_eq!(
+        committed_count,
+        recorded.len(),
+        "a max_load_per_cpu threshold was added or removed"
+    );
+
+    for (name, os, value) in recorded {
+        assert_eq!(
+            budgets[name].max_load_per_cpu.get(os),
+            Some(&value),
+            "{name} on {os}"
+        );
+    }
+
+    for (name, budget) in &budgets {
+        if !name.ends_with("_ms") {
+            assert!(
+                budget.max_load_per_cpu.is_empty(),
+                "{name} is not a time metric and must stay exempt from the load threshold"
+            );
+            continue;
+        }
+
+        for os in budget.baseline.keys() {
+            assert!(
+                budget.max_load_per_cpu.contains_key(os),
+                "{name} has a baseline for {os} but no max_load_per_cpu threshold"
+            );
+        }
+
+        for os in budget.max_load_per_cpu.keys() {
+            assert!(
+                budget.baseline.contains_key(os),
+                "{name} names a max_load_per_cpu threshold for {os} with no baseline there"
             );
         }
     }
