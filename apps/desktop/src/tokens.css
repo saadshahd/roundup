@@ -1,4 +1,4 @@
-/* docs/design-system.md, "Tokens": the only file a colour, font-size, radius, shadow or duration literal may live in. */
+/* The Token file (docs/design-system.md, "Tokens"). styles.css and rail/styles.css still hold colour literals, migrated in a later U130 slice. */
 
 :root {
   --ground: #ffffff;
@@ -30,24 +30,4 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #1c1c1e;
-    --sunken: #141416;
-    --hover: rgba(255, 255, 255, 0.06);
-    --selected: rgba(255, 255, 255, 0.1);
-    --text: #f5f5f7;
-    --grey: #a1a1a6;
-    --accent: #4d9bff;
-    --amber: #f0a030;
-    --red: #ff6b6b;
-    --hairline: rgba(255, 255, 255, 0.12);
-    --shadow-drawer: 0 8px 32px rgba(0, 0, 0, 0.5);
-
-    --radius-row: 6px;
-    --radius-control: 6px;
-    --radius-drawer: 12px;
-  }
 }
