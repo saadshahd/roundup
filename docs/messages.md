@@ -42,7 +42,7 @@ Serves P1 and P3. P1: the user can still address any Agent, and a question never
 
 ## Child summaries
 
-Serves P1 and P3. P3: pushes go to a Meta-agent as `note` Messages, never to the user, and change no Kind. P1: a Meta-agent learns its children through a tool and Messages, so nothing makes the user address the Thread through it. P4: the envelope reads Status labels, Messages, Todos and Pads, never Terminal output or a vendor string. Added contract: `agent.summary` and the type `Summary`; the MCP tool `agent_summary` is offered to Meta-agents only. Tool set per kind of Agent, for this PR alone: M1's tools and B12's four for every Agent, plus `agent_summary` for a Meta-agent. The composer is `crates/messages`, which listens to `agent.status` and the Todo and Pad events; it reads no new input.
+Serves P1 and P3. P3: pushes go to a Meta-agent as `note` Messages, never to the user, and change no Kind. P1: a Meta-agent learns its children through a tool and Messages, so nothing makes the user address the Thread through it. P4: the envelope reads Status labels, Messages, Todos and Pads, never Terminal output or a vendor string. Added contract: `agent.summary` and the type `Summary`; the MCP tool `agent_summary` is offered to Meta-agents only. Tool set per kind of Agent, for this PR alone: M1's tools and B12's four for every Agent, plus `agent_summary` for a Meta-agent. The numbers in B19 to B22 (512 bytes, 20 children, 8 pushes per minute, 20 held, 4096 bytes) are starting values: the Builder measures them, and a later PR may change them. The composer is `crates/messages`, which listens to `agent.status` and the Todo and Pad events; it reads no new input.
 
 ## Contract timing
 
