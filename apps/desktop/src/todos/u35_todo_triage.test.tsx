@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
+import { USER } from "../testing/nodes";
 import { callsTo, mountTodos, rowOf, todo, todoEvent } from "./testHarness";
 
 afterEach(cleanup);
@@ -164,5 +165,55 @@ describe("u35 Todo triage without the Drawer", () => {
     fireEvent.click(rowOf(4));
 
     expect(screen.queryByText(/cannot complete/)).toBeNull();
+  });
+
+  it("u35_tabbing_from_the_row_to_complete_keeps_keyboard_focus_on_it", async () => {
+    const { app } = await mountTodos([todo(3)]);
+    const row = await screen.findByRole("button", { name: /#3/ });
+
+    row.focus();
+    const completeButton = screen.getByText("complete").closest("button");
+
+    if (!completeButton) throw new Error("complete is not a button");
+
+    completeButton.focus();
+
+    expect([document.activeElement, completeButton.isConnected]).toEqual([completeButton, true]);
+
+    fireEvent.click(completeButton);
+
+    await waitFor(() => expect(callsTo(app, "todo.complete")).toEqual([{ method: "todo.complete", params: { id: 3 } }]));
+  });
+
+  it("u35_a_blocked_rows_second_line_changes_only_once_todo_unblocked_refetches_the_list", async () => {
+    const { app, store } = await mountTodos([todo(5, { title: "session store", blocked: true, blockers: [4] }), todo(4, { title: "migrate" })]);
+    await screen.findByText(/^waits on/);
+
+    fireEvent.mouseEnter(rowOf(4));
+    fireEvent.click(screen.getByText("complete"));
+    await waitFor(() => expect(callsTo(app, "todo.complete")).toEqual([{ method: "todo.complete", params: { id: 4 } }]));
+    store.todos = [todo(5, { title: "session store" }), todo(4, { title: "migrate", done: true })];
+
+    // No todo.updated for #5: unblocking only ever reaches the webview as todo.unblocked (T3).
+    expect(screen.getByText(/^waits on/).textContent).toBe("waits on #4");
+
+    app.emit({ actor: USER, name: "todo.unblocked", data: { id: 5 } });
+
+    await waitFor(() => expect(screen.queryByText(/^waits on/)).toBeNull());
+  });
+
+  it("u35_a_rows_shelf_click_listener_is_removed_once_the_shelf_unmounts", async () => {
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+    const { unmount } = await mountTodos([todo(3)]);
+    await screen.findByText(/todo 3/);
+    const added = addSpy.mock.calls.filter(([type]) => type === "click").length;
+
+    unmount();
+
+    const removed = removeSpy.mock.calls.filter(([type]) => type === "click").length;
+    expect([added > 0, removed]).toEqual([true, added]);
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 });

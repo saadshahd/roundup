@@ -26,8 +26,8 @@ const OpenRow = (props: {
   onMount(() => {
     const clear = () => setFailure(null);
 
-    document.addEventListener("click", clear, true);
-    onCleanup(() => document.removeEventListener("click", clear, true));
+    document.addEventListener("click", clear);
+    onCleanup(() => document.removeEventListener("click", clear));
   });
 
   return (
@@ -36,7 +36,13 @@ const OpenRow = (props: {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocusIn={() => setFocused(true)}
-      onFocusOut={() => setFocused(false)}
+      onFocusOut={(event) => {
+        const next = event.relatedTarget;
+
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+
+        setFocused(false);
+      }}
     >
       <div style={{ display: "flex", "justify-content": "space-between", gap: "1ch" }}>
         <RowButton onClick={() => props.onOpen(props.todo)}>
