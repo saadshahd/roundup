@@ -21,10 +21,11 @@ export type Screens = {
   dispose(): void;
 };
 
+type Holder = { emulator: Emulator; atBottom: Accessor<boolean>; setAtBottom: (value: boolean) => void };
+
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
-  const emulators = new Map<string, Emulator>();
-  const bottoms = new Map<string, [Accessor<boolean>, (value: boolean) => void]>();
+  const holders = new Map<string, Holder>();
   const [failure, setFailure] = createSignal<string | null>(null);
 
   const exited = (id: string): boolean => {
@@ -45,9 +46,9 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   };
 
   const emulatorFor = (id: string): Emulator => {
-    const known = emulators.get(id);
+    const known = holders.get(id);
 
-    if (known) return known;
+    if (known) return known.emulator;
 
     const emulator = createEmulator(id);
     const [atBottom, setAtBottom] = createSignal(true);
@@ -81,8 +82,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
       if (!writing) void flush();
     });
-    emulators.set(id, emulator);
-    bottoms.set(id, [atBottom, setAtBottom]);
+    holders.set(id, { emulator, atBottom, setAtBottom });
 
     return emulator;
   };
@@ -111,23 +111,29 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
       }
     },
+    // The caller must have created the Terminal's emulator (emulatorFor) before asking whether it is at the bottom.
     isAtBottom: (id) => {
-      emulatorFor(id);
+      const holder = holders.get(id);
 
-      return bottoms.get(id)?.[0]() ?? true;
+      if (!holder) throw new Error(`isAtBottom: no emulator yet for terminal ${id}`);
+
+      return holder.atBottom();
     },
     returnToBottom: (id) => {
-      emulatorFor(id).scrollToBottom();
-      bottoms.get(id)?.[1](true);
+      const holder = holders.get(id);
+
+      if (!holder) throw new Error(`returnToBottom: no emulator yet for terminal ${id}`);
+
+      holder.emulator.scrollToBottom();
+      holder.setAtBottom(true);
     },
     failure,
     dispose: () => {
       stopListening();
 
-      for (const emulator of emulators.values()) emulator.dispose();
+      for (const holder of holders.values()) holder.emulator.dispose();
 
-      emulators.clear();
-      bottoms.clear();
+      holders.clear();
     },
   };
 };

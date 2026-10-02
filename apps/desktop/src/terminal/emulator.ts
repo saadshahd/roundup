@@ -21,7 +21,6 @@ export type Emulator = {
   isAtBottom(): boolean;
   /** Fires whenever the view's scroll position changes. */
   onScroll(listener: () => void): void;
-  /** Moves the view to the newest line. */
   scrollToBottom(): void;
   dispose(): void;
 };
@@ -58,7 +57,6 @@ const encoder = new TextEncoder();
 /** Rule 7's 150 MB budget for ten idle Agents must hold under a Terminal that prints without end. */
 export const SCROLLBACK_LINES = 10_000;
 
-/** What every real xterm emulator is constructed with. */
 export const xtermOptions: ITerminalOptions = {
   fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: 13,

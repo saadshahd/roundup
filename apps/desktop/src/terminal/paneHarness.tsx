@@ -21,7 +21,6 @@ type FakeEmulator = Emulator & {
   fits: number;
   disposed: boolean;
   type(bytes: Uint8Array): void;
-  /** How many times `scrollToBottom` was called. */
   scrollsToBottom: number;
   /** Simulates the user scrolling the view, as a wheel or drag would. */
   scroll(atBottom: boolean): void;

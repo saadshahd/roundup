@@ -5,7 +5,15 @@ import { createXtermEmulators } from "./emulator";
 import type { EmulatorFactory } from "./emulator";
 import { isStoppable, paneHeader } from "./header";
 import { createScreens } from "./screens";
+import type { Screens } from "./screens";
 import "./styles.css";
+
+// screens.isAtBottom throws for a Terminal with no emulator yet; emulatorFor here creates it before the read.
+const isShownAtBottom = (screens: Screens, id: string): boolean => {
+  screens.emulatorFor(id);
+
+  return screens.isAtBottom(id);
+};
 
 /**
  * The selected row's Terminal. Every error line of the centre lives in the pane's one fixed-height slot, so the
@@ -94,7 +102,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         <div class="pane-screen" ref={setScreen} />
         <Show when={terminalId()}>
           {(id) => (
-            <Show when={!screens.isAtBottom(id())}>
+            <Show when={!isShownAtBottom(screens, id())}>
               <button type="button" class="word pane-latest" onClick={() => screens.returnToBottom(id())}>
                 ↓ latest
               </button>
