@@ -96,6 +96,7 @@ const todosAt = (now: number): Todo[] =>
     blockers: index === 3 ? [3, 5] : [],
     blocked: index === 3,
     created_at: now,
+    creator: USER,
   }));
 
 const padsAt = (now: number): Pad[] =>

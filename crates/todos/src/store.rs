@@ -4,9 +4,13 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use contracts::Actor;
 use contracts::todo::Todo;
 use rpc::RpcError;
 use rusqlite::{Connection, OptionalExtension, params};
+
+/// What a Todo's `creator` column holds before this field existed: the user, by definition (T8).
+const LEGACY_CREATOR: &str = r#"{"kind":"user","id":"you","parent":null}"#;
 
 pub(crate) struct Store {
     db: Connection,
@@ -17,21 +21,38 @@ impl Store {
         let db = Connection::open(path)?;
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.pragma_update(None, "foreign_keys", true)?;
-        db.execute_batch(
+        db.execute_batch(&format!(
             "CREATE TABLE IF NOT EXISTS todos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 body TEXT NOT NULL,
                 done INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL
+                created_at INTEGER NOT NULL,
+                creator TEXT NOT NULL DEFAULT '{LEGACY_CREATOR}'
             );
             CREATE TABLE IF NOT EXISTS blockers (
                 todo INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
                 blocker INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
                 PRIMARY KEY (todo, blocker)
-            );",
-        )?;
+            );"
+        ))?;
+        Self::migrate_creator_column(&db)?;
         Ok(Self { db })
+    }
+
+    /// A `todos.db` from before T8 has no `creator` column; such a Todo is the user's (T8).
+    fn migrate_creator_column(db: &Connection) -> rusqlite::Result<()> {
+        let has_creator: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('todos') WHERE name = 'creator'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_creator {
+            db.execute_batch(&format!(
+                "ALTER TABLE todos ADD COLUMN creator TEXT NOT NULL DEFAULT '{LEGACY_CREATOR}'"
+            ))?;
+        }
+        Ok(())
     }
 
     /// Every id in `blockers` must exist, or the call is `NOT_FOUND`.
@@ -40,6 +61,7 @@ impl Store {
         title: &str,
         body: &str,
         blockers: &[u32],
+        creator: &Actor,
     ) -> Result<Todo, RpcError> {
         self.require_all(blockers)?;
         let created_at = i64::try_from(
@@ -54,8 +76,8 @@ impl Store {
             .unchecked_transaction()
             .map_err(RpcError::internal)?;
         tx.execute(
-            "INSERT INTO todos (title, body, created_at) VALUES (?1, ?2, ?3)",
-            params![title, body, created_at],
+            "INSERT INTO todos (title, body, created_at, creator) VALUES (?1, ?2, ?3, ?4)",
+            params![title, body, created_at, creator_json(creator)],
         )
         .map_err(RpcError::internal)?;
         let id = u32::try_from(tx.last_insert_rowid()).map_err(RpcError::internal)?;
@@ -68,16 +90,25 @@ impl Store {
         let row = self
             .db
             .query_row(
-                "SELECT title, body, done, created_at, EXISTS(
+                "SELECT title, body, done, created_at, creator, EXISTS(
                     SELECT 1 FROM blockers b JOIN todos o ON o.id = b.blocker
                     WHERE b.todo = todos.id AND o.done = 0
                 ) FROM todos WHERE id = ?1",
                 [id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get::<_, String>(4)?,
+                        r.get(5)?,
+                    ))
+                },
             )
             .optional()
             .map_err(RpcError::internal)?;
-        let (title, body, done, created_at, blocked) =
+        let (title, body, done, created_at, creator, blocked) =
             row.ok_or_else(|| RpcError::not_found(format!("todo {id}")))?;
         Ok(Todo {
             id,
@@ -87,6 +118,7 @@ impl Store {
             blockers: self.blockers_of(id)?,
             blocked,
             created_at,
+            creator: parse_creator(&creator).map_err(RpcError::internal)?,
         })
     }
 
@@ -185,5 +217,23 @@ impl Store {
 
     pub(crate) fn require_all(&self, ids: &[u32]) -> Result<(), RpcError> {
         ids.iter().try_for_each(|id| self.get(*id).map(drop))
+    }
+}
+
+fn creator_json(creator: &Actor) -> String {
+    serde_json::to_string(creator).expect("an Actor is always serializable")
+}
+
+fn parse_creator(text: &str) -> serde_json::Result<Actor> {
+    serde_json::from_str(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_creator_matches_actor_user() {
+        assert_eq!(parse_creator(LEGACY_CREATOR).unwrap(), Actor::user());
     }
 }
