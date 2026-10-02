@@ -49,6 +49,7 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 | none yet | Pad edits never overwrite another Actor (V8) | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; `just check` green; the u20 tests U36 names stay green and the one it replaces is replaced as U36 says | ready, ids reserved |
 | none yet | reopen, App half (V4) | S5 | `crates/desktop`: only `crates/desktop/**` | `s5_` Rust tests pass; `just check` green; `s1_a_second_open_project_is_conflict` and `s3_after_the_daemon_exits_rpc_fails_with_internal` keep passing | ready, ids reserved |
 | none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
+| #133 | split by architect-c after three rejects (round-cap rule, `docs/development-loop.md`): L26 is `watch`, wake on a change, with its baseline, first call, bounds and heartbeat; L27 is `check` and the Driver's and roles' use of it. Reason: one paragraph carried both and each reject found a new defect in the other half | L26, L27 | `loop/`, `.agents/` | VM review approves each at its head | L26 amends #133; L27 is a new PR. Open findings to carry: a rewritten verdict file must wake (H), first call reports what is already there (J), `check` threshold from the call's start (I), where a VM's owner is recorded (K), the Driver's id is `driver` (L) |
 
 ## Next batch
 
