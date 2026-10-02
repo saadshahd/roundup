@@ -33,13 +33,7 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|| exe.parent().unwrap_or_else(|| Path::new(".")).join("rupd"));
         let socket = socket_dir.join(format!("roundup-{pid}.sock"));
-        let bytes = socket.as_os_str().len();
-        if bytes >= SOCKET_PATH_LIMIT {
-            return Err(format!(
-                "the Daemon socket path {} is {bytes} bytes; a unix socket path must be under {SOCKET_PATH_LIMIT}",
-                socket.display()
-            ));
-        }
+        check_limit(&socket)?;
         Ok(Self {
             rupd_bin,
             socket,
@@ -50,16 +44,21 @@ impl Config {
 
     /// The socket path for one Daemon run: `socket` unchanged for the first (`run` 0), and a
     /// fresh path for each further run (a reopen, S5) so the old and new Daemon never share one.
-    pub fn socket_for_run(&self, run: u64) -> PathBuf {
+    /// A reopen whose prefixed path would break the 104-byte limit is refused here, before the
+    /// App ever asks `rupd` to bind it (S5 keeps S1's "under the 104-byte limit" exactly).
+    pub(crate) fn socket_for_run(&self, run: u64) -> Result<PathBuf, String> {
         if run == 0 {
-            return self.socket.clone();
+            return Ok(self.socket.clone());
         }
         let file_name = self
             .socket
             .file_name()
             .expect("the socket path has a file name");
-        self.socket
-            .with_file_name(format!("{run}-{}", file_name.to_string_lossy()))
+        let path = self
+            .socket
+            .with_file_name(format!("{run}-{}", file_name.to_string_lossy()));
+        check_limit(&path)?;
+        Ok(path)
     }
 
     pub fn from_env() -> Result<Self, String> {
@@ -71,5 +70,49 @@ impl Config {
             &std::env::temp_dir(),
             std::process::id(),
         )
+    }
+}
+
+fn check_limit(socket: &Path) -> Result<(), String> {
+    let bytes = socket.as_os_str().len();
+    if bytes >= SOCKET_PATH_LIMIT {
+        return Err(format!(
+            "the Daemon socket path {} is {bytes} bytes; a unix socket path must be under {SOCKET_PATH_LIMIT}",
+            socket.display()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Mirrors `s1_a_socket_path_of_103_bytes_is_accepted_and_104_is_rejected` (`tests/app.rs`):
+    /// builds a base socket path of an exact byte length so a reopen's `{run}-` prefix can be
+    /// pushed past the limit on purpose.
+    fn dir_of(socket_len: usize) -> PathBuf {
+        let socket_name_len = "/roundup-1.sock".len();
+        PathBuf::from(format!("/{}", "d".repeat(socket_len - socket_name_len - 1)))
+    }
+
+    #[test]
+    fn s5_a_reopen_whose_prefixed_path_would_break_the_limit_is_refused_up_front() {
+        let config = Config::locate(None, Path::new("/a/roundup"), &dir_of(102), 1).unwrap();
+        assert_eq!(config.socket.as_os_str().len(), 102);
+
+        let reopened = config.socket_for_run(1);
+
+        let err = reopened.expect_err("a 104-byte reopen path must be refused, not bind-failed");
+        assert!(err.contains("104"));
+    }
+
+    #[test]
+    fn s5_a_reopen_whose_prefixed_path_stays_under_the_limit_is_accepted() {
+        let config = Config::locate(None, Path::new("/a/roundup"), &dir_of(101), 1).unwrap();
+
+        let reopened = config.socket_for_run(1).unwrap();
+
+        assert_eq!(reopened.as_os_str().len(), 103);
     }
 }

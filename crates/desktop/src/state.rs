@@ -195,7 +195,10 @@ impl AppState {
             name: named_after(path),
             path: path.display().to_string(),
         };
-        let socket = self.config.socket_for_run(run);
+        let socket = self
+            .config
+            .socket_for_run(run)
+            .map_err(RpcError::internal)?;
         let started = daemon::start(&self.config, path, &socket).await?;
         *self.phase() = Phase::Open(Open {
             project: project.clone(),
