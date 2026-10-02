@@ -77,6 +77,25 @@ describe("u34 bounded scrollback", () => {
   });
 });
 
+describe("u34 screens keep the latest control hidden through the real emulator's own scroll events", () => {
+  it("u34_output_landing_at_the_bottom_does_not_flip_atBottom_despite_many_scroll_events", async () => {
+    const spy = vi.spyOn(xtermModule, "Terminal");
+    const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
+    const screens = createScreens(connected, createXtermEmulators());
+
+    screens.isAtBottom("t-a");
+
+    // SAFETY: the one Terminal the spy observed is the instance createScreens just constructed for "t-a".
+    const terminal = spy.mock.instances[0] as Terminal;
+
+    spy.mockRestore();
+
+    for (let line = 0; line < 50; line++) await write(terminal, `line ${line}\r\n`);
+
+    expect(screens.isAtBottom("t-a")).toBe(true);
+  });
+});
+
 describe("u34 output regardless of selection (U11)", () => {
   it("u34_output_is_still_handed_to_the_emulator_in_order_whether_or_not_its_row_is_selected", async () => {
     const { app, connected, emulators } = await mountPane([node("a"), node("b")], [info("t-a"), info("t-b")]);
