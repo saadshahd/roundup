@@ -4,22 +4,32 @@ export const PATIENCE_MS = 500;
 /** Keys typed and thrown away first, so the first renders (font load, glyph atlas) do not count. */
 export const WARMUP_KEYS = 100;
 
-export type Summary = { n: number; dropped: number; p50: number; p95: number; p99: number; max: number };
+export type Summary = {
+  n: number;
+  dropped: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  max: number;
+};
 
 /** Nearest rank, the same rule as `crates/perf`. */
 const percentile = (sorted: number[], share: number): number => {
   const value = sorted[Math.max(Math.ceil(share * sorted.length), 1) - 1];
 
-  if (value === undefined) throw new Error("no key was echoed and rendered after the warm-up");
+  if (value === undefined)
+    throw new Error("no key was echoed and rendered after the warm-up");
 
   return value;
 };
+
+type Pending = { key: number; at: number; echoed: boolean; counted: () => void };
 
 /** Keydown to the first render that shows its echo. A render before the echo reached the screen's buffer is the previous frame's and does not count. */
 export const createKeystrokeProbe = (now: () => number, typed: string) => {
   const latencies: { key: number; ms: number }[] = [];
   const droppedKeys: number[] = [];
-  let pending: { key: number; at: number; echoed: boolean; counted: () => void } | null = null;
+  let pending: Pending | null = null;
   let keys = 0;
 
   return {
@@ -33,7 +43,8 @@ export const createKeystrokeProbe = (now: () => number, typed: string) => {
       }),
     /** Called with each chunk the emulator has parsed. Only the typed character itself is the echo; anything else is the program's own output. */
     written: (bytes: Uint8Array) => {
-      if (pending && new TextDecoder().decode(bytes) === typed) pending.echoed = true;
+      if (pending && new TextDecoder().decode(bytes) === typed)
+        pending.echoed = true;
     },
     rendered: () => {
       if (!pending?.echoed) return;
@@ -52,8 +63,7 @@ export const createKeystrokeProbe = (now: () => number, typed: string) => {
     /** `skip` is the number of leading keys typed, whether or not they came back: warm-up drops stay out of the count. */
     summary: (skip: number): Summary => {
       const sorted = latencies
-        .filter(({ key }) => key >= skip)
-        .map(({ ms }) => ms)
+        .flatMap(({ key, ms }) => (key >= skip ? [ms] : []))
         .sort((a, b) => a - b);
 
       return {
@@ -78,7 +88,11 @@ export type Surroundings = {
 };
 
 /** Types `count` keys one at a time, 20 to 40 ms apart so the key's phase against the display frame is not constant. */
-export const typeKeys = async (probe: KeystrokeProbe, surroundings: Surroundings, count: number): Promise<void> => {
+export const typeKeys = async (
+  probe: KeystrokeProbe,
+  surroundings: Surroundings,
+  count: number,
+): Promise<void> => {
   for (let key = 0; key < count; key += 1) {
     const echoed = probe.keydown();
 
