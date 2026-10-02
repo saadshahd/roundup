@@ -128,6 +128,8 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
+  | A17, A18, D5–D7, T9, P10 | #125, daemon squad robustness (A18 stacks after A14, #114) |
+  | A19 | a removed node's id is never reused: written after A16 (#120) merges; reserved to the daemon squad |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
