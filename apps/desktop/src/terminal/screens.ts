@@ -12,14 +12,24 @@ export type Screens = {
   resize(id: string, size: Size): void;
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
   stop(node: RailNode): void;
+  /**
+   * Whether the Terminal's view sits at its newest line; false once the user has scrolled up. Creates the
+   * Terminal's emulator if none exists yet (true for that first read), so a caller never needs `emulatorFor`
+   * called first for this to stay reactive.
+   */
+  isAtBottom(id: string): boolean;
+  /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
+  returnToBottom(id: string): void;
   /** The last call or `terminal.output` that failed, until a later call succeeds. */
   failure: Accessor<string | null>;
   dispose(): void;
 };
 
+type Holder = { emulator: Emulator; atBottom: Accessor<boolean>; returnToBottom: () => void };
+
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
-  const emulators = new Map<string, Emulator>();
+  const holders = new Map<string, Holder>();
   const [failure, setFailure] = createSignal<string | null>(null);
 
   const exited = (id: string): boolean => {
@@ -39,12 +49,13 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     }
   };
 
-  const emulatorFor = (id: string): Emulator => {
-    const known = emulators.get(id);
+  const holderFor = (id: string): Holder => {
+    const known = holders.get(id);
 
     if (known) return known;
 
     const emulator = createEmulator(id);
+    const [atBottom, setAtBottom] = createSignal(true);
     // Tauri may run two `rpc` calls out of order, so at most one write is in flight; what is typed meanwhile goes as one write.
     let typed: number[] = [];
     let writing = false;
@@ -64,17 +75,29 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       }
     };
 
+    const returnToBottom = () => {
+      emulator.scrollToBottom();
+      setAtBottom(true);
+    };
+
+    emulator.onScroll(() => setAtBottom(emulator.isAtBottom()));
     emulator.onInput((bytes) => {
       if (exited(id) || daemonExit() !== null) return;
+
+      returnToBottom();
 
       for (const byte of bytes) typed.push(byte);
 
       if (!writing) void flush();
     });
-    emulators.set(id, emulator);
+    const holder: Holder = { emulator, atBottom, returnToBottom };
 
-    return emulator;
+    holders.set(id, holder);
+
+    return holder;
   };
+
+  const emulatorFor = (id: string): Emulator => holderFor(id).emulator;
 
   const stopListening = output.subscribe((chunk) => {
     // A throw escapes into the Tauri Channel callback, which then never advances its message index, so every later
@@ -100,13 +123,15 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
       }
     },
+    isAtBottom: (id) => holderFor(id).atBottom(),
+    returnToBottom: (id) => holderFor(id).returnToBottom(),
     failure,
     dispose: () => {
       stopListening();
 
-      for (const emulator of emulators.values()) emulator.dispose();
+      for (const holder of holders.values()) holder.emulator.dispose();
 
-      emulators.clear();
+      holders.clear();
     },
   };
 };

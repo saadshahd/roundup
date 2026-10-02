@@ -37,6 +37,9 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
     show: () => ({ cols: 80, rows: 24 }),
     fit: () => ({ cols: 80, rows: 24 }),
     focus: () => focused.push("t-a"),
+    isAtBottom: () => true,
+    onScroll: () => {},
+    scrollToBottom: () => {},
     dispose: () => {},
   };
 

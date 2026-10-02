@@ -56,13 +56,13 @@ Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, 
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
-| U39 | `?perf` keystroke-to-render hook | `apps/desktop/src/perf/**`, one line in `src/main.tsx` | all existing tests | now |
 | C1 | a dropped call is `UNKNOWN_OUTCOME`, not a failure | `crates/rpc/**`, plus every caller of `request` that matches `INTERNAL` for a drop, listed in the PR | `s3_after_the_daemon_exits_rpc_fails_with_internal` | now |
 | A13 | refuse a symlinked `.roundup/agents` | `crates/agents/**` | `a4_a_symlinked_config_is_written_through_and_stays_a_link`, `a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through` | now |
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now |
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests | now |
 | audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | now |
 | sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**`; not `crates/perf/**` (audit-perf owns it) | every existing test unchanged | now; the Architect has not verified where the duplicates are, so the Builder first lists each duplicated block in the PR, and stops and reports if sharing needs a new crate |
+| R13 | load-aware perf comparison: `max_load_per_cpu` (OS to number, beside `baseline`) in `crates/perf/budgets.json`, skipped regression tests printed and listed in `target/perf.json`; also amends AGENTS.md rule 7 and docs/perf.md | `crates/perf/**`, `AGENTS.md` rule 7, `docs/perf.md` | the R1–R12 and K tests, and #95's baselines in `budgets.json` | after #95 merges (same crate, same files; #93 is merged); no Builder yet, the lead dispatches |
 | U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
 | U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
 | U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
@@ -75,7 +75,9 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
-| held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
+| contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
+| notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
+| U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -89,6 +91,10 @@ The coverage audit: every scenario id in `scenarios/*.md` has a test with its lo
 - packaging (a signed `.app`).
 
 ## Swarm protocol
+
+**Stacking.** A Builder may branch from an unmerged base PR's branch when its scenario says "after X" or "may stack", opens its PR against `main` as `AGENTS.md` says, and merges only after its base has merged. Its own commits touch no file its base's commits touch, so the two stay reviewable apart.
+
+**Writers.** A writer is an agent that writes scenarios and no code: the Architect gives it one scenario file and one id range, and records both in the id table below. It owns the scenario file and the id range the Architect gave it, edits no other scenario file and not this file, and never decides a contract change, a new RPC method or an App seam command; those and any change to a merged scenario go to the Architect.
 
 Agents coordinate only through this repo: this file, `scenarios/`, PRs and their commit trailers. The WIP limit, the `Claimed-by:` line and the one-day claim expiry are queue policy added by the Architect, not `AGENTS.md` rules; change them here.
 
@@ -117,7 +123,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U36 | Pad edit safety, boxd-agents |
   | U37 | reopen, webview half |
   | U38 | empty states |
-  | U39 | `?perf` hook |
+  | U39 | retired: superseded by #93's build-time probe (`just perf-keystroke`, K1 to K3, R11); #90 closed. Rule 7's keystroke-to-render number is #93's real-window p95 in WKWebView, one probe and one pairing rule (the first render after the emulator parsed the typed character itself); no second in-app hook that pairs a keystroke with any later output, because it can end early on unrelated output and so bounds nothing. The Daemon-side cheap bound already exists as `just perf`'s write-to-output limit (R8) |
   | U40 | the Drawer's focus |
   | U41 | Rail by keyboard, the rest |
   | U42 | dropped: a false positive (a stuck key in the test driver), never an app defect |
@@ -125,10 +131,40 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
+  | U51 | quick switcher |
+  | U52 | first run: recent folders and the `claude` line |
+  | U53 | Todos list motion |
+  | U54 | keyboard help on `?` |
+  | U55 | diagnose the empty-Terminal notch |
+  | U56 | right-click menu: stop, remove |
+  | U57 | no pane header |
+  | U58 | an Agent's Pads under it |
+  | U59 | the terminal blends with the app |
+  | U60 | an Agent's Todos under it |
+  | R11, R12 | #93, keystroke probe (merged) |
+  | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
+  | A14 | hold an early Signal until the Agent is registered |
+  | A15 | clean environment for every program the Daemon starts |
+  | A16 | `rail.remove` |
+  | T8 | `Todo.creator` |
+  | S6 | first-run facts in the App seam (`recent_projects`, `claude_binary`) |
+  | S7 | the smallest window (640 by 400) |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
+  | L16 | `review` replays an empty approval commit |
+  | L17–L20 | loop hardening: run logs, swarm throttle, run events and retry, ref per prompt |
+  | L21 | streamed agent run |
+  | L22 | `review` keeps the branch's trailers across a merge |
+  | L23 | VM tools |
+  | L24 | agent search servers |
+  | L25 | design critic run |
+  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check` |
+  | L40 | `boxd check` does not depend on files outside the checkout (round cap on #140: amend; one more reject on the same clause retires it) |
+  | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
+  | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
+  | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.

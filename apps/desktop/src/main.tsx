@@ -13,4 +13,11 @@ const app = createTauriApp();
 
 const reducedMotion = createRoot(() => createReducedMotion((query) => window.matchMedia(query)));
 
-render(() => <App app={app} reducedMotion={reducedMotion} clock={Date.now} />, root);
+// Only a build made with VITE_ROUNDUP_PERF carries the keystroke run; Vite drops the branch and the import from every other build (K1).
+const keystrokes = import.meta.env.VITE_ROUNDUP_PERF
+  ? await import("./perf/run").then(({ createKeystrokeRun }) => createKeystrokeRun(app))
+  : null;
+
+render(() => <App app={app} reducedMotion={reducedMotion} clock={Date.now} createEmulator={keystrokes?.createEmulator} />, root);
+
+void keystrokes?.start();

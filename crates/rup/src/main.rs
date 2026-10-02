@@ -100,9 +100,8 @@ async fn deliver(agent_id: &str, payload: Value) -> Result<(), String> {
         .await
         .map(drop)
         .map_err(|err| match err.code {
-            // A connection that closed mid-call, or a Daemon that failed inside: either way the
-            // Signal may have been applied.
-            rpc::code::INTERNAL => format!("{err}; {MAYBE_ARRIVED}"),
+            // The connection closed mid-call: the Daemon may have taken the Signal already.
+            rpc::code::UNKNOWN_OUTCOME => format!("{err}; {MAYBE_ARRIVED}"),
             _ => err.to_string(),
         })
 }
