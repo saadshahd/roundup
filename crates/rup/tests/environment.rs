@@ -13,7 +13,8 @@ use contracts::terminal::SpawnParams as TerminalSpawnParams;
 use serde_json::json;
 
 /// Env vars Claude Code sets when the program running it is itself inside a Claude Code run; A15
-/// says a program the Daemon starts must never see any of them, however they reached the Daemon.
+/// requires a program the Daemon starts to see none of them, whether they sat in the Daemon's own
+/// environment or arrived through `params.env` directly.
 const MARKERS: [&str; 8] = [
     "CLAUDECODE",
     "CLAUDE_CODE_CHILD_SESSION",
@@ -115,8 +116,9 @@ async fn a15_terminal_spawn_gives_the_program_a_clean_environment() {
     assert_clean(&parse_env(&printed));
 }
 
-/// A15 says a marker is stripped "however it reached the Daemon": a caller can also hand one to
-/// `terminal.spawn` through `params.env` directly, with none of it in the Daemon's own environment.
+/// A15 requires a marker stripped whether it sat in the Daemon's own environment or arrived some
+/// other way: a caller can also hand one to `terminal.spawn` through `params.env` directly, with
+/// none of it in the Daemon's own environment.
 #[tokio::test(flavor = "multi_thread")]
 async fn a15_terminal_spawn_removes_a_marker_passed_in_its_own_env_param() {
     let served = Served::start("#!/bin/sh\nsleep 30\n", &[]).await;

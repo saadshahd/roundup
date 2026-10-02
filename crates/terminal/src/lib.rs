@@ -39,20 +39,6 @@ const READ_CHUNK: usize = 8192;
 /// exhausted and `kill` cannot run.
 const WRITE_BACKLOG: usize = 16;
 
-/// Env vars Claude Code sets when the program running it is itself inside a Claude Code run (A15).
-/// The Daemon can inherit these from its own environment; every program it starts must not, or it
-/// would believe itself nested in that run too.
-const CLAUDE_CODE_MARKERS: [&str; 8] = [
-    "CLAUDECODE",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_CODE_SESSION_ATTENDED",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_EXECPATH",
-    "CLAUDE_CODE_MESSAGING_SOCKET",
-    "CLAUDE_CODE_MESSAGING_TOKEN",
-];
-
 /// A freshly spawned Terminal: its id and every event it emits, from the first byte of output.
 pub struct Spawned {
     pub id: String,
@@ -81,6 +67,9 @@ struct Entry {
 struct Shared {
     bus: Bus,
     table: Mutex<BTreeMap<u64, Entry>>,
+    /// Env var names stripped from every spawned program's environment, however they reached the
+    /// Daemon: its own environment or a caller's `params.env` (`open_with`'s caller owns the list).
+    clean_env: Vec<String>,
 }
 
 impl Shared {
@@ -121,12 +110,24 @@ pub struct Terminals {
 }
 
 impl Terminals {
-    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    pub fn open(_dir: &Path, bus: Bus) -> Result<Self, OpenError> {
+    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused. No env
+    /// var is stripped from a spawned program; see [`Terminals::open_with`] for that.
+    pub fn open(dir: &Path, bus: Bus) -> Result<Self, OpenError> {
+        Self::open_with(dir, bus, &[])
+    }
+
+    /// As [`Terminals::open`], but `clean_env` names env vars that must never reach a spawned
+    /// program's environment, however they arrived (the Daemon's own environment or a caller's
+    /// `params.env`): the caller owns the list and what it means.
+    pub fn open_with(_dir: &Path, bus: Bus, clean_env: &[&str]) -> Result<Self, OpenError> {
         Ok(Self {
             shared: Arc::new(Shared {
                 bus,
                 table: Mutex::new(BTreeMap::new()),
+                clean_env: clean_env
+                    .iter()
+                    .map(|marker| (*marker).to_owned())
+                    .collect(),
             }),
             next: AtomicU64::new(1),
         })
@@ -153,7 +154,7 @@ impl Terminals {
             command.env(name, value);
         }
         // Last, so none of them survive even if a caller passed one in `params.env`.
-        for marker in CLAUDE_CODE_MARKERS {
+        for marker in &self.shared.clean_env {
             command.env_remove(marker);
         }
         // The reader and input threads start before the program (the reader receives the child over a
