@@ -39,6 +39,7 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
+| L44–L49 | merge policy: `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` in `loop/rules.sh`, stall kind f in `loop/stalls.sh`, the `Scenarios:` check in `loop/boxd.sh build`, the new `loop/rules.sh` steps in `.github/workflows/loop.yml` | `loop/rules.sh`, `loop/rules.test.sh`, `loop/stalls.sh`, `loop/boxd.sh` (shared with L22 and L40: merges after them), `loop/boxd.test.sh`, `.github/workflows/loop.yml` | `loop/rules.test.sh`, `loop/boxd.test.sh` | the rules PR for these ids merging (user approves it) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title (Moves: D1, D6) | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U101, U102 | Terminal copy and paste (Moves: D3); Terminal text size (Moves: D2) | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
 | A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/agents/src/claude_code/**`, `crates/rupd/src/lib.rs`, `crates/rup/tests/**`; no `SpawnParams` field; no vendor name in `crates/terminal` (P4) | the `a` and `x` tests | after #114 lands |
@@ -150,6 +151,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
+  | L44–L49 | `scenarios/loop.md`: merge policy, `loop/rules.sh` `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` and stall kind f (rows below) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
