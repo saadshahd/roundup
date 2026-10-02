@@ -29,6 +29,7 @@ describe("u130 tokens", () => {
       import: "default",
       eager: true,
     });
+
     const css = Object.values(files)[0];
     expect(css, "tokens.css is read").toBeTruthy();
 
