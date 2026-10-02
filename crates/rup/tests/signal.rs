@@ -138,6 +138,30 @@ fn a4_signal_to_a_daemon_that_never_answers_exits_1_in_time() {
     );
 }
 
+/// H15: a lost Signal costs the hook exactly one line on stderr, never a retry and never a second
+/// write; Claude Code's own hook output is a line Claude Code shows the user, not several.
+#[test]
+fn h15_a_lost_signal_exits_1_with_exactly_one_stderr_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("silent.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        // Accepted and kept open, never answered.
+        let mut held = vec![];
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+
+    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(lines.len(), 1, "{stderr}");
+    assert!(lines[0].contains("may or may not"), "{stderr}");
+}
+
 #[test]
 fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arrived() {
     use std::io::{BufRead, BufReader};

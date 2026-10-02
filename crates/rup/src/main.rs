@@ -14,7 +14,9 @@ const MAYBE_ARRIVED: &str = "the Signal may or may not have arrived";
 
 mod mcp;
 
-#[tokio::main]
+/// H15: a hook process costs less to spawn and schedule with one OS thread than with tokio's
+/// default multi-threaded pool, and `rup` never runs more than one task at a time.
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let outcome = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {

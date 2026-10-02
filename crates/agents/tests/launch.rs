@@ -9,10 +9,9 @@ use agents::claude_code::Launcher;
 use rpc::code;
 use serde_json::{Value, json};
 
-const EVENTS: [&str; 9] = [
+const EVENTS: [&str; 8] = [
     "SessionStart",
     "UserPromptSubmit",
-    "PreToolUse",
     "PermissionRequest",
     "PostToolUse",
     "PostToolUseFailure",
@@ -164,7 +163,7 @@ fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
         .iter()
         .map(|event| ((*event).to_owned(), entry.clone()))
         .collect();
-    // The late Notification and the spurious SubagentStop are not among the events.
+    // The late Notification, the spurious SubagentStop and PreToolUse (H15) are not among the events.
     assert_eq!(settings, json!({ "hooks": expected }));
 }
 
