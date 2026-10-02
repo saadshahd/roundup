@@ -77,6 +77,7 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
 | notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
+| U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -130,15 +131,40 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
-  | U55 | empty-Terminal notch diagnosis |
+  | U51 | quick switcher |
+  | U52 | first run: recent folders and the `claude` line |
+  | U53 | Todos list motion |
+  | U54 | keyboard help on `?` |
+  | U55 | diagnose the empty-Terminal notch |
+  | U56 | right-click menu: stop, remove |
+  | U57 | no pane header |
+  | U58 | an Agent's Pads under it |
+  | U59 | the terminal blends with the app |
+  | U60 | an Agent's Todos under it |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
+  | A14 | hold an early Signal until the Agent is registered |
+  | A15 | clean environment for every program the Daemon starts |
+  | A16 | `rail.remove` |
+  | T8 | `Todo.creator` |
+  | S6 | first-run facts in the App seam (`recent_projects`, `claude_binary`) |
+  | S7 | the smallest window (640 by 400) |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
+  | L16 | `review` replays an empty approval commit |
+  | L17–L20 | loop hardening: run logs, swarm throttle, run events and retry, ref per prompt |
+  | L21 | streamed agent run |
+  | L22 | `review` keeps the branch's trailers across a merge |
+  | L23 | VM tools |
+  | L24 | agent search servers |
+  | L25 | design critic run |
+  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check` |
+  | L40 | `boxd check` does not depend on files outside the checkout (round cap on #140: amend; one more reject on the same clause retires it) |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
+  | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
