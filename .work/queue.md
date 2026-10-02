@@ -28,6 +28,8 @@ Scenario text is on main and nothing it needs is unmerged. Every row owns a dire
 
 | Id | Item | Owns | Keeps green |
 |---|---|---|---|
+| A30 | `Agents::prompt` (in-process, no RPC) | `crates/agents/src/**` | `a4_` tests |
+| B1-B12 | Messages and Routes: contract (rule 4, an architect other than the author approves), `crates/messages`, the registration in `crates/rupd`, the MCP tools in `crates/rup` | `crates/contracts/**` and generated files, `crates/messages/**`, `crates/rupd/src/**`, `crates/rup/src/**`; after A30 | `a`, `t`, `d` tests; narrows no merged test |
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests |
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests |
 | audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests |
@@ -150,6 +152,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
+  | A30, B1–B12 | `scenarios/messages.md`, architect-b (A30 in `agents.md`) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.

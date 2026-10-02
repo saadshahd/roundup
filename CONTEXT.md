@@ -23,8 +23,8 @@ Glossary only. No implementation. Rule 6 of the loop: every identifier, RPC meth
 - **Todo** — an item with an optional blocker list, owned by the Project. _Avoid:_ task, ticket.
 - **Stall** — a condition that stops the loop's work (`scenarios/loop.md` L28): main or a required check red, an approved PR unmerged, a third reject, a finished review with no verdict, too few VMs while a PR waits. It is recorded in `loop/out/stalls/` with one owner and a deadline. **Owner** — one loop role (`docs/development-loop.md`, and the Merger in `.work/queue.md`): Triage, Merger, Architect or Driver.  A Todo's blockers are other Todos and are not Stalls.
 - **Pad** — a markdown note owned by an Agent or the user. _Avoid:_ scratchpad. "Scratchpad" is the product word in prose only; code says Pad.
-- **Message** — a typed envelope `{from, to, kind, body}` between Actors. **Route** — a sender→receiver pair with a delivery value (`auto | ask-first | drop`). **Held** — a Message waiting on an ask-first Route.
-- **Actor** — the user, an Agent or an Extension making a call. **Touch** — one logged read or write of a Todo or Pad by an Actor. **Provenance** — the append-only log of Touches.
+- **Message** — a typed envelope `{from, to, kind, body, replyTo}` between Actors, with a status of `pending`, `held`, `delivered` or `dropped`. **Route** — a sender→receiver pair with a delivery value (`auto | ask-first | drop`). **Held** — a Message waiting on an ask-first Route.
+- **Actor** — the user, an Agent or an Extension making a call. **Touch** — one logged read or write of a Todo, a Pad or a Message by an Actor. **Provenance** — the append-only log of Touches.
 - **Extension** — a directory with a manifest and one module. **Hook** — one `($, e, next)` function an Extension registers. **Daemon** (`rupd`) — the local process everything else is a client of. **Adapter** — the code that turns one agent vendor's process into an Agent (`AgentAdapter`).
 
 ## Who decides Kind
