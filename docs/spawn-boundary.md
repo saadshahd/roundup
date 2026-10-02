@@ -17,7 +17,7 @@ If a Meta-agent runs Claude Code, it can start children with `bash -c 'claude -p
 | Process-tree scan | Nothing; it flags a vendor binary not registered as a Terminal | A renamed binary | not run here; best effort detection |
 | OS sandbox (Seatbelt) with a network allowlist | Could stop a vendor CLI reaching its API from Bash | Escapes, MCP servers and hooks run outside it; it restricts the Agent's real network use | not run: not chosen now |
 
-Chosen: the tool allowlist as the guarantee (F2), `agent_spawn` as the way (F3), and the shim (F4) and the scan (F5) as best effort that fails loud. Dropped: the deny rule (the shim covers its case better) and the hook (it adds only absolute-path calls and costs a process per call). Left for the user: the sandbox.
+Scope: Meta-agents only, as the user decided. Chosen: the tool allowlist as the guarantee (F2), `agent_spawn` as the way (F3), and the shim (F4) and the scan (F5) as best effort that fails loud. Dropped: the deny rule (the shim covers its case better) and the hook (it adds only absolute-path calls and costs a process per call). Left for the user: the sandbox.
 
 ## Honest limits
 
@@ -39,5 +39,5 @@ No new RPC method. `agent.spawn` gains a caller rule for Actors of kind `agent` 
 
 ## Open for the user
 
-- F4 stops an ordinary Agent that legitimately runs `claude -p` as a tool. Say if that is acceptable, or if the shim applies to Meta-agents only (where it is redundant, since they have no Bash).
+- Decided by the user: F2 to F5 apply to Meta-agents only. An ordinary Agent keeps every tool and may run `claude -p` on purpose. F4 and F5 are redundant against a Meta-agent without a shell; they cover a shell a user's own MCP server adds, and an allowlist widened later.
 - F5's cost is a process-table read every 2 s. The Builder measures it; if it moves the 10-idle-Agents budget, the interval or the trigger changes.
