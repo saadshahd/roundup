@@ -236,9 +236,9 @@ fn without_signal(items: &[(f64, Observation)], event: &str) -> Vec<(f64, Observ
 /// `event` is prunable from the full Signal-and-Title timeline only when dropping its Signal
 /// changes no titled run's replayed Status sequence at all.
 fn prunable_from_timelines(event: &str, timelines: &[Vec<(f64, Observation)>]) -> bool {
-    timelines.iter().all(|items| {
-        replay_full(clone_items(items)) == replay_full(without_signal(items, event))
-    })
+    timelines
+        .iter()
+        .all(|items| replay_full(clone_items(items)) == replay_full(without_signal(items, event)))
 }
 
 #[test]
@@ -254,11 +254,7 @@ fn h15_pre_tool_use_is_the_only_event_a_replay_lets_state_events_drop() {
         .map(|(log, screen)| timeline(log, screen))
         .collect();
 
-    let candidates: Vec<&str> = STATE_EVENTS
-        .iter()
-        .copied()
-        .chain(["PreToolUse"])
-        .collect();
+    let candidates: Vec<&str> = STATE_EVENTS.iter().copied().chain(["PreToolUse"]).collect();
 
     let dropped: Vec<&str> = candidates
         .into_iter()
