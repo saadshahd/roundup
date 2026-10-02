@@ -69,6 +69,19 @@ describe("u30 jump", () => {
     expect(rail.selected()).toBe("b");
   });
 
+  it("u30_with_none_selected_and_none_needing_you_cmd_j_does_not_throw", async () => {
+    const onError = vi.fn();
+    window.addEventListener("error", onError);
+
+    const { rail } = await mountRail([since("a", "working", 1)]);
+    jump();
+
+    window.removeEventListener("error", onError);
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(rail.selected()).toBeNull();
+  });
+
   it("u30_equal_kind_and_status_age_are_taken_in_the_daemons_order", async () => {
     const { rail } = await mountRail([since("first", "needs-you", 5), since("second", "needs-you", 5)]);
 
@@ -220,11 +233,17 @@ describe("u48 the attention chip looks like the control it is", () => {
     expect(rail.selected()).toBe("a");
   });
 
-  it("u48_after_daemon_exited_the_chip_stays_and_cmd_j_still_selects", async () => {
+  it("u48_after_daemon_exited_the_chip_stays", async () => {
+    const [exit] = createSignal({ code: 1 });
+    await mountRail([since("a", "needs-you", 1)], [], exit);
+
+    expect(screen.getByText("1 need you")).toBeDefined();
+  });
+
+  it("u48_after_daemon_exited_cmd_j_still_selects", async () => {
     const [exit] = createSignal({ code: 1 });
     const { rail } = await mountRail([since("a", "needs-you", 1)], [], exit);
 
-    expect(screen.getByText("1 need you")).toBeDefined();
     jump();
 
     expect(rail.selected()).toBe("a");
