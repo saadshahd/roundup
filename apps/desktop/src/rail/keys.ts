@@ -1,12 +1,6 @@
-/** The adjacent id in `ids` from `current` by `direction` (`1` down, `-1` up), clamped at either end (no wrap); the first id when `current` is no longer in `ids`; `null` when `ids` is empty. */
-export const adjacentId = (ids: readonly string[], current: string, direction: 1 | -1): string | null => {
-  const first = ids[0];
-
-  if (first === undefined) return null;
-
+/** The adjacent id in `ids` from `current` by `direction` (`1` down, `-1` up), clamped at either end (no wrap). `current` is always a member of `ids`: it comes from a rendered row's own `data-id`. */
+export const adjacentId = (ids: readonly string[], current: string, direction: 1 | -1): string => {
   const index = ids.indexOf(current);
-
-  if (index === -1) return first;
 
   return ids[index + direction] ?? current;
 };

@@ -59,19 +59,12 @@ export const Rail = () => {
     return ids[0] ?? null;
   });
 
-  const selectRow = (id: string) => {
-    rail.select(id);
-    focusRow(id);
-  };
+  const selectRow = (id: string) => rail.select(id);
 
-  const moveFocus = (current: string, direction: 1 | -1) => {
-    const next = adjacentId(nodeIds(), current, direction);
-
-    if (next !== null) focusRow(next);
-  };
+  const moveFocus = (current: string, direction: 1 | -1) => focusRow(adjacentId(nodeIds(), current, direction));
 
   const onRailKeyDown = (press: KeyboardEvent) => {
-    if (!(press.target instanceof HTMLElement) || press.target.getAttribute("role") !== "treeitem") return;
+    if (!(press.target instanceof HTMLElement)) return;
 
     const focusedId = press.target.dataset.id;
 

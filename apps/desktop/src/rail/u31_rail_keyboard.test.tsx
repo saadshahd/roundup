@@ -79,28 +79,16 @@ describe("u31 rail keyboard", () => {
     expect(document.activeElement).toBe(rowOf("c"));
   });
 
-  it("u31_enter_after_reclicking_the_already_selected_row_selects_the_focused_row", async () => {
-    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
-    fireEvent.click(rowOf("a"));
-    press("ArrowDown");
-    fireEvent.click(rowOf("a"));
-
-    press("Enter");
-
-    expect(rail.selected()).toBe("a");
-  });
-
   it("u31_down_after_that_enter_moves_from_the_row_that_has_focus", async () => {
     const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
-    fireEvent.click(rowOf("a"));
-    press("ArrowDown");
-    fireEvent.click(rowOf("a"));
+    rail.select("a");
+    rowOf("b").focus();
     press("Enter");
 
     press("ArrowDown");
 
-    expect(document.activeElement).toBe(rowOf("b"));
-    expect(rail.selected()).toBe("a");
+    expect(document.activeElement).toBe(rowOf("c"));
+    expect(rail.selected()).toBe("b");
   });
 
   it("u31_arrow_down_moves_from_a_row_focused_directly_even_when_another_row_is_tabbable", async () => {
@@ -426,13 +414,19 @@ describe("u31 rail keyboard", () => {
     expect(press("Enter")).toBe(false);
   });
 
-  it("u31_clicking_an_unfocused_row_moves_focus_to_it", async () => {
-    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+  it("u31_clicking_a_row_leaves_focus_on_its_terminal", async () => {
+    await mountRail(
+      [agent("a", "idle", "x"), agent("b", "idle", "x")],
+      [],
+      undefined,
+      undefined,
+      { pane: focusableEmulator() },
+    );
     rowOf("a").focus();
 
     fireEvent.click(rowOf("b"));
 
-    expect(document.activeElement).toBe(rowOf("b"));
+    expect(document.activeElement?.tagName).toBe("TEXTAREA");
   });
 
   it("u31_enter_selecting_a_row_shows_its_terminal", async () => {
