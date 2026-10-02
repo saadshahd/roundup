@@ -134,15 +134,17 @@ describe("u31 rail keyboard", () => {
   it("u31_the_focused_row_has_a_visible_focus_ring", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
-    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rowOf("a").focus();
 
-    press("ArrowDown");
+    try {
+      await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+      rowOf("a").focus();
 
-    const ring = getComputedStyle(rowOf("b")).outlineStyle;
-    sheet.remove();
+      press("ArrowDown");
 
-    expect(ring).toBe("solid");
+      expect(getComputedStyle(rowOf("b")).outlineStyle).toBe("solid");
+    } finally {
+      sheet.remove();
+    }
   });
 
   it("u31_enter_selects_the_focused_row_as_a_click_would", async () => {
@@ -168,12 +170,9 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_exactly_one_row_is_tabbable", async () => {
-    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rail.select("b");
+    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
 
-    const tabbable = tabbableRows();
-
-    expect(tabbable).toEqual([rowOf("b")]);
+    expect(tabbableRows()).toHaveLength(1);
   });
 
   it("u31_with_nothing_selected_the_first_row_is_tabbable", async () => {
@@ -197,6 +196,7 @@ describe("u31 rail keyboard", () => {
 
   it("u31_selecting_a_row_moves_the_roving_tabindex_to_it", async () => {
     const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    expect(tabbableRows()).toEqual([rowOf("a")]);
 
     rail.select("b");
 
@@ -255,14 +255,16 @@ describe("u31 rail keyboard", () => {
       [],
       undefined,
       undefined,
-      { paneEmulator: focusableEmulator() },
+      { pane: focusableEmulator() },
     );
 
     rail.select("a");
+    const field = document.activeElement;
 
     press("j");
 
     expect(rail.selected()).toBe("a");
+    expect(document.activeElement).toBe(field);
   });
 
   it("u31_arrow_down_into_the_pane_never_moves_the_rails_focus", async () => {
@@ -271,13 +273,15 @@ describe("u31 rail keyboard", () => {
       [],
       undefined,
       undefined,
-      { paneEmulator: focusableEmulator() },
+      { pane: focusableEmulator() },
     );
 
     rail.select("a");
+    const field = document.activeElement;
 
     press("ArrowDown");
 
+    expect(document.activeElement).toBe(field);
     expect(rowOf("a").tabIndex).toBe(0);
     expect(rowOf("b").tabIndex).toBe(-1);
   });
@@ -293,11 +297,13 @@ describe("u31 rail keyboard", () => {
 
     rail.select("a");
     connected.drawer.open(() => <input aria-label="field" />);
-    screen.getByLabelText("field").focus();
+    const field = screen.getByLabelText("field");
+    field.focus();
 
     press("j");
 
     expect(rail.selected()).toBe("a");
+    expect(document.activeElement).toBe(field);
   });
 
   it("u31_arrow_down_into_a_drawer_never_moves_the_rails_focus", async () => {
@@ -310,10 +316,12 @@ describe("u31 rail keyboard", () => {
     );
 
     connected.drawer.open(() => <input aria-label="field" />);
-    screen.getByLabelText("field").focus();
+    const field = screen.getByLabelText("field");
+    field.focus();
 
     press("ArrowDown");
 
+    expect(document.activeElement).toBe(field);
     expect(rowOf("a").tabIndex).toBe(0);
     expect(rowOf("b").tabIndex).toBe(-1);
   });
@@ -429,11 +437,11 @@ describe("u31 rail keyboard", () => {
 
   it("u31_enter_selecting_a_row_shows_its_terminal", async () => {
     await mountRail(
-      [agent("a", "idle", "x", { terminal_id: null }), agent("b", "idle", "x", { terminal_id: null })],
+      [agent("a", "idle", "x"), agent("b", "idle", "x")],
       [],
       undefined,
       undefined,
-      { pane: true },
+      { pane: focusableEmulator() },
     );
     rowOf("a").focus();
     press("ArrowDown");
@@ -441,5 +449,6 @@ describe("u31 rail keyboard", () => {
     press("Enter");
 
     expect(document.querySelector(".pane-title")?.textContent).toContain("b");
+    expect(document.querySelector(".pane-screen textarea")).not.toBeNull();
   });
 });

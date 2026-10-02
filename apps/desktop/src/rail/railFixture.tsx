@@ -16,8 +16,8 @@ import { Rail } from "./Rail";
 export const exitedTerminal = (id: string, exit_code: number | null): TerminalInfo =>
   info(`t-${id}`, { running: false, exit_code });
 
-/** What else to mount alongside the Rail: a Pane (`paneEmulator` for one with a focusable screen) or the DrawerHost. */
-type RailNeighbors = { pane?: boolean; paneEmulator?: EmulatorFactory; drawer?: boolean };
+/** What else to mount alongside the Rail: a Pane (an `EmulatorFactory` gives it a focusable screen) or the DrawerHost. */
+type RailNeighbors = { pane?: true | EmulatorFactory; drawer?: boolean };
 
 /** The Rail on a fake Daemon whose tree is `tree` and whose clock is a signal the test can advance. */
 export const mountRail = async (
@@ -38,8 +38,8 @@ export const mountRail = async (
     <ConnectedProjectContext.Provider value={connected}>
       <AttentionChip />
       <Rail />
-      <Show when={neighbors.pane || neighbors.paneEmulator}>
-        <Pane createEmulator={neighbors.paneEmulator} />
+      <Show when={neighbors.pane}>
+        <Pane createEmulator={neighbors.pane === true ? undefined : neighbors.pane} />
       </Show>
       <Show when={neighbors.drawer}>
         <DrawerHost drawer={connected.drawer} reducedMotion={reducedMotion} />

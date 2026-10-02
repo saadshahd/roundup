@@ -65,15 +65,17 @@ export const Rail = () => {
   };
 
   const moveFocus = (current: string, direction: 1 | -1) => {
-    // SAFETY: only called from onRailKeyDown, whose treeitem target is in `nodeIds()`, so it is never empty and `adjacentId` cannot return null.
-    focusRow(adjacentId(nodeIds(), current, direction) as string);
+    const next = adjacentId(nodeIds(), current, direction);
+
+    if (next !== null) focusRow(next);
   };
 
   const onRailKeyDown = (press: KeyboardEvent) => {
     if (!(press.target instanceof HTMLElement) || press.target.getAttribute("role") !== "treeitem") return;
 
-    // SAFETY: every row sets `data-id` (RailRow.tsx); this would start lying only if a treeitem ever shipped without one.
-    const focusedId = press.target.dataset.id as string;
+    const focusedId = press.target.dataset.id;
+
+    if (focusedId === undefined) return;
 
     if (press.key === "ArrowDown" || press.key === "ArrowUp") {
       press.preventDefault();
