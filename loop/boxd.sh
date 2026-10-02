@@ -164,12 +164,17 @@ upload_checkout() {
   git archive --format=tar.gz --end-of-options "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
   git archive --format=tar.gz --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
   [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
-  # Replay the PR's own commits, so a Reviewer sees the real messages, authors and trailers. A trailing `head` commit
-  # appears only when the tree still differs from the ref (a merge commit's content is not in the series).
-  git format-patch --stdout --binary --end-of-options "$base_ref..$ref" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
+  # Replay the PR's own commits, so a Reviewer sees the real messages, authors and trailers. A series cannot carry a merge
+  # commit, so a range with one (or a series that does not apply) falls back to one `head` commit holding the ref's tree.
+  if [ -n "$(git rev-list --merges --end-of-options "$base_ref..$ref")" ]; then
+    echo "boxd.sh: $ref contains a merge commit; the checkout gets one commit named head instead of the PR's commits" >&2
+  else
+    git format-patch --stdout --binary --end-of-options "$base_ref..$ref" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
+  fi
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
-    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q /tmp/series.mbox; } &&
+    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q /tmp/series.mbox ||
+      { git am --abort; echo "boxd.sh: the PR commits did not replay; the checkout gets one commit named head" >&2; }; } &&
     git rm -rqf . && tar xzf /tmp/src.tgz -C ~/roundup && git add -A >/dev/null &&
     { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
 }
