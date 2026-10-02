@@ -33,7 +33,7 @@ No new RPC method. `agent.spawn` gains a caller rule for Actors of kind `agent` 
 
 ## Gates
 
-- **P2.** A child started by `agent_spawn` gets a Worktree when the setting is on (G2), so two Agents do not share a cwd.
+- **P2.** A child started by `agent_spawn` gets a Worktree when the setting is on (G2), so with it on two Agents do not share a cwd; with it off they may.
 - **P4.** The flag, the shim names and `PATH` belong to `claude_code/`; the scan and the caller rule are vendor-neutral; `AgentAdapter` gains no seam.
 - **P6.** The child's Home is its Meta-agent's node, set by the Daemon, not by the caller (a `parent` param from an Agent is ignored).
 
