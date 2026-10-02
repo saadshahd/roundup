@@ -17,7 +17,6 @@ Items dispatched and not finished. A row names no PR number: find it with `gh pr
 | Pad edits never overwrite another Actor | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; the u20 tests U36 names stay green |  |
 | reopen, App half | S5 | `crates/desktop` | `s5_` tests pass; `s1_` and `s3_` tests stay |  |
 | load-aware perf comparison; amends rule 7 and `docs/perf.md` | R13 | `crates/perf`, `AGENTS.md` rule 7, `docs/perf.md` (`budgets.json`, `budget.rs`, `gate.rs`, `tests/r13.rs`); `audit-perf` waits for it | `r13_` tests; the R1–R12 and K tests stay |  |
-| loop hardening: unique run logs and check VM names, slot wait, retry before the agent, per-prompt ref | L17–L20 | `loop/boxd.sh` | `loop/boxd.test.sh` |  |
 | D4 flake: one deadline, a readable failure, a state-based wait if a lost event is proven | D4 (a proven lost event: A14) | `crates/rup/tests/**` | the Builder reproduces first (about 30 runs, once under load); `just check` | Prompt `.work/prompts/d4-flake.md`; the Builder never edits the Daemon |
 | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
