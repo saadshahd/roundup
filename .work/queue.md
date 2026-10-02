@@ -16,7 +16,6 @@ Items dispatched and not finished. A row names no PR number: find it with `gh pr
 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop/src/rail`: `Rail.tsx`, `RailRow.tsx`, `keys.ts`, `railFixture.tsx`, `styles.css`, `u31_`/`keys` tests | `u31_` tests pass | Accepted overlap with U33 on `Rail.tsx`. Act only on keys whose target is a row (`↓` in the rename field and Enter on collapse or promote do nothing), and every guard U31 names has a test. The Builder does not edit `scenarios/` |
 | Pad edits never overwrite another Actor | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; the u20 tests U36 names stay green |  |
 | reopen, App half | S5 | `crates/desktop` | `s5_` tests pass; `s1_` and `s3_` tests stay |  |
-| scrollback | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; QA RSS with ten Terminals |  |
 | load-aware perf comparison; amends rule 7 and `docs/perf.md` | R13 | `crates/perf`, `AGENTS.md` rule 7, `docs/perf.md` (`budgets.json`, `budget.rs`, `gate.rs`, `tests/r13.rs`); `audit-perf` waits for it | `r13_` tests; the R1–R12 and K tests stay |  |
 | loop hardening: unique run logs and check VM names, slot wait, retry before the agent, per-prompt ref | L17–L20 | `loop/boxd.sh` | `loop/boxd.test.sh` |  |
 | D4 flake: one deadline, a readable failure, a state-based wait if a lost event is proven | D4 (a proven lost event: A14) | `crates/rup/tests/**` | the Builder reproduces first (about 30 runs, once under load); `just check` | Prompt `.work/prompts/d4-flake.md`; the Builder never edits the Daemon |
@@ -24,7 +23,7 @@ Items dispatched and not finished. A row names no PR number: find it with `gh pr
 
 ## Next batch
 
-Text for these ids is in `scenarios/` (U37, U38, U40 and U41 in `ui.md`; U39 is retired). Reserved ids whose text may not be on main yet: A14 (its text lands in its own docs PR) and L17–L21 (the loop Builder's scenario text arrives with its own PR; L21 starts after L17–L20 are on main). A Builder edits only the files its row owns, never `scenarios/`, the README or this file; the one exception is the `loop/boxd.sh` Builder, whose `scenarios/loop.md` text the Architect reviews before it merges. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
+Text for an id is its heading in `scenarios/` (`grep -n '^\*\*<id>' scenarios/*.md`). An id with no heading there is reserved: its text arrives with its own PR, so check `git log` before dispatching it. A Builder edits only the files its row owns, never `scenarios/`, the README or this file; the one exception is the `loop/boxd.sh` Builder, whose `scenarios/loop.md` text the Architect reviews before it merges. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page. "Starts" says when a row can be dispatched; rows marked now are on disjoint directories.
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
@@ -32,8 +31,8 @@ Text for these ids is in `scenarios/` (U37, U38, U40 and U41 in `ui.md`; U39 is 
 | audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | after R13 is on main (R13 owns `crates/perf` until then) |
 | U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
 | U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
-| U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
-| U38 | empty states (V6) | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal`; narrows U14's test | U2's tests | after U34, U35 and U36 merge (they edit those directories) |
+| U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | needs S5 and U34 on main (the centre screen sits near `src/terminal`) |
+| U38 | empty states (V6) | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal`; narrows U14's test | U2's tests | needs U34, U35 and U36 on main (they edit those directories) |
 
 From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`). The audit's browser driver left Enter held down after `press Enter`, which faked U42 (a Todo Drawer loop); U43 (rename) was a double-click that landed on the Live line. Both are dropped. The auditor re-checked the rest with dispatched events and confirms U44, U45 and U46; U47 to U50 do not depend on key events. A create-then-open call-count test (one `todo.get`) may be added as a test-only guard. A double-click on the Live line does nothing, which U9 allows. Each Builder of a row below reproduces the defect first, with dispatched events, and stops and reports if it does not reproduce.
 
