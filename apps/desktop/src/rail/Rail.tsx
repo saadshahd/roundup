@@ -250,8 +250,7 @@ export const Rail = () => {
                       {(view) => (
                         <div style={{ "padding-left": `${view().depth * 2}ch` }}>
                           <button
-                            class="word glyph"
-                            data-tone={glyphOf("done").tone}
+                            class="word"
                             onClick={() => setUnfolded((open) => toggled(open, view().parent))}
                           >
                             {`${glyphOf("done").mark} ${view().count} done`}

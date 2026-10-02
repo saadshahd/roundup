@@ -7,8 +7,9 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use contracts::agent::RailNode;
+use contracts::pad::Pad;
 use contracts::todo::Todo;
-use contracts::{ActorKind, EventData, Kind, Touch};
+use contracts::{Actor, ActorKind, EventData, Kind, Touch};
 use daemon::{Project, TEN_IDLE_BOUND, next, next_kind, rail_tree, signal, start, wait_until_idle};
 use serde_json::json;
 
@@ -120,6 +121,56 @@ async fn d3_provenance_names_the_agent_that_created_the_todo() {
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].actor.kind, ActorKind::Agent);
     assert_eq!(history[0].actor.id, agent.id);
+}
+
+/// A16: `rail.remove` has no `pads` or `todos` dependency in `crates/agents`, so this proves it
+/// against a real Daemon instead. Removing an Agent that owns a Pad and has made a Todo must
+/// leave both exactly as they were; the user still reclaims the Pad by `pad.setOwner` (U18).
+#[tokio::test]
+async fn a16_removing_an_agent_leaves_its_pads_and_todos_untouched() {
+    let (project, agent, _todo) = agent_created_a_todo().await;
+    let client = project.client().await;
+    client
+        .request("pad.create", json!({"name": "notes", "text": null}))
+        .await
+        .unwrap();
+    let owner = Actor {
+        kind: ActorKind::Agent,
+        id: agent.id.clone(),
+        parent: None,
+    };
+    client
+        .request("pad.setOwner", json!({"name": "notes", "owner": owner}))
+        .await
+        .unwrap();
+    let todos_before: Vec<Todo> =
+        serde_json::from_value(client.request("todo.list", json!(null)).await.unwrap()).unwrap();
+    let pads_before: Vec<Pad> =
+        serde_json::from_value(client.request("pad.list", json!(null)).await.unwrap()).unwrap();
+
+    client
+        .request("rail.remove", json!({"id": agent.id}))
+        .await
+        .unwrap();
+
+    let todos_after: Vec<Todo> =
+        serde_json::from_value(client.request("todo.list", json!(null)).await.unwrap()).unwrap();
+    assert_eq!(todos_after, todos_before);
+    let pads_after: Vec<Pad> =
+        serde_json::from_value(client.request("pad.list", json!(null)).await.unwrap()).unwrap();
+    assert_eq!(pads_after, pads_before);
+
+    let reclaimed: Pad = serde_json::from_value(
+        client
+            .request(
+                "pad.setOwner",
+                json!({"name": "notes", "owner": Actor::user()}),
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reclaimed.owner, Actor::user());
 }
 
 /// How much memory the Daemon allows its own share of ten idle Agents (rule 7).
