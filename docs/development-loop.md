@@ -23,7 +23,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 
 | Role | Does | Never |
 |---|---|---|
-| Architect | Owns `contracts/`, `CONTEXT.md`, ADRs. Approves contract changes. Turns recurring failures into new rules (see Loop on the loop). | Writes feature code. |
+| Architect (a committee of three, `docs/squads.md`) | Approves `contracts/` changes, App seam commands and shared tokens; owns `CONTEXT.md` and ADRs; settles conflicts between squads. Turns recurring failures into new rules (see Loop on the loop). | Writes feature code. |
 | Builder | Failing test first, then code, in one worktree, one module where you can. Opens a PR. | Reviews its own PR. |
 | Reviewer | Reads the diff, the linked scenario and `AGENTS.md`, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
 | Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
