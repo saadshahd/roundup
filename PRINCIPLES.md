@@ -8,10 +8,10 @@ A PR body lists the principle ids it serves and answers each gate below. A gate 
 
 The user speaks to one Thread, not to several Agents. The Thread breaks down objectives, routes work, absorbs Agent chatter, and gives one summary when its work settles.
 
-The door is the default, never the only way in. The user can always open any Agent and type into its terminal. While the user holds an Agent, the Thread sends it nothing: its Messages wait as Held and deliver when the user leaves.
+The door is the default, never the only way in. The user can always open any Agent and type into its terminal. During a Takeover of an Agent, the Thread sends it nothing: its Messages wait as Held and deliver when the Takeover ends.
 
-Gate: does a new path make the user address an Agent, not the Thread, to start work, route it, or read its result? Does a new path make an Agent reachable only through the Thread, or let the Thread send to an Agent the user holds?
-Observer: a scenario that starts, routes and finishes work through the Thread alone; a scenario where the user holds an Agent and its Messages stay Held until release.
+Gate: does a new path make the user address an Agent, not the Thread, to start work, route it, or read its result? Does a new path make an Agent reachable only through the Thread, or let the Thread send to an Agent under Takeover?
+Observer: a scenario that starts, routes and finishes work through the Thread alone; a scenario where the user takes over an Agent and its Messages stay Held until the Takeover ends.
 
 ## P2 Worktree isolation (goal)
 
