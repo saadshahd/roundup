@@ -1,6 +1,6 @@
 //! Messages between Actors, and the Routes that decide how they are delivered. Owner: messages
 //! Builder. This slice stores Messages and Routes and answers the user's and an Actor's calls;
-//! it never types into a Terminal, which is a later slice's job (A30, `Agents::prompt`).
+//! it never types into a Terminal, which is a later slice's job (H11, `Agents::prompt`).
 
 mod store;
 
@@ -11,7 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use contracts::agent::{NodeKind, RailNode};
 use contracts::message::{
-    Delivery, ListParams, Message, MessageId, MessageStatus, Route, SendParams, SetRouteParams,
+    Delivery, Held, ListParams, Message, MessageId, MessageStatus, Route, SendParams,
+    SetRouteParams,
 };
 use contracts::{Actor, ActorKind, EventData, Kind, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
@@ -53,14 +54,6 @@ impl Messages {
                 format!("body must be 1 to {MAX_BODY_BYTES} bytes"),
             ));
         }
-        if let Some(reply_to) = p.reply_to
-            && self.store()?.get(reply_to)?.is_none()
-        {
-            return Err(RpcError::new(
-                code::INVALID_PARAMS,
-                format!("replyTo names no Message: {reply_to}"),
-            ));
-        }
         if let Some(status) = &receiver_status
             && matches!(status.kind, Kind::Done | Kind::Error)
         {
@@ -69,37 +62,50 @@ impl Messages {
                 p.to, status.kind
             )));
         }
-        if self.store()?.count_open(&p.to)? >= OPEN_BOUND {
-            return Err(RpcError::conflict(format!(
-                "{} already has {OPEN_BOUND} pending or held Messages",
-                p.to
-            )));
-        }
-        let delivery = self
-            .store()?
-            .get_route(&ctx.actor.id, &p.to)?
-            .unwrap_or(Delivery::Auto);
-        let (status, reason) = match delivery {
-            Delivery::Auto => (MessageStatus::Pending, None),
-            Delivery::AskFirst => (MessageStatus::Held, Some("ask-first".to_owned())),
-            Delivery::Drop => (MessageStatus::Dropped, Some("route".to_owned())),
+        // The reply-to check, the bound check and the insert run while one lock is held, so a
+        // second sender racing for the same receiver's last open slot cannot pass its own check
+        // before this one's insert lands (B1).
+        let message = {
+            let store = self.store()?;
+            if let Some(reply_to) = p.reply_to
+                && store.get(reply_to)?.is_none()
+            {
+                return Err(RpcError::new(
+                    code::INVALID_PARAMS,
+                    format!("replyTo names no Message: {reply_to}"),
+                ));
+            }
+            if store.count_open(&p.to)? >= OPEN_BOUND {
+                return Err(RpcError::conflict(format!(
+                    "{} already has {OPEN_BOUND} pending or held Messages",
+                    p.to
+                )));
+            }
+            let delivery = store
+                .get_route(&ctx.actor.id, &p.to)?
+                .unwrap_or(Delivery::Auto);
+            let (status, reason) = match delivery {
+                Delivery::Auto => (MessageStatus::Pending, None),
+                Delivery::AskFirst => (MessageStatus::Held, Some(Held::AskFirst)),
+                Delivery::Drop => (MessageStatus::Dropped, None),
+            };
+            store.insert(
+                &ctx.actor,
+                &p.to,
+                p.kind,
+                &p.body,
+                p.reply_to,
+                status,
+                reason,
+                now_ms(),
+            )?
         };
-        let message = self.store()?.insert(
-            &ctx.actor,
-            &p.to,
-            p.kind,
-            &p.body,
-            p.reply_to,
-            status,
-            reason.as_deref(),
-            now_ms(),
-        )?;
         ctx.touch(Verb::Wrote, &item(message.id))?;
         ctx.emit(EventData::MessageSent(message.clone()));
-        match delivery {
-            Delivery::AskFirst => ctx.emit(EventData::MessageHeld(message.clone())),
-            Delivery::Drop => ctx.emit(EventData::MessageDropped(message.clone())),
-            Delivery::Auto => {}
+        match message.status {
+            MessageStatus::Held => ctx.emit(EventData::MessageHeld(message.clone())),
+            MessageStatus::Dropped => ctx.emit(EventData::MessageDropped(message.clone())),
+            MessageStatus::Pending | MessageStatus::Delivered => {}
         }
         reply(&message)
     }
@@ -129,19 +135,14 @@ impl Messages {
     /// B3: moves a `held` Message to `pending`; B2 (typing it in) is a later slice.
     fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "deliver a held Message")?;
-        self.require_held(p.id)?;
-        self.store()?
-            .set_status(p.id, MessageStatus::Pending, None)?;
+        self.release_held(p.id, MessageStatus::Pending, None)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
         reply(&self.get_or_not_found(p.id)?)
     }
 
-    /// B3: moves a `held` Message to `dropped`.
     fn drop_message(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "drop a held Message")?;
-        self.require_held(p.id)?;
-        self.store()?
-            .set_status(p.id, MessageStatus::Dropped, None)?;
+        self.release_held(p.id, MessageStatus::Dropped, None)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
         let dropped = self.get_or_not_found(p.id)?;
         ctx.emit(EventData::MessageDropped(dropped.clone()));
@@ -210,12 +211,20 @@ impl Messages {
         Ok(node.status)
     }
 
-    fn require_held(&self, id: u32) -> Result<(), RpcError> {
-        let message = self.get_or_not_found(id)?;
-        if message.status != MessageStatus::Held {
-            return Err(RpcError::conflict(format!("message {id} is not held")));
+    /// Moves a `held` Message to `status`, atomically with the check that it is still `held`
+    /// (B3): two concurrent `deliver`/`drop` calls on the same Message can never both apply.
+    /// `NOT_FOUND` when no such Message exists, `CONFLICT` when it exists but is not `held`.
+    fn release_held(
+        &self,
+        id: u32,
+        status: MessageStatus,
+        reason: Option<Held>,
+    ) -> Result<(), RpcError> {
+        if self.store()?.release_held(id, status, reason)? {
+            return Ok(());
         }
-        Ok(())
+        self.get_or_not_found(id)?;
+        Err(RpcError::conflict(format!("message {id} is not held")))
     }
 
     fn get_or_not_found(&self, id: u32) -> Result<Message, RpcError> {
@@ -438,6 +447,7 @@ mod tests {
         assert_eq!(first["replyTo"], Value::Null);
         assert_eq!(first["status"], "pending");
         assert_eq!(first["reason"], Value::Null);
+        assert!(first["at"].as_i64().unwrap() > 0, "at: {:?}", first["at"]);
 
         let second = h
             .call_as(
@@ -448,6 +458,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(second["id"], 2);
+        assert_eq!(second["kind"], "question");
 
         assert_eq!(h.events(), ["message.sent", "message.sent"]);
         assert_eq!(h.touches(1), [(Verb::Wrote, "a".to_owned())]);
@@ -626,6 +637,72 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.code, code::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn b1_a_body_of_exactly_8192_bytes_is_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "x".repeat(8192)}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(sent["status"], "pending");
+    }
+
+    #[tokio::test]
+    async fn b1_held_messages_count_toward_the_bound_of_32() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        for _ in 0..32 {
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        }
+
+        let err = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code, code::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn b1_a_message_to_the_user_is_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![]);
+
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "you", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(sent["to"], "you");
     }
 
     #[tokio::test]
@@ -895,9 +972,198 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn b5_a_route_change_does_not_affect_an_already_held_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        let held = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(held["status"], "held");
+
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "auto"}),
+        )
+        .await
+        .unwrap();
+
+        let still_held = h.call("message.get", json!({"id": 1})).await.unwrap();
+        assert_eq!(still_held["status"], "held");
+    }
+
+    #[tokio::test]
+    async fn b5_changing_an_existing_route_applies_to_messages_sent_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "drop"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            h.call("route.list", Value::Null).await.unwrap(),
+            json!([{"from": "a", "to": "b", "delivery": "drop"}]),
+            "the stored Route must have been updated, not left as ask-first"
+        );
+
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sent["status"], "dropped");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn b1_concurrent_sends_at_the_bound_never_both_succeed() {
+        for _ in 0..40 {
+            let dir = tempfile::tempdir().unwrap();
+            let bus = Bus::new();
+            let touches = Arc::new(Touches::in_memory().unwrap());
+            let messages = Arc::new(
+                Messages::open(
+                    dir.path(),
+                    bus.clone(),
+                    FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                )
+                .unwrap(),
+            );
+            let make_ctx = |actor: Actor| Ctx {
+                actor,
+                bus: bus.clone(),
+                touches: Arc::clone(&touches),
+            };
+            for _ in 0..31 {
+                messages
+                    .call(
+                        &make_ctx(agent("a")),
+                        "message.send",
+                        json!({"to": "b", "kind": "note", "body": "hi"}),
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            let m1 = Arc::clone(&messages);
+            let c1 = make_ctx(agent("a"));
+            let m2 = Arc::clone(&messages);
+            let c2 = make_ctx(agent("a"));
+            let (r1, r2) = tokio::join!(
+                tokio::spawn(async move {
+                    m1.call(
+                        &c1,
+                        "message.send",
+                        json!({"to": "b", "kind": "note", "body": "x"}),
+                    )
+                    .await
+                }),
+                tokio::spawn(async move {
+                    m2.call(
+                        &c2,
+                        "message.send",
+                        json!({"to": "b", "kind": "note", "body": "y"}),
+                    )
+                    .await
+                }),
+            );
+            let successes = [r1.unwrap(), r2.unwrap()]
+                .into_iter()
+                .filter(Result::is_ok)
+                .count();
+            assert_eq!(
+                successes, 1,
+                "exactly one of two sends racing for the last open slot should pass"
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn b3_concurrent_deliver_and_drop_of_one_held_message_never_both_succeed() {
+        for _ in 0..40 {
+            let dir = tempfile::tempdir().unwrap();
+            let bus = Bus::new();
+            let touches = Arc::new(Touches::in_memory().unwrap());
+            let messages = Arc::new(
+                Messages::open(
+                    dir.path(),
+                    bus.clone(),
+                    FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                )
+                .unwrap(),
+            );
+            let make_ctx = |actor: Actor| Ctx {
+                actor,
+                bus: bus.clone(),
+                touches: Arc::clone(&touches),
+            };
+            messages
+                .call(
+                    &make_ctx(Actor::user()),
+                    "route.set",
+                    json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+                )
+                .await
+                .unwrap();
+            messages
+                .call(
+                    &make_ctx(agent("a")),
+                    "message.send",
+                    json!({"to": "b", "kind": "note", "body": "hi"}),
+                )
+                .await
+                .unwrap();
+
+            let m1 = Arc::clone(&messages);
+            let c1 = make_ctx(Actor::user());
+            let m2 = Arc::clone(&messages);
+            let c2 = make_ctx(Actor::user());
+            let (r1, r2) = tokio::join!(
+                tokio::spawn(
+                    async move { m1.call(&c1, "message.deliver", json!({"id": 1})).await }
+                ),
+                tokio::spawn(async move { m2.call(&c2, "message.drop", json!({"id": 1})).await }),
+            );
+            let successes = [r1.unwrap(), r2.unwrap()]
+                .into_iter()
+                .filter(Result::is_ok)
+                .count();
+            assert_eq!(
+                successes, 1,
+                "a held Message must be delivered or dropped exactly once, never both"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn b8_routes_messages_and_statuses_survive_reopening_and_the_id_sequence_continues() {
         let dir = tempfile::tempdir().unwrap();
-        let rail = vec![agent_node("b", Kind::Idle)];
+        let rail = vec![
+            agent_node("b", Kind::Idle),
+            agent_node("c", Kind::Idle),
+            agent_node("d", Kind::Idle),
+        ];
         {
             let h = Harness::new(dir.path(), rail.clone());
             h.call(
@@ -913,16 +1179,43 @@ mod tests {
             )
             .await
             .unwrap();
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "c", "kind": "note", "body": "still waiting"}),
+            )
+            .await
+            .unwrap();
+            h.call(
+                "route.set",
+                json!({"from": "a", "to": "d", "delivery": "drop"}),
+            )
+            .await
+            .unwrap();
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "d", "kind": "note", "body": "never typed"}),
+            )
+            .await
+            .unwrap();
         }
 
         let h = Harness::new(dir.path(), rail);
         let message = h.call("message.get", json!({"id": 1})).await.unwrap();
         assert_eq!(message["status"], "held");
         assert_eq!(message["reason"], "ask-first");
+        let pending = h.call("message.get", json!({"id": 2})).await.unwrap();
+        assert_eq!(pending["status"], "pending");
+        let dropped = h.call("message.get", json!({"id": 3})).await.unwrap();
+        assert_eq!(dropped["status"], "dropped");
         let routes = h.call("route.list", Value::Null).await.unwrap();
         assert_eq!(
             routes,
-            json!([{"from": "a", "to": "b", "delivery": "ask-first"}])
+            json!([
+                {"from": "a", "to": "b", "delivery": "ask-first"},
+                {"from": "a", "to": "d", "delivery": "drop"},
+            ])
         );
 
         let next = h
@@ -933,7 +1226,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(next["id"], 2);
+        assert_eq!(next["id"], 4);
     }
 
     #[tokio::test]
@@ -969,6 +1262,73 @@ mod tests {
                 (Verb::Read, "b".to_owned()),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn b11_drop_touches_wrote_by_the_user() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+
+        h.call("message.drop", json!({"id": 1})).await.unwrap();
+
+        assert_eq!(
+            h.touches(1),
+            [
+                (Verb::Wrote, "a".to_owned()),
+                (Verb::Wrote, "you".to_owned()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn b11_provenance_touched_lists_a_message_under_each_actor_that_touched_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+        h.call("message.deliver", json!({"id": 1})).await.unwrap();
+
+        let by_sender: Vec<_> = h
+            .touches
+            .touched("a")
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.verb, t.item))
+            .collect();
+        let by_user: Vec<_> = h
+            .touches
+            .touched("you")
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.verb, t.item))
+            .collect();
+
+        assert_eq!(by_sender, [(Verb::Wrote, "message:1".to_owned())]);
+        assert_eq!(by_user, [(Verb::Wrote, "message:1".to_owned())]);
     }
 
     #[tokio::test]
@@ -1040,5 +1400,78 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(listed_by_b.as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn b11_list_to_filters_by_receiver() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(
+            dir.path(),
+            vec![agent_node("b", Kind::Idle), agent_node("c", Kind::Idle)],
+        );
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "c", "kind": "note", "body": "yo"}),
+        )
+        .await
+        .unwrap();
+
+        let listed = h.call("message.list", json!({"to": "b"})).await.unwrap();
+        let ids: Vec<_> = listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].clone())
+            .collect();
+
+        assert_eq!(ids, [json!(1)]);
+    }
+
+    #[tokio::test]
+    async fn b11_list_status_filters_by_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "held"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "also held"}),
+        )
+        .await
+        .unwrap();
+        h.call("message.deliver", json!({"id": 1})).await.unwrap();
+
+        let listed = h
+            .call("message.list", json!({"status": "pending"}))
+            .await
+            .unwrap();
+        let ids: Vec<_> = listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].clone())
+            .collect();
+
+        assert_eq!(ids, [json!(1)]);
     }
 }

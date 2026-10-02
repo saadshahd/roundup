@@ -24,8 +24,19 @@ pub enum MessageStatus {
     Dropped,
 }
 
+/// Why a Message is `held`: waiting on the user (`ask-first`), on a Takeover's end (`takeover`),
+/// or on the user's answer to a bubbled-up question (`escalated`, `scenarios/messages.md` B15).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "message/")]
+pub enum Held {
+    AskFirst,
+    Takeover,
+    Escalated,
+}
+
 /// A typed envelope between Actors. `reply_to` names the Message this answers, if any; `reason`
-/// explains a `held` or `dropped` status and is `None` otherwise.
+/// names why a `held` Message is held, and is `None` for any other status.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "message/")]
 pub struct Message {
@@ -37,7 +48,7 @@ pub struct Message {
     #[serde(rename = "replyTo")]
     pub reply_to: Option<u32>,
     pub status: MessageStatus,
-    pub reason: Option<String>,
+    pub reason: Option<Held>,
     #[ts(type = "number")]
     pub at: i64,
 }

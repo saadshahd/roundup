@@ -315,6 +315,15 @@ mod tests {
         daemon.stop_terminals().await.unwrap();
     }
 
+    /// The Daemon wires up every module it owns, including `messages` (`scenarios/messages.md`
+    /// B5): a real request through `Daemon::open`, not a fake module, must reach it.
+    #[tokio::test]
+    async fn the_messages_module_is_reachable_through_the_daemon() {
+        let (_dir, daemon) = daemon();
+        let reply = ask(&daemon, r#"{"jsonrpc":"2.0","id":1,"method":"route.list"}"#).await;
+        assert_eq!(reply["result"], json!([]));
+    }
+
     #[tokio::test]
     async fn garbage_is_a_parse_error() {
         let (_dir, daemon) = daemon();

@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use contracts::Actor;
-use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Route};
+use contracts::message::{Delivery, Held, Message, MessageKind, MessageStatus, Route};
 use rpc::RpcError;
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -46,7 +46,7 @@ impl Store {
         body: &str,
         reply_to: Option<u32>,
         status: MessageStatus,
-        reason: Option<&str>,
+        reason: Option<Held>,
         at: i64,
     ) -> Result<Message, RpcError> {
         self.db
@@ -60,7 +60,7 @@ impl Store {
                     body,
                     reply_to,
                     status_str(status),
-                    reason,
+                    reason.map(held_str),
                     at
                 ],
             )
@@ -82,7 +82,6 @@ impl Store {
             .map_err(RpcError::internal)
     }
 
-    /// Oldest first.
     pub(crate) fn list(&self) -> Result<Vec<Message>, RpcError> {
         self.db
             .prepare(
@@ -93,22 +92,25 @@ impl Store {
             .map_err(RpcError::internal)
     }
 
-    pub(crate) fn set_status(
+    /// Moves a `held` Message to `status`, in the same statement that checks it is still `held`,
+    /// so two concurrent callers can never both apply their move (B3). Returns whether the
+    /// Message was `held`: `false` means it had already left that status (or never existed).
+    pub(crate) fn release_held(
         &self,
         id: u32,
         status: MessageStatus,
-        reason: Option<&str>,
-    ) -> Result<(), RpcError> {
-        self.db
+        reason: Option<Held>,
+    ) -> Result<bool, RpcError> {
+        let changed = self
+            .db
             .execute(
-                "UPDATE messages SET status = ?2, reason = ?3 WHERE id = ?1",
-                params![id, status_str(status), reason],
+                "UPDATE messages SET status = ?2, reason = ?3 WHERE id = ?1 AND status = 'held'",
+                params![id, status_str(status), reason.map(held_str)],
             )
             .map_err(RpcError::internal)?;
-        Ok(())
+        Ok(changed == 1)
     }
 
-    /// How many Messages to `to` are `pending` or `held` right now.
     pub(crate) fn count_open(&self, to: &str) -> Result<u32, RpcError> {
         self.db
             .query_row(
@@ -147,7 +149,6 @@ impl Store {
             .map(|value| value.map(|value| parse_delivery(&value)))
     }
 
-    /// By `from`, then `to`.
     pub(crate) fn list_routes(&self) -> Result<Vec<Route>, RpcError> {
         self.db
             .prepare("SELECT from_id, to_id, delivery FROM routes ORDER BY from_id, to_id")
@@ -177,7 +178,9 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         body: row.get(4)?,
         reply_to: row.get(5)?,
         status: parse_status(&row.get::<_, String>(6)?),
-        reason: row.get(7)?,
+        reason: row
+            .get::<_, Option<String>>(7)?
+            .map(|text| parse_held(&text)),
         at: row.get(8)?,
     })
 }
@@ -215,6 +218,22 @@ fn parse_status(text: &str) -> MessageStatus {
         "delivered" => MessageStatus::Delivered,
         "dropped" => MessageStatus::Dropped,
         _ => MessageStatus::Pending,
+    }
+}
+
+fn held_str(held: Held) -> &'static str {
+    match held {
+        Held::AskFirst => "ask-first",
+        Held::Takeover => "takeover",
+        Held::Escalated => "escalated",
+    }
+}
+
+fn parse_held(text: &str) -> Held {
+    match text {
+        "takeover" => Held::Takeover,
+        "escalated" => Held::Escalated,
+        _ => Held::AskFirst,
     }
 }
 
