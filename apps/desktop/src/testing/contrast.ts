@@ -88,13 +88,18 @@ export const applyFilter = (hex: string, filter: string): string => {
   return `#${toHex2(clampChannel(r))}${toHex2(clampChannel(g))}${toHex2(clampChannel(b))}`;
 };
 
-/** The `filter` declaration on the greyed Rail's own rule, straight from `rail/styles.css`'s text, never a hard-coded copy. */
-export const greyedRailFilter = (railCss: string): string => {
+/** The greyed Rail's own rule body, straight from `rail/styles.css`'s text, never a hard-coded copy. */
+export const greyedRailRule = (railCss: string): string => {
   const rule = /\[aria-disabled="true"\]\s*\{([^}]*)\}/.exec(railCss)?.[1];
 
   if (!rule) throw new Error("no [aria-disabled] rule in rail/styles.css");
 
-  const filter = /filter:\s*([^;]+);/.exec(rule)?.[1];
+  return rule;
+};
+
+/** The `filter` declaration on the greyed Rail's own rule. */
+export const greyedRailFilter = (railCss: string): string => {
+  const filter = /filter:\s*([^;]+);/.exec(greyedRailRule(railCss))?.[1];
 
   if (!filter) throw new Error("no filter declaration in the greyed-Rail rule");
 

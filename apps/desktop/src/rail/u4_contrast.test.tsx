@@ -72,7 +72,7 @@ describe("u4 ink contrast: Rail", () => {
     });
   });
 
-  it("u4_the_done_fold_lines_text_meets_4_5_to_1_even_though_its_glyph_stays_lightest", async () => {
+  it("u4_the_done_fold_lines_grey_text_meets_4_5_to_1_unlike_an_unfolded_rows_lightest_glyph", async () => {
     const { tokens, ground } = loadTokens();
 
     await withStylesheets(async () => {

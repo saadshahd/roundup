@@ -39,6 +39,15 @@ describe("u4 stylesheet text-colour allowlist", () => {
     }
   });
 
+  it("u4_the_allowlist_guard_rejects_a_light_colour_outside_glyph_tones", () => {
+    const offenders = rulesOf(".x { color: var(--light); }")
+      .filter((rule) => TEXT_COLOUR.test(rule.body))
+      .filter((rule) => !isAllowedSelector(rule.selector))
+      .map((rule) => rule.selector);
+
+    expect(offenders).toEqual([".x"]);
+  });
+
   it("u4_the_word_hover_colour_is_text", () => {
     const styles = allStylesheets()["../styles.css"]!;
     const tokens = tokensOf(styles);

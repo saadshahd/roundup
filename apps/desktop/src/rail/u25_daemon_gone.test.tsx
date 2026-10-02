@@ -3,7 +3,15 @@ import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DaemonExit } from "../app/seam";
 import rail from "./styles.css?inline";
-import { applyFilter, colourOf, contrastRatio, greyedRailFilter, loadTokens, withStylesheets } from "../testing/contrast";
+import {
+  applyFilter,
+  colourOf,
+  contrastRatio,
+  greyedRailFilter,
+  greyedRailRule,
+  loadTokens,
+  withStylesheets,
+} from "../testing/contrast";
 import { glyphOf, liveLineOf, mountRail, rowNames, rowOf } from "./railFixture";
 import { agent } from "../testing/nodes";
 
@@ -31,10 +39,11 @@ describe("u25 the Daemon is gone", () => {
   });
 
   it("u25_the_dim_is_a_grayscale_filter_and_never_an_opacity", () => {
+    const rule = greyedRailRule(rail);
     const filter = greyedRailFilter(rail);
 
     expect(filter).toContain("grayscale(1)");
-    expect(filter).not.toContain("opacity");
+    expect(rule).not.toContain("opacity");
   });
 
   it.each([
