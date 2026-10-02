@@ -240,7 +240,7 @@ run_agent() {
   boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
     "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" 2>"${result%.json}.err" || true
   cat "${result%.json}.err" >&2
-  ! grep -qE 'DeadlineExceeded|looks wedged' "${result%.json}.err" || record_event agent deadline-exceeded
+  ! grep -q DeadlineExceeded "${result%.json}.err" || record_event agent deadline-exceeded
   [ -s "$result" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
   guard_limits "$result"
   jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
@@ -274,7 +274,7 @@ build() {
   local rc=0
   run_check >"$checklog" 2>&1 || rc=$?
   tail -n 15 "$checklog" >&2
-  ! grep -qE 'DeadlineExceeded|looks wedged' "$checklog" || record_event check deadline-exceeded
+  ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
   [ "$rc" -eq 0 ] || exit "$rc"
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
@@ -309,7 +309,7 @@ check() {
   local rc=0
   run_check 2>&1 | mask_github_tokens >"$log" || rc=${PIPESTATUS[0]}
   tail -n 25 "$log" >&2
-  ! grep -qE 'DeadlineExceeded|looks wedged' "$log" || record_event check deadline-exceeded
+  ! grep -q DeadlineExceeded "$log" || record_event check deadline-exceeded
   echo "boxd.sh: check $ref (merged into origin/main) exit $rc; full log $log" >&2
   exit "$rc"
 }
