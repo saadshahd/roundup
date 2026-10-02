@@ -151,7 +151,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | L23 | VM tools |
   | L24 | agent search servers |
   | L25 | design critic run |
-  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check` |
+  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check`; architect-b's split of #133 |
   | L40 | `boxd check` does not depend on files outside the checkout (round cap on #140: amend; one more reject on the same clause retires it) |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
