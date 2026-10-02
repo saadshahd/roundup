@@ -9,6 +9,7 @@ import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { AttentionChip } from "./rail/AttentionChip";
 import { Rail } from "./rail/Rail";
+import { Keys } from "./keys/Keys";
 import { createNow } from "./state/clock";
 import type { Clock } from "./state/clock";
 import { createProjectState } from "./state/project";
@@ -37,6 +38,7 @@ const OpenProject = (props: {
       <Show when={connected()}>
         {(open) => (
           <ConnectedProjectContext.Provider value={open()}>
+            <Keys />
             <Layout
               header={
                 <>

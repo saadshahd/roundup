@@ -1,0 +1,15 @@
+ ▐▛███▛█   Claude Code v2.1.287
+▝▜██████▀  Haiku 4.5 · Claude API
+ ▝▝   ▝▝   /tmp/sbi/w1
+  Get to finished work sooner with Opus 5.5. Switch anytime with /model.
+❯ Run the bash command: claude --version . Reply with its output only.
+  Ran 1 shell command
+● Exit code 1: use agent_spawn
+✻ Cooked for 2s · done 7:36 PM
+❯ Call the Agent tool now with the prompt: say hi. Reply with the tool result, or the words NO SUCH TOOL.
+● NO SUCH TOOL
+✻ Brewed for 1s · done 7:37 PM
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

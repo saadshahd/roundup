@@ -13,6 +13,8 @@ export type TodosState = {
   byId: Accessor<ReadonlyMap<number, Todo>>;
   /** The message of the last failed `todo.list`, until a later one succeeds. */
   failure: Accessor<string | null>;
+  /** True once the first `todo.list` has answered, so U38's empty line never flashes before it. */
+  isLoaded: Accessor<boolean>;
 };
 
 const REFETCH_ON = new Set(["todo.created", "todo.updated", "todo.unblocked", "todo.deleted"]);
@@ -22,6 +24,7 @@ export const createTodosState = (app: AppSeam, events: Events): TodosState => {
   // Reconciled by id, so a refetch that changes one Todo leaves every other row untouched.
   const [shelf, setShelf] = createStore<{ todos: Todo[] }>({ todos: [] });
   const [failure, setFailure] = createSignal<string | null>(null);
+  const [isLoaded, setIsLoaded] = createSignal(false);
 
   // Overlapping fetches can answer out of order; only the newest one may write.
   let newest = 0;
@@ -41,6 +44,7 @@ export const createTodosState = (app: AppSeam, events: Events): TodosState => {
     if (message === null) setShelf("todos", reconcile(list, { key: "id" }));
 
     setFailure(message);
+    setIsLoaded(true);
   };
 
   onCleanup(
@@ -52,5 +56,5 @@ export const createTodosState = (app: AppSeam, events: Events): TodosState => {
 
   const byId = createMemo(() => new Map(shelf.todos.map((todo) => [todo.id, todo])));
 
-  return { all: () => shelf.todos, byId, failure };
+  return { all: () => shelf.todos, byId, failure, isLoaded };
 };
