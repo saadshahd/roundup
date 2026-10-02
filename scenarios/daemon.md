@@ -1,6 +1,6 @@
 # Daemon
 
-D1 is in `crates/rupd`. D2 to D4 are end-to-end tests of the whole Daemon. They live in `crates/rup/tests`, the only package whose tests can run both the Daemon (a dev-dependency) and the built `rup` binary that hooks and MCP servers call (`CARGO_BIN_EXE_rup`). They run without `claude`: a fake `claude` named by `ROUNDUP_CLAUDE_BIN` plays recorded hook payloads from `spikes/hooks-state/log*.jsonl`. `CLAUDE_CONFIG_DIR` points at a temp dir, so no test ever touches the user's `~/.claude.json`.
+D1 and D7 are in `crates/rupd`. D2 to D7 are end-to-end tests of the whole Daemon. They live in `crates/rup/tests`, the only package whose tests can run both the Daemon (a dev-dependency) and the built `rup` binary that hooks and MCP servers call (`CARGO_BIN_EXE_rup`). They run without `claude`: a fake `claude` named by `ROUNDUP_CLAUDE_BIN` plays recorded hook payloads from `spikes/hooks-state/log*.jsonl`. `CLAUDE_CONFIG_DIR` points at a temp dir, so no test ever touches the user's `~/.claude.json`.
 
 **D1 attached.** Given `rupd <project> --attached`, when its stdin closes, then it exits within a bound the test names, and every program it started in a Terminal is gone. Without `--attached`, a closed stdin changes nothing; CI starts `rupd &` with no stdin. The App passes `--attached`, so no Daemon and no Agent outlives the App, even when the App crashes.
 
