@@ -562,43 +562,6 @@ impl Agents {
         Ok(self.shared.present(self.shared.rail().node(id)?))
     }
 
-<<<<<<< HEAD
-    /// Stop an Agent's program; it stays in the Rail as `done`, unless its program had already
-    /// ended: then it keeps the Status that ending gave it. A Meta-agent's children move up to
-    /// where it was and keep running.
-    async fn stop(&self, ctx: &Ctx, id: &str) -> Result<(), RpcError> {
-        let (node, run) = {
-            let rail = self.shared.rail();
-            let node = rail.node(id)?;
-            let run = self.shared.runs().get(id).map(|slot| match slot {
-                Slot::Running(run) => Some(run.terminal_id.clone()),
-                Slot::Starting { .. } => None,
-            });
-            (node, run)
-        };
-        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
-            return Err(RpcError::conflict(format!("{id} is not an Agent")));
-        }
-        match run {
-            Some(Some(terminal_id)) => {
-                self.shared
-                    .observe(ctx.actor.clone(), id, Observation::Stopped)?;
-                match self.shared.terminals.kill(&terminal_id).await {
-                    Err(err) if err.code != code::NOT_FOUND => return Err(err),
-                    // It exited on its own first.
-                    _ => {}
-                }
-            }
-            Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
-            // An earlier Daemon ran it; its Terminal ended with that Daemon.
-            None => {}
-        }
-        if node.kind == NodeKind::Group && self.shared.rail().lift_children(id)? {
-            ctx.emit(EventData::RailChanged);
-        }
-        Ok(())
-    }
-
     /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
     /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
     /// here leaves no branch, no worktree directory and no Worktree recorded on the node.
@@ -658,8 +621,6 @@ impl Agents {
         );
     }
 
-=======
->>>>>>> origin/main
     /// Start Claude Code for node `id`, marked as starting, in a Terminal recorded in the Rail,
     /// then register and watch it; returns the Terminal's id. A failure leaves no settings file,
     /// no Terminal and no Worktree, and the caller unmarks `id`.
