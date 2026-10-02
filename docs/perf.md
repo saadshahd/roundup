@@ -13,7 +13,7 @@ Rule 7's budgets and what measures each. Linux VM numbers are Linux numbers. The
 
 ## What is enforced, and what is not
 
-Rule 7's 10% regression test is enforced for five metrics on Linux and five on macOS (below), and is a gross tripwire for the rest. A latency miss on macOS is rerun on a quiet machine before it is believed. Measured on an isolated 2-vCPU boxd VM (AMD EPYC, load 2 to 4 from the runs themselves): 9 invocations of 11 runs each, the spread of the 9 medians against their median was
+Rule 7's 10% regression test is enforced for five metrics on Linux and five on macOS (below), and is a gross tripwire for the rest, except that a time metric's regression test is skipped, loudly, when the machine is busier than its baseline's load (R13). A latency miss on macOS is rerun on a quiet machine before it is believed. Measured on an isolated 2-vCPU boxd VM (AMD EPYC, load 2 to 4 from the runs themselves): 9 invocations of 11 runs each, the spread of the 9 medians against their median was
 
 | Metric | max / median | min / median | Gate |
 |---|---|---|---|
@@ -46,7 +46,7 @@ macOS cold start is stable (1.07) where the Linux VM's was not (3.08), so it is 
 
 **Load changes latency far more than 10%.** The same 7 metrics with 8 busy loops running (load 7 to 14): cold start x1.4, `ping` x2.1, `write_to_output` x2.2, `rail.tree` 10 Groups x8, 40 Groups x1.0 to 1.9 and widely spread; `rss_extra_mb` did not move (3.10 against a median of 3.14, committed as 3.1 because clippy rejects a literal that looks like pi). So a latency miss on a busy machine proves nothing, and a memory miss proves a lot.
 
-**Observed false fail.** A `just perf` at load 7.5 (the baseline's loads were 0.25 to 0.45 per core, above) put `write_to_output_p95_ms` at 0.064 ms against a ceiling of 0.063 ms and failed; nothing had regressed. The gate does not yet know the load: until it skips latency comparisons above a load per core (specified as R13 in `scenarios/perf.md`; not built), a latency miss is rerun when the machine is quieter before it is believed.
+**Observed false fail.** A `just perf` at load 7.5 (the baseline's loads were 0.25 to 0.45 per core, above) put `write_to_output_p95_ms` at 0.064 ms against a ceiling of 0.063 ms and failed; nothing had regressed. The gate now knows the load (R13, `scenarios/perf.md`): each time metric with a baseline carries a `max_load_per_cpu` per OS in `budgets.json`, and above it that metric's regression test is skipped — its `limit` still applies — and the run prints why. `target/perf.json` carries a `skipped` key (one entry per skipped metric, empty when none), and whenever at least one test was skipped the run's last printed line is `skipped <n> regression tests: load <x> per cpu`.
 
 **A latency miss on macOS is rerun on a quiet machine before it is believed; a memory miss is believed at any load.**
 
