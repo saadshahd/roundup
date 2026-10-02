@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use perf::budget::{Budget, Budgets, Miss, Outcome, Report, judge, median, misses};
+use perf::budget::{Budget, Budgets, Miss, Outcome, Report, judge, judge_all, median};
 
 fn budget(limit: Option<f64>, noise: f64, baseline: &[(&str, f64)]) -> Budget {
     Budget {
@@ -87,9 +87,9 @@ fn r6_a_platform_without_a_baseline_is_held_to_the_limit_only() {
 fn r7_a_budget_for_a_metric_that_was_not_measured_is_an_error() {
     let budgets = BTreeMap::from([("cold_start_ms".to_string(), budget(Some(300.0), 0.0, &[]))]);
 
-    assert!(misses(&report("linux", &[]), &budgets).is_err());
+    assert!(judge_all(&report("linux", &[]), &budgets).is_err());
     assert_eq!(
-        misses(&report("linux", &[("cold_start_ms", 20.0)]), &budgets),
+        judge_all(&report("linux", &[("cold_start_ms", 20.0)]), &budgets),
         Ok(Outcome {
             misses: vec![],
             skipped: vec![]

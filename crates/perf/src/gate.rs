@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::budget::{Budgets, Miss, Outcome, Report, load_per_cpu, median, misses};
+use crate::budget::{Budgets, Miss, Outcome, Report, judge_all, load_per_cpu, median};
 
 /// Reads `budgets.json`-shaped files; the error names the file.
 pub fn read_budgets(path: &Path) -> Result<Budgets, Box<dyn std::error::Error>> {
@@ -98,7 +98,7 @@ pub fn conclude(
         skipped: Vec::new(),
     };
 
-    let outcome = misses(&result, budgets);
+    let outcome = judge_all(&result, budgets);
 
     if let Ok(outcome) = &outcome {
         result.skipped = outcome.skipped.clone();

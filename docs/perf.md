@@ -13,7 +13,7 @@ Rule 7's budgets and what measures each. Linux VM numbers are Linux numbers. The
 
 ## What is enforced, and what is not
 
-Rule 7's 10% regression test is enforced for five metrics on Linux and five on macOS (below), and is a gross tripwire for the rest, except that a time metric's regression test is skipped, loudly, when the machine is busier than its baseline's load (R13). A latency miss on macOS is rerun on a quiet machine before it is believed. Measured on an isolated 2-vCPU boxd VM (AMD EPYC, load 2 to 4 from the runs themselves): 9 invocations of 11 runs each, the spread of the 9 medians against their median was
+Rule 7's 10% regression test is enforced for five metrics on Linux and five on macOS (below) — except that a time metric's regression test is skipped, loudly, when the machine is busier than its baseline's load (R13) — and is a gross tripwire for the rest. A latency miss on macOS is rerun on a quiet machine before it is believed. Measured on an isolated 2-vCPU boxd VM (AMD EPYC, load 2 to 4 from the runs themselves): 9 invocations of 11 runs each, the spread of the 9 medians against their median was
 
 | Metric | max / median | min / median | Gate |
 |---|---|---|---|

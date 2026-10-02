@@ -83,7 +83,7 @@ pub fn load_per_cpu(loads: &[f64], cpus: usize) -> f64 {
 }
 
 /// Every metric judged against its budget. A budget naming a metric the run never measured is an error, not a pass: a gate that silently stops measuring is not a gate.
-pub fn misses(result: &Report, budgets: &Budgets) -> Result<Outcome, String> {
+pub fn judge_all(result: &Report, budgets: &Budgets) -> Result<Outcome, String> {
     if result.loads.is_empty() {
         return Err("no load figures recorded".to_string());
     }
