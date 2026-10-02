@@ -17,6 +17,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `loop.md` | `loop/` | every `L` heading in the file |
 | `mcp.md` | `crates/rup` (the `rup mcp` subcommand) | M1–M3 |
 | `daemon.md` | `crates/rupd` (D1, D7); end-to-end tests in `crates/rup/tests` (D2–D7) | every `D` heading in the file |
+| `messages.md` | `crates/messages` (with the tools in `crates/rup`) | every `B` heading in the file |
 | `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | every `S` heading in the file |
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
 | `ui-persist.md` | `apps/desktop` (the webview) | U100 |
@@ -24,6 +25,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
 | `decisions.md` | `crates/agents` (Decisions), `crates/rup` (`rup permission`), `spikes/hooks-permission` | every `H` heading in the file |
 | `control.md` | `crates/agents` (`agent.prompt`, `agent.interrupt`, `ask_user`), `crates/rup` | every `H` heading in the file |
+| `awareness.md` | `crates/agents` (Brief file, `claude_code/`), `crates/rupd` (`agent.context`, `agent.brief`), `crates/rup` | E1–E7 |
 | `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | F1–F5 |
 | `rpc.md` | `crates/rpc` | C1 |
 | `workspace.md` | root files | W1 |
