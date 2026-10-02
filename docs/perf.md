@@ -6,7 +6,7 @@ Rule 7's budgets and what measures each. Linux VM numbers are Linux numbers. The
 |---|---|---|
 | Daemon cold start < 300 ms | `just perf` (`cold_start_ms`: spawn `rupd` to its first `daemon.ping` reply) | any machine; the App's cold start to a visible window is manual |
 | 10 idle Agents < 150 MB extra RSS | `just perf` (`rss_extra_mb`: the Daemon's growth with ten login-shell Terminals) | any machine; the Agents' own processes are manual |
-| Keystroke-to-render < 16 ms p95 | manual, below | the macOS App only |
+| Keystroke-to-render < 16 ms p95 | `just perf-keystroke`, only when the user asks (below) | the macOS App only |
 | Regression above 10% fails | `just perf` against `crates/perf/budgets.json` | same OS as the baseline |
 
 `just perf` runs a fresh Daemon 11 times, takes each metric's median, prints the range and each run's load average, writes `target/perf.json` and exits 1 on a miss. Run it on a quiet machine: load is printed so a noisy run can be thrown away. A metric fails above its `limit`, or above its OS's `baseline` by more than 10% plus its `noise` allowance.
@@ -52,15 +52,16 @@ macOS cold start is stable (1.07) where the Linux VM's was not (3.08), so it is 
 
 **Real regression or noise.** Look at the load printed for each run first. A real regression moves the median above the ceiling in three reruns at the load of the baseline (up to about 0.45 per core) and does not track the load; noise falls back under the ceiling when the machine quiets, and the miss and the load rise together. A memory miss is real whatever the load. Re-baseline only with a PR that says why (copy the medians from `target/perf.json`).
 
-## Keystroke-to-render in WKWebView (manual)
+## Keystroke-to-render in WKWebView
 
-Needs the real App on the laptop, a visible, focused window, and a quiet machine. The in-webview number is keydown to xterm's `onRender`, not input-to-photon. Not yet possible: the webview has no probe. The UI module must first add one (a `?perf` switch in `apps/desktop/src/terminal/emulator.ts` that stamps each key's `keydown` time and the next `onRender` into `window.__keystrokes`); until then no number can be read from the real App.
+> **This opens a window over your screen and types into it.** The window is always on top and on every Space for about 40 s per run (three runs by default), and it never takes the keyboard focus on purpose, but it covers whatever you are doing. `just perf-keystroke` and `perf-keystroke` refuse unless `ROUNDUP_ALLOW_WINDOW=1` is set, and it is set only by someone the user asked to run it (R12). No agent, Reviewer, CI job, boxd VM or `just check` runs it.
 
-With the probe in place:
+What the number proves: keydown to the first xterm render that shows the echo, in the real WKWebView on macOS, with the renderer and mean frame time recorded. What it does not: it is not a CI gate and not a Linux number, it excludes the keyboard, OS event path and display scan-out, `performance.now()` is a 1 ms bound, and p95 in whole milliseconds makes a 10% test move in 1 ms steps, so its budget is the 16 ms limit only. The cheap headless bound is the Daemon-side `write_to_output_p95_ms` limit of 16 ms in `just perf` (R8).
 
-1. `just app-release <project>` (release Rust, embedded webview files, no dev server).
-2. Select a Terminal running `cat`, so each typed byte echoes through the Daemon and the PTY.
-3. In Safari, Develop > this Mac > roundup > Web Inspector (needs the `devtools` feature on a release build; use `just app <project>` if it is off), then in the console run the driver: dispatch 1600 `keydown` events on the terminal's `textarea`, 20 to 40 ms apart, and discard the first 100.
-4. Read p50, p95 and p99 of `window.__keystrokes` for the WebGL renderer, then reload with the DOM renderer. Budget: p95 < 16 ms. Repeat 4 times and report the spread and `uptime`.
+`just perf-keystroke` (macOS only) builds the App with the keystroke probe (`VITE_ROUNDUP_PERF`, K1) into `target/perf-app`, opens its window once per run, lets the webview type 1000 keys into a raw `cat` Terminal and reads the result back (K3, R11). The number is keydown to the first xterm render that shows the echo: it excludes the display's scan-out, and `performance.now()` has 1 ms resolution in WKWebView. The report carries the renderer (`webgl` or `dom`) and the mean frame time.
 
-`spikes/tauri-latency/REPORT.md` has the method and the one measured result (WebGL p95 11 to 13 ms, DOM 14 to 15 ms on an M4 Max).
+What can go wrong:
+- **A covered or napped window stops drawing.** macOS stops rAF and timers for a window other windows cover and naps an App that is not frontmost: measured here, with the window behind a full-screen Chrome, rendering stopped entirely and every key timed out. The perf build's window is therefore always on top and on every Space (a `TAURI_CONFIG` override in the recipe, so normal builds are unchanged), and the runner passes `-NSAppSleepDisabled YES`. The window stays over whatever you are doing for about 40 s per run, three runs. A throttled run is refused, not reported: mean frame time above 25 ms or more than 5% dropped keys exits 2.
+- **Load.** Run it with the laptop idle; the load average is printed per run.
+- **Windows over a headless Chromium number.** Chromium with the same xterm measured p95 under 5 ms; WKWebView on an M4 Max in the earlier spike measured 11 to 15 ms. The difference is the frame wait, so the budget is only meaningful here.
+
