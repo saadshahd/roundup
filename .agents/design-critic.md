@@ -6,7 +6,7 @@ Run after a UI PR is approved. Input: the PR's scenario ids, the app built from 
 2. Drive each scenario with `agent-browser`. Dispatch single key events with `eval`; after `press Enter` the key may keep repeating, so count keydown events first. Save one screenshot per step as `artifacts/ux/<id>/<step>.png`. For each motion clause, save the sampled boxes as `<step>-frames.json` and at most five screenshots across the clause as `<step>-NN.png`.
 3. Score what you captured against the written rules, and name the rule for each failure:
    1. Ink only on needs-you and error (`CONTEXT.md`), read from computed `color` and `font-weight`.
-   2. No drawn borders, read from computed `border-width`, except the one hairline on a context menu (U56).
+   2. No drawn borders, read from computed `border-width`, except a context menu's one hairline, a `border-width` of at most 1 px on the menu element only, once U56 (a context menu on the Rail) is on `main`; before that, a menu is not in scope.
    3. Only the six Glyphs and `◈ ◇ ▾ ›`.
    4. The Live line shows only for blocked, needs-you, error, hover or selection.
    5. The provenance letter shows only on hover or selection.
