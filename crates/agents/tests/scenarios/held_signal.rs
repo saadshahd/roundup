@@ -190,18 +190,26 @@ async fn child_overflows_the_held_signals() {
     let tree = f.until(|t| !t.is_empty()).await;
     let id = tree[0].id.clone();
 
-    // Replies are dropped, not unwrapped (see the comment in the ordering test): the fix under
-    // test is whether `BOUND` of them are later applied, not whether every one is accepted now.
+    // Captured, not unwrapped immediately (see the comment in the ordering test above): the
+    // scenario says every call returns success, including the ninth and later ones that only get
+    // dropped from the held queue, so that is checked below rather than here, where a failure
+    // would panic while this Signal's `spawn_blocking` read of `config` is still stuck, never
+    // released.
+    let mut replies = Vec::with_capacity(BOUND + 2);
     for i in 0..BOUND + 2 {
-        let _ = signal(&f, &id, CYCLE[i % CYCLE.len()]).await;
+        replies.push(signal(&f, &id, CYCLE[i % CYCLE.len()]).await);
     }
 
     release(config).await;
     spawning.await.unwrap().unwrap();
 
-    // A short timeout, not `TIMEOUT`: if nothing were held, `next_kinds` would wait forever for
-    // events that never arrive, so this must fail fast rather than block the parent on an output
-    // pipe that never fills.
+    for reply in &replies {
+        assert!(reply.is_ok(), "{reply:?}");
+    }
+
+    // A short timeout, not `TIMEOUT`: `next_kinds` bounds each `recv` by `TIMEOUT` (10s) and
+    // panics past it, so a missing event would otherwise take up to `BOUND * TIMEOUT` to surface
+    // on this output pipe; this fails the subprocess in 2s instead.
     let kinds = tokio::time::timeout(Duration::from_secs(2), next_kinds(&mut events, BOUND))
         .await
         .unwrap_or_default();

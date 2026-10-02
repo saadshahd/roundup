@@ -221,17 +221,24 @@ impl Shared {
         let mut prompts = Vec::new();
         for (actor, payload) in held {
             let first_prompt = claude_code::submitted_prompt(&payload).map(name::from_prompt);
-            let (prompt, _tick_at) = self
-                .apply(
-                    Some(&mut *rail),
-                    &mut run,
-                    id,
-                    &actor,
-                    Observation::Signal(payload),
-                    first_prompt,
-                )
-                .expect(STILL_IN_RAIL);
-            prompts.extend(prompt);
+            // Logged, not panicked: a panic here would unwind while `rail` and `runs` are both
+            // still locked, poisoning them and taking every later `rail()`/`runs()` call down
+            // with it. `rail.node(id)` itself cannot be `NOT_FOUND` (a Starting id's Rail node is
+            // removed only by its own failed spawn, which never reaches here), but the write a
+            // held rename makes can still fail on its own account.
+            match self.apply(
+                Some(&mut *rail),
+                &mut run,
+                id,
+                &actor,
+                Observation::Signal(payload),
+                first_prompt,
+            ) {
+                Ok((prompt, _tick_at)) => prompts.extend(prompt),
+                Err(err) => eprintln!(
+                    "agents: could not apply a Signal held for {id} while it was starting: {err}"
+                ),
+            }
         }
         runs.insert(id.to_owned(), Slot::Running(run));
         prompts
@@ -266,8 +273,6 @@ impl Slot {
 /// as A5 does for a payload the adapter refuses.
 const HELD_BOUND: usize = 8;
 
-/// Queue `payload` for `id`, dropping and logging the oldest once `held` already holds
-/// `HELD_BOUND`.
 fn hold(id: &str, held: &mut VecDeque<(Actor, Value)>, actor: Actor, payload: Value) {
     if held.len() >= HELD_BOUND {
         held.pop_front();
@@ -307,10 +312,6 @@ async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: Str
 
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
 const REGISTERED: &str = "a watched Agent is registered";
-
-/// A Starting id's Rail node is removed only by its own failed spawn, which never reaches
-/// `finish_starting`, so the node a held Signal renames is still there to rename.
-const STILL_IN_RAIL: &str = "a Starting id still has its Rail node once registration finishes";
 
 /// Feed one Terminal's titles and its exit to the Agent behind it, and a Tick at the time its
 /// adapter asks for one. Only a held star asks, so the watcher of an idle Agent never wakes.
@@ -862,12 +863,56 @@ mod tests {
         assert_eq!(err.code, rpc::code::NOT_FOUND);
     }
 
+    /// A second connection holding a write transaction makes a write through `Rail`'s own
+    /// connection fail with a real SQLite error (`busy_timeout` defaults to 0), without reaching
+    /// into `Rail`'s private `db` field.
+    fn lock_db_for_writes(dir: &std::path::Path) -> rusqlite::Connection {
+        let lock = rusqlite::Connection::open(dir.join("agents.db")).unwrap();
+        lock.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        lock
+    }
+
+    /// A held Signal whose `rail.rename` fails (here, because another connection holds the
+    /// write lock) must not panic while `finish_starting` still holds `rail` and `runs`: a panic
+    /// there would poison both mutexes, so every later `rail()`/`runs()` call would panic too.
+    #[test]
+    fn a14_a_failed_rail_write_for_a_held_signal_does_not_poison_the_locks() {
+        let (dir, _bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        let id = shared
+            .rail()
+            .insert(contracts::agent::NodeKind::Agent, "new-agent", None, None)
+            .unwrap()
+            .id;
+        shared.mark_starting(&id);
+        if let Some(Slot::Starting { held, .. }) = shared.runs().get_mut(&id) {
+            held.push_back((
+                Actor::daemon(),
+                json!({"hook_event_name": "UserPromptSubmit", "prompt": "fix the build"}),
+            ));
+        }
+        let lock = lock_db_for_writes(dir.path());
+
+        let prompts = shared.finish_starting(&id, |named| Run {
+            adapter: ClaudeCode::starting(|| 0),
+            prompt: None,
+            named,
+            terminal_id: "1".into(),
+        });
+
+        drop(lock);
+        assert_eq!(prompts, Vec::new());
+        // Neither lock was poisoned by the failed write: both can still be acquired.
+        assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
+        shared.rail().tree().unwrap();
+    }
+
     /// How many trials `a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one`
-    /// runs. Measured by reverting `finish_starting` to let go of `rail` and `runs` right after
-    /// the swap into `Running`, then re-locking `runs` once per held Signal to apply it (the old
-    /// bug this test exists to catch): over 30 runs of the mutated binary, every run failed, the
-    /// latest at trial 5536. `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug
-    /// would need to be dramatically harder to hit than the one measured to slip past a run.
+    /// runs. Measured against a `finish_starting` that lets go of `rail` and `runs` right after
+    /// the swap into `Running`, then re-locks `runs` once per held Signal to apply it — the
+    /// regression this test catches if the one `rail`-then-`runs` lock section is ever split
+    /// again: over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
+    /// `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug would need to be
+    /// dramatically harder to hit than the one measured to slip past a run.
     const TRIALS: usize = 20_000;
 
     /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its drain
