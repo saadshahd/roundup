@@ -4,11 +4,12 @@
 mod daemon;
 
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use contracts::agent::RailNode;
 use contracts::todo::Todo;
 use contracts::{ActorKind, EventData, Kind, Touch};
-use daemon::{Project, next, next_kind, next_status, start};
+use daemon::{Project, TEN_IDLE_BOUND, next, next_kind, start, wait_until_idle};
 use serde_json::json;
 
 /// Recorded Claude Code hook payloads, one of each event D2 plays.
@@ -146,18 +147,39 @@ async fn d4_ten_idle_agents_cost_the_daemon_less_than_150_mb() {
     let mut client = project.subscribed().await;
     let before = resident_kb(project.pid());
 
+    // One deadline for all ten Agents together, from the first spawn (scenario D4).
+    let deadline = Instant::now() + TEN_IDLE_BOUND;
+    let mut ids = Vec::new();
     for _ in 0..10 {
-        project.spawn_agent(&client).await;
+        ids.push(project.spawn_agent(&client).await.id);
     }
-    let mut idle = std::collections::HashSet::new();
-    while idle.len() < 10 {
-        let status = next_status(&mut client).await;
-        if status.status.kind == Kind::Idle {
-            idle.insert(status.id);
-        }
-    }
+    wait_until_idle(&mut client, &ids, deadline)
+        .await
+        .unwrap_or_else(|report| panic!("{report}"));
 
     let growth_kb = resident_kb(project.pid()).saturating_sub(before);
     println!("d4: the Daemon's resident memory grew by {growth_kb} kB with 10 idle Agents");
     assert!(growth_kb < BUDGET_MB * 1024);
+}
+
+/// Scenario D4's failure output: a miss names each Agent not yet Idle, the status last seen on
+/// the event stream and the Daemon's own `rail.tree` view of it.
+#[tokio::test]
+async fn d4_a_miss_names_the_not_idle_agents_their_last_status_and_the_rail_tree() {
+    // No FAKE_CLAUDE_EVENTS: this Agent never plays SessionStart, so it never reaches Idle.
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let agent = project.spawn_agent(&client).await;
+
+    let report = wait_until_idle(
+        &mut client,
+        std::slice::from_ref(&agent.id),
+        Instant::now() + Duration::from_millis(200),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(report.contains(&agent.id), "{report}");
+    assert!(report.contains("Working"), "{report}");
+    assert!(report.contains("rail.tree"), "{report}");
 }
