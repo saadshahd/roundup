@@ -29,7 +29,7 @@ Rule 7's 10% regression test is enforced for five metrics on Linux and five on m
 
 ## macOS baseline
 
-Recorded on one Apple M4 Max laptop (16 cores); the key is the OS only, so the numbers are valid for that machine class: `macos-latest` in CI or a slower Mac would be judged against an M4 Max and needs its own baseline before it is gated with the machine in ordinary use: load average 4 to 7, which is 0.25 to 0.45 per core, not idle (a developer's laptop is never idle); 9 invocations of 11 runs each. The spread of the 9 medians against their median:
+Recorded on one Apple M4 Max laptop (16 cores); the key is the OS only, so the numbers are valid for that machine class: `macos-latest` in CI or a slower Mac would be judged against an M4 Max and needs its own baseline before it is gated. The machine was in ordinary use: load average 4 to 7, which is 0.25 to 0.45 per core, not idle (a developer's laptop is never idle). The baseline is 9 invocations of 11 runs each. The spread of the 9 medians against their median:
 
 | Metric | max / median | Gate on macOS |
 |---|---|---|
@@ -46,7 +46,7 @@ macOS cold start is stable (1.07) where the Linux VM's was not (3.08), so it is 
 
 **Load changes latency far more than 10%.** The same 7 metrics with 8 busy loops running (load 7 to 14): cold start x1.4, `ping` x2.1, `write_to_output` x2.2, `rail.tree` 10 Groups x8, 40 Groups x1.0 to 1.9 and widely spread; `rss_extra_mb` did not move (3.10 against a median of 3.14, committed as 3.1 because clippy rejects a literal that looks like pi). So a latency miss on a busy machine proves nothing, and a memory miss proves a lot.
 
-**Observed false fail.** A `just perf` at load 7.5 (the baseline's loads were 4 to 6) put `write_to_output_p95_ms` at 0.064 ms against a ceiling of 0.063 ms and failed; nothing had regressed. The gate does not yet know the load: until it skips latency comparisons above a load per core (only proposed, as R13 in docs PR #97; not built), a latency miss is rerun when the machine is quieter before it is believed.
+**Observed false fail.** A `just perf` at load 7.5 (the baseline's loads were 0.25 to 0.45 per core, above) put `write_to_output_p95_ms` at 0.064 ms against a ceiling of 0.063 ms and failed; nothing had regressed. The gate does not yet know the load: until it skips latency comparisons above a load per core (specified as R13 in `scenarios/perf.md`; not built), a latency miss is rerun when the machine is quieter before it is believed.
 
 **A latency miss on macOS is rerun on a quiet machine before it is believed; a memory miss is believed at any load.**
 
