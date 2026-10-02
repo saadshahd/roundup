@@ -62,7 +62,13 @@ case "$1 $2" in
       *"grep -rlF /tmp/warm"*) [ "${STUB_MODE:-}" != warm-dirty ] || exit 1 ;;
       *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
       *"just check"*)
-        case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
+        if [ -n "${STUB_FS_FIXTURE:-}" ]; then
+          cmd=${!#}
+          cmd=$(printf '%s' "$cmd" | sed "s#/node_modules#$STUB_FS_FIXTURE/node_modules#g")
+          HOME="$STUB_FS_FIXTURE/home" PATH="$STUB_FS_FIXTURE/bin:$PATH" FAKE_TSC_ROOT="$STUB_FS_FIXTURE" bash -c "$cmd"
+        else
+          case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
+        fi ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -267,6 +273,60 @@ expect_true "L15 a GitHub token in the check output is masked" bash -c '! grep -
 
 check_repo; got=0; STUB_MODE=no-secret run_check_ref 54 || got=$?
 expect_true "L15 check needs no Claude secret" test "$got" -eq 0
+
+# L40: the check must not depend on anything outside the checkout. A VM restored from the snapshot carries a stray
+# /node_modules/@types/node at the filesystem root (ru-tsc-gate): tsc's ambient @types lookup walks up every parent of
+# ~/roundup and finds it, so a package that never declares @types/node itself would still typecheck clean there
+# although a clean runner's tsc fails it. The stub replays boxd.sh's own "just check" command for real (sed-rewriting
+# the literal /node_modules path into the fixture, like L9's replay_on_vm rewrites /tmp/) against a two-package pnpm
+# workspace fixture below a planted node_modules/@types/node, with a fake `tsc` on PATH that walks up to
+# FAKE_TSC_ROOT exactly as the real lookup does, so no real typescript install or network is needed.
+build_l40_fixture() { # build_l40_fixture <dir> <declared: yes|no>
+  local f=$1 declared=$2
+  mkdir -p "$f/home/roundup/packages/pkg-a/src" "$f/home/roundup/packages/types-node" "$f/node_modules/@types/node" "$f/bin" "$f/home/.cargo"
+  touch "$f/node_modules/@types/node/index.d.ts" "$f/home/.cargo/env"
+  printf '{"name":"fixture-workspace","private":true}\n' >"$f/home/roundup/package.json"
+  printf 'packages:\n  - "packages/*"\n' >"$f/home/roundup/pnpm-workspace.yaml"
+  printf 'check:\n    pnpm -r --if-present typecheck\n' >"$f/home/roundup/justfile"
+  if [ "$declared" = yes ]; then
+    printf '{"name":"pkg-a","private":true,"version":"0.0.0","scripts":{"typecheck":"tsc"},"devDependencies":{"@types/node":"workspace:*"}}\n' >"$f/home/roundup/packages/pkg-a/package.json"
+  else
+    printf '{"name":"pkg-a","private":true,"version":"0.0.0","scripts":{"typecheck":"tsc"}}\n' >"$f/home/roundup/packages/pkg-a/package.json"
+  fi
+  printf 'export function readEnv() { return process.env.X }\n' >"$f/home/roundup/packages/pkg-a/src/index.ts"
+  printf '{"name":"@types/node","private":true,"version":"0.0.0"}\n' >"$f/home/roundup/packages/types-node/package.json"
+  cat >"$f/bin/tsc" <<'TSC'
+#!/usr/bin/env bash
+set -euo pipefail
+dir=$PWD
+found=0
+while :; do
+  [ -d "$dir/node_modules/@types/node" ] && { found=1; break; }
+  [ "$dir" = "$FAKE_TSC_ROOT" ] && break
+  dir=$(dirname "$dir")
+done
+if [ "$found" -eq 0 ] && grep -q 'process\.' src/index.ts 2>/dev/null; then
+  echo "$PWD/src/index.ts(1,1): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node?" >&2
+  exit 2
+fi
+echo "tsc: no errors"
+TSC
+  chmod +x "$f/bin/tsc"
+  (cd "$f/home/roundup" && pnpm install --offline -s >/dev/null)
+  # Root-owned, like the stray directory actually found on the VM: a fix that drops `sudo rm` would leave this in place.
+  sudo chown -R root:root "$f/node_modules"
+}
+l40_repo() { check_repo; fixture="$dir/fixture"; build_l40_fixture "$fixture" "$1"; }
+
+l40_repo no
+got=0; STUB_FS_FIXTURE="$fixture" run_check_ref 54 || got=$?
+expect_true "L40 an undeclared package fails when the stray node_modules is removed" test "$got" -ne 0
+l40_log=$(ls loop/out/runs/check-54-*.log)
+expect_true "L40 the saved log holds the tsc error naming the package's file" grep -q 'packages/pkg-a/src/index.ts.*error TS2580' "$l40_log"
+
+l40_repo yes
+got=0; STUB_FS_FIXTURE="$fixture" run_check_ref 54 || got=$?
+expect_true "L40 the same tree passes once the package declares @types/node" test "$got" -eq 0
 
 for bad_ref in 'x; rm -rf ~' -x --tags; do
   check_repo; got=0; run_check_ref "$bad_ref" || got=$?
