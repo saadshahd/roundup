@@ -21,6 +21,6 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
 | `rpc.md` | `crates/rpc` | C1 |
 | `workspace.md` | root files | W1 |
-| `perf.md` | `crates/perf` | R1–R7 |
+| `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | R1–R12, K1–K3 |
 
 The order of work, the PR each scenario belongs to and what can start now are in `.work/queue.md`.

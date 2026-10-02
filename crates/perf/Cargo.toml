@@ -5,6 +5,7 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+base64.workspace = true
 clap = { version = "4", features = ["derive"] }
 contracts = { path = "../contracts" }
 rpc = { path = "../rpc" }
@@ -13,6 +14,10 @@ serde_json.workspace = true
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["process", "rt-multi-thread"] }
+
+[[bin]]
+name = "perf-keystroke"
+path = "src/keystroke.rs"
 
 [lints]
 workspace = true
