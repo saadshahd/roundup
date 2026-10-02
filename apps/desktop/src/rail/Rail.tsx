@@ -21,7 +21,7 @@ export const Rail = () => {
   const [failure, setFailure] = createSignal<string | null>(null);
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
-  /** Gates `⌘N` and `⇧⌘N` in the chord handler below, so an open field is never dropped mid-type (U33). */
+  /** Gates `⌘N` in the chord handler below, so an open field is never dropped mid-type (U33). */
   const [composing, setComposing] = createSignal(false);
 
   const [dragged, setDragged] = createSignal<string | null>(null);

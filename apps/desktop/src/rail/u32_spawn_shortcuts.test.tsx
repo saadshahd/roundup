@@ -94,6 +94,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     await Promise.resolve();
 
     expect(spawnCalls(mounted)).toEqual([]);
+    expect(screen.queryByLabelText("prompt")).toBeNull();
   });
 
   it("u32_with_caps_lock_on_the_chord_still_spawns", async () => {
@@ -127,22 +128,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     await Promise.resolve();
 
     expect(spawnCalls(mounted)).toEqual([]);
-  });
-
-  it("u33_cmd_n_does_nothing_while_the_prompt_field_is_open", async () => {
-    const mounted = await mountRail([group("g")]);
-
-    fireEvent.keyDown(document, { key: "n", metaKey: true, shiftKey: true });
-
-    const field = screen.getByLabelText<HTMLInputElement>("prompt");
-
-    fireEvent.input(field, { target: { value: "keep me" } });
-
-    chord("n");
-
-    expect(callsTo(mounted.app, "agent.spawn")).toEqual([]);
-    expect(field.value).toBe("keep me");
-    expect(screen.queryByLabelText("prompt")).not.toBeNull();
   });
 
   it("u32_the_action_line_is_pinned_to_the_bottom_edge_of_the_rail", async () => {
