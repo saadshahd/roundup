@@ -1,7 +1,12 @@
-import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, event, group } from "../testing/nodes";
+import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
+import { Pane } from "../terminal/Pane";
+import type { EmulatorFactory } from "../terminal/emulator";
+import { createFakeApp } from "../testing/fakeApp";
+import { NOW, agent, event, group } from "../testing/nodes";
+import { Rail } from "./Rail";
 import { callsTo, mountRail } from "./railFixture";
 
 afterEach(cleanup);
@@ -18,9 +23,52 @@ describe("u33 spawn with a prompt", () => {
     await mountRail([group("g")]);
 
     chord("n");
+    // SpawnPromptField's ref focuses the input from a queued microtask (SpawnPromptField.tsx); this flushes it.
     await Promise.resolve();
 
     expect(document.activeElement).toBe(field());
+  });
+
+  it("u33_shift_cmd_n_is_handled_by_the_webview_so_the_browser_never_sees_it", async () => {
+    await mountRail([group("g")]);
+
+    const handled = fireEvent.keyDown(document, { key: "n", metaKey: true, shiftKey: true });
+
+    expect(handled).toBe(false);
+  });
+
+  it("u33_the_prompt_field_sits_before_the_tree", async () => {
+    await mountRail([group("g")]);
+
+    chord("n");
+
+    const position = field().compareDocumentPosition(screen.getByRole("tree"));
+
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("u33_typing_an_ordinary_key_goes_into_the_field_and_never_closes_it", async () => {
+    const mounted = await mountRail([group("g")]);
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "f" } });
+    fireEvent.keyDown(field(), { key: "f" });
+
+    expect(screen.queryByLabelText("prompt")).toBe(field());
+    expect(callsTo(mounted.app, "agent.spawn")).toEqual([]);
+  });
+
+  it("u33_enter_trims_leading_and_trailing_whitespace_from_the_prompt", async () => {
+    const mounted = await mountRail([group("g")]);
+    mounted.app.handlers["agent.spawn"] = () => SPAWNED;
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: " fix " } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(callsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: "fix", parent: null }]),
+    );
   });
 
   it("u33_enter_spawns_with_the_typed_prompt_and_the_selected_groups_parent", async () => {
@@ -106,6 +154,7 @@ describe("u33 spawn with a prompt", () => {
     const mounted = await mountRail([group("g")]);
 
     chord("t");
+    // The shift branch returns before scheduling anything for "t"; this only gives a stray call a tick to surface.
     await Promise.resolve();
 
     expect([screen.queryByLabelText("prompt"), callsTo(mounted.app, "rail.spawnTerminal")]).toEqual([null, []]);
@@ -149,6 +198,7 @@ describe("u33 spawn with a prompt", () => {
 
     chord("n", { metaKey: true });
     chord("n");
+    // guarded() sets pending() synchronously, so canSpawn() already reads false; this just gives a tick before asserting nothing slipped through.
     await Promise.resolve();
 
     expect(screen.queryByLabelText("prompt")).toBeNull();
@@ -170,8 +220,143 @@ describe("u33 spawn with a prompt", () => {
     chord("n");
     fireEvent.keyDown(field(), { key: "Enter" });
     fireEvent.keyDown(field(), { key: "Enter" });
+    // The first Enter sets pending() synchronously, so the second reads canSpawn() false; this just gives a tick before asserting no second call arrived.
     await Promise.resolve();
 
     expect(callsTo(mounted.app, "agent.spawn").length).toBe(1);
+  });
+
+  it("u33_cmd_n_does_nothing_while_the_prompt_field_is_already_open", async () => {
+    const mounted = await mountRail([group("g")]);
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "keep me" } });
+    chord("n", { metaKey: true });
+
+    expect(callsTo(mounted.app, "agent.spawn")).toEqual([]);
+    expect(field().value).toBe("keep me");
+    expect(screen.queryByLabelText("prompt")).not.toBeNull();
+  });
+
+  it("u33_shift_cmd_n_does_nothing_while_the_field_is_already_open", async () => {
+    const mounted = await mountRail([group("g")]);
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "keep me" } });
+    chord("n");
+
+    expect(callsTo(mounted.app, "agent.spawn")).toEqual([]);
+    expect(field().value).toBe("keep me");
+    expect(screen.queryByLabelText("prompt")).not.toBeNull();
+  });
+
+  it("u33_cmd_t_still_spawns_a_terminal_while_the_field_is_open_and_leaves_it_open", async () => {
+    const mounted = await mountRail([group("g")]);
+    mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "keep me" } });
+    chord("t", { metaKey: true });
+
+    await waitFor(() =>
+      expect(callsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]),
+    );
+    expect(field().value).toBe("keep me");
+  });
+
+  it("u33_plus_agent_moves_focus_to_the_field_and_calls_nothing", async () => {
+    const mounted = await mountRail([group("g")]);
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "keep me" } });
+    screen.getByText("+ group").focus();
+
+    fireEvent.click(screen.getByText("+ agent"));
+
+    expect(document.activeElement).toBe(field());
+    expect(callsTo(mounted.app, "agent.spawn")).toEqual([]);
+    expect(field().value).toBe("keep me");
+  });
+
+  it("u33_plus_terminal_spawns_and_leaves_the_field_open_with_its_text", async () => {
+    const mounted = await mountRail([group("g")]);
+    mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "keep me" } });
+    fireEvent.click(screen.getByText("+ terminal"));
+
+    await waitFor(() =>
+      expect(callsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]),
+    );
+    expect(field().value).toBe("keep me");
+  });
+
+  it("u33_plus_group_creates_a_group_and_leaves_the_field_open_with_its_text", async () => {
+    const mounted = await mountRail([group("g")]);
+    mounted.app.handlers["rail.createGroup"] = () => group("fresh");
+
+    chord("n");
+    fireEvent.input(field(), { target: { value: "keep me" } });
+    fireEvent.click(screen.getByText("+ group"));
+
+    await waitFor(() =>
+      expect(callsTo(mounted.app, "rail.createGroup")).toEqual([{ name: "group", parent: null }]),
+    );
+    expect(field().value).toBe("keep me");
+  });
+
+  it("u33_the_new_row_takes_focus_into_the_pane", async () => {
+    const tree = [group("g")];
+    const app = createFakeApp();
+
+    app.handlers["rail.tree"] = () => tree;
+    app.handlers["terminal.list"] = () => [];
+    app.handlers["agent.spawn"] = () => {
+      tree.push(SPAWNED);
+      app.emit(event({ name: "rail.changed" }));
+
+      return SPAWNED;
+    };
+
+    const [now] = createSignal(NOW);
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now);
+
+    // A real xterm Terminal focuses itself from `show` (emulator.ts); this fake does the same so the test can
+    // observe the Pane handing focus to the newly selected Terminal the way the real one would.
+    const factory: EmulatorFactory = (id) => ({
+      write: () => {},
+      onInput: () => {},
+      show: (host) => {
+        const screenEl = document.createElement("div");
+
+        host.replaceChildren(screenEl);
+        screenEl.tabIndex = 0;
+        screenEl.dataset.terminal = id;
+        screenEl.focus();
+
+        return { cols: 80, rows: 24 };
+      },
+      focus: () => {},
+      fit: () => ({ cols: 80, rows: 24 }),
+      dispose: () => {},
+    });
+
+    const { container } = render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
+        <Rail />
+        <Pane createEmulator={factory} />
+      </ConnectedProjectContext.Provider>
+    ));
+
+    chord("n");
+    fireEvent.keyDown(field(), { key: "Enter" });
+
+    await waitFor(() => expect(connected.rail.selected()).toBe("fresh"));
+
+    const screenEl = container.querySelector(".pane-screen");
+
+    expect(screenEl?.contains(document.activeElement)).toBe(true);
+    expect(screenEl?.querySelector('[data-terminal="t-fresh"]')).toBe(document.activeElement);
   });
 });

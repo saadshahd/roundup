@@ -21,7 +21,7 @@ export const Rail = () => {
   const [failure, setFailure] = createSignal<string | null>(null);
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
-  /** U33's inline prompt field, opened by `⇧⌘N`. */
+  /** Gates `⌘N` and `⇧⌘N` in the chord handler below, so an open field is never dropped mid-type (U33). */
   const [composing, setComposing] = createSignal(false);
 
   const [dragged, setDragged] = createSignal<string | null>(null);
@@ -114,6 +114,8 @@ export const Rail = () => {
       if (!spawn) return;
 
       press.preventDefault();
+
+      if (key === "n" && composing()) return;
 
       if (canSpawn()) spawn();
     };
@@ -235,7 +237,19 @@ export const Rail = () => {
       </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <div class="rail-actions">
-        <button class="word" disabled={!canSpawn()} onClick={spawnAgent}>
+        <button
+          class="word"
+          disabled={!canSpawn()}
+          onClick={() => {
+            if (composing()) {
+              container()?.querySelector<HTMLInputElement>('[aria-label="prompt"]')?.focus();
+
+              return;
+            }
+
+            spawnAgent();
+          }}
+        >
           + agent
         </button>
         <button

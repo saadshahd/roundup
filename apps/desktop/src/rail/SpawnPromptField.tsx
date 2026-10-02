@@ -1,6 +1,9 @@
-import { promptOf } from "./spawnPrompt";
+const promptOf = (text: string): string | null => {
+  const trimmed = text.trim();
 
-/** U33's inline field: Enter spawns with its text (or none when blank), Esc closes and calls nothing. */
+  return trimmed === "" ? null : trimmed;
+};
+
 export const SpawnPromptField = (props: { onSubmit: (prompt: string | null) => void; onCancel: () => void }) => (
   <input
     aria-label="prompt"
