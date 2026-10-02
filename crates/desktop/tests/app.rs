@@ -57,7 +57,8 @@ impl Fixture {
     fn with_socket_len(body: &str, socket_len: usize) -> Self {
         let socket_name_len = format!("/roundup-{}.sock", std::process::id()).len();
         let parent = std::env::temp_dir();
-        let overhead = parent.as_os_str().len() + 1 + socket_name_len;
+        let parent_len = parent.to_string_lossy().trim_end_matches('/').len();
+        let overhead = parent_len + 1 + socket_name_len;
         let prefix_len = socket_len.checked_sub(overhead).unwrap_or_else(|| {
             panic!(
                 "the real temp dir {} is {overhead} bytes of overhead on its own, too long to pad down to a {socket_len}-byte socket path",
