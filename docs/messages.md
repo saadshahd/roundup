@@ -25,7 +25,7 @@ Default Route is `auto`. A Held Message never blocks a later one (B7). Delivery 
 | `crates/messages` (new) | stores Messages and Routes in `.roundup/roundup.db` (ADR 0004), holds Takeovers in memory, listens to `agent.status` on the bus, and types through `Agents::prompt` |
 | `crates/agents` | A30: `Agents::prompt`, the Adapter's input seam, made callable; no fourth seam (P4) |
 | `crates/rupd` | registers the module |
-| `crates/rup` | MCP tools `message_send`, `message_get`, `message_list` (B12) |
+| `crates/rup` | MCP tools `message_send`, `message_get`, `message_list`, `message_pass` (B12) |
 | `crates/provenance` | none: `item` is a free string, `message:<id>` joins `todo:` and `pad:` (B11) |
 
 Bounds, from the codes `rpc::code` already has: 32 `pending` or `held` Messages per receiver and 8192 bytes of body (`CONFLICT` and `INVALID_PARAMS`). No new error code.
