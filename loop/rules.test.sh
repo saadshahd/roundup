@@ -102,4 +102,58 @@ expect fail "L3 vocab: TS export" rules vocab
 new_repo; rm CONTEXT.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
 expect fail "L3 vocab: missing CONTEXT.md fails loudly" rules vocab
 
+# delta
+expect_exit() {
+  local want=$1 name=$2 got=0
+  shift 2
+  "$@" >/dev/null 2>&1 || got=$?
+  if [ "$got" != "$want" ]; then echo "FAIL: $name (wanted exit $want, got $got)"; failures=$((failures + 1)); else echo "ok:   $name"; fi
+}
+
+expect_output() {
+  local want=$1 name=$2 got
+  shift 2
+  got=$("$@" 2>/dev/null || true)
+  if [ "$got" != "$want" ]; then echo "FAIL: $name (got: $got)"; failures=$((failures + 1)); else echo "ok:   $name"; fi
+}
+
+# A checks file with every id D1 to D10 passing, except the ids given as Dn=status.
+write_checks() {
+  local file=$1
+  shift
+  mkdir -p "$(dirname "$file")"
+  jq -n '[range(1;11) | "D\(.)"] as $ids
+    | ($ARGS.positional | map(split("=") | {(.[0]): .[1]}) | add // {}) as $set
+    | $ids | map({(.): {status: ($set[.] // "pass"), value: 1, selector: "x"}}) | add' --args "$@" >"$file"
+}
+
+delta() { "$script" delta "$@"; }
+new_dirs() { dir=$(mktemp -d); cd "$dir"; mkdir base head; }
+
+new_dirs; write_checks base/s.checks.json; write_checks head/s.checks.json
+expect_exit 0 "L42 delta: nothing changed" delta base head
+expect_output "$(for n in 1 2 3 4 5 6 7 8 9 10; do echo "s D$n still-passing"; done)" "L42 delta: one line per check, ordered by id" delta base head
+new_dirs; write_checks base/s.checks.json D3=fail; write_checks head/s.checks.json
+expect_output "s D3 fixed" "L42 delta: fail then pass is fixed" bash -c "'$script' delta base head | grep D3"
+expect_exit 0 "L42 delta: a fixed check passes" delta base head
+new_dirs; write_checks base/s.checks.json; write_checks head/s.checks.json D6=fail
+expect_output "s D6 regressed" "L42 delta: pass then fail is regressed" bash -c "'$script' delta base head | grep D6"
+expect_exit 1 "L42 delta: a regressed check exits 1" delta base head
+new_dirs; write_checks base/s.checks.json D2=fail; write_checks head/s.checks.json D2=fail
+expect_output "s D2 still-failing" "L42 delta: fail then fail is still-failing" bash -c "'$script' delta base head | grep D2"
+expect_exit 0 "L42 delta: a still-failing check passes" delta base head
+new_dirs; write_checks base/L1/a.checks.json; write_checks head/L1/a.checks.json; write_checks base/L1/b.checks.json; write_checks head/L1/b.checks.json
+expect_output "L1/a L1/b" "L42 delta: steps are paths without the suffix, ordered" bash -c "'$script' delta base head | awk '{print \$1}' | uniq | tr '\n' ' ' | sed 's/ \$//'"
+new_dirs; write_checks base/s.checks.json; write_checks head/s.checks.json; write_checks base/only.checks.json
+expect_exit 2 "L42 delta: a step on one side only exits 2" delta base head
+new_dirs; write_checks base/s.checks.json; write_checks head/s.checks.json; jq 'del(.D4)' head/s.checks.json >head/t && mv head/t head/s.checks.json
+expect_exit 2 "L42 delta: a missing check id exits 2" delta base head
+new_dirs; write_checks base/s.checks.json; write_checks head/s.checks.json D5=maybe
+expect_exit 2 "L42 delta: a status that is neither pass nor fail exits 2" delta base head
+new_dirs; write_checks base/s.checks.json; echo 'not json' >head/s.checks.json
+expect_exit 2 "L42 delta: a file that is not JSON exits 2" delta base head
+new_dirs
+expect_exit 2 "L42 delta: no checks files exits 2" delta base head
+expect_exit 2 "L42 delta: a directory that does not exist exits 2" delta base nope
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

@@ -87,6 +87,11 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
 | notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
 | U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
+| U130, U131, L41 | visual pass 1, Tokens: `tokens.css` holds every look value (starting values in `docs/design-system.md`), the four stylesheets read `var(--…)`, type and space steps; `loop/rules.sh tokens` with its tests, run by a `tokens` step in `.github/workflows/loop.yml` | `apps/desktop/src/tokens.css`, `apps/desktop/src/**/*.css`, `loop/rules.sh`, `loop/rules.test.sh`, `.github/workflows/loop.yml` (the scenario says so) | every existing `apps/desktop` test; each `u4_`, `u5_` or `u20_` test that asserts a colour U130 replaces is changed and named in the PR | now, unless the `contrast` row is already in flight, then after it (D5 carries its ratios); one PR, so the check and the migration land together |
+| U137 | one module computes D1 to D10; `window.__checks()` on the harness page | `apps/desktop/src/testing/**`, `apps/desktop/harness.html` | `u26_` tests | after U130 and U131 merge |
+| U132, U133 | visual pass 2, colour and click targets: Kind tones, `--accent`, hover, pressed and focus states, 24 px hit areas | `apps/desktop/src/rail/**`, `apps/desktop/src/drawer/**`, `apps/desktop/src/todos/**`, `apps/desktop/src/pads/**` | every test of those folders | after U130, U137, U35 and U36 merge |
+| U134, U135 | visual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency | `apps/desktop/src/**/*.css`, `apps/desktop/src/drawer/**` | every existing test | after U132 and U133 merge |
+| U136 | the finish line: D1 to D10 pass on `first-run`, `agents-10`, `tree-40`, `daemon-exits`, `conflict`; QA and the critic's baseline shows each check `fixed`, none `regressed` | no Builder; QA, Design critic and Driver | `u136_` | after U134 and U135 merge |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -176,6 +181,8 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
+  | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
+  | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
