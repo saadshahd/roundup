@@ -43,7 +43,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("n");
     chord("n");
-    // guarded() sets pending() synchronously, so the second chord already reads canSpawn() false; this just gives a tick before asserting nothing slipped through.
     await Promise.resolve();
 
     expect(callsTo(mounted.app, "agent.spawn").length).toBe(1);
@@ -55,7 +54,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("n");
     chord("t");
-    // daemonExit() gates canSpawn() synchronously; this just gives a tick before asserting neither chord got through.
     await Promise.resolve();
 
     expect([callsTo(mounted.app, "agent.spawn"), callsTo(mounted.app, "rail.spawnTerminal")]).toEqual([[], []]);
@@ -83,7 +81,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("n", held);
     chord("t", held);
-    // Every modifier set here fails the chord handler's guards synchronously; this just gives a tick before asserting nothing was scheduled.
     await Promise.resolve();
 
     expect(spawnCalls(mounted)).toEqual([]);
@@ -94,7 +91,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     const mounted = await mountRail([group("g")]);
 
     chord("t", { metaKey: true, shiftKey: true });
-    // The shift branch returns before scheduling anything for "t"; this only gives a stray call a tick to surface.
     await Promise.resolve();
 
     expect(spawnCalls(mounted)).toEqual([]);
@@ -128,13 +124,12 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     cleanup();
     chord("n");
     chord("t");
-    // The listener was removed by cleanup()'s onCleanup synchronously; this just gives a tick before asserting nothing fired.
     await Promise.resolve();
 
     expect(spawnCalls(mounted)).toEqual([]);
   });
 
-  it("u32_cmd_n_does_nothing_while_the_prompt_field_is_open", async () => {
+  it("u33_cmd_n_does_nothing_while_the_prompt_field_is_open", async () => {
     const mounted = await mountRail([group("g")]);
 
     fireEvent.keyDown(document, { key: "n", metaKey: true, shiftKey: true });

@@ -150,16 +150,6 @@ describe("u33 spawn with a prompt", () => {
     expect([shown.textContent, field().value]).toEqual(["✕ no room", "fix the thing"]);
   });
 
-  it("u33_shift_cmd_t_still_does_nothing", async () => {
-    const mounted = await mountRail([group("g")]);
-
-    chord("t");
-    // The shift branch returns before scheduling anything for "t"; this only gives a stray call a tick to surface.
-    await Promise.resolve();
-
-    expect([screen.queryByLabelText("prompt"), callsTo(mounted.app, "rail.spawnTerminal")]).toEqual([null, []]);
-  });
-
   it("u33_cmd_n_still_spawns_with_no_prompt_and_no_field", async () => {
     const mounted = await mountRail([group("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
