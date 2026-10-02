@@ -12,7 +12,7 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 | Item | Ids | Owns | Observer | Claimed by |
 |---|---|---|---|---|
-| Rail keyboard | U31 | `apps/desktop/src/rail`: `Rail.tsx`, `RailRow.tsx`, `keys.ts`, `railFixture.tsx`, `styles.css`, the `u31_` and `keys` tests | `u31_` tests pass | boxd-agents |
+| Rail keyboard | U31 | `apps/desktop/src/rail`: `Rail.tsx`, `RailRow.tsx`, `keys.ts`, `railFixture.tsx`, `styles.css`, the `u31_` and `keys` tests | `u31_` tests pass | builder-ux-drawer |
 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop/src/rail/spawn*`, `Rail.tsx`, `u32_` and `u33_` tests | `u33_` tests pass; the U32 case "cmd and shift" keeps `⇧⌘T` doing nothing | boxd-agents |
 | Pad edits never overwrite another Actor | U36 | `apps/desktop/src/pads/**` | `u36_` tests pass; the u20 tests U36 names stay green | boxd-agents |
 | reopen, App half | S5 | `crates/desktop/**` | `s5_` tests pass; `s1_` and `s3_` tests stay green | boxd-agents |
@@ -24,14 +24,13 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 ## Ready now
 
-Scenario text is on main and nothing it needs is unmerged. Every row owns a directory no other ready row owns, so all start at once. Start the first row you have a free Builder for.
+Scenario text is on main and nothing it needs is unmerged. Every row owns a directory no ready or in-flight row owns, so all start at once. Start the first row you have a free Builder for.
 
 | Id | Item | Owns | Keeps green |
 |---|---|---|---|
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests |
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests |
 | audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests |
-| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test unchanged; the Builder lists each duplicated block in the PR first, and stops if sharing needs a new crate |
 
 ## Waiting
 
@@ -39,6 +38,7 @@ Scenario text is on main. The row starts when what it waits on has merged.
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
+| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test unchanged; the Builder lists each duplicated block in the PR first, and stops if sharing needs a new crate | D4 (it owns `crates/rup/tests/**`) |
 | U37 | reopen, webview half | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | S5 |
 | U38 | empty states | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal` | U2's tests; narrows U14's test | U36 |
 | U40 | the Drawer takes and gives back focus | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests | U31 |
