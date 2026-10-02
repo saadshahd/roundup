@@ -1,0 +1,77 @@
+import { onCleanup } from "solid-js";
+import { useConnectedProject } from "../state/connectedProject";
+import { placeOf } from "./places";
+import { railStep } from "./railStep";
+
+const isRow = (target: EventTarget | null): target is HTMLElement =>
+  target instanceof HTMLElement && target.dataset.id !== undefined;
+
+/** `aria-expanded` is set only on a plain Group's row (U8's `▾`/`▸`); anything else has no fold to read. */
+const expandedOf = (row: HTMLElement): boolean | null => {
+  const value = row.getAttribute("aria-expanded");
+
+  return value === null ? null : value === "true";
+};
+
+const rowElement = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-id="${id}"]`);
+
+const focusTabbableRow = (): void => document.querySelector<HTMLElement>('[role="tree"] [tabindex="0"]')?.focus();
+
+const focusPane = (): void =>
+  document.querySelector<HTMLElement>(".pane-screen textarea, .pane-screen [tabindex]")?.focus();
+
+/** `⌘1`, `⌘2`, `←`, `→` and `F2`, the Rail keys U31 leaves to U41 (CONTEXT.md, Rail). No UI of its own. */
+export const Keys = () => {
+  const { rail } = useConnectedProject();
+
+  const onArrow = (row: HTMLElement, direction: "left" | "right"): void => {
+    const id = row.dataset.id;
+
+    if (id === undefined) return;
+
+    const step = railStep(rail.nodes, id, direction, expandedOf(row));
+
+    if (step.kind === "collapse" || step.kind === "expand") {
+      row.querySelector<HTMLElement>('button[aria-label="collapse"]')?.click();
+    } else if (step.kind === "select") {
+      rowElement(step.id)?.focus();
+      rail.select(step.id);
+    }
+  };
+
+  const onRename = (): void => {
+    const id = rail.selected();
+
+    if (id === null) return;
+
+    rowElement(id)?.querySelector(".name")?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  };
+
+  const onKey = (press: KeyboardEvent): void => {
+    if (press.metaKey && !press.ctrlKey && !press.altKey && !press.shiftKey && (press.key === "1" || press.key === "2")) {
+      press.preventDefault();
+      (press.key === "1" ? focusTabbableRow : focusPane)();
+
+      return;
+    }
+
+    if (press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+
+    if (placeOf(press.target instanceof Element ? press.target : null) !== "rail") return;
+
+    if (!isRow(press.target)) return;
+
+    if (press.key === "ArrowLeft" || press.key === "ArrowRight") {
+      press.preventDefault();
+      onArrow(press.target, press.key === "ArrowLeft" ? "left" : "right");
+    } else if (press.key === "F2") {
+      press.preventDefault();
+      onRename();
+    }
+  };
+
+  document.addEventListener("keydown", onKey);
+  onCleanup(() => document.removeEventListener("keydown", onKey));
+
+  return null;
+};
