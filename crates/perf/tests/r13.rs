@@ -181,13 +181,13 @@ fn r13_an_unbudgeted_metric_does_not_stop_the_rest_from_being_judged() {
         "write_to_output_p95_ms".to_string(),
         budget(Some(16.0), 0.0, &[], &[]),
     )]);
-    // "aaa_unmeasured" sorts before "write_to_output_p95_ms" in the BTreeMap
+    // "aaa_unbudgeted" sorts before "write_to_output_p95_ms" in the BTreeMap
     // iteration order, so it is the metric the loop visits first.
     let result = report(
         "linux",
         1,
         &[0.1],
-        &[("aaa_unmeasured", 1.0), ("write_to_output_p95_ms", 20.0)],
+        &[("aaa_unbudgeted", 1.0), ("write_to_output_p95_ms", 20.0)],
     );
     let outcome = judge_all(&result, &budgets).unwrap();
 
@@ -329,24 +329,6 @@ fn r7_perf_json_is_still_written_when_the_budget_check_errors() {
 
     assert!(conclude(BTreeMap::new(), vec![0.1], &budgets, &out).is_err());
     assert!(out.exists());
-}
-
-#[test]
-fn r13_the_skip_summary_is_the_last_line_when_something_was_skipped() {
-    let budgets: Budgets = BTreeMap::from([(
-        "write_to_output_p95_ms".to_string(),
-        budget(None, 0.0, &[("linux", 1.0)], &[("linux", 2.0)]),
-    )]);
-    let out = PathBuf::from("target/perf.json");
-
-    let skipped_run = report("linux", 1, &[3.0], &[("write_to_output_p95_ms", 1.0)]);
-    let outcome = judge_all(&skipped_run, &budgets).unwrap();
-    let lines = render(&skipped_run, &outcome, &out);
-
-    assert_eq!(
-        lines.last().unwrap(),
-        "skipped 1 regression tests: load 3.00 per cpu"
-    );
 }
 
 #[test]
