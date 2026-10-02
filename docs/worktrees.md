@@ -54,7 +54,7 @@ Rule 7: cold start and idle RSS do not change in A, B or D, since `git` runs onl
 
 Claude Code has `--worktree <name>` (`code.claude.com/docs/en/worktrees`, read 2026-10-02): it creates `.claude/worktrees/<name>` on `worktree-<name>`, from the default branch unless `worktree.baseRef` is `head`, and in an interactive session it asks whether to keep or remove a worktree that holds work. It lives in the user's `.claude/`, names its own branch, has no landing and no Base roundup can read without learning its layout. It does not meet P4, and G2 to G6 could not be tested without the real `claude`. It is not a substitute; nothing stops a user from using it by hand in a Terminal.
 
-**Recommendation: B.** It is the only option that gives a testable isolation guarantee, vendor neutrality and recovery without making every Project pay. Evidence that would change it:
+**Recommendation: B, confirmed by the user.** It is the only option that gives a testable isolation guarantee, vendor neutrality and recovery without making every Project pay. Evidence that would change it:
 - Measured disk and spawn time that are small on the user's real Projects would favour A, and the setting's default could flip then.
 - Agents sharing a cwd in practice (a lost edit, a corrupt index) would favour A.
 - A second vendor with its own good worktree support, with a way to read its branch, base and path, would favour D for that vendor's Adapter.
