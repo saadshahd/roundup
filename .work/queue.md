@@ -126,6 +126,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
+  | U55 | empty-Terminal notch diagnosis |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
