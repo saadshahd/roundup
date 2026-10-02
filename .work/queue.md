@@ -71,7 +71,7 @@ Text for these ids is in `scenarios/` (U37–U41 in `ui.md`). Reserved ids whose
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now; no PR yet |
-| audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | now; no PR yet |
+| audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | after #102 merges (it owns `crates/perf` until then); no PR yet |
 | U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
 | U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
 | U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
