@@ -20,6 +20,11 @@ const mountDrawer = () => {
   return drawer;
 };
 
+/**
+ * A Pane whose Terminal is a real focusable field, standing in for xterm's hidden helper textarea
+ * (U40 restores focus by capturing and refocusing the real DOM element that held it, not through the
+ * `Emulator` abstraction, so the fixture needs a genuine focus target, as `u31_rail_keyboard.test.tsx` has).
+ */
 const mountPaneWithDrawer = async (selectAgent: boolean) => {
   const app = createFakeApp();
 
@@ -29,14 +34,18 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
   app.handlers["terminal.resize"] = () => null;
 
   const connected = await connectProject(app, { name: "p", path: "/p" }, () => true, () => 0);
-  const focused: string[] = [];
+  const field = document.createElement("textarea");
 
   const emulator: Emulator = {
     write: () => {},
     onInput: () => {},
-    show: () => ({ cols: 80, rows: 24 }),
+    show: (host) => {
+      host.replaceChildren(field);
+
+      return { cols: 80, rows: 24 };
+    },
     fit: () => ({ cols: 80, rows: 24 }),
-    focus: () => focused.push("t-a"),
+    focus: () => field.focus(),
     isAtBottom: () => true,
     onScroll: () => {},
     scrollToBottom: () => {},
@@ -52,40 +61,48 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
 
   if (selectAgent) connected.rail.select("a");
 
-  connected.drawer.open(() => <input aria-label="field" />);
-  focused.length = 0;
-
-  return { connected, focused };
+  return { connected, field };
 };
 
 describe("u27 focus returns", () => {
   it("u27_closing_the_drawer_gives_the_keyboard_back_to_the_shown_terminal", async () => {
-    const { connected, focused } = await mountPaneWithDrawer(true);
+    const { connected, field } = await mountPaneWithDrawer(true);
+    field.focus();
 
+    connected.drawer.open(() => <input aria-label="field" />);
+    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     fireEvent.click(screen.getByText("close"));
 
-    await vi.waitFor(() => expect(focused).toEqual(["t-a"]));
+    await vi.waitFor(() => expect(document.activeElement).toBe(field));
     expect(connected.drawer.content()).toBeNull();
   });
 
   it("u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing", async () => {
-    const { focused } = await mountPaneWithDrawer(false);
+    const { connected } = await mountPaneWithDrawer(false);
 
+    connected.drawer.open(() => <input aria-label="field" />);
+    const drawer = screen.getByLabelText("drawer");
+    await vi.waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true));
+    const holder = document.activeElement;
     fireEvent.click(screen.getByText("close"));
 
+    // Nothing had focus before the Drawer opened, so closing it redirects focus nowhere: it stays exactly put.
     await Promise.resolve();
-    expect(focused).toEqual([]);
+    expect(document.activeElement).toBe(holder);
   });
 
   it("u27_focus_already_in_another_field_is_left_alone", async () => {
-    const { connected, focused } = await mountPaneWithDrawer(true);
+    const { connected, field } = await mountPaneWithDrawer(true);
+    field.focus();
+    connected.drawer.open(() => <input aria-label="field" />);
+    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     const other = document.body.appendChild(document.createElement("input"));
 
     other.focus();
     connected.drawer.close();
 
     await Promise.resolve();
-    expect(focused).toEqual([]);
+    expect(document.activeElement).toBe(other);
     other.remove();
   });
 });

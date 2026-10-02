@@ -6,7 +6,7 @@ import { agent, event, info, node } from "../testing/nodes";
 import { Pane } from "../terminal/Pane";
 import type { Emulator } from "../terminal/emulator";
 import { mountRail, rowOf as railRowOf } from "../rail/railFixture";
-import { mountTodos, rowOf as shelfRowOf, todo } from "../todos/testHarness";
+import { mountTodos, todo, todoRowOf as shelfRowOf } from "../todos/testHarness";
 import { DrawerHost } from "./DrawerHost";
 
 afterEach(cleanup);
@@ -111,7 +111,9 @@ describe("u40 the Drawer takes and gives back focus", () => {
     const { connected } = await mountTodos([todo(1)]);
     await screen.findByText(/todo 1/);
     const button = shelfRowOf(1).querySelector("button");
+
     if (!button) throw new Error("no row button");
+
     button.focus();
 
     connected.drawer.open(() => <input aria-label="field" />);
