@@ -81,13 +81,19 @@ impl Messages {
                     p.to
                 )));
             }
-            let delivery = store
-                .get_route(&ctx.actor.id, &p.to)?
-                .unwrap_or(Delivery::Auto);
-            let (status, reason) = match delivery {
-                Delivery::Auto => (MessageStatus::Pending, None),
-                Delivery::AskFirst => (MessageStatus::Held, Some(Held::AskFirst)),
-                Delivery::Drop => (MessageStatus::Dropped, None),
+            // B10: a Message to the user is delivered at once, whatever Routes exist; the
+            // user has no `idle` for B2's pending-until-idle rule to wait on.
+            let (status, reason) = if p.to == Actor::user().id {
+                (MessageStatus::Delivered, None)
+            } else {
+                match store
+                    .get_route(&ctx.actor.id, &p.to)?
+                    .unwrap_or(Delivery::Auto)
+                {
+                    Delivery::Auto => (MessageStatus::Pending, None),
+                    Delivery::AskFirst => (MessageStatus::Held, Some(Held::AskFirst)),
+                    Delivery::Drop => (MessageStatus::Dropped, None),
+                }
             };
             store.insert(
                 &ctx.actor,
@@ -104,8 +110,9 @@ impl Messages {
         ctx.emit(EventData::MessageSent(message.clone()));
         match message.status {
             MessageStatus::Held => ctx.emit(EventData::MessageHeld(message.clone())),
+            MessageStatus::Delivered => ctx.emit(EventData::MessageDelivered(message.clone())),
             MessageStatus::Dropped => ctx.emit(EventData::MessageDropped(message.clone())),
-            MessageStatus::Pending | MessageStatus::Delivered => {}
+            MessageStatus::Pending => {}
         }
         reply(&message)
     }
@@ -595,6 +602,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn b1_reply_to_round_trips_on_a_successful_send() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(
+            dir.path(),
+            vec![agent_node("a", Kind::Idle), agent_node("b", Kind::Idle)],
+        );
+        let first = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first["id"], 1);
+
+        let second = h
+            .call_as(
+                agent("b"),
+                "message.send",
+                json!({"to": "a", "kind": "note", "body": "ok", "replyTo": 1}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(second["replyTo"], 1);
+    }
+
+    #[tokio::test]
+    async fn b1_dropped_messages_do_not_count_toward_the_bound_of_32() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "drop"}),
+        )
+        .await
+        .unwrap();
+        for _ in 0..32 {
+            let dropped = h
+                .call_as(
+                    agent("a"),
+                    "message.send",
+                    json!({"to": "b", "kind": "note", "body": "hi"}),
+                )
+                .await
+                .unwrap();
+            assert_eq!(dropped["status"], "dropped");
+        }
+
+        let still_accepted = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(still_accepted["status"], "dropped");
+    }
+
+    #[tokio::test]
     async fn b1_a_receiver_that_is_done_or_error_is_conflict() {
         for kind in [Kind::Done, Kind::Error] {
             let dir = tempfile::tempdir().unwrap();
@@ -703,6 +773,46 @@ mod tests {
             .unwrap();
 
         assert_eq!(sent["to"], "you");
+    }
+
+    #[tokio::test]
+    async fn b10_a_message_to_the_user_is_delivered_at_once_and_never_fills_their_slots() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path(), vec![]);
+
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "you", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(sent["status"], "delivered");
+        assert_eq!(sent["reason"], Value::Null);
+        assert_eq!(h.events(), ["message.sent", "message.delivered"]);
+
+        // 32 more Messages to the user, none of which ever becomes `pending` or `held`, so
+        // a 33rd still succeeds: the bound never fills for the user (B10).
+        for _ in 0..32 {
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "you", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        }
+        let still_accepted = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "you", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(still_accepted["status"], "delivered");
     }
 
     #[tokio::test]
@@ -819,6 +929,74 @@ mod tests {
         assert_eq!(
             (deliver_err.code, drop_err.code),
             (code::CONFLICT, code::CONFLICT)
+        );
+    }
+
+    #[tokio::test]
+    async fn b3_deliver_clears_the_held_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+
+        let delivered = h.call("message.deliver", json!({"id": 1})).await.unwrap();
+
+        assert_eq!(delivered["status"], "pending");
+        assert_eq!(delivered["reason"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn b3_drop_clears_the_held_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+
+        let dropped = h.call("message.drop", json!({"id": 1})).await.unwrap();
+
+        assert_eq!(dropped["status"], "dropped");
+        assert_eq!(dropped["reason"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn b3_deliver_or_drop_on_an_unknown_id_is_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![]);
+
+        let deliver_err = h
+            .call("message.deliver", json!({"id": 999}))
+            .await
+            .unwrap_err();
+        let drop_err = h
+            .call("message.drop", json!({"id": 999}))
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            (deliver_err.code, drop_err.code),
+            (code::NOT_FOUND, code::NOT_FOUND)
         );
     }
 

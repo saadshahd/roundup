@@ -29,6 +29,8 @@ pub enum EventData {
     MessageSent(message::Message),
     #[serde(rename = "message.held")]
     MessageHeld(message::Message),
+    #[serde(rename = "message.delivered")]
+    MessageDelivered(message::Message),
     #[serde(rename = "message.dropped")]
     MessageDropped(message::Message),
     #[serde(rename = "route.changed")]
