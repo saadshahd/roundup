@@ -191,6 +191,26 @@ replay_on_vm "$dir/vm"
 expect_true "L9 base's tree has no feature file" bash -c "! git -C '$dir/vm/roundup' cat-file -e base:g 2>/dev/null"
 expect_true "L9 the ref's tree lands at HEAD (has the feature file)" test -e "$dir/vm/roundup/g"
 
+# base has its own parent here, so a base that landed one commit off (tagging the merge-base's parent instead
+# of the merge-base itself) would be a different real commit, not just a tree that happens to look the same.
+new_repo; echo second >main2; git add main2; git commit -qm second; git update-ref refs/remotes/origin/main HEAD
+git switch -qc feat; echo y >g; git add g; git commit -qm feat
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+expect_true "L9 HEAD is pinned to the ref's own commit hash, not a replay" test "$(git -C "$dir/vm/roundup" rev-parse HEAD)" = "$(git rev-parse feat)"
+expect_true "L9 base is pinned to the real merge-base hash, not an ancestor of it" test "$(git -C "$dir/vm/roundup" rev-parse base)" = "$(git merge-base origin/main feat)"
+
+# A merge commit in the range is bundled too: it reaches the VM as a real commit with its own two parents,
+# not replayed as a non-merge series plus a stood-in resolution commit (L9's merge clause).
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+git switch -q main; echo z >h; git add h; git -c user.name=bob -c user.email=b@b commit -qm other
+git update-ref refs/remotes/origin/main main
+git switch -q feat; git merge -q --no-edit main
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+expect_true "L9 the ref's own merge commit lands at HEAD unchanged" test "$(git -C "$dir/vm/roundup" rev-parse HEAD)" = "$(git rev-parse feat)"
+expect_true "L9 a merge commit in the range keeps its own two parents" test "$(git -C "$dir/vm/roundup" rev-list --merges base..HEAD | wc -l | tr -d ' ')" = 1
+
 new_repo; git switch -qc feat; echo y >g; git add g
 git -c user.name=alice -c user.email=a@a commit -qm 'feat
 
@@ -211,14 +231,19 @@ expect_true "L16 the approval commit is still empty on the VM" test -z "$(git -C
 # L22: review carries the branch's real history, so a merge, its author and its trailers reach the VM exactly
 # as they are on the real branch, and loop/rules.sh trailers base gives the same verdict on both.
 norm_hashes() { sed -E 's/\b[0-9a-f]{7,40}\b/<hash>/g'; }
-# merge_trailers_repo [no-alice-trailer]: the shape PR #113 itself has. feat (alice, Author-Agent unless asked
-# to omit it) and the current origin/main (bob, Author-Agent) both change the same line of f; feat merges that
-# advanced origin/main, the merge conflicts, and dave's follow-up fixup commit (no trailer of its own — the bug
-# in finding 1) finishes it, then an empty approval commit (carol, Reviewed-by-Agent). Bob's commit becomes the
-# merge-base, so it is upstream of the range, same as any commit already on main before the PR branched.
+# merge_trailers_repo [no-alice-trailer] [no-fixup]: the shape PR #113 itself has. feat (alice, Author-Agent
+# unless asked to omit it) and the current origin/main (bob, Author-Agent) both change the same line of f; feat
+# merges that advanced origin/main, the merge conflicts, and (unless no-fixup) dave's follow-up fixup commit (no
+# trailer of its own — the bug in finding 1) finishes it, then an empty approval commit (carol, Reviewed-by-Agent).
+# Bob's commit becomes the merge-base, so it is upstream of the range, same as any commit already on main before
+# the PR branched. Without the fixup commit the merge commit (excluded from trailers by --no-merges) is the only
+# place dave's resolution lands, so the range is clean: alice's trailer and carol's approval are all it checks.
 merge_trailers_repo() {
-  local alice_trailer=$'\n\nAuthor-Agent: alice-agent'
-  [ "${1:-}" != no-alice-trailer ] || alice_trailer=''
+  local alice_trailer=$'\n\nAuthor-Agent: alice-agent' skip_fixup=0 arg
+  for arg in "$@"; do
+    [ "$arg" != no-alice-trailer ] || alice_trailer=''
+    [ "$arg" != no-fixup ] || skip_fixup=1
+  done
   git switch -qc feat
   echo alice-version >f
   git -c user.name=alice -c user.email=a@a commit -qam "feat$alice_trailer"
@@ -233,8 +258,10 @@ Author-Agent: bob-agent'
   echo resolved >f
   git add f
   git -c user.name=dave -c user.email=d@d commit -q --no-edit
-  echo more >>f
-  git -c user.name=dave -c user.email=d@d commit -qam 'fixup after merge'
+  if [ "$skip_fixup" -eq 0 ]; then
+    echo more >>f
+    git -c user.name=dave -c user.email=d@d commit -qam 'fixup after merge'
+  fi
   git commit -q --allow-empty -m 'review: approve
 
 Reviewed-by-Agent: carol-agent'
@@ -261,6 +288,17 @@ vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || v
 expect_true "L22 two commits missing Author-Agent are rejected on the real branch" test "$real_rc" != 0
 expect_true "L22 the VM rejects it the same way" test "$vm_rc" = "$real_rc"
 expect_true "L22 the rejection matches once hashes are normalized" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
+
+# A conflicted merge is not itself a rejection: with no fixup commit on top, trailers passes on both sides, so a
+# checkout that always rejected a merge-shaped range the same way would not pass this one.
+new_repo; merge_trailers_repo no-fixup
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+real_rc=0; real_out=$(loop/rules.sh trailers base 2>&1) || real_rc=$?
+vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || vm_rc=$?
+expect_true "L22 a conflicted merge with no fixup commit passes trailers on the real branch" test "$real_rc" = 0
+expect_true "L22 the VM passes it the same way" test "$vm_rc" = "$real_rc"
+expect_true "L22 the pass matches once hashes are normalized" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
 expect_log '--auto-destroy-timeout 4200' "L5 VM has an auto-destroy timer"
 expect_log 'machine exec ru-r --timeout 1800 .*claude' "L5 the agent may run as long as the check"
 expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"

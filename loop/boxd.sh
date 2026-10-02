@@ -203,7 +203,8 @@ upload_checkout() {
 # VM fetches the bundle, checks out <ref>'s own commit and tags <base_ref>'s commit `base`: the checkout IS the
 # branch, with every commit's author, message and trailer exactly as the real branch has them.
 upload_commit_checkout() {
-  local name=$1 base_ref=$2 ref=$3 base_sha ref_sha ref_name="refs/boxd-review/$name-ref" base_name="refs/boxd-review/$name-base"
+  local name=$1 base_ref=$2 ref=$3 base_sha ref_sha
+  local ref_name="refs/boxd-review/$name-ref" base_name="refs/boxd-review/$name-base"
   ref_sha=$(git rev-parse --verify --end-of-options "$ref")
   base_sha=$(git rev-parse --verify --end-of-options "$base_ref")
   git update-ref "$ref_name" "$ref_sha"
