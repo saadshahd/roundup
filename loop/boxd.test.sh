@@ -216,7 +216,7 @@ expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
 # L15: `check` merges on this machine and runs on an isolated VM. The origin lives beside the repo, not inside it.
 check_repo() {
   new_repo
-  git init -q --bare "$dir-origin.git"
+  git init -q -b main --bare "$dir-origin.git"
   git remote add origin "$dir-origin.git"
   git push -q origin HEAD:main HEAD:refs/pull/54/head HEAD:refs/heads/builder/x
   git fetch -q origin
