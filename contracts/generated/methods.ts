@@ -79,6 +79,7 @@ export type RpcMethods = {
   "message.drop": { params: message_MessageId; result: message_Message };
   "route.set": { params: message_SetRouteParams; result: message_Route };
   "route.list": { params: null; result: message_Route[] };
+  "rail.remove": { params: agent_NodeId; result: null };
 };
 
 export type RpcMethodName = keyof RpcMethods;
