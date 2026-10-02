@@ -10,6 +10,7 @@ Glossary only. No implementation. Rule 6 of the loop: every identifier, RPC meth
 - **Group** — a named, process-less node that holds Agents, Terminals and Groups. _Avoid:_ folder.
 - **Meta-agent** (the user's own term) — a Group promoted so that a live Agent sits at it and receives its children's events. _Avoid:_ parent agent, lead.
 - **Rail** — the tree of Groups, Meta-agents, Agents and Terminals. **Shelf** — the Todo and Pad column. **Inbox** — the time-ordered drawer of Messages to the user.
+- **Help** — the panel `?` opens over the centre pane; it lists each chord and what it does.
 - **Status** — `{kind, label, since}`. **Kind** — one of `error | needs-you | blocked | working | idle | done`, listed most urgent first. **Chip** — extra label after a name; never changes the glyph.
 - **Glyph** — the one mark a row shows for its Kind: `✕ ● ⏸ ○ · ✓`. **Ink** — bold plus colour, used only for `error` (red) and `needs-you` (amber). **Live line** — the second line under a Rail row: the Status label and how long it has held.
 - **App** — the macOS window. It starts a Daemon for one Project and hosts the webview, which is a client of that Daemon like any other. **App seam** — the few Tauri commands and events between the App and its webview (`scenarios/app.md`); not a Daemon contract. **Drawer** — a panel that slides in from the right over the terminal and the Shelf (a Todo, a Pad, later the Inbox); it never resizes the terminal.
