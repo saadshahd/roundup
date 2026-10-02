@@ -49,7 +49,8 @@ Scenario text is on main. The row starts when what it waits on has merged.
 | U37 | reopen, webview half | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
 | sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test | after D4 merges |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U38 merges (it adds a pads file) |
-| U60 | an Agent's Todos under it | reserved | | waits for a decision on `Todo.creator` |
+| T8 | `Todo.creator` (contract change approved) | `crates/todos/**`, `crates/contracts/**` and generated files, `crates/rup/tests/e2e.rs`, the webview Todo fixtures T8 lists | `t` tests, `u15_`, `u17_` tests | after A15 and A16 merge (A15 edits `crates/rup/tests/e2e.rs`, A16 edits `src/testing/seeds.ts`) |
+| U60 | an Agent's Todos under it | `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
 | notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
 | U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
