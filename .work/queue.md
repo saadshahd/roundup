@@ -56,7 +56,6 @@ Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, 
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
-| U39 | `?perf` keystroke-to-render hook | `apps/desktop/src/perf/**`, one line in `src/main.tsx` | all existing tests | now |
 | C1 | a dropped call is `UNKNOWN_OUTCOME`, not a failure | `crates/rpc/**`, plus every caller of `request` that matches `INTERNAL` for a drop, listed in the PR | `s3_after_the_daemon_exits_rpc_fails_with_internal` | now |
 | A13 | refuse a symlinked `.roundup/agents` | `crates/agents/**` | `a4_a_symlinked_config_is_written_through_and_stays_a_link`, `a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through` | now |
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now |
@@ -117,7 +116,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U36 | Pad edit safety, boxd-agents |
   | U37 | reopen, webview half |
   | U38 | empty states |
-  | U39 | `?perf` hook |
+  | U39 | retired: superseded by #93's build-time probe (`just perf-keystroke`, K1 to K3, R11); #90 closed. Rule 7's keystroke-to-render number is #93's real-window p95 in WKWebView, one probe and one pairing rule (the first render after the emulator parsed the typed character itself); no second in-app hook that pairs a keystroke with any later output, because it can end early on unrelated output and so bounds nothing. The Daemon-side cheap bound already exists as `just perf`'s write-to-output limit (R8) |
   | U40 | the Drawer's focus |
   | U41 | Rail by keyboard, the rest |
   | U42 | dropped: a false positive (a stuck key in the test driver), never an app defect |
