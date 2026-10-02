@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createXtermEmulators } from "./emulator";
@@ -64,19 +64,6 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
     return screens.isAtBottom(id) ? null : id;
   });
-
-  // Closing a Drawer drops focus off the terminal; give it back unless the user is typing in another field.
-  createEffect(
-    on(
-      () => connected.drawer.content() !== null,
-      (open, wasOpen) => {
-        const id = terminalId();
-        const typing = document.activeElement?.matches("input, textarea, [contenteditable]") ?? false;
-
-        if (wasOpen && !open && id !== null && !typing) screens.emulatorFor(id).focus();
-      },
-    ),
-  );
 
   window.addEventListener("resize", refitNextFrame);
   onCleanup(() => {
