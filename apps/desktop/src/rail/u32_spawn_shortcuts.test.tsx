@@ -86,7 +86,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     expect(spawnCalls(mounted)).toEqual([]);
   });
 
-  /** ⇧⌘N is U33's spawn-with-a-prompt chord; ⇧⌘T stays inert. */
+  /** ⇧⌘N is U33's spawn-with-a-prompt chord. */
   it("u32_shift_cmd_t_still_spawns_nothing", async () => {
     const mounted = await mountRail([group("g")]);
 

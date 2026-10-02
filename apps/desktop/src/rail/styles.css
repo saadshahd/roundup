@@ -49,6 +49,32 @@
   font: inherit;
 }
 
+.spawn-prompt-field {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  padding: 4px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--lightest);
+  border-radius: 6px;
+}
+
+.spawn-prompt-field:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.spawn-prompt-field:active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.spawn-prompt-field:focus {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
 .rail-tree {
   position: relative;
 }

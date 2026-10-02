@@ -11,6 +11,7 @@ export const SpawnPromptField = (props: {
 }) => (
   <input
     aria-label="prompt"
+    class="spawn-prompt-field"
     ref={(field) => {
       queueMicrotask(() => field.focus());
       props.ref(field);
