@@ -4,7 +4,7 @@ Design for `scenarios/awareness.md` (E1 to E7). Term: Brief (`CONTEXT.md`). Seri
 
 ## What exists
 
-- A4 starts Claude Code with a per-Agent `--settings` file (one `rup signal` hook) and A11 adds `--mcp-config` with a stdio server `rup mcp <id>`. That server is the one seam from an Agent to the Daemon: M1 gives it Todos and Pads, #160's B12 gives it Messages.
+- A4 starts Claude Code with a per-Agent `--settings` file (one `rup signal` hook) and A11 adds `--mcp-config` with a stdio server `rup mcp <id>`. That server is the user's own idea and the one seam from an Agent to the Daemon (A11): M1 gives it Todos and Pads, #160's B12 gives it Messages.
 - `agent.signal`, the Rail tree (`parent`, `order`, `meta`), Todo `creator` (T8) and Messages (B1 to B12, in review) hold every fact an Agent needs about its team.
 - Missing: telling the Agent at start, a way to ask again, and an Agent that never connects being visible.
 
@@ -26,7 +26,7 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## Naming
 
-"Team lead" is not a glossary term, and `CONTEXT.md` lists "lead" under Meta-agent's _Avoid_. No new word is needed: an Agent's lead is the Agent at its parent **Meta-agent**, and when the parent is a plain Group the question goes to the user (E2's `ask`). The user owns naming; if a role word is wanted, candidates are **Overseer** and **Steward**, neither used by `CONTEXT.md`. One term is added: **Brief**, the text roundup gives an Agent at start.
+"Team lead" is not a glossary term, and `CONTEXT.md` lists "lead" under Meta-agent's _Avoid_. The user decided: add no role word. An Agent's lead is the Agent at its parent **Meta-agent**, and when the parent is a plain Group the question goes to the user (E2's `ask`). One term is added, **Brief** (accepted by the user): the text roundup gives an Agent at start.
 
 ## Contract change (rule 4, with the first Builder PR)
 
