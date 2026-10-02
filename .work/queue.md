@@ -12,14 +12,14 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 | Item | Ids | Owns | Observer | Claimed by |
 |---|---|---|---|---|
-| Rail keyboard | U31 | `apps/desktop/src/rail`: `Rail.tsx`, `RailRow.tsx`, `keys.ts`, `railFixture.tsx`, `styles.css`, the `u31_` and `keys` tests | `u31_` tests pass | builder-ux-drawer |
 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop/src/rail/spawn*`, `Rail.tsx`, `u32_` and `u33_` tests | `u33_` tests pass; the U32 case "cmd and shift" keeps `⇧⌘T` doing nothing | boxd-agents |
-| Pad edits never overwrite another Actor | U36 | `apps/desktop/src/pads/**` | `u36_` tests pass; the u20 tests U36 names stay green | boxd-agents |
 | reopen, App half | S5 | `crates/desktop/**` | `s5_` tests pass; `s1_` and `s3_` tests stay green | boxd-agents |
 | D4 flake: one deadline and a readable failure | D4 | `crates/rup/tests/**` | the Builder reproduces first; `just check` | boxd-agents |
 | hold an early Signal until the Agent is registered | A14 | `crates/agents/**` | `a14_` tests fail before the fix and pass after | boxd-agents |
 | `review` keeps the branch's trailers across a merge | L22 | `loop/boxd.sh` and its tests | `loop/boxd.test.sh` | boxd-agents |
-| the boxd check does not depend on files outside the checkout | L40 | `loop/boxd.sh`, the tsc setup and their tests | `l40_` tests | boxd-agents |
+| the boxd check does not depend on files outside the checkout | L40 | `loop/boxd.sh` (shared with L22: merges after it), the tsc setup and their tests | `loop/boxd.test.sh` | boxd-agents |
+| empty states | U38 | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal` | U2's tests; narrows U14's test | boxd-agents |
+| the Drawer takes and gives back focus | U40 | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests | boxd-agents |
 | MVP gate | U2-U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | QA |
 
 ## Ready now
@@ -31,6 +31,8 @@ Scenario text is on main and nothing it needs is unmerged. Every row owns a dire
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests |
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests |
 | audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests |
+| U41 | Rail by keyboard, the rest | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests |
+| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests |
 
 ## Waiting
 
@@ -38,15 +40,15 @@ Scenario text is on main. The row starts when what it waits on has merged.
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
-| U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
-| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
 | A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
 | A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd`; its `a16_` tests in `crates/agents/tests/scenarios/**` and `crates/rup/tests/**` | the `a` tests | after #114 lands (both edit `crates/agents/src/lib.rs`) |
 | U56 | right-click menu: stop, remove | `apps/desktop/src/rail/menu/**`, one line each in `Rail.tsx`, `RailRow.tsx`, `src/rail/keys.ts` (created by U31) | `u9_`, `u31_`, `u33_` tests | after A16, U31, U33 and the rail polish PR (U44, U46, U47, U49); stacking allowed |
 | U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests; the U4 computed-colour test drops the pane header | after U56 merges (or in its PR) |
 | U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
 | U59 | the terminal blends with the app | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
+| U37 | reopen, webview half | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
+| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test | after D4 merges |
 | U60 | an Agent's Todos under it | reserved | | waits for a decision on `Todo.creator` |
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
 | notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
