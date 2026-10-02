@@ -45,7 +45,9 @@ export const Rail = () => {
 
   const [container, setContainer] = createSignal<HTMLElement>();
 
-  const focusRow = (id: string) => container()?.querySelector<HTMLElement>(`[data-id="${id}"]`)?.focus();
+  const rowElement = (id: string) => container()?.querySelector<HTMLElement>(`[data-id="${id}"]`);
+
+  const focusRow = (id: string) => rowElement(id)?.focus();
 
   /** The row a keyboard-only move has focused, between an arrow press and the next `rail.select` call. */
   const [focusOverride, setFocusOverride] = createSignal<string | null>(null);
@@ -76,6 +78,8 @@ export const Rail = () => {
   };
 
   const onRailKeyDown = (press: KeyboardEvent) => {
+    if (!(press.target instanceof HTMLElement) || press.target.getAttribute("role") !== "treeitem") return;
+
     if (press.key === "ArrowDown" || press.key === "ArrowUp") {
       press.preventDefault();
       moveFocus(press.key === "ArrowDown" ? 1 : -1);
@@ -160,7 +164,7 @@ export const Rail = () => {
       const above = new Set(untrack(() => ancestorsOf(rail.nodes, id)));
 
       setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
-      queueMicrotask(() => container()?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" }));
+      queueMicrotask(() => rowElement(id)?.scrollIntoView({ block: "nearest" }));
     }),
   );
 

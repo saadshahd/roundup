@@ -1,6 +1,10 @@
-import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, group, terminal } from "../testing/nodes";
+import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
+import { createFakeApp } from "../testing/fakeApp";
+import { agent, event, group, NOW, terminal } from "../testing/nodes";
+import { Pane } from "../terminal/Pane";
+import { Rail } from "./Rail";
 import styles from "./styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
 
@@ -9,6 +13,27 @@ afterEach(cleanup);
 const press = (key: string) => fireEvent.keyDown(document.activeElement ?? document, { key });
 
 describe("u31 rail keyboard", () => {
+  it("u31_arrow_down_in_the_rename_field_does_not_cancel_the_rename", async () => {
+    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    fireEvent.dblClick(screen.getByText("a"));
+    const field = screen.getByLabelText("name");
+    field.focus();
+
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("u31_enter_on_the_collapse_button_does_not_select_the_row", async () => {
+    const { rail } = await mountRail([group("g")]);
+    const button = screen.getByRole("button", { name: "collapse" });
+    button.focus();
+
+    fireEvent.keyDown(button, { key: "Enter" });
+
+    expect(rail.selected()).toBeNull();
+  });
+
   it("u31_down_moves_focus_to_the_next_row", async () => {
     await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
     rowOf("a").focus();
@@ -93,11 +118,11 @@ describe("u31 rail keyboard", () => {
 
   it("u31_exactly_one_row_is_tabbable", async () => {
     const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rail.select("a");
+    rail.select("b");
 
     const tabbable = screen.getAllByRole("treeitem").filter((row) => row.tabIndex === 0);
 
-    expect(tabbable).toEqual([rowOf("a")]);
+    expect(tabbable).toEqual([rowOf("b")]);
   });
 
   it("u31_with_nothing_selected_the_first_row_is_tabbable", async () => {
@@ -182,5 +207,67 @@ describe("u31 rail keyboard", () => {
 
     expect(rowOf("a").tabIndex).toBe(0);
     expect(rowOf("b").tabIndex).toBe(-1);
+  });
+
+  it("u31_a_row_removed_while_keyboard_focused_leaves_one_row_tabbable", async () => {
+    const mounted = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    rowOf("a").focus();
+    press("ArrowDown");
+
+    mounted.app.handlers["rail.tree"] = () => [agent("a", "idle", "x")];
+    mounted.app.emit(event({ name: "rail.changed" }));
+    await mounted.rail.settled();
+
+    const tabbable = screen.getAllByRole("treeitem").filter((row) => row.tabIndex === 0);
+
+    expect(tabbable).toEqual([rowOf("a")]);
+  });
+
+  it("u31_arrow_down_prevents_the_default_action", async () => {
+    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    rowOf("a").focus();
+
+    expect(press("ArrowDown")).toBe(false);
+  });
+
+  it("u31_enter_prevents_the_default_action", async () => {
+    await mountRail([agent("a", "idle", "x")]);
+    rowOf("a").focus();
+
+    expect(press("Enter")).toBe(false);
+  });
+
+  it("u31_clicking_an_unfocused_row_moves_focus_to_it", async () => {
+    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    rowOf("a").focus();
+
+    fireEvent.click(rowOf("b"));
+
+    expect(document.activeElement).toBe(rowOf("b"));
+  });
+
+  it("u31_enter_selecting_a_row_shows_its_terminal", async () => {
+    const app = createFakeApp();
+
+    const tree = [
+      agent("a", "idle", "x", { terminal_id: null }),
+      agent("b", "idle", "x", { terminal_id: null }),
+    ];
+
+    app.handlers["rail.tree"] = () => tree;
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => NOW);
+
+    render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
+        <Rail />
+        <Pane />
+      </ConnectedProjectContext.Provider>
+    ));
+    rowOf("a").focus();
+    press("ArrowDown");
+
+    press("Enter");
+
+    expect(document.querySelector(".pane-title")?.textContent).toContain("b");
   });
 });
