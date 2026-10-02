@@ -27,8 +27,7 @@ type FakeEmulator = Emulator & {
   scroll(atBottom: boolean): void;
 };
 
-/** `focusOnShow` gives the shown screen focus, as the real emulator's `show` does (emulator.ts), so tests can follow focus into the pane. */
-export const fakeEmulators = (focusOnShow = false) => {
+export const fakeEmulators = () => {
   const made = new Map<string, FakeEmulator>();
 
   const factory: EmulatorFactory = (id) => {
@@ -63,8 +62,7 @@ export const fakeEmulators = (focusOnShow = false) => {
         screenEl.tabIndex = 0;
         screenEl.dataset.terminal = id;
         host.replaceChildren(screenEl);
-
-        if (focusOnShow) screenEl.focus();
+        screenEl.focus();
 
         return emulator.size;
       },
@@ -150,13 +148,8 @@ export const mountPane = async (
 
 /** A Rail above a Pane in one open Project, so a spawn's new row can be watched handing focus to its Terminal (U33). */
 export const mountRailAndPane = async (tree: RailNode[]): Promise<Mounted> => {
-  const app = createFakeApp();
-
-  app.handlers["rail.tree"] = () => tree;
-  app.handlers["terminal.list"] = () => [];
-
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
-  const { factory, made } = fakeEmulators(true);
+  const { app, connected } = await connectFakeProject(tree);
+  const { factory, made } = fakeEmulators();
 
   const { container } = render(() => (
     <ConnectedProjectContext.Provider value={connected}>

@@ -7,17 +7,17 @@ const promptOf = (text: string): string | null => {
 export const SpawnPromptField = (props: {
   onSubmit: (prompt: string | null) => void;
   onCancel: () => void;
-  ref?: (field: HTMLInputElement) => void;
+  ref: (field: HTMLInputElement) => void;
 }) => (
   <input
     aria-label="prompt"
     ref={(field) => {
       queueMicrotask(() => field.focus());
-      props.ref?.(field);
+      props.ref(field);
     }}
-    onKeyDown={(key) => {
-      if (key.key === "Enter") props.onSubmit(promptOf(key.currentTarget.value));
-      else if (key.key === "Escape") props.onCancel();
+    onKeyDown={(press) => {
+      if (press.key === "Enter") props.onSubmit(promptOf(press.currentTarget.value));
+      else if (press.key === "Escape") props.onCancel();
     }}
   />
 );
