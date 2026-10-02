@@ -92,16 +92,50 @@ describe("u27 focus returns", () => {
   });
 
   it("u27_focus_already_in_another_field_is_left_alone", async () => {
-    const drawer = mountDrawer();
+    const app = createFakeApp();
+
+    app.handlers["rail.tree"] = () => [node("a")];
+    app.handlers["terminal.list"] = () => [info("t-a")];
+    app.handlers["terminal.write"] = () => null;
+    app.handlers["terminal.resize"] = () => null;
+
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => true, () => 0);
+    const focused: string[] = [];
+
+    const emulator: Emulator = {
+      write: () => {},
+      onInput: () => {},
+      show: (host) => {
+        host.replaceChildren(document.createElement("div"));
+
+        return { cols: 80, rows: 24 };
+      },
+      fit: () => ({ cols: 80, rows: 24 }),
+      focus: () => focused.push("emulator"),
+      isAtBottom: () => true,
+      onScroll: () => {},
+      scrollToBottom: () => {},
+      dispose: () => {},
+    };
+
+    render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
+        <Pane createEmulator={() => emulator} />
+        <DrawerHost drawer={connected.drawer} reducedMotion={connected.reducedMotion} />
+      </ConnectedProjectContext.Provider>
+    ));
+
+    connected.rail.select("a");
+
     const other = document.body.appendChild(document.createElement("input"));
 
     other.focus();
-    drawer.open(() => <input aria-label="field" />);
+    connected.drawer.open(() => <input aria-label="field" />);
     await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
-    drawer.close();
+    connected.drawer.close();
 
     await Promise.resolve();
-    expect(document.activeElement).toBe(other);
+    expect(focused).toEqual([]);
     other.remove();
   });
 });
