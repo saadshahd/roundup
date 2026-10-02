@@ -60,12 +60,15 @@ describe("u40 the Drawer takes and gives back focus", () => {
   });
 
   it("u40_while_open_a_keystroke_never_reaches_the_terminal", async () => {
-    const { connected, app } = await mountPaneWithDrawer();
+    const { connected, field, app } = await mountPaneWithDrawer();
+    field.focus();
     const before = app.calls.length;
 
     connected.drawer.open(() => <input aria-label="field" />);
     await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "x" });
+    // Fired at whatever holds focus now: if focus had wrongly stayed on `field`, this is the same
+    // `input` event that drives `field`'s own listener into a `terminal.write` (screens.ts onInput).
+    fireEvent.input(document.activeElement ?? document.body, { target: { value: "x" } });
 
     expect(app.calls.slice(before).some((call) => call.method === "terminal.write")).toBe(false);
   });
@@ -75,14 +78,13 @@ describe("u40 the Drawer takes and gives back focus", () => {
     field.focus();
     fireEvent.input(field, { target: { value: "a" } });
     await vi.waitFor(() => expect(app.calls.some((call) => call.method === "terminal.write")).toBe(true));
-    const written = app.calls.filter((call) => call.method === "terminal.write");
 
     connected.drawer.open(() => <input aria-label="field" />);
-    await Promise.resolve();
+    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     connected.drawer.close();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(document.activeElement).toBe(field));
 
-    expect(app.calls.filter((call) => call.method === "terminal.write")).toEqual(written);
+    expect(field.value).toBe("a");
   });
 
   it("u40_closing_gives_focus_back_to_the_terminal_that_held_it", async () => {

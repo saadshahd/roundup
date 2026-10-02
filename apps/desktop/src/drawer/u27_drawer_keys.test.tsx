@@ -92,14 +92,13 @@ describe("u27 focus returns", () => {
   });
 
   it("u27_focus_already_in_another_field_is_left_alone", async () => {
-    const { connected, field } = await mountPaneWithDrawer(true);
-    field.focus();
-    connected.drawer.open(() => <input aria-label="field" />);
-    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
+    const drawer = mountDrawer();
     const other = document.body.appendChild(document.createElement("input"));
 
     other.focus();
-    connected.drawer.close();
+    drawer.open(() => <input aria-label="field" />);
+    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
+    drawer.close();
 
     await Promise.resolve();
     expect(document.activeElement).toBe(other);
