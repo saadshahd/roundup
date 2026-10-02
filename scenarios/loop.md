@@ -16,7 +16,7 @@
 
 **L8 cap.** Given `BOXD_MAX_VMS` `ru-` VMs (default 12), or a held `loop/out/lock`, when `loop/boxd.sh build` runs, then no VM is created and it exits 1. A non-numeric `BOXD_MAX_VMS` exits 2.
 
-**L9 review.** Given a ref, when `loop/boxd.sh review <name> <prompt-file> [ref]` runs, then an isolated VM holds a git checkout whose tag `base` is the merge-base with `origin/main` and whose HEAD is the ref, the Reviewer's answer is written to `loop/out/verdicts/<name>.md`, and the VM is destroyed.
+**L9 review.** Given a ref, when `loop/boxd.sh review <name> <prompt-file> [ref]` runs, then an isolated VM holds a git checkout whose tag `base` is the merge-base with `origin/main` and whose HEAD is the ref: the ref's own commits are replayed on `base` with their authors, messages and trailers, including a commit with no changes, and no synthetic commit is added; when the range from the merge-base to the ref contains a merge commit, the VM instead gets one commit named `head` holding the ref's tree, because a series cannot carry merges, the Reviewer's answer is written to `loop/out/verdicts/<name>.md`, and the VM is destroyed.
 
 **L10 input.** Given a name outside `^[a-z0-9][a-z0-9-]*$`, a prompt file starting with `-`, or a ref starting with `-`, when `build` or `review` runs, then it exits 2 before creating a VM or a file.
 
