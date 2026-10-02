@@ -142,6 +142,13 @@ impl Launcher {
                 self.rup.display()
             )));
         }
+        // Refuse a symlinked agents directory (A13) before writing anything, through the
+        // link or beside it: the Project's own files are not ours to trust, and a link
+        // could land a write anywhere.
+        let agents_dir = agents_dir(&dir);
+        if is_symlink(&agents_dir) {
+            return Err(invalid(format!("{} is a symlink", agents_dir.display())));
+        }
         let settings = settings_path(&dir, id);
         let mcp_config = mcp_config_path(&dir, id);
         replace_file(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
@@ -329,10 +336,18 @@ fn landing(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
+fn agents_dir(dir: &Path) -> PathBuf {
+    dir.join("agents")
+}
+
+fn is_symlink(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink())
+}
+
 fn settings_path(dir: &Path, id: u64) -> PathBuf {
-    dir.join("agents").join(format!("{id}.settings.json"))
+    agents_dir(dir).join(format!("{id}.settings.json"))
 }
 
 fn mcp_config_path(dir: &Path, id: u64) -> PathBuf {
-    dir.join("agents").join(format!("{id}.mcp.json"))
+    agents_dir(dir).join(format!("{id}.mcp.json"))
 }

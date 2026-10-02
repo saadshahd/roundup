@@ -29,6 +29,20 @@ async fn x8_a_late_subscriber_sees_output_in_order() {
 }
 
 #[tokio::test]
+async fn x8_resize_is_usable_without_a_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), "read line; stty size"))
+        .await
+        .unwrap();
+    terminals.resize(&spawned.id, 100, 30).await.unwrap();
+    terminals.write(&spawned.id, b"\n").await.unwrap();
+    let (printed, _) = until_exit(&mut spawned.events).await;
+    assert!(printed.contains("30 100"), "{printed}");
+}
+
+#[tokio::test]
 async fn x8_subscribing_to_an_unknown_terminal_is_not_found() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, _) = open(&dir);

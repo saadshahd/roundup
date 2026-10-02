@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import type { ITerminalAddon } from "@xterm/xterm";
+import type { ITerminalAddon, ITerminalOptions } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 export type Size = { cols: number; rows: number };
@@ -17,6 +17,11 @@ export type Emulator = {
   focus(): void;
   /** The size that fills the emulator's current host. */
   fit(): Size;
+  /** Whether the view sits at the newest line; false once the user has scrolled up. */
+  isAtBottom(): boolean;
+  /** Fires whenever the view's scroll position changes. */
+  onScroll(listener: () => void): void;
+  scrollToBottom(): void;
   dispose(): void;
 };
 
@@ -49,18 +54,35 @@ export const attachRenderer = (
 
 const encoder = new TextEncoder();
 
+/** Rule 7's 150 MB budget for ten idle Agents must hold under a Terminal that prints without end. */
+export const SCROLLBACK_LINES = 10_000;
+
+export const xtermOptions: ITerminalOptions = {
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+  fontSize: 13,
+  scrollback: SCROLLBACK_LINES,
+};
+
+/** What the keystroke run (`scenarios/perf.md` K1 to K3) watches: each chunk the emulator has parsed, each render, and which renderer drew. A build without the run passes none. */
+export type EchoProbe = {
+  written(bytes: Uint8Array): void;
+  rendered(): void;
+  renderer(webgl: boolean): void;
+};
+
 /** The real emulators (xterm.js). WebGL is tried until the webview first refuses it, then every later Terminal goes straight to the DOM renderer. */
-export const createXtermEmulators = (): EmulatorFactory => {
+export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
   let webglDenied = false;
 
   return () => {
-    const terminal = new Terminal({ fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontSize: 13 });
+    const terminal = new Terminal(xtermOptions);
     const fitter = new FitAddon();
     const element = document.createElement("div");
     let opened = false;
 
     element.style.height = "100%";
     terminal.loadAddon(fitter);
+    terminal.onRender(() => probe?.rendered());
 
     const size = (): Size => {
       fitter.fit();
@@ -69,7 +91,7 @@ export const createXtermEmulators = (): EmulatorFactory => {
     };
 
     return {
-      write: (bytes) => terminal.write(bytes),
+      write: (bytes) => terminal.write(bytes, probe && (() => probe.written(bytes))),
       onInput: (listener) => {
         terminal.onData((text) => listener(encoder.encode(text)));
         terminal.onBinary((text) => listener(Uint8Array.from(text, (char) => char.charCodeAt(0))));
@@ -82,6 +104,8 @@ export const createXtermEmulators = (): EmulatorFactory => {
           opened = true;
 
           if (!webglDenied) webglDenied = !attachRenderer(terminal, () => new WebglAddon(), console.warn);
+
+          probe?.renderer(!webglDenied);
         }
 
         terminal.focus();
@@ -90,6 +114,9 @@ export const createXtermEmulators = (): EmulatorFactory => {
       },
       fit: size,
       focus: () => terminal.focus(),
+      isAtBottom: () => terminal.buffer.active.viewportY === terminal.buffer.active.baseY,
+      onScroll: (listener) => terminal.onScroll(() => listener()),
+      scrollToBottom: () => terminal.scrollToBottom(),
       dispose: () => terminal.dispose(),
     };
   };

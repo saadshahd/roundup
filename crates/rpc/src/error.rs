@@ -11,6 +11,9 @@ pub mod code {
     pub const FORBIDDEN: i64 = -32002;
     /// The request is well-formed but conflicts with current state (for example, a blocker cycle).
     pub const CONFLICT: i64 = -32003;
+    /// The connection closed after the request line was written but before a reply arrived: the
+    /// Daemon may or may not have run the call.
+    pub const UNKNOWN_OUTCOME: i64 = -32004;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -50,5 +53,10 @@ impl RpcError {
     /// For failures that are the Daemon's fault, never the caller's.
     pub fn internal(err: impl std::fmt::Display) -> Self {
         Self::new(code::INTERNAL, err.to_string())
+    }
+
+    /// The connection dropped before the reply: the call may have run.
+    pub fn unknown_outcome(message: impl Into<String>) -> Self {
+        Self::new(code::UNKNOWN_OUTCOME, message)
     }
 }
