@@ -13,7 +13,7 @@ If a Meta-agent runs Claude Code, it can start children with `bash -c 'claude -p
 | Remove `Bash`, `Agent` and everything unnamed: `--tools Read,Grep,Glob` | Every shell and subagent path in Claude Code's own tools. MCP tools stay. | Tools the user's own MCP servers add; a Meta-agent that must run commands | `t_nobash`, `a_toolsro`, `m_tools`: **guarantee** |
 | Deny rule `Bash(claude:*)` | A direct `claude ...` | `bash -c 'claude ...'` (ran and printed a version) | `d_direct`, `d_bashc`: best effort, weak |
 | `PreToolUse` hook that refuses the command | Any command whose text names a CLI, including inside `bash -c` | Absolute paths, obfuscation; costs one process per Bash call; the model rewrote the command and asked a subagent to run it | `h_blocked`: works, not chosen |
-| `PATH` shim for `claude`, `codex`, `gemini` through `settings.env` | A lookup by name, including inside `bash -c`; fails loud with a message | An absolute path, a renamed copy, a script the Agent writes | `p_shim`: best effort |
+| `PATH` shim for the Adapters' program names (today `claude`) through `settings.env` | A lookup by name; fails loud with a message | An absolute path, a renamed copy, a script the Agent writes | `p_shim`: best effort |
 | Process-tree scan | Nothing; it flags a vendor binary not registered as a Terminal | A renamed binary | not run here; best effort detection |
 | OS sandbox (Seatbelt) with a network allowlist | Could stop a vendor CLI reaching its API from Bash | Escapes, MCP servers and hooks run outside it; it restricts the Agent's real network use | not run: not chosen now |
 
@@ -23,8 +23,8 @@ Scope: Meta-agents only, as the user decided. Chosen: the tool allowlist as the 
 
 - A shell can launch anything. With a shell, F4 and F5 stop and flag the common cases; they do not make a guarantee. The guarantee is that a Meta-agent has no shell (F2), and it holds inside Claude Code's tools only.
 - The model works round a block (`h_blocked`: renamed the command, then asked a subagent). A layer that refuses one path is not a stop while another exists, which is why `Agent` is removed with `Bash`.
-- Headless observation: the spike ran `claude -p` on one version. Interactive behaviour of `--tools` and `settings.env` is the vendor's docs, not observed.
-- The user's own `.claude/settings.json` can set its own `permissions`. The spike did not test whether it can override flags; `--tools` is a flag, not a setting, which is why F2 uses it.
+- Headless observation: the spike ran `claude -p` on one version. The interactive TUI is F7 (`i_base`, `i_shim`, `i_proj`, `i_user`); `settings.env` there was observed for a direct `claude` only.
+- The user's own `.claude/settings.json` can set its own `permissions`. F7 observed that a project and a user settings file allowing `Bash(*)` did not bring a shell back to a `--tools` allowlist; `--tools` is a flag, not a setting, which is why F2 uses it.
 - A Meta-agent has no `Edit` or `Write`: it places and coordinates, and its children do the work. The user accepted a Meta-agent with no shell.
 
 ## Seam (rule 4, with the first Builder PR)
@@ -33,7 +33,7 @@ No new RPC method. `agent.spawn` gains a caller rule for Actors of kind `agent` 
 
 ## Gates
 
-- **P2.** A child started by `agent_spawn` gets a Worktree when the setting is on (G2), so two Agents do not share a cwd.
+- **P2.** A child started by `agent_spawn` gets a Worktree when the setting is on (G2), so with it on two Agents do not share a cwd; with it off they may.
 - **P4.** The flag, the shim names and `PATH` belong to `claude_code/`; the scan and the caller rule are vendor-neutral; `AgentAdapter` gains no seam.
 - **P6.** The child's Home is its Meta-agent's node, set by the Daemon, not by the caller (a `parent` param from an Agent is ignored).
 
