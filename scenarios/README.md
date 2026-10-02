@@ -19,6 +19,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `daemon.md` | `crates/rupd` (D1); end-to-end tests in `crates/rup/tests` (D2–D4) | D1–D4 |
 | `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | S1–S5 |
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
+| `ui-persist.md` | `apps/desktop` (the webview) | U100 |
 | `rpc.md` | `crates/rpc` | C1 |
 | `workspace.md` | root files | W1 |
 | `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | every `R` and `K` heading in the file |
