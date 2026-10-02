@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, event, group, terminal } from "../testing/nodes";
+import { agent, event, group, MINUTE, NOW, terminal } from "../testing/nodes";
 import type { EmulatorFactory } from "../terminal/emulator";
 import styles from "./styles.css?inline";
 import { mountRail, rowOf, tabbableRows } from "./railFixture";
@@ -184,14 +184,69 @@ describe("u31 rail keyboard", () => {
     expect(tabbable).toEqual([rowOf("a")]);
   });
 
-  it("u31_moving_focus_moves_the_roving_tabindex", async () => {
+  it("u31_moving_focus_with_the_arrow_keys_does_not_move_the_roving_tabindex", async () => {
     await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
     rowOf("a").focus();
 
     press("ArrowDown");
 
-    expect(rowOf("a").tabIndex).toBe(-1);
-    expect(rowOf("b").tabIndex).toBe(0);
+    expect(document.activeElement).toBe(rowOf("b"));
+    expect(rowOf("a").tabIndex).toBe(0);
+    expect(rowOf("b").tabIndex).toBe(-1);
+  });
+
+  it("u31_selecting_a_row_moves_the_roving_tabindex_to_it", async () => {
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+
+    rail.select("b");
+
+    expect(tabbableRows()).toEqual([rowOf("b")]);
+  });
+
+  it("u31_deselecting_returns_the_roving_tabindex_to_the_first_row", async () => {
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    rail.select("b");
+
+    rail.select(null);
+
+    expect(tabbableRows()).toEqual([rowOf("a")]);
+  });
+
+  it("u31_collapsing_the_selected_rows_group_moves_the_roving_tabindex_to_the_first_row", async () => {
+    const { rail } = await mountRail([
+      group("g"),
+      agent("child", "idle", "x", { parent: "g" }),
+      agent("after", "idle", "x"),
+    ]);
+
+    rail.select("child");
+
+    fireEvent.click(screen.getByRole("button", { name: "collapse" }));
+
+    expect(screen.getAllByRole("treeitem")).toHaveLength(2);
+    expect(tabbableRows()).toEqual([rowOf("g")]);
+  });
+
+  it("u31_removing_the_selected_row_moves_the_roving_tabindex_to_the_first_row", async () => {
+    const mounted = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    mounted.rail.select("b");
+
+    mounted.app.handlers["rail.tree"] = () => [agent("a", "idle", "x")];
+    mounted.app.emit(event({ name: "rail.changed" }));
+    await mounted.rail.settled();
+
+    expect(tabbableRows()).toEqual([rowOf("a")]);
+  });
+
+  it("u31_folding_the_selected_row_moves_the_roving_tabindex_to_the_first_row", async () => {
+    const { rail } = await mountRail([
+      agent("old", "done", "finished", { status: { kind: "done", label: "finished", since: NOW - 10 * MINUTE }, order: 0 }),
+      agent("after", "idle", "x", { order: 1 }),
+    ]);
+
+    rail.select("old");
+
+    expect(tabbableRows()).toEqual([rowOf("after")]);
   });
 
   it("u31_typing_j_into_the_pane_never_reaches_the_rail", async () => {

@@ -50,20 +50,11 @@ export const Rail = () => {
 
   const focusRow = (id: string) => rowElement(id)?.focus();
 
-  /** The row a keyboard-only move has focused; read for the roving tabindex only while nothing is selected, and cleared whenever the selection changes so it cannot resurface once the selection is gone. */
-  const [focusOverride, setFocusOverride] = createSignal<string | null>(null);
-
-  createEffect(on(rail.selected, () => setFocusOverride(null)));
-
   const tabbableId = createMemo(() => {
     const selected = rail.selected();
-
-    if (selected !== null) return selected;
-
     const ids = nodeIds();
-    const override = focusOverride();
 
-    if (override !== null && ids.includes(override)) return override;
+    if (selected !== null && ids.includes(selected)) return selected;
 
     return ids[0] ?? null;
   });
@@ -73,13 +64,9 @@ export const Rail = () => {
     focusRow(id);
   };
 
-  const moveFocus = (current: string | null, direction: 1 | -1) => {
-    const next = adjacentId(nodeIds(), current, direction);
-
-    if (next !== null) {
-      setFocusOverride(next);
-      focusRow(next);
-    }
+  const moveFocus = (current: string, direction: 1 | -1) => {
+    // SAFETY: only called from onRailKeyDown, whose treeitem target is in `nodeIds()`, so it is never empty and `adjacentId` cannot return null.
+    focusRow(adjacentId(nodeIds(), current, direction) as string);
   };
 
   const onRailKeyDown = (press: KeyboardEvent) => {
