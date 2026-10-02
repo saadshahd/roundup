@@ -25,7 +25,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 |---|---|---|
 | Architect | Owns `contracts/`, `CONTEXT.md`, ADRs. Approves contract changes. Turns recurring failures into new rules (see Loop on the loop). | Writes feature code. |
 | Builder | Failing test first, then code, in one worktree, one module where you can. Opens a PR. | Reviews its own PR. |
-| Reviewer | Reads the diff, the linked scenario and `AGENTS.md`, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
+| Reviewer | Reads the diff, the linked scenario, `AGENTS.md` and, on a re-review, the earlier verdicts, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
 | Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
 | QA | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
 | Design critic | Scores each screenshot against the checklist in its prompt (from `docs/wireframes.md`). Files Todos. | Edits code. |
@@ -97,13 +97,13 @@ Optional, never required to merge. Use it for unattended Builders (the VM is the
 
 ## Sweeps, round caps and re-reviews
 
-Three rules that apply to every squad and every PR. They are loop policy, not `AGENTS.md` rules; change them here.
+Three rules for every PR. Rule 5 in `AGENTS.md` carries the re-review input; the rest is loop policy, changed here.
 
-**A sweep's observer counts copies, not lines.** A sweep PR (slop, duplication) passes when each duplicate its queue row names ends as one copy, and the PR adds no new copy of an existing idea. The changed-line count is advisory only, as rule 3 treats PR size: a sweep that adds more lines than it deletes is not a defect when it merges real duplication. A Reviewer checks the named duplicates by reading the diff and `pnpm slop`, not by the line count. (PR #91 closed over +52/-20 although it removed real duplication.)
+**A sweep's observer counts copies, not lines.** A sweep PR (slop, duplication) passes when each duplicate ends as one copy and `pnpm slop` reports no new duplicate. The duplicates are the ones its queue row names or, when the row leaves them to the Builder (as `sweep-rupd-harness` does), the list in the PR body, which the Reviewer checks against the diff. The changed-line count is advisory only, as rule 3 treats PR size: a sweep that adds more lines than it deletes is not a defect when it merges real duplication. (PR #91 closed over +52/-20 although it removed real duplication.)
 
-**A round cap never closes a PR silently.** After a PR's second reject, an architect other than the author picks exactly one of: amend the observer (the row's observer was wrong or unreachable), split the PR (the work is two things), or retire it. The architect writes the reason in the PR's queue row, so the work and what was learned stay in the repo. A PR is never closed by a round count alone, by any squad, and an architect does not choose for a PR they authored.
+**A round cap never closes a PR silently.** The Driver counts a PR's rejects. After the second, the Architect other than the author picks exactly one of: amend the observer (it was wrong or unreachable), split the PR (it is two things), or retire it. When the author is the only Architect, the user picks. The pick and its reason go in the PR's queue row, or in a new row in `.work/queue.md` when the PR has none, so the work and what was learned stay in the repo. A round count alone never closes a PR.
 
-**A re-review gets the earlier findings.** After a reject, the next Reviewer's input is the diff, the linked scenario, `AGENTS.md` and the earlier verdict comments, and it checks each earlier finding is fixed, then reviews the delta since the head it rejected. Findings on text the new commits did not touch count only when they are correctness defects; a style or taste finding on unchanged text is noted and does not block. Rule 5 bans only the author's rationale, which stays out. The cost is accepted: earlier findings may anchor the Reviewer, and without them docs PRs took up to seven rounds, each finding a new thing in text it had passed.
+**A re-review gets the earlier findings.** After a reject, the Driver puts into the next Reviewer's prompt each earlier verdict comment (a comment whose first line is `VERDICT:`) and the diff from the rejected head to the new head, computed on the laptop because a VM checkout has neither the comments nor that head. The Reviewer checks each earlier finding is fixed, then reviews the delta. A finding on text unchanged since the rejected head blocks only when it breaks a rule of `AGENTS.md` or is a correctness defect (the text is wrong, not merely disliked); a taste finding on unchanged text is noted and does not block. The author's rationale stays out (rule 5). The cost is accepted: earlier findings may anchor the Reviewer, and without them docs PRs took up to seven rounds, each finding something new in text it had passed.
 
 ## Loop on the loop
 
