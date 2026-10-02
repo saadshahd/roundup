@@ -271,6 +271,35 @@ describe("u33 spawn with a prompt", () => {
     expect(field().value).toBe("keep me");
   });
 
+  it.each(["n", "t"])(
+    "u33_cmd_%s_is_a_bound_shortcut_so_it_never_reaches_the_field_while_the_field_is_open",
+    async (key) => {
+      const mounted = await mountRail([group("g")]);
+      mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
+
+      chord("n");
+      fireEvent.input(field(), { target: { value: "keep me" } });
+      const handled = chord(key, { metaKey: true });
+
+      expect(handled).toBe(false);
+    },
+  );
+
+  it.each(["v", "a", "z"])(
+    "u33_cmd_%s_is_not_a_bound_shortcut_so_it_is_typed_into_the_field_and_never_closes_it",
+    async (key) => {
+      await mountRail([group("g")]);
+
+      chord("n");
+      fireEvent.input(field(), { target: { value: "keep me" } });
+      const handled = chord(key, { metaKey: true });
+
+      expect(handled).toBe(true);
+      expect(field().value).toBe("keep me");
+      expect(screen.queryByLabelText("prompt")).not.toBeNull();
+    },
+  );
+
   it("u33_plus_agent_moves_focus_to_the_field_and_calls_nothing", async () => {
     const mounted = await mountRail([group("g")]);
 
