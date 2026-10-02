@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use contracts::agent::RailNode;
 use contracts::todo::Todo;
 use contracts::{ActorKind, EventData, Kind, Touch};
-use daemon::{Project, TEN_IDLE_BOUND, next, next_kind, start, wait_until_idle};
+use daemon::{Project, TEN_IDLE_BOUND, next, next_kind, rail_tree, signal, start, wait_until_idle};
 use serde_json::json;
 
 /// Recorded Claude Code hook payloads, one of each event D2 plays.
@@ -60,8 +60,7 @@ async fn d2_the_first_prompt_names_the_agent() {
         next_kind(&mut client).await;
     }
 
-    let tree: Vec<RailNode> =
-        serde_json::from_value(client.request("rail.tree", json!(null)).await.unwrap()).unwrap();
+    let tree = rail_tree(&client).await;
 
     let named: Vec<_> = tree.iter().filter(|node| node.id == agent.id).collect();
     assert_eq!(named.len(), 1);
@@ -147,7 +146,8 @@ async fn d4_ten_idle_agents_cost_the_daemon_less_than_150_mb() {
     let mut client = project.subscribed().await;
     let before = resident_kb(project.pid());
 
-    // One deadline for all ten Agents together, from the first spawn (scenario D4).
+    // One deadline for all ten Agents together, from the first spawn (scenario D4): moving this
+    // inside the loop would reset it on every spawn and let a slow first Agent dodge the bound.
     let deadline = Instant::now() + TEN_IDLE_BOUND;
     let mut ids = Vec::new();
     for _ in 0..10 {
@@ -166,10 +166,16 @@ async fn d4_ten_idle_agents_cost_the_daemon_less_than_150_mb() {
 /// the event stream and the Daemon's own `rail.tree` view of it.
 #[tokio::test]
 async fn d4_a_miss_names_the_not_idle_agents_their_last_status_and_the_rail_tree() {
-    // No FAKE_CLAUDE_EVENTS: this Agent never plays SessionStart, so it never reaches Idle.
     let project = start(&[]);
     let mut client = project.subscribed().await;
     let agent = project.spawn_agent(&client).await;
+    // A Signal that does arrive, so "last seen" is never trivially None; it never reaches Idle.
+    signal(
+        &client,
+        &agent.id,
+        json!({ "hook_event_name": "UserPromptSubmit" }),
+    )
+    .await;
 
     let report = wait_until_idle(
         &mut client,
@@ -179,7 +185,128 @@ async fn d4_a_miss_names_the_not_idle_agents_their_last_status_and_the_rail_tree
     .await
     .unwrap_err();
 
-    assert!(report.contains(&agent.id), "{report}");
-    assert!(report.contains("Working"), "{report}");
-    assert!(report.contains("rail.tree"), "{report}");
+    let line = report
+        .lines()
+        .find(|line| line.starts_with(&format!("  {}:", agent.id)))
+        .unwrap_or_else(|| panic!("no line for {}: {report}", agent.id));
+    assert!(line.contains("last saw Some("), "{line}");
+    assert!(
+        line.contains("rail.tree shows Some(Status { kind: Working"),
+        "{line}"
+    );
+}
+
+/// The `ids` guard: a Status for an Agent nobody is waiting on must not count toward the wait.
+#[tokio::test]
+async fn d4_wait_until_idle_ignores_status_events_for_agents_it_is_not_watching() {
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let watched = project.spawn_agent(&client).await;
+    let other = project.spawn_agent(&client).await;
+    // `other` reaches Idle quickly; only `watched` is in the `ids` this wait names.
+    signal(
+        &client,
+        &other.id,
+        json!({ "hook_event_name": "SessionStart" }),
+    )
+    .await;
+
+    let report = wait_until_idle(
+        &mut client,
+        std::slice::from_ref(&watched.id),
+        Instant::now() + Duration::from_millis(300),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        report.starts_with("1 of 1 Agents were not Idle"),
+        "{report}"
+    );
+    assert!(report.contains(&format!("  {}:", watched.id)), "{report}");
+}
+
+/// The not-Idle filter: an Agent that already reached Idle must not get a line of its own.
+#[tokio::test]
+async fn d4_a_miss_report_omits_agents_already_idle() {
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let pending = project.spawn_agent(&client).await;
+    let done = project.spawn_agent(&client).await;
+    signal(
+        &client,
+        &done.id,
+        json!({ "hook_event_name": "SessionStart" }),
+    )
+    .await;
+
+    let report = wait_until_idle(
+        &mut client,
+        &[pending.id.clone(), done.id.clone()],
+        Instant::now() + Duration::from_millis(300),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        report.starts_with("1 of 2 Agents were not Idle"),
+        "{report}"
+    );
+    assert!(report.contains(&format!("  {}:", pending.id)), "{report}");
+    assert!(!report.contains(&format!("  {}:", done.id)), "{report}");
+}
+
+/// A Status the Daemon already holds but this client never saw (it never subscribed) is told
+/// apart from a Daemon that is merely slow to reach the watched Agent.
+#[tokio::test]
+async fn d4_an_event_not_seen_on_the_stream_is_told_from_a_slow_daemon() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let agent = project.spawn_agent(&client).await;
+    signal(
+        &client,
+        &agent.id,
+        json!({ "hook_event_name": "SessionStart" }),
+    )
+    .await;
+
+    // Never subscribed, so it can never see the Idle event, however long it waits.
+    let mut unsubscribed = project.client().await;
+    let report = wait_until_idle(
+        &mut unsubscribed,
+        std::slice::from_ref(&agent.id),
+        Instant::now() + Duration::from_millis(200),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(report.contains("last saw None"), "{report}");
+    assert!(
+        report.contains("rail.tree shows Some(Status { kind: Idle"),
+        "{report}"
+    );
+    assert!(
+        report.contains("(Idle in the tree but not seen on the stream)"),
+        "{report}"
+    );
+}
+
+/// A connection that closes mid-wait is reported as closed, not folded into the usual report
+/// (which would need `rail.tree` on a connection that can no longer answer).
+#[tokio::test]
+async fn d4_a_closed_connection_is_reported_without_blaming_the_deadline() {
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let agent = project.spawn_agent(&client).await;
+    drop(project);
+
+    let report = wait_until_idle(
+        &mut client,
+        std::slice::from_ref(&agent.id),
+        Instant::now() + Duration::from_secs(5),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(report.contains("connection closed"), "{report}");
 }

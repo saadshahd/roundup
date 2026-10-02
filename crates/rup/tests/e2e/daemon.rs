@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use contracts::agent::{RailNode, SpawnParams, StatusEvent};
+use contracts::agent::{RailNode, SignalParams, SpawnParams, StatusEvent};
 use contracts::{EventData, Kind, Status};
 use rpc::Client;
+use serde_json::Value;
 
 /// How long the Daemon, its Agents' hooks and their tools have to answer.
 const BOUND: Duration = Duration::from_secs(30);
@@ -123,7 +124,7 @@ pub async fn next<T>(client: &mut Client, pick: impl Fn(EventData) -> Option<T>)
     .expect("the event arrived")
 }
 
-pub async fn next_status(client: &mut Client) -> StatusEvent {
+async fn next_status(client: &mut Client) -> StatusEvent {
     next(client, |data| match data {
         EventData::AgentStatus(status) => Some(status),
         _ => None,
@@ -135,10 +136,36 @@ pub async fn next_kind(client: &mut Client) -> Kind {
     next_status(client).await.status.kind
 }
 
+/// Hand Agent `id` a Signal directly over RPC, the way `rup signal` does, bypassing the fake
+/// `claude` process so a test can drive one Agent's Status without the others.
+pub async fn signal(client: &Client, id: &str, payload: Value) {
+    client
+        .request(
+            "agent.signal",
+            SignalParams {
+                id: id.to_owned(),
+                payload,
+            },
+        )
+        .await
+        .unwrap();
+}
+
+/// The Daemon's own view of the Rail, bounded like every other call across the socket.
+pub async fn rail_tree(client: &Client) -> Vec<RailNode> {
+    let tree = tokio::time::timeout(BOUND, client.request("rail.tree", Value::Null))
+        .await
+        .expect("rail.tree answered within the bound")
+        .unwrap();
+    serde_json::from_value(tree).unwrap()
+}
+
 /// Wait, from one shared `deadline`, for every one of `ids` to reach `Kind::Idle` on the event
 /// stream. A miss names, for each Agent not yet Idle, the status last seen on the event stream
-/// (`None` if none arrived) and the Daemon's own `rail.tree` view of it: if the tree already says
-/// Idle, the event was lost in delivery rather than the Daemon being slow to reach it.
+/// (`None` if none arrived) and the Daemon's own `rail.tree` view of it: if the tree already shows
+/// Idle, the event did not reach this client even though the Daemon already saw it. A connection
+/// that closes before the deadline is reported directly, instead of blaming the deadline and
+/// then failing to read `rail.tree` on a dead connection.
 pub async fn wait_until_idle(
     client: &mut Client,
     ids: &[String],
@@ -153,7 +180,14 @@ pub async fn wait_until_idle(
         }
         let event = match tokio::time::timeout(remaining, client.next_event()).await {
             Ok(Some(event)) => event,
-            Ok(None) | Err(_) => break,
+            Ok(None) => {
+                return Err(format!(
+                    "the connection closed with {} of {} Agents not yet Idle",
+                    ids.len() - idle.len(),
+                    ids.len()
+                ));
+            }
+            Err(_) => break,
         };
         if let EventData::AgentStatus(status) = event.data
             && ids.contains(&status.id)
@@ -168,13 +202,7 @@ pub async fn wait_until_idle(
         return Ok(());
     }
 
-    let tree: Vec<RailNode> = serde_json::from_value(
-        client
-            .request("rail.tree", serde_json::Value::Null)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let tree = rail_tree(client).await;
     let mut report = format!(
         "{} of {} Agents were not Idle before the deadline:\n",
         ids.len() - idle.len(),
@@ -185,12 +213,12 @@ pub async fn wait_until_idle(
             .iter()
             .find(|node| &node.id == id)
             .and_then(|node| node.status.as_ref());
-        let lost = matches!(tree_status, Some(status) if status.kind == Kind::Idle);
+        let idle_in_tree = matches!(tree_status, Some(status) if status.kind == Kind::Idle);
         report += &format!(
             "  {id}: event stream last saw {:?}; rail.tree shows {tree_status:?}{}\n",
             last_seen.get(id),
-            if lost {
-                " (lost: the Daemon's own tree already says Idle)"
+            if idle_in_tree {
+                " (Idle in the tree but not seen on the stream)"
             } else {
                 ""
             }
