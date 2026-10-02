@@ -155,7 +155,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
   | L44–L49 | `scenarios/loop.md`: merge policy, `loop/rules.sh` `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` and stall kind f (rows below) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
-  | F1–F9 | `scenarios/spawn-boundary.md`, architect-c (F1–F5 written; F6 the Rail's `stray` badge; F7–F9 reserved) |
+  | F1–F9 | `scenarios/spawn-boundary.md`, architect-c (F1–F5 and F7 written; F6 the Rail's `stray` badge; F8–F9 reserved) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
