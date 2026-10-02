@@ -324,6 +324,58 @@ async fn m2_the_server_keeps_serving_after_a_daemon_error() {
     assert_eq!(result.is_error, Some(false));
 }
 
+async fn next_reply(
+    stdout: &mut tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+    id: i64,
+) -> Value {
+    loop {
+        let line = tokio::time::timeout(BOUND, stdout.next_line())
+            .await
+            .expect("a reply arrived")
+            .unwrap()
+            .expect("stdout is open until the reply arrives");
+        let message: Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("{line}"));
+        if message["id"] == id {
+            return message;
+        }
+    }
+}
+
+/// Claude Code rejects a `tools/list` reply with no numeric `ttlMs` ("expected number, received undefined" at `ttlMs`). This drives the shim over raw JSON-RPC, as a client paging through tools would, to check the field survives serialization on both the first call (an empty cursor) and a second page.
+#[tokio::test]
+async fn m4_every_tools_list_reply_carries_a_numeric_ttl_ms() {
+    let project = start_daemon();
+    let mut child = start_rup_mcp(&project.socket, "a1");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+
+    write_line(
+        &mut stdin,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": ProtocolVersion::LATEST_WITH_INITIALIZE.as_str(),
+            "capabilities": {},
+            "clientInfo": { "name": "test", "version": "0" },
+        }}),
+    )
+    .await;
+    next_reply(&mut stdout, 1).await;
+    write_line(
+        &mut stdin,
+        &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+    )
+    .await;
+
+    for (id, params) in [(2, json!(null)), (3, json!({ "cursor": "anything" }))] {
+        let mut request = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/list" });
+        if !params.is_null() {
+            request["params"] = params;
+        }
+        write_line(&mut stdin, &request).await;
+        let reply = next_reply(&mut stdout, id).await;
+        assert!(reply["result"]["ttlMs"].is_number(), "id {id}: {reply}");
+    }
+}
+
 #[tokio::test]
 async fn m3_no_daemon_exits_nonzero_with_one_line_naming_the_socket() {
     let dir = tempfile::tempdir().unwrap();

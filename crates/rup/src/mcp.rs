@@ -20,6 +20,9 @@ use tokio::sync::mpsc;
 /// A Todo or Pad call is a few SQLite statements; past this the Daemon is wedged, and a hung tool call would hang the Agent's turn.
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The tool list never changes once the shim starts. Claude Code requires a numeric `ttlMs` on every `tools/list` reply and rejects one without it ("expected number, received undefined").
+const TOOLS_TTL_MS: u64 = 3_600_000;
+
 struct Offered {
     method: &'static str,
     tool: Tool,
@@ -160,7 +163,8 @@ impl ServerHandler for Shim {
     ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult::with_all_items(
             self.tools.iter().map(|offer| offer.tool.clone()).collect(),
-        ))
+        )
+        .with_ttl_ms(TOOLS_TTL_MS))
     }
 
     async fn call_tool(
