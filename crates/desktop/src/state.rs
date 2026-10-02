@@ -58,8 +58,9 @@ enum Phase {
 pub struct AppState {
     config: Config,
     phase: Mutex<Phase>,
-    /// Counts Daemon starts so each gets its own socket path (S5): a reopen must never land on
-    /// the exited run's path.
+    /// Counts successful Daemon starts so each gets its own socket path (S5): a reopen must never
+    /// land on the exited run's path, and a failed attempt leaves this unchanged so a retry still
+    /// gets the same chance under the socket limit.
     runs: Mutex<u64>,
 }
 
@@ -143,7 +144,9 @@ impl AppState {
 
     /// A Project whose Daemon exited may reopen on the same path (S5); any other path, or any
     /// path while a Daemon runs or is starting, is `CONFLICT` because the App holds one Project.
-    /// Returns this open's run number, so each Daemon gets its own socket path (S5).
+    /// Returns the run number this open would use if it succeeds (S5); a failed attempt must not
+    /// consume it, or a retry's `{run}-` prefix would only grow and could outrun the socket limit
+    /// for no reason tied to the retry itself.
     fn begin_opening(&self, path: &Path) -> Result<u64, RpcError> {
         let mut phase = self.phase();
         match &*phase {
@@ -159,13 +162,19 @@ impl AppState {
             }
         }
         drop(phase);
+        Ok(*self
+            .runs
+            .lock()
+            .expect("the runs lock is never held across a panic"))
+    }
+
+    /// Commits the run number a successful open used, so the next one gets a fresh socket path (S5).
+    fn commit_run(&self, run: u64) {
         let mut runs = self
             .runs
             .lock()
             .expect("the runs lock is never held across a panic");
-        let run = *runs;
-        *runs += 1;
-        Ok(run)
+        *runs = run + 1;
     }
 
     /// Reverts a failed open: back to `Closed` for a first open, back to `Exited` with the same
@@ -207,6 +216,7 @@ impl AppState {
             socket: started.socket,
             subscription: None,
         });
+        self.commit_run(run);
         let app = app.clone();
         daemon::watch_exit(started.child, move |code| {
             if app.state::<AppState>().mark_exited()

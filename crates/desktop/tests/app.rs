@@ -38,7 +38,27 @@ impl Fixture {
     /// `body` is the fake `rupd`. `{link}` in it becomes a command that points the App's socket
     /// at the real Daemon; `{dir}` is the fixture's directory; `read go < '{dir}/go'` waits for `release`.
     fn new(body: &str) -> Self {
-        let dir = tempfile::tempdir().unwrap();
+        Self::in_dir(body, tempfile::tempdir().unwrap())
+    }
+
+    /// Like `new`, but the fixture's directory is padded so the first (`run` 0) socket path is
+    /// exactly `socket_len` bytes, letting a test push a reopen's `{run}-` prefix past the
+    /// 104-byte limit on purpose (mirrors `dir_of` in `s1_a_socket_path_of_103_bytes_is_accepted_and_104_is_rejected`).
+    fn with_socket_len(body: &str, socket_len: usize) -> Self {
+        let socket_name_len = format!("/roundup-{}.sock", std::process::id()).len();
+        let parent = std::env::temp_dir();
+        let prefix_len = socket_len - socket_name_len - parent.as_os_str().len() - 1;
+        let dir = tempfile::Builder::new()
+            .prefix(&"d".repeat(prefix_len))
+            .rand_bytes(0)
+            .tempdir_in(&parent)
+            .unwrap();
+        let fixture = Self::in_dir(body, dir);
+        assert_eq!(fixture.config.socket.as_os_str().len(), socket_len);
+        fixture
+    }
+
+    fn in_dir(body: &str, dir: TempDir) -> Self {
         let project = dir.path().join("my-project");
         std::fs::create_dir(&project).unwrap();
         let link = format!(
@@ -1009,6 +1029,67 @@ fn s5_a_second_open_project_while_a_reopen_is_still_starting_is_conflict() {
     fx.release();
     let reopened = tauri::async_runtime::block_on(reopening).unwrap().unwrap();
     assert_eq!(reopened.path, fx.project.display().to_string());
+}
+
+#[test]
+fn s5_a_reopen_past_the_socket_limit_fails_open_project_with_internal() {
+    let fx = Fixture::with_socket_len("{link}\nread go < '{dir}/go'\nexit 0", 102);
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    assert_eq!(error["code"], code::INTERNAL);
+    assert!(
+        error["message"].as_str().unwrap().contains("104"),
+        "{error}"
+    );
+}
+
+#[test]
+fn s5_a_refused_reopen_does_not_burn_a_run_number() {
+    let fx = Fixture::new(
+        "n_file='{dir}/n'\n\
+         n=$(( $(cat \"$n_file\" 2>/dev/null || echo 0) + 1 ))\n\
+         echo \"$n\" > \"$n_file\"\n\
+         if [ \"$n\" -eq 1 ]; then\n\
+         {link}\n\
+         read go < '{dir}/go'\n\
+         exit 0\n\
+         elif [ \"$n\" -eq 4 ]; then\n\
+         printf '%s' \"$RUPD_SOCKET\" > '{dir}/socket'\n\
+         {link}\n\
+         exec cat\n\
+         else\n\
+         printf '%s\\n' \"$RUPD_SOCKET\" >> '{dir}/attempted-sockets'\n\
+         echo 'boom: reopen failed' >&2\n\
+         exit 3\n\
+         fi\n",
+    );
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+
+    let attempted = std::fs::read_to_string(fx.dir.path().join("attempted-sockets")).unwrap();
+    let tried: BTreeSet<&str> = attempted.lines().collect();
+    assert_eq!(
+        tried.len(),
+        1,
+        "both refusals must try the same socket path, not a growing one: {attempted:?}"
+    );
+    let succeeded = std::fs::read_to_string(fx.dir.path().join("socket")).unwrap();
+    assert_eq!(*tried.iter().next().unwrap(), succeeded);
 }
 
 #[test]
