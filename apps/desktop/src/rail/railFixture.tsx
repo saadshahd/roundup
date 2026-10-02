@@ -73,5 +73,5 @@ export const rowNames = (): string[] =>
 
 export const tabbableRows = (): HTMLElement[] => screen.getAllByRole("treeitem").filter((row) => row.tabIndex === 0);
 
-export const callsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
+export const railCallsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
   app.calls.filter((call) => call.method === method).map((call) => call.params);
