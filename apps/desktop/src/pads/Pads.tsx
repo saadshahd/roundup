@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Pad } from "@contracts/pad/Pad";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -16,17 +16,21 @@ export const Pads = () => {
   const failure = createFailure();
   const listFailure = createFailure();
   let newestReload = 0;
+  /** True once the first `pad.list` has answered, so U38's empty line never flashes before it. */
+  const [loaded, setLoaded] = createSignal(false);
 
   /** Only the newest request may set the list: a slower, older reply would put stale Pads back. */
   const reload = () =>
-    listFailure.run(async () => {
-      newestReload += 1;
+    listFailure
+      .run(async () => {
+        newestReload += 1;
 
-      const mine = newestReload;
-      const listed = await connected.app.rpc("pad.list", null);
+        const mine = newestReload;
+        const listed = await connected.app.rpc("pad.list", null);
 
-      if (mine === newestReload) setPads(listed);
-    });
+        if (mine === newestReload) setPads(listed);
+      })
+      .finally(() => setLoaded(true));
 
   onCleanup(
     connected.events.subscribe((event) => {
@@ -47,6 +51,9 @@ export const Pads = () => {
       await connected.app.rpc("pad.setOwner", { name, owner: USER });
       await reload();
     });
+
+  /** U38: the empty line waits for the first `pad.list` and yields to a failed one. */
+  const isEmpty = createMemo(() => loaded() && pads().length === 0 && listFailure.message() === null);
 
   return (
     <section aria-label="pads">
@@ -75,6 +82,9 @@ export const Pads = () => {
       </Show>
       <Show when={listFailure.message()}>
         {(message) => <ErrorLine message={message()} />}
+      </Show>
+      <Show when={isEmpty()}>
+        <p>no pads yet</p>
       </Show>
       <PadRows
         pads={pads}

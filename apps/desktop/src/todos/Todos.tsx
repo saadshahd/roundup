@@ -86,6 +86,8 @@ export const Todos = () => {
   const [unfolded, setUnfolded] = createSignal(false);
   const open = createMemo(() => openTodos(todos.all()));
   const done = createMemo(() => doneTodos(todos.all()));
+  /** U38: the empty line waits for the first `todo.list` and yields to a failed one. */
+  const isEmpty = createMemo(() => todos.loaded() && todos.all().length === 0 && todos.failure() === null);
 
   // The field closes before the call so a second Enter cannot create the Todo twice.
   const create = async (title: string) => {
@@ -126,6 +128,9 @@ export const Todos = () => {
             }
           }}
         />
+      </Show>
+      <Show when={isEmpty()}>
+        <p>no todos yet</p>
       </Show>
       <For each={open()}>
         {(todo) => (
