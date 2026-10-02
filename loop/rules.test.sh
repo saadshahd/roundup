@@ -246,6 +246,18 @@ expect fail "L41 tokens: nested files under src are scanned" rules tokens
 new_ui_repo; printf 'a { color: #ff0000; }\n' >crates/outside.css; commit x
 expect pass "L41 tokens: files outside apps/desktop/src are ignored" rules tokens
 
+new_ui_repo; printf '#ff0000 { color: red; }\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: hex literal at the start of a line is found (no \\b)" rules tokens
+
+new_ui_repo; printf 'a { color: #ff0000\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: hex literal at the end of a line is found (no \\b)" rules tokens
+
+new_ui_repo; printf 'a{color:#ff0000;}\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: hex literal next to punctuation on both sides is found (no \\b)" rules tokens
+
+new_ui_repo; printf 'a{background:rgba(0,0,0,.5);}\n' >apps/desktop/src/a.css; commit x
+expect fail "L41 tokens: rgba() literal next to punctuation on both sides is found (no \\b)" rules tokens
+
 new_ui_repo; printf 'a { font-size: 14px; }\nb { border-radius: 4px; }\n' >apps/desktop/src/multi.css; commit x
 expect_contains "apps/desktop/src/multi.css:1" "L41 tokens: first offence prints its own file:line" rules tokens
 expect_contains "apps/desktop/src/multi.css:2" "L41 tokens: second offence prints its own file:line" rules tokens

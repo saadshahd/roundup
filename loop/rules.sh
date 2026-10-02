@@ -123,7 +123,10 @@ vocab() {
 tokens_dir="apps/desktop/src"
 tokens_file="$tokens_dir/tokens.css"
 tokens_pass_values='0 inherit transparent currentColor none'
-tokens_color_re='#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b|\b(rgb|rgba|hsl|hsla)\('
+# \b is a GNU extension: BSD regex (macOS bash, grep, sed -E) treats it as literal
+# backslash-b, so the check would silently find nothing there. POSIX classes and
+# anchors only.
+tokens_color_re='#[0-9A-Fa-f]{6}([^0-9A-Za-z_]|$)|#[0-9A-Fa-f]{3}([^0-9A-Za-z_]|$)|(^|[^0-9A-Za-z_])(rgb|rgba|hsl|hsla)\('
 tokens_prop_re='(font-size|border-radius|box-shadow|transition-duration|animation-duration)[[:space:]]*:[[:space:]]*([^;]+)'
 tokens_style_re='style=(\{|")'
 
