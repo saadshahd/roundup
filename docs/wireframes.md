@@ -2,6 +2,8 @@
 
 ASCII, Tufte lens, mouse-first (no shortcut or palette layer in the MVP). Six critique iterations produced these; the corrections below were applied afterwards and win over anything drawn.
 
+**How it looks is `docs/design-system.md`.** These drawings fix what each screen holds and where. They are monochrome and borderless because ASCII is. The App is not: where a drawing or a rule below says "the only ink", "no borders drawn" or "grey", the design system's Tokens, surfaces and Kind tones apply. The Glyph set, the visibility rule and the layout stand.
+
 ## Visibility rule
 
 A detail is visible by default iff not seeing it blocks an action the user must take; otherwise it appears on interaction.
@@ -13,7 +15,7 @@ Applied corrections (the drawings predate some of them):
 - Removed from earlier drafts: sparkline column, `lead→` arrows, separate prompt row, band above the prompt, Overview grid, command palette and shortcuts (superseded: U30, U32 and U33 in `scenarios/ui.md` add chords).
 - Collapsed by default: done todos and agents, pad bodies, detail, history, inbox.
 
-## Ink vocabulary (one set on every screen)
+## Ink vocabulary (one set on every screen; colours and tones as `docs/design-system.md` sets them)
 
 ```
 STATUS   one glyph per row = most urgent Kind. The same six marks are used in rail, shelf, inbox, history.
@@ -45,7 +47,7 @@ OTHER
 
 ## Screen 1 — Main workspace
 
-Three columns, no borders drawn. Rail left, terminal centre at full height, shelf right (todos over pads), open by default. Widths: Rail 20% (252 to 320 px), Shelf 14% (160 to 280 px), terminal at least 690 px (80 columns); under 1102 px the shelf moves under the rail (U23, U24).
+Three columns, told apart by surface and space (`docs/design-system.md`). Rail left, terminal centre at full height, shelf right (todos over pads), open by default. Widths: Rail 20% (252 to 320 px), Shelf 14% (160 to 280 px), terminal at least 690 px (80 columns); under 1102 px the shelf moves under the rail (U23, U24).
 
 ```
 roundup   payments-api                                                                     inbox 4
