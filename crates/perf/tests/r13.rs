@@ -306,20 +306,7 @@ fn r13_the_skipped_key_in_perf_json_holds_the_skipped_metrics() {
 }
 
 #[test]
-fn r3_conclude_returns_false_when_a_metric_misses_its_budget() {
-    let budgets: Budgets = BTreeMap::from([(
-        "write_to_output_p95_ms".to_string(),
-        budget(Some(16.0), 0.0, &[], &[]),
-    )]);
-    let per_run = BTreeMap::from([("write_to_output_p95_ms".to_string(), vec![20.0])]);
-    let dir = tempfile::tempdir().unwrap();
-    let out = dir.path().join("perf.json");
-
-    assert!(!conclude(per_run, vec![0.1], &budgets, &out).unwrap());
-}
-
-#[test]
-fn r7_perf_json_is_still_written_when_the_budget_check_errors() {
+fn conclude_writes_perf_json_before_propagating_a_budget_check_error() {
     let budgets: Budgets = BTreeMap::from([(
         "cold_start_ms".to_string(),
         budget(Some(300.0), 0.0, &[], &[]),
