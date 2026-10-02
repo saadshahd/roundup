@@ -67,6 +67,9 @@ struct Entry {
 struct Shared {
     bus: Bus,
     table: Mutex<BTreeMap<u64, Entry>>,
+    /// Env var names stripped from every spawned program's environment, however they reached the
+    /// Daemon: its own environment or a caller's `params.env` (`open_with`'s caller owns the list).
+    clean_env: Vec<String>,
 }
 
 impl Shared {
@@ -107,12 +110,24 @@ pub struct Terminals {
 }
 
 impl Terminals {
-    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    pub fn open(_dir: &Path, bus: Bus) -> Result<Self, OpenError> {
+    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused. No env
+    /// var is stripped from a spawned program; see [`Terminals::open_with`] for that.
+    pub fn open(dir: &Path, bus: Bus) -> Result<Self, OpenError> {
+        Self::open_with(dir, bus, &[])
+    }
+
+    /// As [`Terminals::open`], but `clean_env` names env vars that must never reach a spawned
+    /// program's environment, however they arrived (the Daemon's own environment or a caller's
+    /// `params.env`): the caller owns the list and what it means.
+    pub fn open_with(_dir: &Path, bus: Bus, clean_env: &[&str]) -> Result<Self, OpenError> {
         Ok(Self {
             shared: Arc::new(Shared {
                 bus,
                 table: Mutex::new(BTreeMap::new()),
+                clean_env: clean_env
+                    .iter()
+                    .map(|marker| (*marker).to_owned())
+                    .collect(),
             }),
             next: AtomicU64::new(1),
         })
@@ -137,6 +152,10 @@ impl Terminals {
         command.cwd(&params.cwd);
         for (name, value) in &params.env {
             command.env(name, value);
+        }
+        // Last, so none of them survive even if a caller passed one in `params.env`.
+        for marker in &self.shared.clean_env {
+            command.env_remove(marker);
         }
         // The reader and input threads start before the program (the reader receives the child over a
         // channel), so no later failure can leave a program that nobody waits for.

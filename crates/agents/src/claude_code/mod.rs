@@ -11,6 +11,21 @@ use crate::{AgentAdapter, Observation};
 
 pub use launch::Launcher;
 
+/// Env vars Claude Code sets when the program running it is itself inside a Claude Code run
+/// (A15). The Daemon can inherit these from its own environment; every program it starts must
+/// not, or it would believe itself nested in that run too. Handed to [`terminal::Terminals`]
+/// at `open_with` time, so no other module needs to name them.
+pub const MARKERS: [&str; 8] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+];
+
 /// How long a star right after `PreToolUse` waits for its `PermissionRequest`, in milliseconds,
 /// measured from the star. Across 9 dialogs the star precedes its `PermissionRequest` by 18-79 ms;
 /// 200 ms is about 2.5 times that. Shorter flickers `idle` before a dialog; longer delays the
