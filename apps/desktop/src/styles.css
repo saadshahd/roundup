@@ -1,5 +1,5 @@
 :root {
-  --light: #a1a1a6;
+  --light: #86868b;
   --lightest: #c7c7cc;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   font-family: var(--mono);
@@ -72,16 +72,16 @@ p {
 
 .word {
   all: unset;
-  color: var(--light);
+  color: var(--grey);
   cursor: pointer;
 }
 
 .word:hover {
-  color: var(--grey);
+  color: var(--text);
 }
 
 .light {
-  color: var(--light);
+  color: var(--grey);
 }
 
 .glyph[data-tone="grey"] {
