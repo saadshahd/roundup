@@ -12,8 +12,6 @@ const MAX_SAMPLES = 1000;
 
 /** Nearest-rank percentile; mirrors `crates/perf/src/measure.rs`'s `percentile`. */
 const percentile95 = (values: readonly number[]): number | null => {
-  if (values.length === 0) return null;
-
   const sorted = [...values].sort((a, b) => a - b);
   const index = Math.ceil(sorted.length * 0.95) - 1;
 

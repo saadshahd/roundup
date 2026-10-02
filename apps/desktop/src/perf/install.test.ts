@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import { createFakeApp } from "../testing/fakeApp";
 import { event } from "../testing/nodes";
@@ -77,7 +77,18 @@ const setup = (search: string) => {
 };
 
 describe("u39 the ?perf keystroke-to-render hook", () => {
+  let addEventListenerSpy: MockInstance<Window["addEventListener"]>;
+
+  beforeEach(() => {
+    addEventListenerSpy = vi.spyOn(window, "addEventListener");
+  });
+
   afterEach(() => {
+    for (const [type, listener, options] of addEventListenerSpy.mock.calls) {
+      if (type === "keydown") window.removeEventListener(type, listener, options);
+    }
+
+    addEventListenerSpy.mockRestore();
     document.body.replaceChildren();
     delete window.__perf;
     vi.useRealTimers();
@@ -94,6 +105,7 @@ describe("u39 the ?perf keystroke-to-render hook", () => {
     app.emit(outputEvent("t1"));
 
     expect(window.__perf).toBeUndefined();
+    expect(addEventListenerSpy).not.toHaveBeenCalledWith("keydown", expect.anything(), expect.anything());
   });
 
   it("u39_perf_is_recognised_alongside_other_query_params", () => {
@@ -192,14 +204,20 @@ describe("u39 the ?perf keystroke-to-render hook", () => {
 
   it("u39_a_keydown_whose_target_is_not_an_element_is_not_stamped", async () => {
     const { app, wrapped, runFrame } = setup("?perf");
+    const onError = vi.fn();
+
+    window.addEventListener("error", onError);
 
     await wrapped.subscribe(() => undefined);
 
-    expect(() => document.dispatchEvent(keydown())).not.toThrow();
+    document.dispatchEvent(keydown());
     app.emit(outputEvent("t1"));
     runFrame();
 
+    expect(onError).not.toHaveBeenCalled();
     expect(window.__perf?.keystrokeToRender).toEqual([]);
+
+    window.removeEventListener("error", onError);
   });
 
   it("u39_capture_stamps_a_keydown_even_if_the_pane_stops_it_from_bubbling", async () => {

@@ -83,6 +83,18 @@ describe("u39 keystroke-to-render tracking", () => {
     expect(tracker.api.p95()).toBe(19);
   });
 
+  it("u39_p95_sorts_samples_before_ranking", () => {
+    const tracker = createKeystrokeToRender();
+
+    for (const elapsed of [50, 10, 30, 20, 40]) {
+      tracker.stamp(0);
+      tracker.outputArrived(elapsed)(elapsed);
+    }
+
+    expect(tracker.api.keystrokeToRender).toEqual([50, 10, 30, 20, 40]);
+    expect(tracker.api.p95()).toBe(50);
+  });
+
   it("u39_keystroke_to_render_keeps_only_the_most_recent_samples", () => {
     const tracker = createKeystrokeToRender();
 
