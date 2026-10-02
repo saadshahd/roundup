@@ -28,8 +28,6 @@ Scenario text is on main and nothing it needs is unmerged. Every row owns a dire
 
 | Id | Item | Owns | Keeps green |
 |---|---|---|---|
-| A30 | `Agents::prompt` (in-process, no RPC) | `crates/agents/src/**` | `a4_` tests |
-| B1-B12 | Messages and Routes: contract (rule 4, an architect other than the author approves), `crates/messages`, the registration in `crates/rupd`, the MCP tools in `crates/rup` | `crates/contracts/**` and generated files, `crates/messages/**`, `crates/rupd/src/**`, `crates/rup/src/**`; after A30 | `a`, `t`, `d` tests; narrows no merged test |
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests |
 | audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests |
 | audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests |
@@ -42,6 +40,8 @@ Scenario text is on main. The row starts when what it waits on has merged.
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
+| A30 | `Agents::prompt` (in-process, no RPC) | `crates/agents/src/**` | `a4_` tests | | after A14 (`crates/agents/**`) and A16 (`lib.rs`) merge |
+| B1-B12 | Messages and Routes: contract (rule 4, an architect other than the author approves), `crates/messages`, the registration in `crates/rupd`, the MCP tools in `crates/rup` | `crates/contracts/**` and generated files, `crates/messages/**`, `crates/rupd/src/**`, `crates/rup/src/**`; after A30 | `a`, `t`, `d` tests; narrows no merged test | | after A30 merges |
 | U101, U102 | Terminal copy and paste; Terminal text size | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
 | A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
 | A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd`; its `a16_` tests in `crates/agents/tests/scenarios/**` and `crates/rup/tests/**` | the `a` tests | after #114 lands (both edit `crates/agents/src/lib.rs`) |
