@@ -62,7 +62,7 @@ case "$1 $2" in
       *"grep -rlF /tmp/warm"*) [ "${STUB_MODE:-}" != warm-dirty ] || exit 1 ;;
       *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
       *"just check"*)
-        case "${STUB_MODE:-}" in check-fails) exit 7 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
+        case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -256,6 +256,8 @@ expect_log 'machine new ru-chk-my-branch-[0-9]+ ' "L15 the VM name is the ref lo
 : >log; run_check_ref builder/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa || true
 expect_log 'machine new ru-chk-builder-aaaaaaaaaaaaaaaaaaaaaa-[0-9]+ ' "L15 the VM name is cut at 30 characters"
 
+check_repo; got=0; STUB_MODE=check-deadline run_check_ref builder/x || got=$?
+expect_true "L19 a check run that hits the deadline is recorded with VM and phase" grep -qE ' ru-chk-builder-x-[0-9]+ check deadline-exceeded' loop/out/events.log
 check_repo; got=0; STUB_MODE=check-fails run_check_ref builder/x || got=$?
 expect_true "L15 failed check keeps its exit code" test "$got" -eq 7
 expect_log 'machine remove ru-chk-builder-x-[0-9]+' "L15 VM destroyed after a failed check"
@@ -314,7 +316,8 @@ new_repo; BOXD_MAX_VMS=2 BOXD_SLOT_WAIT=10 STUB_BUSY_LISTS=3 STUB_MODE='' expect
 new_repo; BOXD_MAX_VMS=2 BOXD_SLOT_WAIT=2 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 a wait that never ends exits 1"
 expect_true "L18 the failed wait names the cap" grep -q 'cap BOXD_MAX_VMS=2' err
 if grep -q 'machine new' log; then echo "FAIL: L18 VM created without a slot"; failures=$((failures + 1)); else echo "ok:   L18 no VM without a slot"; fi
-new_repo; BOXD_MAX_VMS=2 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 a single run does not wait by default"
+started=$SECONDS; new_repo; BOXD_MAX_VMS=2 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 a single run does not wait by default"
+expect_true "L18 the default wait is 0 s, not a pause" test $((SECONDS - started)) -lt 3
 new_repo; BOXD_SLOT_WAIT=x STUB_MODE='' expect_code 2 "L18 non-numeric BOXD_SLOT_WAIT is refused"
 new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
 BOXD_MAX_VMS=2 STUB_BUSY_LISTS=4 loop/boxd.sh swarm build prompt.md p2.md >out 2>err || true
@@ -331,6 +334,10 @@ new_repo; BOXD_REBOOT_ATTEMPTS=3 STUB_NOANSWER=99 STUB_MODE='' expect_code 1 "L1
 expect_true "L19 a failed retry gives up after two VMs" test "$(count_log 'machine new ru-t ')" = 2
 expect_true "L19 each VM is asked for exactly BOXD_REBOOT_ATTEMPTS answers" test "$(count_log ' -- true$')" = 6
 expect_true "L19 the give-up is named" grep -q 'giving up after one retry' err
+new_repo; STUB_NOANSWER=5 STUB_MODE='' expect_code 0 "L19 a VM that answers on its sixth try needs no retry by default"
+expect_true "L19 the default allows more than three attempts" test "$(count_log 'machine new ru-t ')" = 1
+new_repo; BOXD_REBOOT_ATTEMPTS=61 STUB_MODE='' expect_code 2 "L19 more than 60 reboot attempts is refused"
+new_repo; BOXD_REBOOT_ATTEMPTS=0 STUB_MODE='' expect_code 2 "L19 zero reboot attempts is refused"
 new_repo; STUB_TARFAIL=1 STUB_MODE='' expect_code 0 "L19 a tar failure in the first seconds is retried once"
 expect_true "L19 the tar retry made a second VM" test "$(count_log 'machine new ru-t ')" = 2
 expect_true "L19 the upload retry is visible in the output" grep -q 'upload to ru-t failed within 30 s (exit 2); retrying once' err
@@ -342,6 +349,8 @@ expect_true "L19 no second VM after the agent ran" test "$(count_log 'machine ne
 expect_true "L19 the no-output event is recorded with VM and phase" grep -q ' ru-t agent no-output' loop/out/events.log
 new_repo; STUB_MODE=deadline expect_code 1 "L19 a wedged agent run fails"
 expect_true "L19 the deadline event is recorded, not retried" bash -c "grep -q ' ru-t agent deadline-exceeded' loop/out/events.log && test \"\$(grep -c 'machine new ru-t ' log)\" = 1"
+new_repo; STUB_MODE=check-deadline expect_code 1 "L19 a build whose check hits the deadline fails"
+expect_true "L19 the build check's deadline event is recorded with VM and phase" grep -q ' ru-t check deadline-exceeded' loop/out/events.log
 
 # L20: each swarm review prompt may carry its own ref after an @; without one it uses BOXD_REF.
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
