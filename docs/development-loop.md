@@ -71,7 +71,7 @@ Every write the App can make (spawn, create Group, rename, promote, move, stop, 
 
 | Rule | Enforced by | Gap |
 |---|---|---|
-| 1 Done | `check` green (CI); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml` (not a required check, so it does not yet block a merge); anti-slop via `pnpm lint` | e2e scenarios do not exist yet |
+| 1 Done | `check` green (CI); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml` (not a required check, so it does not yet block a merge); anti-slop via `pnpm lint` | e2e scenarios do not exist yet; principle gates (`PRINCIPLES.md`) are answered in the PR body and checked by the Reviewer by hand; their observers (P2 to P5) are not written |
 | 2 Slop | `pnpm lint` (anti-slop), `pnpm slop` (fallow), `cargo machete crates`, clippy | "public function with no test or caller" and "comment restates the line below" have no machine check beyond anti-slop's own rules |
 | 3 PR size guide | `loop/rules.sh size` (advisory only: prints when a PR spans more than one module directory or exceeds about 2000 changed lines; exits 0 whatever the size; an unknown base ref still fails) | "generated files" means `*.lock`, `pnpm-lock.yaml`, `*/generated/*`; extend as generators appear |
 | 4 Contract change | none | needs CODEOWNERS plus a required review. That is a GitHub setting; ask the user first |

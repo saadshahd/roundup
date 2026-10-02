@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Read `CONTEXT.md` first; every identifier, RPC method and UI string uses a term from it (or adds it there in the same PR).
+Read `CONTEXT.md` and `PRINCIPLES.md` first; every identifier, RPC method and UI string uses a term from it (or adds it there in the same PR).
 
 ## Rules
 
-1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings.
+1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings; the PR body names the `PRINCIPLES.md` ids it serves and answers each of their gates.
 2. **Slop** (each is a CI failure): an anti-slop rule violation; TypeScript duplication, unused exports, files or dependencies reported by `pnpm slop` (fallow); Rust dead code or unused dependencies reported by clippy and `cargo machete`; a public function with no test or caller; a comment that restates the line below it.
 3. **PR size is a guide**: aim for exactly one module directory (or only `contracts/`) and about 2000 changed lines (excluding lockfiles and generated files). A PR that exceeds either is allowed; `loop/rules.sh size` prints an advisory and the Reviewer notes it. Neither ever fails a PR.
 4. **Contract change** = any edit under `contracts/`. Needs Architect approval. No v2s: change every caller in the same PR.
