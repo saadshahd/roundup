@@ -11,7 +11,7 @@ import type { EmulatorFactory } from "../terminal/emulator";
 import { Keys } from "./Keys";
 
 /** What else to mount alongside the Rail and `Keys`: a Pane (an `EmulatorFactory` gives it a focusable screen) or the DrawerHost. */
-type KeysNeighbors = { pane?: true | EmulatorFactory; drawer?: boolean };
+type KeysNeighbors = { pane?: EmulatorFactory; drawer?: boolean };
 
 /** The Rail and `Keys` on a fake Daemon whose tree is `tree`, as `railFixture`'s `mountRail` sets up for U31 and U32. */
 export const mountKeys = async (tree: RailNode[], neighbors: KeysNeighbors = {}) => {
@@ -26,7 +26,7 @@ export const mountKeys = async (tree: RailNode[], neighbors: KeysNeighbors = {})
       <Keys />
       <Rail />
       <Show when={neighbors.pane}>
-        <Pane createEmulator={neighbors.pane === true ? undefined : neighbors.pane} />
+        <Pane createEmulator={neighbors.pane} />
       </Show>
       <Show when={neighbors.drawer}>
         <DrawerHost drawer={connected.drawer} reducedMotion={() => false} />

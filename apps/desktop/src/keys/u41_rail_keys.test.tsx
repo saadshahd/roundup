@@ -143,6 +143,16 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(rowOf("g").getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("u41_left_on_an_expanded_group_among_several_collapses_only_the_focused_one", async () => {
+    await mountKeys([group("g1", { order: 0 }), group("g2", { order: 1 })]);
+    rowOf("g2").focus();
+
+    press("ArrowLeft");
+
+    expect(rowOf("g2").getAttribute("aria-expanded")).toBe("false");
+    expect(rowOf("g1").getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("u41_left_on_a_collapsed_group_selects_its_parent", async () => {
     const { rail } = await mountKeys([group("outer"), group("inner", { parent: "outer" })]);
     fireEvent.click(within(rowOf("inner")).getByRole("button", { name: "collapse" }));
@@ -198,6 +208,18 @@ describe("u41 rail by keyboard, the rest", () => {
 
     expect(rowOf("g").getAttribute("aria-expanded")).toBe("true");
     expect(screen.getAllByRole("treeitem")).toHaveLength(2);
+  });
+
+  it("u41_right_on_a_collapsed_group_among_several_expands_only_the_focused_one", async () => {
+    await mountKeys([group("g1", { order: 0 }), group("g2", { order: 1 })]);
+    fireEvent.click(within(rowOf("g1")).getByRole("button", { name: "collapse" }));
+    fireEvent.click(within(rowOf("g2")).getByRole("button", { name: "collapse" }));
+    rowOf("g2").focus();
+
+    press("ArrowRight");
+
+    expect(rowOf("g2").getAttribute("aria-expanded")).toBe("true");
+    expect(rowOf("g1").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("u41_right_on_an_expanded_group_selects_its_first_child", async () => {
@@ -344,12 +366,12 @@ describe("u41 rail by keyboard, the rest", () => {
 
   it("u41_f2_edits_the_selected_rows_name_even_when_a_different_row_has_focus", async () => {
     const { rail } = await mountKeys([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rail.select("a");
-    rowOf("b").focus();
+    rail.select("b");
+    rowOf("a").focus();
 
     press("F2");
 
-    expect(screen.getByLabelText("name").closest("[role=treeitem]")?.getAttribute("data-id")).toBe("a");
+    expect(screen.getByLabelText("name").closest("[role=treeitem]")?.getAttribute("data-id")).toBe("b");
   });
 
   it("u41_f2_prevents_the_default_action", async () => {
