@@ -48,3 +48,11 @@ export const mountTodos = async (initial: Todo[], reducedMotion = true) => {
 
 export const callsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
   app.calls.filter((call) => call.method === method);
+
+export const rowOf = (id: number): HTMLElement => {
+  const found = document.querySelector<HTMLElement>(`[data-id="${id}"]`);
+
+  if (!found) throw new Error(`no row for #${id}`);
+
+  return found;
+};

@@ -127,6 +127,11 @@ if grep -q 'machine new' log; then echo "FAIL: L8 VM created over the default ca
 new_repo; STUB_RU=11 STUB_MODE='' expect_code 0 "L8 11 ru- VMs leave room for a 12th; non-ru- VMs are not counted"
 new_repo; BOXD_MAX_VMS=x STUB_MODE='' expect_code 2 "L8 non-numeric BOXD_MAX_VMS is refused"
 
+new_repo; BOXD_AGENT_TIMEOUT=900 loop/boxd.sh review r prompt.md >out 2>err
+expect_log 'machine exec ru-r --timeout 900 .*claude' "L5 BOXD_AGENT_TIMEOUT sets the agent timeout"
+new_repo; BOXD_AGENT_TIMEOUT=x STUB_MODE='' expect_code 2 "L5 non-numeric BOXD_AGENT_TIMEOUT is refused"
+new_repo; BOXD_AGENT_TIMEOUT=1801 STUB_MODE='' expect_code 2 "L5 BOXD_AGENT_TIMEOUT above 1800 would outlast the VM timer and is refused"
+
 # Hostile inputs are refused before any VM or file is made.
 refused() { # refused <name> <exit-code> <args...>
   local label=$1 args=("${@:2}")
@@ -147,7 +152,55 @@ loop/boxd.sh review r prompt.md feat >out 2>err
 expect_true "L9 base archive is the merge-base (no feature file)" bash -c '! tar tzf cp/base.tgz | grep -q "^g$"'
 expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
 expect_log 'git tag base' "L9 base is tagged"
-expect_log '--auto-destroy-timeout 3600' "L5 VM has an auto-destroy timer"
+expect_true "L9 the PR's commits are uploaded as a series" grep -q '^Subject: \[PATCH\] feat$' cp/series.mbox
+expect_log 'git .*am -q --empty=keep /tmp/series.mbox' "L9 the VM replays the PR's commits"
+
+# Run the exact script the VM executes (taken from the stub's log) against a real repo in <work>, /tmp and ~ redirected.
+replay_on_vm() {
+  local w=$1
+  mkdir -p "$w"
+  cp cp/base.tgz cp/src.tgz "$w"/
+  [ ! -e cp/series.mbox ] || cp cp/series.mbox "$w"/
+  awk '/^machine exec ru-r -- mkdir/ { p = 1; sub(/^machine exec ru-r -- /, "") } p { print } /-qm head;/ { p = 0 }' log | sed "s#/tmp/#$w/#g" >"$w/replay.sh"
+  HOME=$w bash "$w/replay.sh" 2>"$w/replay.err"
+}
+vm_log() { git -C "$1/roundup" log --format="$2" base..HEAD; }
+
+new_repo; git switch -qc feat; echo y >g; git add g
+git -c user.name=alice -c user.email=a@a commit -qm 'feat
+
+Author-Agent: alice-agent'
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+expect_true "L9 the replay keeps the author and the trailer" test "$(vm_log "$dir/vm" '%an|%s|%(trailers:key=Author-Agent,valueonly)')" = "alice|feat|alice-agent"
+expect_true "L9 the replay adds no synthetic head commit" test "$(vm_log "$dir/vm" '%s')" = feat
+
+# A branch that already ends in an empty approval commit replays whole: plain `git am` stops on an empty patch.
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git commit -q --allow-empty -m 'review: approve'
+loop/boxd.sh review r prompt.md feat >out 2>err
+expect_true "L16 an empty approval commit is in the series" grep -q '^Subject: \[PATCH 2/2\] review: approve$' cp/series.mbox
+replay_on_vm "$dir/vm"
+expect_true "L16 the VM keeps the empty approval commit on top" test "$(vm_log "$dir/vm" '%s' | paste -sd, -)" = "review: approve,feat"
+
+# A series cannot carry a merge commit: the range falls back to one `head` commit with the ref's tree.
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+git switch -q main; echo z >h; git add h; git commit -qm other; git switch -q feat; git merge -q --no-edit main
+loop/boxd.sh review r prompt.md feat >out 2>err
+expect_true "L9 a range with a merge commit uploads no series" test ! -e cp/series.mbox
+expect_true "L9 the merge fallback says so" grep -q 'merge commit' err
+replay_on_vm "$dir/vm"
+expect_true "L9 a merge range gets one head commit holding the ref's tree" bash -c "test \"\$(git -C '$dir/vm/roundup' log --format=%s base..HEAD)\" = head && test -e '$dir/vm/roundup/g' && test -e '$dir/vm/roundup/h'"
+
+# A series that does not apply also falls back to the head commit.
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+loop/boxd.sh review r prompt.md feat >out 2>err
+printf 'From 0 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] x\n\n---\n nope | 1 +\n 1 file changed\n\ndiff --git a/nope b/nope\n--- a/nope\n+++ b/nope\n@@ -1 +1,2 @@\n a\n+b\n' >cp/series.mbox
+replay_on_vm "$dir/vm"
+expect_true "L9 a series that does not apply falls back to one head commit" test "$(vm_log "$dir/vm" '%s')" = head
+expect_true "L9 the fallback leaves no am in progress" test ! -e "$dir/vm/roundup/.git/rebase-apply"
+expect_true "L9 the fallback says so" grep -q 'did not replay' "$dir/vm/replay.err"
+expect_log '--auto-destroy-timeout 4200' "L5 VM has an auto-destroy timer"
+expect_log 'machine exec ru-r --timeout 1800 .*claude' "L5 the agent may run as long as the check"
 expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
 
 # L15: `check` merges on this machine and runs on an isolated VM. The origin lives beside the repo, not inside it.
@@ -167,7 +220,7 @@ run_check_ref() { STUB_MODE=${STUB_MODE:-} loop/boxd.sh check "$1" >out 2>err; }
 check_repo; got=0; run_check_ref 54 || got=$?
 expect_true "L15 check of a PR number succeeds" test "$got" -eq 0
 expect_log 'machine new ru-chk-54 .*--isolated' "L15 the check VM is isolated"
-expect_log 'machine new ru-chk-54 .*--auto-destroy-timeout 3600' "L15 the check VM has an auto-destroy timer"
+expect_log 'machine new ru-chk-54 .*--auto-destroy-timeout 4200' "L15 the check VM has an auto-destroy timer"
 expect_log 'machine remove ru-chk-54' "L15 VM destroyed after success"
 expect_true "L15 nothing is cloned or fetched on the VM" bash -c '! grep -qE "git (clone|fetch)" log'
 expect_true "L15 the check installs from the lockfile" grep -q -- '--frozen-lockfile' log

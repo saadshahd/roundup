@@ -289,8 +289,9 @@ fn a13_a_real_agents_directory_works_as_before() {
 
     let argv = s.prepare("1").unwrap();
 
-    assert!(Path::new(&argv[2]).starts_with(&agents));
-    assert!(Path::new(&argv[4]).starts_with(&agents));
+    let real_agents = s.real(&agents);
+    assert!(Path::new(&argv[2]).starts_with(&real_agents));
+    assert!(Path::new(&argv[4]).starts_with(&real_agents));
 }
 
 #[test]
