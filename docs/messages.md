@@ -1,6 +1,6 @@
 # Messages between Actors
 
-Design for `scenarios/messages.md` (B1 to B23) and A30. Serves `PRINCIPLES.md` P1, P3 and P4 (the ids in `PRINCIPLES.md`, not `pads.md`'s). Terms are in `CONTEXT.md`; the one new word is "summary" (the type `Summary`, `agent.summary`), proposed for the user's ruling.
+Design for `scenarios/messages.md` (B1 to B23) and A30. Serves `PRINCIPLES.md` P1, P3 and P4 (the ids in `PRINCIPLES.md`, not `pads.md`'s). Terms are in `CONTEXT.md`; the one new word is "digest" (the type `Digest`, `agent.digest`, the tool `agent_digest`), the user's choice, defined in `CONTEXT.md`.
 
 ## What exists and what does not
 
@@ -28,7 +28,7 @@ Default Route is `auto`. A Held Message never blocks a later one (B7). Delivery 
 | `crates/rup` | MCP tools `message_send`, `message_get`, `message_list`, `message_pass` (B12) |
 | `crates/provenance` | none: `item` is a free string, `message:<id>` joins `todo:` and `pad:` (B11) |
 
-Bounds, from the codes `rpc::code` already has: 32 `pending` or `held` Messages per receiver (pushed summaries have their own bound of 20, B22) and 8192 bytes of body (`CONFLICT` and `INVALID_PARAMS`). No new error code.
+Bounds, from the codes `rpc::code` already has: 32 `pending` or `held` Messages per receiver (pushed digests have their own bound of 20, B22) and 8192 bytes of body (`CONFLICT` and `INVALID_PARAMS`). No new error code.
 
 ## The gates
 
@@ -40,9 +40,9 @@ Bounds, from the codes `rpc::code` already has: 32 `pending` or `held` Messages 
 
 Serves P1 and P3. P1: the user can still address any Agent, and a question never reaches the user through an Agent that owns the Thread's place. P1 also: a hop `held` for a Takeover waits, so a Takeover is never cut short. P3: the landing is a Held Message, with no signal beyond the event, and a permission Card skips the chain, so only a valid Card interrupts. Added contract: `message.pass`, `passedFrom` on `Message`, and the Held reason `escalated`; the clock is injected, as B14's fake clock needs. A Meta-agent's hop uses the Meta-agent's own Agent, so nothing here adds a seam.
 
-## Child summaries
+## Child digests
 
-Serves P1, P3 and P4. P3: pushes go to a Meta-agent as `note` Messages, never to the user, and change no Kind. P1: a Meta-agent learns its children through a tool and Messages, so nothing makes the user address the Thread through it. P4: the envelope reads Status labels, Messages, Todos and Pads, never Terminal output or a vendor string. Added contract: `agent.summary` and the type `Summary`; the MCP tool `agent_summary` is offered to Meta-agents only. Tool set per kind of Agent, for this PR alone: M1's tools and B12's four for every Agent, plus `agent_summary` for a Meta-agent. The numbers in B19 to B22 (512 bytes, 20 children, 8 pushes per minute, 20 held, 4096 bytes) are starting values: the Builder measures them, and a later PR may change them. The composer is `crates/messages`, which listens to `agent.status` and the Todo and Pad events; it reads no new input.
+Serves P1, P3 and P4. P3: pushes go to a Meta-agent as `note` Messages, never to the user, and change no Kind. P1: a Meta-agent learns its children through a tool and Messages, so nothing makes the user address the Thread through it. P4: the envelope reads Status labels, Messages, Todos and Pads, never Terminal output or a vendor string. Added contract: `agent.digest` and the type `Digest`; the MCP tool `agent_digest` is offered to Meta-agents only. Tool set per kind of Agent, for this PR alone: M1's tools and B12's four for every Agent, plus `agent_digest` for a Meta-agent. The numbers in B19 to B22 (512 bytes, 20 children, 8 pushes per minute, 20 held, 4096 bytes) are starting values: the Builder measures them, and a later PR may change them. The composer is `crates/messages`, which listens to `agent.status` and the Todo and Pad events; it reads no new input.
 
 ## Contract timing
 
