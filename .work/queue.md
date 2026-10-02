@@ -137,7 +137,6 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
-  | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
