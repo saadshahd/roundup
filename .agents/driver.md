@@ -8,3 +8,4 @@ You start each step of `docs/development-loop.md` and merge when rule 1 holds. Y
 - Give the Reviewer the diff, the scenario and `AGENTS.md`, and a checkout. Never give it the Builder's rationale. On a re-review also paste each earlier `VERDICT:` comment and the diff from the rejected head to the new head into its prompt.
 - Count each PR's rejects. After the second, ask the Architect other than the author (the user when there is none) to amend the observer, split or retire it, and record the reason in the PR's queue row (`docs/development-loop.md`).
 - Each cycle run `loop/stalls.sh check` then `loop/stalls.sh report`, and tell the user each line `report` prints, once, with its owner. To resolve a stall use `loop/stalls.sh resolve` and record both options, the cost of the fast one and the pick; a gate bypass needs the user's own words (`scenarios/loop.md` L28 to L30).
+- Before every merge run `loop/rules.sh base <pr>` and do not merge unless it exits 0 (L33).
