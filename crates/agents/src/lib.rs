@@ -80,14 +80,36 @@ impl KillsTerminals for Terminals {
     }
 }
 
-/// Kill a Terminal's program; it may have already exited on its own, which is not a failure.
+/// Kill a Terminal's program and return only once it is observably not running (A16): `kill`
+/// itself returns as soon as the program is reaped, which can race the Terminal's own reader
+/// thread noticing the program's end and flipping `terminal.list`'s `running`. Subscribed before
+/// `kill` runs, so the exit event not already racing is never missed; `terminal_id` may already be
+/// gone, from `kill` or from the subscribe, which is not a failure.
 async fn kill_or_already_gone(
     kill: &dyn KillsTerminals,
+    terminals: &Terminals,
     terminal_id: &str,
 ) -> Result<(), RpcError> {
+    let exit = terminals.subscribe(terminal_id).ok();
     match kill.kill(terminal_id).await {
-        Err(err) if err.code != code::NOT_FOUND => Err(err),
-        _ => Ok(()),
+        Err(err) if err.code != code::NOT_FOUND => return Err(err),
+        _ => {}
+    }
+    if let Some(mut exit) = exit {
+        wait_for_exit(&mut exit).await;
+    }
+    Ok(())
+}
+
+/// Wait for a Terminal's own exit event. A lag never loses it, since it is always the last event a
+/// Terminal sends; a closed channel means it is already gone some other way.
+async fn wait_for_exit(events: &mut Receiver<EventData>) {
+    loop {
+        match events.recv().await {
+            Ok(EventData::TerminalExited(_)) => return,
+            Ok(_) | Err(RecvError::Lagged(_)) => {}
+            Err(RecvError::Closed) => return,
+        }
     }
 }
 
@@ -292,7 +314,7 @@ impl Shared {
         match run {
             Some(Some(terminal_id)) => {
                 self.observe(actor.clone(), id, Observation::Stopped)?;
-                kill_or_already_gone(&*self.kill, &terminal_id).await?;
+                kill_or_already_gone(&*self.kill, &self.terminals, &terminal_id).await?;
             }
             Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
             // An earlier Daemon ran it; its Terminal ended with that Daemon.
@@ -321,7 +343,7 @@ impl Shared {
         } else if node.kind == NodeKind::Terminal
             && let Some(terminal_id) = &node.terminal_id
         {
-            kill_or_already_gone(&*self.kill, terminal_id).await?;
+            kill_or_already_gone(&*self.kill, &self.terminals, terminal_id).await?;
         }
         self.rail().remove(id)?;
         self.runs().remove(id);
