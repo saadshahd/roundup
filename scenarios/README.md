@@ -10,6 +10,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 
 | File | Module | Ids |
 |---|---|---|
+| EXP-a | row a | none |
 | `todos.md` | `crates/todos` | every `T` heading in the file |
 | `pads.md` | `crates/pads` | every `P` heading in the file |
 | `terminal.md` | `crates/terminal` | X1–X10 |
