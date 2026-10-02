@@ -3,12 +3,28 @@ import { Terminal } from "@xterm/xterm";
 import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SCROLLBACK_LINES, createXtermEmulators, xtermOptions } from "./emulator";
-import { mountPane, output } from "./paneHarness";
+import type { Emulator } from "./emulator";
+import { connectFakeProject, fakeEmulators, mountPane, output } from "./paneHarness";
+import { createScreens } from "./screens";
 import { group, info, node, terminal } from "../testing/nodes";
 
 const decoded = (chunks: Uint8Array[]): string[] => chunks.map((chunk) => new TextDecoder().decode(chunk));
 
 const write = (terminal: Terminal, data: string) => new Promise<void>((resolve) => terminal.write(data, resolve));
+
+/** A real xterm emulator with 50 lines already written, scrolled to the bottom. */
+const writtenRealEmulator = async (): Promise<{ emulator: Emulator; terminal: Terminal }> => {
+  const spy = vi.spyOn(xtermModule, "Terminal");
+  const emulator = createXtermEmulators()("t-a");
+  // SAFETY: the one Terminal the spy observed is the instance createXtermEmulators just constructed.
+  const terminal = spy.mock.instances[0] as Terminal;
+
+  spy.mockRestore();
+
+  for (let line = 0; line < 50; line++) await write(terminal, `line ${line}\r\n`);
+
+  return { emulator, terminal };
+};
 
 afterEach(cleanup);
 
@@ -29,18 +45,14 @@ describe("u34 bounded scrollback", () => {
     expect(calls).toEqual([[xtermOptions]]);
   });
 
-  it("u34_the_real_emulator_reports_the_underlying_terminals_scroll_state", async () => {
-    const spy = vi.spyOn(xtermModule, "Terminal");
-    const emulator = createXtermEmulators()("t-a");
-    // SAFETY: the one Terminal the spy observed is the instance createXtermEmulators just constructed.
-    const terminal = spy.mock.instances[0] as Terminal;
+  it("u34_the_real_emulator_is_at_the_bottom_after_output", async () => {
+    const { emulator } = await writtenRealEmulator();
 
-    spy.mockRestore();
+    expect(emulator.isAtBottom()).toBe(true);
+  });
 
-    for (let line = 0; line < 50; line++) await write(terminal, `line ${line}\r\n`);
-
-    const atBottomAfterOutput = emulator.isAtBottom();
-
+  it("u34_scrolling_up_reports_not_at_the_bottom_and_fires_onScroll", async () => {
+    const { emulator, terminal } = await writtenRealEmulator();
     let scrolls = 0;
 
     emulator.onScroll(() => {
@@ -48,20 +60,28 @@ describe("u34 bounded scrollback", () => {
     });
     terminal.scrollToTop();
 
-    const afterScrollingUp = [emulator.isAtBottom(), scrolls];
+    expect([emulator.isAtBottom(), scrolls]).toEqual([false, 1]);
+  });
 
+  it("u34_returning_to_the_bottom_reports_at_the_bottom_and_fires_onScroll_again", async () => {
+    const { emulator, terminal } = await writtenRealEmulator();
+    let scrolls = 0;
+
+    emulator.onScroll(() => {
+      scrolls += 1;
+    });
+    terminal.scrollToTop();
     emulator.scrollToBottom();
 
-    const afterReturning = [emulator.isAtBottom(), scrolls];
-
-    expect([atBottomAfterOutput, afterScrollingUp, afterReturning]).toEqual([true, [false, 1], [true, 2]]);
+    expect([emulator.isAtBottom(), scrolls]).toEqual([true, 2]);
   });
 });
 
 describe("u34 output regardless of selection (U11)", () => {
   it("u34_output_is_still_handed_to_the_emulator_in_order_whether_or_not_its_row_is_selected", async () => {
-    const { app, emulators } = await mountPane([node("a"), node("b")], [info("t-a"), info("t-b")]);
+    const { app, connected, emulators } = await mountPane([node("a"), node("b")], [info("t-a"), info("t-b")]);
 
+    connected.rail.select("a");
     app.emit(output("t-a", "one"));
     app.emit(output("t-b", "elsewhere"));
     app.emit(output("t-a", "two"));
@@ -70,6 +90,28 @@ describe("u34 output regardless of selection (U11)", () => {
       ["one", "two"],
       ["elsewhere"],
     ]);
+  });
+});
+
+describe("u34 screens creates the emulator on demand", () => {
+  it("u34_isAtBottom_creates_the_emulator_for_an_unseen_terminal_instead_of_throwing", async () => {
+    const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
+    const { factory, made } = fakeEmulators();
+    const screens = createScreens(connected, factory);
+
+    const atBottom = screens.isAtBottom("t-a");
+
+    expect([atBottom, made.size]).toEqual([true, 1]);
+  });
+
+  it("u34_returnToBottom_creates_the_emulator_for_an_unseen_terminal_instead_of_throwing", async () => {
+    const { connected } = await connectFakeProject([node("a")], [info("t-a")]);
+    const { factory, made } = fakeEmulators();
+    const screens = createScreens(connected, factory);
+
+    screens.returnToBottom("t-a");
+
+    expect([made.size, made.get("t-a")?.scrollsToBottom]).toEqual([1, 1]);
   });
 });
 

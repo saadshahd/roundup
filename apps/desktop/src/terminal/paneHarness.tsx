@@ -26,7 +26,7 @@ type FakeEmulator = Emulator & {
   scroll(atBottom: boolean): void;
 };
 
-const fakeEmulators = () => {
+export const fakeEmulators = () => {
   const made = new Map<string, FakeEmulator>();
 
   const factory: EmulatorFactory = (id) => {
@@ -100,13 +100,13 @@ type Mounted = {
   container: HTMLElement;
 };
 
-/** A Pane inside an open Project whose Rail holds `tree` and whose Daemon lists `terminals`. */
-export const mountPane = async (
+/** A ConnectedProject whose Rail holds `tree` and whose Daemon lists `terminals`, with no Pane rendered. */
+export const connectFakeProject = async (
   tree: RailNode[],
   terminals: TerminalInfo[] = [],
   now = 0,
   daemonExit: Accessor<DaemonExit | null> = () => null,
-): Promise<Mounted> => {
+): Promise<{ app: FakeApp; connected: ConnectedProject }> => {
   const app = createFakeApp();
 
   app.handlers["rail.tree"] = () => tree;
@@ -115,6 +115,18 @@ export const mountPane = async (
   app.handlers["terminal.resize"] = () => null;
 
   const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now, daemonExit);
+
+  return { app, connected };
+};
+
+/** A Pane inside an open Project whose Rail holds `tree` and whose Daemon lists `terminals`. */
+export const mountPane = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  now = 0,
+  daemonExit: Accessor<DaemonExit | null> = () => null,
+): Promise<Mounted> => {
+  const { app, connected } = await connectFakeProject(tree, terminals, now, daemonExit);
   const { factory, made } = fakeEmulators();
 
   const { container } = render(() => (

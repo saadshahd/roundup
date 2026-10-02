@@ -45,10 +45,10 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     }
   };
 
-  const emulatorFor = (id: string): Emulator => {
+  const holderFor = (id: string): Holder => {
     const known = holders.get(id);
 
-    if (known) return known.emulator;
+    if (known) return known;
 
     const emulator = createEmulator(id);
     const [atBottom, setAtBottom] = createSignal(true);
@@ -82,10 +82,14 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
       if (!writing) void flush();
     });
-    holders.set(id, { emulator, atBottom, setAtBottom });
+    const holder: Holder = { emulator, atBottom, setAtBottom };
 
-    return emulator;
+    holders.set(id, holder);
+
+    return holder;
   };
+
+  const emulatorFor = (id: string): Emulator => holderFor(id).emulator;
 
   const stopListening = output.subscribe((chunk) => {
     // A throw escapes into the Tauri Channel callback, which then never advances its message index, so every later
@@ -111,18 +115,9 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
       }
     },
-    // The caller must have created the Terminal's emulator (emulatorFor) before asking whether it is at the bottom.
-    isAtBottom: (id) => {
-      const holder = holders.get(id);
-
-      if (!holder) throw new Error(`isAtBottom: no emulator yet for terminal ${id}`);
-
-      return holder.atBottom();
-    },
+    isAtBottom: (id) => holderFor(id).atBottom(),
     returnToBottom: (id) => {
-      const holder = holders.get(id);
-
-      if (!holder) throw new Error(`returnToBottom: no emulator yet for terminal ${id}`);
+      const holder = holderFor(id);
 
       holder.emulator.scrollToBottom();
       holder.setAtBottom(true);
