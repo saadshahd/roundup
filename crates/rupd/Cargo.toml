@@ -7,6 +7,7 @@ version.workspace = true
 [dependencies]
 agents = { path = "../agents" }
 contracts = { path = "../contracts" }
+messages = { path = "../messages" }
 pads = { path = "../pads" }
 provenance = { path = "../provenance" }
 rpc = { path = "../rpc" }

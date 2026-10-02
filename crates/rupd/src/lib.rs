@@ -42,6 +42,12 @@ impl Daemon {
             bus.clone(),
             &agents::claude_code::MARKERS,
         )?);
+        let agents = Arc::new(agents::Agents::open(
+            dir,
+            bus.clone(),
+            Arc::clone(&terminals),
+        )?);
+        let agents_module: Arc<dyn Module> = agents.clone();
         let mut daemon = Self {
             modules: HashMap::new(),
             touches: Arc::new(Touches::open(&dir.join("provenance.db"))?),
@@ -49,11 +55,8 @@ impl Daemon {
         };
         daemon.register(Arc::new(todos::Todos::open(dir, bus.clone())?));
         daemon.register(Arc::new(pads::Pads::open(dir, bus.clone())?));
-        daemon.register(Arc::new(agents::Agents::open(
-            dir,
-            bus,
-            Arc::clone(&terminals),
-        )?));
+        daemon.register(Arc::new(messages::Messages::open(dir, bus, agents_module)?));
+        daemon.register(agents);
         daemon.register(terminals);
         Ok(daemon)
     }

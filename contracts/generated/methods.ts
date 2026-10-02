@@ -11,6 +11,12 @@ import type { HistoryParams as common_HistoryParams } from "./HistoryParams";
 import type { IdentifyParams as common_IdentifyParams } from "./IdentifyParams";
 import type { Touch as common_Touch } from "./Touch";
 import type { TouchedParams as common_TouchedParams } from "./TouchedParams";
+import type { ListParams as message_ListParams } from "./message/ListParams";
+import type { Message as message_Message } from "./message/Message";
+import type { MessageId as message_MessageId } from "./message/MessageId";
+import type { Route as message_Route } from "./message/Route";
+import type { SendParams as message_SendParams } from "./message/SendParams";
+import type { SetRouteParams as message_SetRouteParams } from "./message/SetRouteParams";
 import type { AppendParams as pad_AppendParams } from "./pad/AppendParams";
 import type { CreateParams as pad_CreateParams } from "./pad/CreateParams";
 import type { ExportParams as pad_ExportParams } from "./pad/ExportParams";
@@ -66,6 +72,13 @@ export type RpcMethods = {
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
   "rail.promote": { params: agent_NodeId; result: agent_RailNode };
   "rail.spawnTerminal": { params: agent_SpawnTerminalParams; result: agent_RailNode };
+  "message.send": { params: message_SendParams; result: message_Message };
+  "message.get": { params: message_MessageId; result: message_Message };
+  "message.list": { params: message_ListParams; result: message_Message[] };
+  "message.deliver": { params: message_MessageId; result: message_Message };
+  "message.drop": { params: message_MessageId; result: message_Message };
+  "route.set": { params: message_SetRouteParams; result: message_Route };
+  "route.list": { params: null; result: message_Route[] };
 };
 
 export type RpcMethodName = keyof RpcMethods;

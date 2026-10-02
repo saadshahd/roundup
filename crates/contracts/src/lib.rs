@@ -5,6 +5,7 @@
 pub mod agent;
 pub mod common;
 pub mod event;
+pub mod message;
 pub mod methods;
 pub mod pad;
 pub mod terminal;
