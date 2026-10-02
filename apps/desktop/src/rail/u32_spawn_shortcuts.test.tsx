@@ -3,7 +3,7 @@ import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import { agent, group } from "../testing/nodes";
 import styles from "./styles.css?inline";
-import { callsTo, mountRail } from "./railFixture";
+import { mountRail, railCallsTo } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -12,8 +12,8 @@ const SPAWNED = agent("fresh", "idle", "starting");
 const chord = (key: string, held: KeyboardEventInit = { metaKey: true }) => fireEvent.keyDown(document, { key, ...held });
 
 const spawnCalls = (mounted: Awaited<ReturnType<typeof mountRail>>) => [
-  ...callsTo(mounted.app, "agent.spawn"),
-  ...callsTo(mounted.app, "rail.spawnTerminal"),
+  ...railCallsTo(mounted.app, "agent.spawn"),
+  ...railCallsTo(mounted.app, "rail.spawnTerminal"),
 ];
 
 describe("u32 spawn shortcuts and pinned actions", () => {
@@ -24,7 +24,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("n");
 
-    await waitFor(() => expect(callsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
   });
 
   it("u32_cmd_t_spawns_a_terminal_under_the_selected_group", async () => {
@@ -34,7 +34,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("t");
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
   });
 
   it("u32_a_second_chord_while_a_spawn_is_in_flight_calls_nothing", async () => {
@@ -45,7 +45,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     chord("n");
     await Promise.resolve();
 
-    expect(callsTo(mounted.app, "agent.spawn").length).toBe(1);
+    expect(railCallsTo(mounted.app, "agent.spawn").length).toBe(1);
   });
 
   it("u32_the_chords_do_nothing_after_the_daemon_exited", async () => {
@@ -56,7 +56,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     chord("t");
     await Promise.resolve();
 
-    expect([callsTo(mounted.app, "agent.spawn"), callsTo(mounted.app, "rail.spawnTerminal")]).toEqual([[], []]);
+    expect([railCallsTo(mounted.app, "agent.spawn"), railCallsTo(mounted.app, "rail.spawnTerminal")]).toEqual([[], []]);
   });
 
   it("u32_a_failed_chord_spawn_shows_the_error_line", async () => {
@@ -74,7 +74,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     ["no modifier", {}],
     ["ctrl", { ctrlKey: true }],
     ["alt", { altKey: true }],
-    ["cmd and shift", { metaKey: true, shiftKey: true }],
     ["cmd and ctrl", { metaKey: true, ctrlKey: true }],
     ["cmd and alt", { metaKey: true, altKey: true }],
   ])("u32_a_plain_n_or_t_spawns_nothing_%s", async (_, held) => {
@@ -87,13 +86,24 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     expect(spawnCalls(mounted)).toEqual([]);
   });
 
+  /** ⇧⌘N is U33's spawn-with-a-prompt chord. */
+  it("u32_shift_cmd_t_still_spawns_nothing", async () => {
+    const mounted = await mountRail([group("g")]);
+
+    chord("t", { metaKey: true, shiftKey: true });
+    await Promise.resolve();
+
+    expect(spawnCalls(mounted)).toEqual([]);
+    expect(screen.queryByLabelText("prompt")).toBeNull();
+  });
+
   it("u32_with_caps_lock_on_the_chord_still_spawns", async () => {
     const mounted = await mountRail([group("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("N");
 
-    await waitFor(() => expect(callsTo(mounted.app, "agent.spawn").length).toBe(1));
+    await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn").length).toBe(1));
   });
 
   it("u32_the_chords_are_handled_by_the_webview_so_the_browser_never_sees_them", async () => {
