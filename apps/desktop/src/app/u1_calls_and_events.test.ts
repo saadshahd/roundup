@@ -1,9 +1,6 @@
 import { Channel } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
@@ -12,20 +9,6 @@ import { createFakeApp } from "../testing/fakeApp";
 import { connectEvents } from "./events";
 import { RpcError } from "./seam";
 import { createTauriApp } from "./tauri";
-
-const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-const THIS_FILE = fileURLToPath(import.meta.url);
-
-/** Every non-test source file under `src`, so the only-door check sees adapters added after this test was written. */
-const sourceFiles = (dir: string): string[] =>
-  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-
-    if (entry.isDirectory()) return sourceFiles(path);
-
-    return /\.(ts|tsx)$/.test(entry.name) && !/\.test\.(ts|tsx)$/.test(entry.name) ? [path] : [];
-  });
 
 const TODO: Todo = { id: 1, title: "t", body: "", done: false, blockers: [], blocked: false, created_at: 0 };
 
@@ -303,11 +286,16 @@ describe("u1 calls and events", () => {
   });
 
   it("u1_the_adapter_file_is_the_only_door_to_tauri", () => {
-    const tauriFile = join(SRC_DIR, "app", "tauri.ts");
+    // so the only-door check sees adapters added after this test was written
+    const sourceFiles = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
 
-    const importers = sourceFiles(SRC_DIR).filter(
-      (path) => path !== tauriFile && path !== THIS_FILE && readFileSync(path, "utf8").includes("@tauri-apps"),
-    );
+    const importers = Object.entries(sourceFiles)
+      .filter(([path, text]) => path !== "./tauri.ts" && text.includes("@tauri-apps"))
+      .map(([path]) => path);
 
     expect(importers).toEqual([]);
   });
