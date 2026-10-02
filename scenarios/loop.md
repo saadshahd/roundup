@@ -32,7 +32,7 @@
 
 **L16 empty approval.** Given a ref whose series contains an empty commit (such as the empty `review: approve` commit), when `loop/boxd.sh review <name> <prompt-file> <ref>` runs, then the VM's checkout contains that commit too (a commit with the same subject is HEAD, tag `base` is still the merge-base) and the review does not fail on that commit.
 
-**L17 run logs.** Given two runs of `loop/boxd.sh build` or `review` with the same `<name>`, then each keeps its own log files under `loop/out/runs`, named `<name>-<UTC yyyymmddThhmmssZ>-<pid>` plus an extension, so a relaunch never overwrites a failed run's log; the patch and verdict keep their stable names `<name>.patch` and `<name>.md`.
+**L17 run logs.** Given two runs of `loop/boxd.sh build` or `review` with the same `<name>`, then each keeps its own log files under `loop/out/runs`, named `<name>-<UTC yyyymmddThhmmssZ>-<pid>` plus an extension, so a relaunch never overwrites a failed run's log; the patch and verdict keep their stable names `<name>.patch` and `<name>.md`; `check <ref>` names its VM `ru-chk-<slug>-<pid>`, so two checks of the same ref never collide on a VM name.
 
 **L18 slot wait.** Given `BOXD_SLOT_WAIT=<s>` (default 0, so a single run does not wait), when `BOXD_MAX_VMS` `ru-` VMs exist, including VMs that are not this run's, then the run re-checks every second for up to `<s>` seconds and creates its VM as soon as a slot frees; if none frees it exits 1 with a message naming `BOXD_MAX_VMS` and creates nothing. `swarm` gives its children a wait of `BOXD_SLOT_WAIT` seconds (default 900), so an outside VM cannot make the last child fail at create.
 

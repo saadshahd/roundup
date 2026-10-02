@@ -228,9 +228,11 @@ run_check_ref() { STUB_MODE=${STUB_MODE:-} loop/boxd.sh check "$1" >out 2>err; }
 
 check_repo; got=0; run_check_ref 54 || got=$?
 expect_true "L15 check of a PR number succeeds" test "$got" -eq 0
-expect_log 'machine new ru-chk-54 .*--isolated' "L15 the check VM is isolated"
-expect_log 'machine new ru-chk-54 .*--auto-destroy-timeout 4200' "L15 the check VM has an auto-destroy timer"
-expect_log 'machine remove ru-chk-54' "L15 VM destroyed after success"
+expect_log 'machine new ru-chk-54-[0-9]+ .*--isolated' "L15 the check VM is isolated"
+expect_log 'machine new ru-chk-54-[0-9]+ .*--auto-destroy-timeout 4200' "L15 the check VM has an auto-destroy timer"
+expect_log 'machine remove ru-chk-54-[0-9]+' "L15 VM destroyed after success"
+got=0; run_check_ref 54 || got=$?
+expect_true "L17 two checks of one ref use two different VM names" test "$(grep -oE 'machine new ru-chk-54-[0-9]+' log | sort -u | wc -l | tr -d ' ')" = 2
 expect_true "L15 nothing is cloned or fetched on the VM" bash -c '! grep -qE "git (clone|fetch)" log'
 expect_true "L15 the check installs from the lockfile" grep -q -- '--frozen-lockfile' log
 expect_true "L15 the ref reaches git fetch after --" grep -q '^fetch -q origin -- +refs/heads/main:refs/boxd-check/54-base +pull/54/head:refs/boxd-check/54$' "$STUB_GIT_LOG"
@@ -250,13 +252,13 @@ expect_true "L15 the base is origin/main without the PR" bash -c 'tar tzf cp/bas
 # The VM name is the ref lower-cased, non-alphanumerics as dashes, at most 30 characters.
 check_repo; git push -q origin HEAD:refs/heads/My_Branch HEAD:refs/heads/builder/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 run_check_ref My_Branch || true
-expect_log 'machine new ru-chk-my-branch ' "L15 the VM name is the ref lower-cased with dashes"
+expect_log 'machine new ru-chk-my-branch-[0-9]+ ' "L15 the VM name is the ref lower-cased with dashes"
 : >log; run_check_ref builder/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa || true
-expect_log 'machine new ru-chk-builder-aaaaaaaaaaaaaaaaaaaaaa ' "L15 the VM name is cut at 30 characters"
+expect_log 'machine new ru-chk-builder-aaaaaaaaaaaaaaaaaaaaaa-[0-9]+ ' "L15 the VM name is cut at 30 characters"
 
 check_repo; got=0; STUB_MODE=check-fails run_check_ref builder/x || got=$?
 expect_true "L15 failed check keeps its exit code" test "$got" -eq 7
-expect_log 'machine remove ru-chk-builder-x' "L15 VM destroyed after a failed check"
+expect_log 'machine remove ru-chk-builder-x-[0-9]+' "L15 VM destroyed after a failed check"
 
 check_repo; got=0; STUB_MODE=token-output run_check_ref 54 || got=$?
 expect_true "L15 a GitHub token in the check output is masked" bash -c '! grep -rq gho_abcdefgh err loop/out/runs'

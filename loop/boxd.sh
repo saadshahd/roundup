@@ -305,7 +305,7 @@ check() {
   git update-ref -d "refs/boxd-check/$slug-base"
   git update-ref -d "refs/boxd-check/$slug"
   tree=$(git merge-tree --write-tree "$base" "$sha") || { echo "boxd.sh: $ref conflicts with origin/main:" >&2; echo "$tree" >&2; exit 1; }
-  provision "chk-$slug" "$base" "$tree" ""
+  provision "chk-$slug-$$" "$base" "$tree" ""
   local rc=0
   run_check 2>&1 | mask_github_tokens >"$log" || rc=${PIPESTATUS[0]}
   tail -n 25 "$log" >&2
