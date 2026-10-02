@@ -5,7 +5,7 @@ Scope, and nothing else: a new crate `crates/messages`, registered with the Daem
 Build, in order, writing each failing test first:
 1. Types and storage: `Message` with `id`, `from`, `to`, `kind` (`note` or `question`), `body`, `replyTo`, `status` (`pending`, `held`, `delivered`, `dropped`), `reason`, `passedFrom` is NOT in this slice, and `at`; `Route`. Tables in `.roundup/roundup.db` (ADR 0004, WAL), next id continuing after a restart.
 2. `message.send` (B1: every rejection in the text, and a rejected call changes nothing), `message.get`, `message.list`. `from` is the calling Actor, never a parameter.
-3. `route.set`, `route.list` (B5): default `auto`, user only (`FORBIDDEN` otherwise), `route.changed`.
+3. Routes (B5): default `auto`. `route.set` is user only (`FORBIDDEN` otherwise) and emits `route.changed`. `route.list` returns every stored Route; the user-only restriction applies only to `route.set`.
 4. A Message on an `ask-first` Route is `held` with reason `ask-first`; `message.deliver` and `message.drop` are the user's calls (B3); a Route of `drop` makes it `dropped` (B4). The `auto` Route leaves the Message `pending`: nothing types it in this slice.
 5. Touches (B11): `wrote` on send, deliver and drop, `read` on `message.get`, reading by Actor.
 6. Restart (B8, storage half): Routes, Messages and statuses survive `Messages::open` on the same directory; the id sequence continues.
