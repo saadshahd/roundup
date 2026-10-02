@@ -179,53 +179,45 @@ await_reboot() {
   return 3
 }
 
-# An approval commit per rule 1: the newest commit, empty, carrying only Reviewed-by-Agent.
-is_approval_commit() {
-  [ -z "$(git diff-tree --no-commit-id --name-only -r --end-of-options "$1")" ] &&
-    [ -z "$(git log -1 --format='%(trailers:key=Author-Agent,valueonly)' --end-of-options "$1")" ] &&
-    [ -n "$(git log -1 --format='%(trailers:key=Reviewed-by-Agent,valueonly)' --end-of-options "$1")" ]
-}
-
-# The Author-Agent trailers already on the range's real non-merge commits, deduplicated, so the commit standing in
-# for the merge's resolution cites only trailers a real commit carries and invents none of its own (L22).
-merge_resolution_message() {
-  echo "merge: resolve"
-  echo
-  git log --no-merges --format='%(trailers:key=Author-Agent,valueonly,separator=%x2C)' --end-of-options "$1..$2" |
-    tr ',' '\n' | sed '/^$/d' | awk '!seen[$0]++' | sed 's/^/Author-Agent: /'
-}
-
-# Put <ref> in ~/roundup on the VM as a git repo: tag `base` is <base-ref>'s tree, HEAD is <ref>'s tree. A non-empty
-# <prompt> file is copied to /tmp/prompt.md.
+# Put <ref> in ~/roundup on the VM as a git repo: tag `base` is <base-ref>, HEAD is <ref>. A non-empty <prompt>
+# file is copied to /tmp/prompt.md. A commit ref gets its real history (L22): nothing is replayed or folded, so
+# a merge, a trailer and an empty commit all survive exactly as they are on the real branch. A tree ref (the
+# merged tree `check` provisions) has no history to carry, so it is just committed on top of base.
 upload_checkout() {
-  local base_ref=$1 ref=$2 prompt=$3 resolve_to
-  resolve_to=$ref
+  local name=$1 base_ref=$2 ref=$3 prompt=$4
+  [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
+  if [ "$(git cat-file -t --end-of-options "$ref")" = commit ]; then
+    upload_commit_checkout "$name" "$base_ref" "$ref"
+  else
+    upload_tree_checkout "$base_ref" "$ref"
+  fi
+}
+
+# A bundle's refs are named, not raw SHAs, so <name>-ref and <name>-base stand in for <ref> and <base_ref> only
+# long enough to build it, named per-run so parallel reviews (swarm) cannot race on the same temporary ref. The
+# VM fetches the bundle, checks out <ref>'s own commit and tags <base_ref>'s commit `base`: the checkout IS the
+# branch, with every commit's author, message and trailer exactly as the real branch has them.
+upload_commit_checkout() {
+  local name=$1 base_ref=$2 ref=$3 base_sha ref_sha ref_name="refs/boxd-review/$name-ref" base_name="refs/boxd-review/$name-base"
+  ref_sha=$(git rev-parse --verify --end-of-options "$ref")
+  base_sha=$(git rev-parse --verify --end-of-options "$base_ref")
+  git update-ref "$ref_name" "$ref_sha"
+  git update-ref "$base_name" "$base_sha"
+  git bundle create - "$ref_name" "$base_name" | boxd machine cp - "$VM:/tmp/r.bundle" >/dev/null
+  git update-ref -d "$ref_name"
+  git update-ref -d "$base_name"
+  boxd machine exec "$VM" -- "mkdir -p ~/roundup && cd ~/roundup && git init -q && git fetch -q /tmp/r.bundle '+refs/*:refs/bundle/*' && git checkout -q --detach $ref_sha && git tag base $base_sha" </dev/null
+}
+
+# A tree has no history: commit it on top of base, matching what `check` provisions for a merged PR tree.
+upload_tree_checkout() {
+  local base_ref=$1 ref=$2
   git archive --format=tar.gz --end-of-options "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
   git archive --format=tar.gz --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
-  [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
-  # Replay the PR's own commits, so a Reviewer sees the real messages, authors and trailers. --no-signature keeps
-  # format-patch's "-- \n<git version>" footer out of an empty commit's patch: with no diff to end it, that footer
-  # would otherwise stick to the trailers and git would stop reading them as trailers. A series cannot carry a merge
-  # commit, so a range with one replays its non-merge commits and folds the merge's resolution into one further commit,
-  # kept below the approval commit when the branch ends in one, so loop/rules.sh trailers reads the checkout exactly as
-  # it reads the real branch (L22). A series that does not apply still falls back to one `head` commit with no trailers.
-  if [ -n "$(git rev-list --merges --end-of-options "$base_ref..$ref")" ]; then
-    echo "boxd.sh: $ref contains a merge commit; the checkout replays its non-merge commits and represents the merge's resolution in one commit" >&2
-    if is_approval_commit "$ref"; then resolve_to="$ref^"; fi
-    git format-patch --stdout --binary --no-signature --no-merges --end-of-options "$base_ref..$resolve_to" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
-    merge_resolution_message "$base_ref" "$resolve_to" | boxd machine cp - "$VM:/tmp/head-msg.txt" >/dev/null
-    [ "$resolve_to" = "$ref" ] || git format-patch --stdout --binary --no-signature --no-merges --end-of-options "$resolve_to..$ref" | boxd machine cp - "$VM:/tmp/approval.mbox" >/dev/null
-  else
-    git format-patch --stdout --binary --no-signature --end-of-options "$base_ref..$ref" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
-    printf 'head\n' | boxd machine cp - "$VM:/tmp/head-msg.txt" >/dev/null
-  fi
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
-    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q --empty=keep /tmp/series.mbox ||
-      { git -c user.email=builder@roundup -c user.name=builder am --abort || { echo "boxd.sh: git am --abort failed" >&2; exit 1; }; echo "boxd.sh: the PR commits did not replay; the checkout gets one commit named head" >&2; }; } &&
     git rm -rqf . && tar xzf /tmp/src.tgz -C ~/roundup && git add -A >/dev/null &&
-    { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qF /tmp/head-msg.txt; } &&
-    { [ ! -s /tmp/approval.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q --empty=keep /tmp/approval.mbox; }' </dev/null
+    { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
 }
 
 # Create <name>'s VM and put the checkout on it. A VM that never answers after its reboot, or an upload that fails within
@@ -241,7 +233,7 @@ provision() {
     else
       started=$SECONDS
       set +e
-      ( set -e; upload_checkout "$base_ref" "$ref" "$prompt" )
+      ( set -e; upload_checkout "$name" "$base_ref" "$ref" "$prompt" )
       rc=$?
       set -e
       if [ "$rc" -ne 0 ]; then
