@@ -36,6 +36,9 @@ struct Args {
 }
 
 /// Starts the Terminal's program: a raw tty, a `ready` line, then `cat`, so each typed byte comes back only through the program.
+/// The run opens a window over the user's screen and types into it; it starts only when this is `1`, set by someone the user asked to run it.
+const ALLOW_WINDOW: &str = "ROUNDUP_ALLOW_WINDOW";
+
 const SHELL: &str = "#!/bin/sh\nstty raw -echo\necho ready\nexec cat\n";
 
 async fn read_report(socket: &Path) -> io::Result<Value> {
@@ -148,6 +151,16 @@ async fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if std::env::var(ALLOW_WINDOW).as_deref() != Ok("1") {
+        eprintln!(
+            "perf-keystroke: this opens a window over your screen for about 40 s per run and types into it; refusing without {ALLOW_WINDOW}=1, which is only for when the user asked for the run"
+        );
+
+        return ExitCode::from(2);
+    }
+
+    eprintln!("perf-keystroke: this opens a window over your screen for about 40 s per run");
+
     match run(&Args::parse()).await {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
