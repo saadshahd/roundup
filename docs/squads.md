@@ -14,7 +14,7 @@ A squad is one scenario writer, its Builders and its reviewer pool. It writes sc
 | loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L26 to L39 |
 | perf | `crates/perf`, the keystroke probe, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
 
-Ids already in `.work/queue.md` stay with their holders. A squad that runs out of ids asks the committee for the next block. Two squads never edit one scenario file. A scenario that needs a file another squad owns names it, and the owning squad's writer adds that part.
+The architects hold ranges for scenarios they write themselves, and no squad allocates from them: A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59. Ids already in `.work/queue.md` stay with their holders. A squad that runs out of ids asks the committee for the next block. Two squads never edit one scenario file. A scenario that needs a file another squad owns names it, and the owning squad's writer adds that part.
 
 ## Architect committee
 
