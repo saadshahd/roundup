@@ -38,3 +38,9 @@ fn r11_a_failure_the_webview_reported_is_refused_with_its_message() {
 
     assert!(err.contains("+ terminal button"));
 }
+
+#[test]
+fn r11_the_frame_time_limit_is_25_ms_inclusive() {
+    assert!(checked(&report(25.0, 0.0)).is_ok());
+    assert!(checked(&report(25.1, 0.0)).is_err());
+}
