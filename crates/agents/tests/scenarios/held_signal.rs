@@ -46,8 +46,9 @@ async fn a14_signals_held_while_starting_are_applied_in_arrival_order() {
     let id = tree[0].id.clone();
 
     // Arrival order: working, then needs-you, then idle. The replies are captured, not unwrapped,
-    // so a `NOT_FOUND` (today's bug) fails the assertion below instead of leaving this Signal's
-    // `spawn_blocking` read stuck on `config` forever (never released) when the test panics.
+    // so a `NOT_FOUND` reply — what a Signal gets if it is rejected instead of held while starting
+    // — fails the assertion below instead of leaving this Signal's `spawn_blocking` read stuck on
+    // `config` forever (never released) when the test panics.
     let replies = [
         signal(&f, &id, "PreToolUse").await,
         signal(&f, &id, "PermissionRequest").await,
@@ -198,8 +199,9 @@ async fn child_overflows_the_held_signals() {
     release(config).await;
     spawning.await.unwrap().unwrap();
 
-    // A short timeout, not `TIMEOUT`: today's bug holds nothing, so this must fail fast rather
-    // than block the parent on an output pipe that never fills.
+    // A short timeout, not `TIMEOUT`: if nothing were held, `next_kinds` would wait forever for
+    // events that never arrive, so this must fail fast rather than block the parent on an output
+    // pipe that never fills.
     let kinds = tokio::time::timeout(Duration::from_secs(2), next_kinds(&mut events, BOUND))
         .await
         .unwrap_or_default();

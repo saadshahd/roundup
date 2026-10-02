@@ -692,6 +692,22 @@ mod tests {
     /// Spelled out, not `STAR_HOLD`, so a changed hold fails these tests.
     const HOLD: Duration = Duration::from_millis(200);
 
+    /// A `Shared` wired to a fresh temp-dir Rail and Terminals, paired with the `Bus` it was built
+    /// from so a caller can subscribe to the same events.
+    fn shared_over_temp_dir(clock: Clock) -> (tempfile::TempDir, Bus, Arc<Shared>) {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let shared = Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
+            clock,
+            opened: 0,
+        });
+        (dir, bus, shared)
+    }
+
     /// Agent `1`, watched over a stand-in for its Terminal's events, on tokio's clock, which these
     /// tests pause.
     struct Watched {
@@ -704,19 +720,10 @@ mod tests {
 
     impl Watched {
         fn start() -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let bus = Bus::new();
             let begun = Instant::now();
             let clock: Clock = Arc::new(move || begun.elapsed().as_millis() as i64);
             let adapter_clock = Arc::clone(&clock);
-            let shared = Arc::new(Shared {
-                rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
-                runs: Mutex::new(HashMap::new()),
-                bus: bus.clone(),
-                terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
-                clock,
-                opened: 0,
-            });
+            let (dir, bus, shared) = shared_over_temp_dir(clock);
             let run = Run {
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
@@ -838,17 +845,7 @@ mod tests {
     /// `agent.signal` answers any other unknown id, not pretend the id is already registered.
     #[test]
     fn a14_a_non_signal_observation_for_a_starting_id_is_still_not_found() {
-        let dir = tempfile::tempdir().unwrap();
-        let bus = Bus::new();
-        let clock: Clock = Arc::new(|| 0);
-        let shared = Shared {
-            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
-            runs: Mutex::new(HashMap::new()),
-            terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
-            bus,
-            clock,
-            opened: 0,
-        };
+        let (_dir, _bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
         shared.runs().insert(
             "1".into(),
             Slot::Starting {
@@ -875,10 +872,7 @@ mod tests {
 
     /// `finish_starting` takes `rail` then `runs` for its whole swap into `Running` and its drain
     /// of what was held, so a Signal released the instant the Agent is registered still cannot
-    /// land ahead of the one held for it (A14). AGENTS.md says the taste rules against shared
-    /// locked state in one process, and against an in-file test of a private function, are both
-    /// "not installed" for this daemon; it says nothing about a determinism bar, and neither
-    /// exemption excuses a flaky test. So this does not race blindly: a rendezvous over a
+    /// land ahead of the one held for it (A14). So this does not race blindly: a rendezvous over a
     /// zero-capacity channel holds the late call at the threshold of its own call to `observe`
     /// until `finish_starting`'s `build` hook — already a plain closure argument, not a new
     /// public seam — confirms, by having been called at all, that both locks are still held.
@@ -889,17 +883,7 @@ mod tests {
     /// waiting late call does — a race this test cannot referee, only repeat (`TRIALS`).
     #[test]
     fn a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one() {
-        let dir = tempfile::tempdir().unwrap();
-        let bus = Bus::new();
-        let clock: Clock = Arc::new(|| 0);
-        let shared = Arc::new(Shared {
-            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
-            runs: Mutex::new(HashMap::new()),
-            bus: bus.clone(),
-            terminals: Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap()),
-            clock,
-            opened: 0,
-        });
+        let (_dir, bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
         let mut events = bus.subscribe();
         for i in 0..TRIALS {
             let id = i.to_string();
