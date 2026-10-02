@@ -153,7 +153,7 @@ expect_true "L9 base archive is the merge-base (no feature file)" bash -c '! tar
 expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
 expect_log 'git tag base' "L9 base is tagged"
 expect_true "L9 the PR's commits are uploaded as a series" grep -q '^Subject: \[PATCH\] feat$' cp/series.mbox
-expect_log 'git .*am -q /tmp/series.mbox' "L9 the VM replays the PR's commits"
+expect_log 'git .*am -q --empty=keep /tmp/series.mbox' "L9 the VM replays the PR's commits"
 
 # Run the exact script the VM executes (taken from the stub's log) against a real repo in <work>, /tmp and ~ redirected.
 replay_on_vm() {
@@ -174,6 +174,13 @@ loop/boxd.sh review r prompt.md feat >out 2>err
 replay_on_vm "$dir/vm"
 expect_true "L9 the replay keeps the author and the trailer" test "$(vm_log "$dir/vm" '%an|%s|%(trailers:key=Author-Agent,valueonly)')" = "alice|feat|alice-agent"
 expect_true "L9 the replay adds no synthetic head commit" test "$(vm_log "$dir/vm" '%s')" = feat
+
+# A branch that already ends in an empty approval commit replays whole: plain `git am` stops on an empty patch.
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git commit -q --allow-empty -m 'review: approve'
+loop/boxd.sh review r prompt.md feat >out 2>err
+expect_true "L16 an empty approval commit is in the series" grep -q '^Subject: \[PATCH 2/2\] review: approve$' cp/series.mbox
+replay_on_vm "$dir/vm"
+expect_true "L16 the VM keeps the empty approval commit on top" test "$(vm_log "$dir/vm" '%s' | paste -sd, -)" = "review: approve,feat"
 
 # A series cannot carry a merge commit: the range falls back to one `head` commit with the ref's tree.
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
