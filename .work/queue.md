@@ -38,15 +38,19 @@ Scenario text is on main. The row starts when what it waits on has merged.
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
-| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test unchanged; the Builder lists each duplicated block in the PR first, and stops if sharing needs a new crate | D4 (it owns `crates/rup/tests/**`) |
-| U37 | reopen, webview half | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | S5 |
-| U38 | empty states | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal` | U2's tests; narrows U14's test | U36 |
-| U40 | the Drawer takes and gives back focus | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests | U31 |
-| U41 | Rail by keyboard, the rest | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | U31 |
-| U44, U46, U47, U49 | rail polish (one PR) | `apps/desktop/src/rail/**` | `u6_` to `u10_`, `u30_`, `u32_`, `u22_` tests | U31 and U33 |
-| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | U36 |
-| U4, U25 | contrast: text at 4.5:1 | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | `u4_`, `u5_`, `u25_` tests | the user's go |
-| U55 | diagnose the empty-Terminal notch | none: a report and `artifacts/ux/U55/` | the report and two screenshots | the user's go |
+| U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
+| U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
+| U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
+| A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
+| A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd`; its `a16_` tests in `crates/agents/tests/scenarios/**` and `crates/rup/tests/**` | the `a` tests | after #114 lands (both edit `crates/agents/src/lib.rs`) |
+| U56 | right-click menu: stop, remove | `apps/desktop/src/rail/menu/**`, one line each in `Rail.tsx`, `RailRow.tsx`, `src/rail/keys.ts` (created by U31) | `u9_`, `u31_`, `u33_` tests | after A16, U31, U33 and the rail polish PR (U44, U46, U47, U49); stacking allowed |
+| U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests; the U4 computed-colour test drops the pane header | after U56 merges (or in its PR) |
+| U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
+| U59 | the terminal blends with the app | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
+| U60 | an Agent's Todos under it | reserved | | waits for a decision on `Todo.creator` |
+| contrast | Live lines and Ink text read at 4.5:1 (U4, U25) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
+| notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
+| U100 | the Rail's selection and collapse survive a restart (webview storage, no seam) | `apps/desktop/src/rail/persist/**`, one mount line in `Rail.tsx` | `u3_`, `u8_`, `u30_` tests | after U31 and U33 merge |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
 
@@ -100,15 +104,42 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
-  | U55 | empty-Terminal notch diagnosis |
+  | U51 | quick switcher |
+  | U52 | first run: recent folders and the `claude` line |
+  | U53 | Todos list motion |
+  | U54 | keyboard help on `?` |
+  | U55 | diagnose the empty-Terminal notch |
+  | U56 | right-click menu: stop, remove |
+  | U57 | no pane header |
+  | U58 | an Agent's Pads under it |
+  | U59 | the terminal blends with the app |
+  | U60 | an Agent's Todos under it |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
+  | A14 | hold an early Signal until the Agent is registered |
+  | A15 | clean environment for every program the Daemon starts |
+  | A16 | `rail.remove` |
+  | T8 | `Todo.creator` |
+  | S6 | first-run facts in the App seam (`recent_projects`, `claude_binary`) |
+  | S7 | the smallest window (640 by 400) |
+  | A17, A18, D5–D7, T9, P10 | #125, daemon squad robustness (A18 stacks after A14, #114) |
+  | A19 | a removed node's id is never reused: written after A16 (#120) merges; reserved to the daemon squad |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
+  | L16 | `review` replays an empty approval commit |
+  | L17–L20 | loop hardening: run logs, swarm throttle, run events and retry, ref per prompt |
+  | L21 | streamed agent run |
+  | L22 | `review` keeps the branch's trailers across a merge |
+  | L23 | VM tools |
+  | L24 | agent search servers |
+  | L25 | design critic run |
+  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check` |
+  | L40 | `boxd check` does not depend on files outside the checkout (round cap on #140: amend; one more reject on the same clause retires it) |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
+  | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
