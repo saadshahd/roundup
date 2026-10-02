@@ -13,7 +13,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `todos.md` | `crates/todos` | T1–T7 |
 | `pads.md` | `crates/pads` | P1–P9 |
 | `terminal.md` | `crates/terminal` | X1–X10 |
-| `agents.md` | `crates/agents` (+ the `rup signal` subcommand in `crates/rup`) | A1–A13 |
+| `agents.md` | `crates/agents` (+ the `rup signal` subcommand in `crates/rup`) | every `A` heading in the file |
 | `loop.md` | `loop/` | L1–L15 |
 | `mcp.md` | `crates/rup` (the `rup mcp` subcommand) | M1–M3 |
 | `daemon.md` | `crates/rupd` (D1); end-to-end tests in `crates/rup/tests` (D2–D4) | D1–D4 |
