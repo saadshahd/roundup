@@ -18,6 +18,8 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   const screens = createScreens(connected, props.createEmulator ?? createXtermEmulators());
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
+  /** U38: a failure that fills this region shows in its place, never beside its empty line. */
+  const notice = createMemo(() => props.notice ?? screens.failure());
   const [screen, setScreen] = createSignal<HTMLDivElement>();
   let pendingFrame: number | null = null;
 
@@ -102,10 +104,13 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         </Show>
       </div>
       <div class="pane-failure">
-        <Show when={props.notice ?? screens.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
+        <Show when={notice()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
       <div class="pane-body">
         <div class="pane-screen" ref={setScreen} />
+        <Show when={selected() === null && notice() === null}>
+          <p class="pane-empty">select an agent or a terminal</p>
+        </Show>
         <Show when={latest()}>
           {(id) => (
             <button type="button" class="word pane-latest" onClick={() => screens.returnToBottom(id())}>

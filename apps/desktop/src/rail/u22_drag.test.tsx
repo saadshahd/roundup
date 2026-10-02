@@ -5,7 +5,7 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
 import type { DaemonExit } from "../app/seam";
 import { dragFrom, pointerAt, release, stubLayout } from "./dragFixture";
-import { callsTo, mountRail, rowNames, rowOf } from "./railFixture";
+import { mountRail, railCallsTo, rowNames, rowOf } from "./railFixture";
 import { agent, event, group, MINUTE, NOW } from "../testing/nodes";
 
 /** a, g { x }, b */
@@ -46,7 +46,7 @@ describe("u22 drag", () => {
     dragFrom("b", pointerAt(0, 0));
     release(pointerAt(0, 0));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
   });
 
   it("u22_moving_sideways_changes_the_depth_the_row_lands_at", async () => {
@@ -56,7 +56,7 @@ describe("u22 drag", () => {
     dragFrom("b", pointerAt(3, 1));
     release(pointerAt(3, 1));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: "g", index: 1 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: "g", index: 1 }]));
   });
 
   it("u22_the_drop_line_starts_at_the_depth_the_row_lands_at", async () => {
@@ -109,7 +109,7 @@ describe("u22 drag", () => {
 
     release(pointerAt(4, 0));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "a", parent: null, index: 3 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "a", parent: null, index: 3 }]));
   });
 
   it("u22_a_drop_below_a_done_line_opened_inside_a_group_lands_where_the_line_is_drawn", async () => {
@@ -132,7 +132,7 @@ describe("u22 drag", () => {
 
     release(pointerAt(6, 0));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "c", parent: null, index: 3 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "c", parent: null, index: 3 }]));
   });
 
   it("u22_a_done_row_can_itself_be_dragged", async () => {
@@ -148,7 +148,7 @@ describe("u22 drag", () => {
     dragFrom("d", pointerAt(0, 0));
     release(pointerAt(0, 0));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "d", parent: null, index: 0 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "d", parent: null, index: 0 }]));
   });
 
   it("u22_the_drop_line_sits_where_the_pointer_is_when_the_row_moves_up", async () => {
@@ -174,7 +174,7 @@ describe("u22 drag", () => {
     dragFrom("b", { clientX: 0, clientY: 11 });
     release({ clientX: 0, clientY: 11 });
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 1 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 1 }]));
   });
 
   it("u22_a_pointer_just_above_a_rows_middle_lands_above_it", async () => {
@@ -184,7 +184,7 @@ describe("u22 drag", () => {
     dragFrom("b", { clientX: 0, clientY: 9 });
     release({ clientX: 0, clientY: 9 });
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
   });
 
   it("u22_a_tree_change_during_a_drag_ends_it_without_a_call", async () => {
@@ -201,7 +201,7 @@ describe("u22 drag", () => {
 
     release(pointerAt(0, 0));
 
-    expect(callsTo(mounted.app, "rail.move")).toEqual([]);
+    expect(railCallsTo(mounted.app, "rail.move")).toEqual([]);
   });
 
   describe.each<[string, (mounted: Awaited<ReturnType<typeof mountRail>>) => void]>([
@@ -297,7 +297,7 @@ describe("u22 drag", () => {
     dragFrom("b", pointerAt(3, 0));
     release(pointerAt(3, 0));
 
-    expect([callsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
+    expect([railCallsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
   });
 
   it("u22_no_drag_starts_once_the_daemon_has_exited", async () => {
@@ -309,7 +309,7 @@ describe("u22 drag", () => {
 
     release(pointerAt(0, 0));
 
-    expect(callsTo(mounted.app, "rail.move")).toEqual([]);
+    expect(railCallsTo(mounted.app, "rail.move")).toEqual([]);
   });
 
   it("u22_a_drag_under_way_when_the_daemon_exits_drops_nothing", async () => {
@@ -320,7 +320,7 @@ describe("u22 drag", () => {
     setExit({ code: 1 });
     release(pointerAt(0, 0));
 
-    expect(callsTo(mounted.app, "rail.move")).toEqual([]);
+    expect(railCallsTo(mounted.app, "rail.move")).toEqual([]);
   });
 
   it("u22_escape_cancels_the_drag_and_calls_nothing", async () => {
@@ -330,7 +330,7 @@ describe("u22 drag", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     release(pointerAt(0, 0));
 
-    expect([callsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
+    expect([railCallsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
   });
 
   it("u22_a_press_that_never_moved_is_a_click_not_a_drag", async () => {
@@ -340,7 +340,7 @@ describe("u22 drag", () => {
     release({ clientX: 5, clientY: 5 });
     fireEvent.click(rowOf("b"));
 
-    expect([callsTo(mounted.app, "rail.move"), dropLine(), mounted.rail.selected()]).toEqual([[], null, "b"]);
+    expect([railCallsTo(mounted.app, "rail.move"), dropLine(), mounted.rail.selected()]).toEqual([[], null, "b"]);
   });
 
   it("u22_a_drag_cannot_start_on_a_button", async () => {
@@ -350,7 +350,7 @@ describe("u22 drag", () => {
     fireEvent.pointerMove(window, pointerAt(0, 0));
     release(pointerAt(0, 0));
 
-    expect([callsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
+    expect([railCallsTo(mounted.app, "rail.move"), dropLine()]).toEqual([[], null]);
   });
 
   it("u22_a_group_dragged_past_its_own_children_lands_outside_it", async () => {
@@ -360,6 +360,6 @@ describe("u22 drag", () => {
     dragFrom("g", pointerAt(4, 1));
     release(pointerAt(4, 1));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.move")).toEqual([{ id: "g", parent: null, index: 2 }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "g", parent: null, index: 2 }]));
   });
 });
