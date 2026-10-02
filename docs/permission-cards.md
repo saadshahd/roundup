@@ -44,6 +44,6 @@ New under `crates/contracts`: type `Card {id, agent, tool, args, opened_at}`; me
 ## Limits and open questions
 
 - An App quit ends the Daemon and its Agents (D1), so a Card cannot survive it. H5 covers a webview reload.
-- H1 recorded the reply shape, the timeout and what happens when the user answers the dialog first. Still unobserved (H1b): option "No", two prompts at once, SIGKILL after SIGTERM, a timeout that expires, and the order of the `Notification` against the hook.
+- H1 and H1b recorded the reply shape, the timeout, Esc, concurrent requests and the `Notification` timing. Still unobserved: option "No", Tab-amend, two dialogs open at once, and macOS.
 - A Daemon that outlives the App (so a Card survives a quit) is out of scope: the user ruled that a Card survives a webview reload and not an App quit (D1, S3).
 - Out of scope: "always allow" rules, edited tool input, deny messages beyond what H1 shows works.
