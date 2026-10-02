@@ -46,6 +46,7 @@ export const Rail = () => {
   };
 
   const [container, setContainer] = createSignal<HTMLElement>();
+  const [field, setField] = createSignal<HTMLInputElement>();
 
   const drag = createRailDrag({
     container,
@@ -161,6 +162,7 @@ export const Rail = () => {
     >
       <Show when={composing()}>
         <SpawnPromptField
+          ref={setField}
           onSubmit={(prompt) => {
             if (canSpawn()) spawnAgentWith(prompt);
           }}
@@ -242,7 +244,7 @@ export const Rail = () => {
           disabled={!canSpawn()}
           onClick={() => {
             if (composing()) {
-              container()?.querySelector<HTMLInputElement>('[aria-label="prompt"]')?.focus();
+              field()?.focus();
 
               return;
             }

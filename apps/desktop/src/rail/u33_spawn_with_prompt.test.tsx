@@ -208,6 +208,18 @@ describe("u33 spawn with a prompt", () => {
     expect(screen.queryByLabelText("prompt")).toBeNull();
   });
 
+  it("u33_enter_after_the_daemon_exited_calls_nothing", async () => {
+    const [exit, setExit] = createSignal<{ code: number } | null>(null);
+    const mounted = await mountRail([group("g")], [], exit);
+    mounted.app.handlers["agent.spawn"] = () => SPAWNED;
+
+    chord("n");
+    setExit({ code: 1 });
+    fireEvent.keyDown(field(), { key: "Enter" });
+
+    expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([]);
+  });
+
   it("u33_a_second_enter_while_the_spawn_is_in_flight_calls_nothing_more", async () => {
     const mounted = await mountRail([group("g")]);
     mounted.app.handlers["agent.spawn"] = () => new Promise(() => {});
