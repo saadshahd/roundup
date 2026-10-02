@@ -137,7 +137,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
-  | L25 | `loop/boxd.sh critic`; needs L21 on main; the PR also edits `.agents/design-critic.md` and `docs/development-loop.md` |
+  | L25 | `loop/boxd.sh critic`; needs L21 on main; the critic prompt change is a separate docs PR |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
 
