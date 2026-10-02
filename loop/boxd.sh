@@ -104,9 +104,10 @@ pause() {
   exit "$EX_PAUSED"
 }
 
-# The JSON has no quota field, so a limit shows up only as an error status or message.
+# The JSON has no quota field, so a limit shows up only as an error status or message; the caller passes only the
+# stream's last (result) event, so a phrase quoted anywhere else, or in a successful result, never pauses.
 guard_limits() {
-  jq -e '.api_error_status == 429 or ((.result // "") | test("usage limit|rate limit"; "i"))' "$1" >/dev/null || return 0
+  jq -e '.api_error_status == 429 or (.is_error == true and ((.result // "") | test("usage limit|rate limit"; "i")))' <<<"$1" >/dev/null || return 0
   pause "limit hit"
 }
 
@@ -236,19 +237,32 @@ provision() {
   done
 }
 
-# Run claude on the VM with /tmp/prompt.md; JSON lands in <result>. Exits unless the run succeeded.
+# Run claude on the VM with /tmp/prompt.md; each event it produces lands in <stream> as it happens (L21). The
+# verdict, the cost line and L4's pause come only from the stream's last event, which must be a result event.
+# Exits for every outcome except one that produced events but ended with no final result event, which returns 2
+# so the caller can save what the run got done before deciding its own exit code.
 run_agent() {
-  local model=$1 result=$2
+  local model=$1 stream=$2 started=$SECONDS elapsed last
   # A feature-sized task outlasts 570 s (measured: V7 Todo triage hit it and returned nothing), so wait as long as the check may.
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
   # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
   boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
-    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" 2>"${result%.json}.err" || true
-  cat "${result%.json}.err" >&2
-  ! grep -q DeadlineExceeded "${result%.json}.err" || record_event agent deadline-exceeded
-  [ -s "$result" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
-  guard_limits "$result"
-  jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
+    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format stream-json --verbose --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$stream" 2>"${stream%.jsonl}.err" || true
+  elapsed=$((SECONDS - started))
+  cat "${stream%.jsonl}.err" >&2
+  ! grep -q DeadlineExceeded "${stream%.jsonl}.err" || record_event agent deadline-exceeded
+  [ -s "$stream" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
+  last=$(tail -n 1 "$stream")
+  if ! jq -e '.type == "result"' <<<"$last" >/dev/null 2>&1; then
+    if [ "$elapsed" -ge "$AGENT_TIMEOUT" ]; then
+      echo "boxd.sh: agent timed out after ${AGENT_TIMEOUT} s: $stream" >&2
+    else
+      echo "boxd.sh: agent ended without a result: $stream" >&2
+    fi
+    return 2
+  fi
+  guard_limits "$last"
+  jq -e '.is_error == false' <<<"$last" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result <<<"$last")" >&2; exit 1; }
 }
 
 # The check both `build` and `check` observe.
@@ -259,30 +273,40 @@ run_check() {
 review() {
   local name=$1 prompt=$2 ref=${3:-HEAD}
   validate_args "$name" "$prompt"
-  local result="$OUT/runs/$name-$RUN_ID.json" verdict="$OUT/verdicts/$name.md" base
+  local stream="$OUT/runs/$name-$RUN_ID.jsonl" verdict="$OUT/verdicts/$name.md" base agent_rc=0 last
   base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   require_claude
   provision "$name" "$base" "$ref" "$prompt"
-  run_agent "${BOXD_MODEL:-opus}" "$result"
-  jq -r .result "$result" >"$verdict"
-  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
+  run_agent "${BOXD_MODEL:-opus}" "$stream" || agent_rc=$?
+  # A run with no final result event writes no verdict; an earlier run's verdict would misreport this one as done.
+  if [ "$agent_rc" -eq 2 ]; then rm -f "$verdict"; exit 1; fi
+  last=$(tail -n 1 "$stream")
+  jq -r .result <<<"$last" >"$verdict"
+  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
 }
 
 build() {
   local name=$1 prompt=$2
   validate_args "$name" "$prompt"
-  local result="$OUT/runs/$name-$RUN_ID.json" patch="$OUT/patches/$name.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log"
+  local stream="$OUT/runs/$name-$RUN_ID.jsonl" patch="$OUT/patches/$name.patch" partial="$OUT/patches/$name.partial.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log" agent_rc=0 check_rc=0 last
   require_claude
   provision "$name" HEAD HEAD "$prompt"
-  run_agent "${BOXD_MODEL:-sonnet}" "$result"
+  run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
+  # No final result event means no check and no patch; an earlier run's patch would misreport this one as done.
+  if [ "$agent_rc" -eq 2 ]; then
+    rm -f "$patch"
+    boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached' </dev/null >"$partial" || true
+    exit 1
+  fi
   # The observer is our own check, not the Builder's claim that it passed.
-  local rc=0
-  run_check >"$checklog" 2>&1 || rc=$?
+  run_check >"$checklog" 2>&1 || check_rc=$?
   tail -n 15 "$checklog" >&2
   ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
-  [ "$rc" -eq 0 ] || exit "$rc"
+  [ "$check_rc" -eq 0 ] || exit "$check_rc"
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
-  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
+  rm -f "$partial"
+  last=$(tail -n 1 "$stream")
+  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
 }
 
 # A PR number or a branch name becomes a fetch refspec; anything else is refused before it reaches git.
