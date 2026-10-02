@@ -41,7 +41,7 @@ Scenario text is on main. The row starts when what it waits on has merged.
 |---|---|---|---|---|
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | A30 | `Agents::prompt` (in-process, no RPC) | `crates/agents/src/**` | `a4_` tests | | after A14 (`crates/agents/**`) and A16 (`lib.rs`) merge |
-| B1-B12 | Messages and Routes: contract (rule 4, an architect other than the author approves), `crates/messages`, the registration in `crates/rupd`, the MCP tools in `crates/rup` | `crates/contracts/**` and generated files, `crates/messages/**`, `crates/rupd/src/**`, `crates/rup/src/**`; after A30 | `a`, `t`, `d` tests; narrows no merged test | | after A30 merges |
+| B1-B18 | Messages and Routes: contract (rule 4, an architect other than the author approves), `crates/messages`, the registration in `crates/rupd`, the MCP tools in `crates/rup` | `crates/contracts/**` and generated files, `crates/messages/**`, `crates/rupd/src/**`, `crates/rup/src/**`; after A30 | `a`, `t`, `d` tests; narrows no merged test | | after A30 merges |
 | U101, U102 | Terminal copy and paste; Terminal text size | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
 | A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
 | A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd`; its `a16_` tests in `crates/agents/tests/scenarios/**` and `crates/rup/tests/**` | the `a` tests | after #114 lands (both edit `crates/agents/src/lib.rs`) |
@@ -152,7 +152,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
-  | A30, B1–B12 | `scenarios/messages.md`, architect-b (A30 in `agents.md`) |
+  | A30, B1–B29 | `scenarios/messages.md`, architect-b (A30 in `agents.md`) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.

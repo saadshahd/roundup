@@ -1,6 +1,6 @@
 # Messages between Actors
 
-Design for `scenarios/messages.md` (B1 to B12) and A30. Serves `PRINCIPLES.md` P1, P3 and P4 (the ids in `PRINCIPLES.md`, not `pads.md`'s). Terms are in `CONTEXT.md`; nothing here adds a term.
+Design for `scenarios/messages.md` (B1 to B18) and A30. Serves `PRINCIPLES.md` P1, P3 and P4 (the ids in `PRINCIPLES.md`, not `pads.md`'s). Terms are in `CONTEXT.md`; nothing here adds a term.
 
 ## What exists and what does not
 
@@ -35,6 +35,10 @@ Bounds, from the codes `rpc::code` already has: 32 `pending` or `held` Messages 
 - **P1.** No new path makes the user address an Agent instead of the Thread, or makes an Agent reachable only through the Thread. During a Takeover nothing but the user's own Messages reaches the Agent (B6).
 - **P3.** Nothing here interrupts the user. A Message to the user is stored, changes no Kind and carries no signal beyond the event (B10). The Inbox UI is not in this series; when it inks a badge for Held Messages it must answer this gate itself.
 - **P4.** The `messages` crate reads no vendor string; typing goes through the Adapter seam that exists.
+
+## Escalation
+
+Serves P1 and P3. P1: the user can still address any Agent, and a question never reaches the user through an Agent that owns the Thread's place. P3: the landing is a Held Message, with no signal beyond the event, and a permission Card skips the chain, so only a valid Card interrupts. Added contract: `message.pass`, `passedFrom` on `Message`, and the Held reason `escalated`; the clock is injected, as B14's fake clock needs. A Meta-agent's hop uses the Meta-agent's own Agent, so nothing here adds a seam.
 
 ## Contract timing
 
