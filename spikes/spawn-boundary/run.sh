@@ -36,7 +36,7 @@ cat > $SB/s5.json <<J
 {"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"The second secret word is BRAVO.\"}}'","timeout":5}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"$SB/hook_log.sh prompt","timeout":5}]}]}}
 J
 run e7 $C --settings $SB/s5.json --append-system-prompt-file $SB/brief.md --mcp-config $SB/mcp.json -- "State the two secret words you were given, nothing else."
-# 6. is the Agent tool really gone? (the init tool list still shows "Task")
+# 6. is the Agent tool really gone? (ask the model to call it; the init tool list is not the test)
 run a_disallow $C --settings $SB/s1.json --disallowedTools Agent -- "Call the Agent tool now with the prompt: say hi. Report the tool result verbatim, or the words NO SUCH TOOL."
 run a_toolsro $C --tools Read,Bash --settings $SB/s4.json -- "Call the Agent tool now with the prompt: say hi. Report the tool result verbatim, or the words NO SUCH TOOL."
 # 7. does --tools (an allowlist) keep MCP tools?
