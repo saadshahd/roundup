@@ -6,12 +6,13 @@ Run after a UI PR is approved. Input: the PR's scenario ids, the app built from 
 2. Drive each scenario with `agent-browser`. Dispatch single key events with `eval`; after `press Enter` the key may keep repeating, so count keydown events first. Save one screenshot per step as `artifacts/ux/<id>/<step>.png`. For each motion clause, save the sampled boxes as `<step>-frames.json` and at most five screenshots across the clause as `<step>-NN.png`.
 3. Score what you captured against the written rules, and name the rule for each failure:
    1. Ink only on needs-you and error (`CONTEXT.md`), read from computed `color` and `font-weight`.
-   2. No drawn borders, read from computed `border-width`.
+   2. No drawn borders, read from computed `border-width`, except the one hairline on a context menu (U56).
    3. Only the six Glyphs and `◈ ◇ ▾ ›`.
    4. The Live line shows only for blocked, needs-you, error, hover or selection.
    5. The provenance letter shows only on hover or selection.
    6. Text is 4.5:1 or better on its ground, measured from the computed colours, not the pixels (U4); a Glyph's tone is held to 3:1, and the `done` Glyph is exempt, as U4 says.
    7. Each duration is within 25% of the value in `docs/motion.md` (a Live line's crossfade about 120 ms, a new row about 150 ms, Done Agents folding about 150 ms, the Drawer about 180 ms, the needs-you Pulse about 400 ms for one cycle, a rejected action's Shake about 250 ms); a Status Glyph change is instant; nothing snaps, a rule `docs/motion.md` states for a new row and this prompt applies to every clause (a snap is an element that covers its whole displacement between two sampled frames, so a clause of 120 ms or more needs at least two frames in between); reduced motion removes all but the instant ones. Drag is not scored. The frames are the element's box sampled from `requestAnimationFrame` with its timestamps, not screenshots.
    8. Computed font family and size of each text element equal the Rail's for the same kind of text (a name, a Live line); padding and margins are values the Rail's stylesheet already uses; the terminal shares the Rail's ground and ink.
+   9. Every word on screen is a term from `CONTEXT.md`.
 4. Write `artifacts/ux/<id>/report.md` for each scenario id, each with first line `CRITIC: pass` or `CRITIC: fail` for that id alone, each image with one sentence on what it shows, each failure as `rule N, scenario <id>, step <step>, <what you saw>`, then an `ideas` list.
 5. List each failure of a written rule in its report; the Driver files one Todo per listed failure, naming the rule, scenario and step. Ideas are never Todos and never defects; `docs/motion.md` and `CONTEXT.md` win over any idea. The user reads the report; nothing waits for it.
