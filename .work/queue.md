@@ -75,12 +75,12 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
-| A15 | clean environment for what the Daemon starts | `crates/agents/**` (`crates/terminal/**` only for the spawn call, said in the PR) | the `a` tests | now |
-| A16 | `rail.remove` | `crates/agents/**`, `crates/contracts/**` and its generated files, `crates/desktop/**` pass-through (contract change, Architect approved here) | the `a` tests | now |
-| U56 | right-click menu: stop, remove | `apps/desktop/src/rail/menu/**`, one mount line in `Rail.tsx` | `u9_`, `u31_`, `u33_` tests | after A16, U31 and U33 merge |
-| U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests | after U56 merges |
-| U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one mount in `RailRow.tsx`, `src/pads/**` | `u18_`, `u20_` tests | after U31, U33 and U36 merge |
-| U59 | the terminal blends with the app | `apps/desktop/src/terminal/theme.ts`, `Pane.tsx`, `styles.css` | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` | after U57 and the contrast item merge |
+| A15 | clean environment for every program the Daemon starts | `crates/terminal/**`, `crates/rup/tests/**`, `crates/agents/**` only if its spawn needs it; no `SpawnParams` field | the `a` and `x` tests | after #114 lands |
+| A16 | `rail.remove` (contract change, committee approved) | `crates/contracts/src/methods.rs` and `contracts/generated/methods.ts`, `crates/agents/src/lib.rs` and `rail.rs`, `apps/desktop/src/testing/seeds.ts`; nothing in `crates/desktop` or `rupd` | the `a` tests | now |
+| U56 | right-click menu: stop, remove | `apps/desktop/src/rail/menu/**`, one line each in `Rail.tsx`, `RailRow.tsx`, `keys.ts` | `u9_`, `u31_`, `u33_` tests | after A16, U31, U33 and the rail polish PR (U44, U46, U47, U49); stacking allowed |
+| U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests | after U56 merges (or in its PR) |
+| U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U50 and U56; stacking allowed |
+| U59 | the terminal blends with the app | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
 | U60 | an Agent's Todos under it | reserved | | waits for a decision on `Todo.creator` |
 | held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
 
