@@ -5,3 +5,5 @@ Needs the Decision store slice merged first (`decision.answer`, outcome `answere
 Edit only: `crates/rup/src/**`, `crates/rup/tests/mcp.rs`, `crates/agents/src/decision.rs`, `crates/agents/src/claude_code/launch.rs` (the allow list), `crates/contracts/**` and generated files, `crates/agents/tests/**`.
 
 Build H14: the tool `ask_user {question, answers}` on the `roundup` server (A11) opens a Decision with `tool` `ask_user`, blocks until `decision.answer` names one of `answers` (anything else is `INVALID_PARAMS`), returns that text and clears with outcome `answered`; the call fails and the Decision clears when the Agent ends (H6); `mcp__roundup__*` is already allowed, so no dialog. Amend the existing `m1_offers_one_tool_per_method_and_no_others` closed-list test in `crates/rup/tests/mcp.rs` in the same PR to list `ask_user` as the one tool that is not a method; it must still fail for any other extra tool (architect-c's note). The server still lists no tool that answers or lists Decisions (H4).
+
+M4 (`ttlMs`) is its own earlier slice, `.work/prompts/m-ttl.md`; the `ask_user` tool must carry it like every other tool.
