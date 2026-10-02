@@ -181,16 +181,26 @@ impl Rail {
         Ok(())
     }
 
-    /// Delete a node that has no children (an Agent never has any), closing the gap among its siblings.
+    /// Delete `id`. Its children (only a Group, so a Meta-agent, ever has any) move to its own
+    /// parent, at its place, in order, first; one transaction, so a failed delete leaves them
+    /// still under `id`.
     pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {
         let tx = self.db.transaction().map_err(sql)?;
         let nodes = load(&tx)?;
         let node = find(&nodes, id)?;
+        let parent = node.parent.as_deref();
+        let mut ids = siblings(&nodes, parent);
+        let at = ids
+            .iter()
+            .position(|sibling| sibling == id)
+            .expect("id is among its own parent's siblings");
+        let children = siblings(&nodes, Some(id));
+        ids.splice(at..=at, children);
+        // Reparent before deleting: a child's row still points at `id` until `place` runs, and a
+        // delete while one does would fail its foreign key.
+        place(&tx, parent, &ids)?;
         tx.execute("DELETE FROM nodes WHERE id = ?", params![id])
             .map_err(sql)?;
-        let mut rest = siblings(&nodes, node.parent.as_deref());
-        rest.retain(|sibling| sibling != id);
-        place(&tx, node.parent.as_deref(), &rest)?;
         tx.commit().map_err(sql)
     }
 
@@ -474,5 +484,30 @@ mod tests {
         let tree = rail.tree().unwrap();
         let rest: Vec<_> = tree.iter().map(|n| (n.name.as_str(), n.order)).collect();
         assert_eq!(rest, [("a", 0), ("c", 1)]);
+    }
+
+    /// A16: moving a Group's children and deleting the Group are one transaction. A trigger
+    /// that only rejects the DELETE (the UPDATEs `place` runs are untouched) tells this apart
+    /// from a mutant that commits the move before deleting in a second transaction: there, the
+    /// move would survive even though the delete failed.
+    #[test]
+    fn a16_a_groups_delete_failing_after_a_successful_move_rolls_both_back() {
+        let (_dir, mut rail) = rail();
+        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        let child = rail
+            .insert(NodeKind::Group, "child", Some(&group.id), None)
+            .unwrap();
+        rail.db
+            .execute_batch(
+                "CREATE TRIGGER forbid_delete BEFORE DELETE ON nodes
+                 BEGIN SELECT RAISE(ABORT, 'delete forbidden'); END;",
+            )
+            .unwrap();
+
+        let err = rail.remove(&group.id).unwrap_err();
+
+        assert_eq!(err.code, code::INTERNAL);
+        let found = rail.node(&child.id).unwrap();
+        assert_eq!(found.parent.as_deref(), Some(group.id.as_str()));
     }
 }

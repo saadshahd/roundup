@@ -68,8 +68,12 @@ export type RpcMethods = {
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
   "rail.promote": { params: agent_NodeId; result: agent_RailNode };
   "rail.spawnTerminal": { params: agent_SpawnTerminalParams; result: agent_RailNode };
+<<<<<<< HEAD
   "project.setWorktrees": { params: project_Worktrees; result: null };
   "project.get": { params: null; result: project_ProjectSettings };
+=======
+  "rail.remove": { params: agent_NodeId; result: null };
+>>>>>>> origin/main
 };
 
 export type RpcMethodName = keyof RpcMethods;

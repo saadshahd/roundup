@@ -72,8 +72,12 @@ pub const METHODS: &[Method] = &[
         "agent_SpawnTerminalParams",
         "agent_RailNode",
     ),
+<<<<<<< HEAD
     m("project.setWorktrees", "project_Worktrees", "null"),
     m("project.get", "null", "project_ProjectSettings"),
+=======
+    m("rail.remove", "agent_NodeId", "null"),
+>>>>>>> origin/main
 ];
 
 /// Render `METHODS` as `contracts/generated/methods.ts`.
