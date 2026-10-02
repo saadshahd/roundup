@@ -28,6 +28,13 @@ const WAIT: Duration = Duration::from_secs(10);
 
 const BURST: usize = 50;
 
+/// Mirrors `config::SOCKET_PATH_LIMIT` (`crates/desktop/src/config.rs`): the scenario-visible
+/// 104-byte limit S1 and S5 both name.
+const SOCKET_PATH_LIMIT: usize = 104;
+
+/// The `"{run}-"` prefix `Config::socket_for_run` adds for the first reopen.
+const REOPEN_PREFIX_LEN: usize = "1-".len();
+
 struct Fixture {
     dir: TempDir,
     project: PathBuf,
@@ -44,10 +51,19 @@ impl Fixture {
     /// Like `new`, but the fixture's directory is padded so the first (`run` 0) socket path is
     /// exactly `socket_len` bytes, letting a test push a reopen's `{run}-` prefix past the
     /// 104-byte limit on purpose (mirrors `dir_of` in `s1_a_socket_path_of_103_bytes_is_accepted_and_104_is_rejected`).
+    /// The padding is however much the real temp dir still leaves under `socket_len`, so this
+    /// crosses the limit by construction instead of assuming `TMPDIR` is short: a `TMPDIR` long
+    /// enough to already exceed `socket_len` fails loud here, not with a subtraction underflow.
     fn with_socket_len(body: &str, socket_len: usize) -> Self {
         let socket_name_len = format!("/roundup-{}.sock", std::process::id()).len();
         let parent = std::env::temp_dir();
-        let prefix_len = socket_len - socket_name_len - parent.as_os_str().len() - 1;
+        let overhead = parent.as_os_str().len() + 1 + socket_name_len;
+        let prefix_len = socket_len.checked_sub(overhead).unwrap_or_else(|| {
+            panic!(
+                "the real temp dir {} is {overhead} bytes of overhead on its own, too long to pad down to a {socket_len}-byte socket path",
+                parent.display()
+            )
+        });
         let dir = tempfile::Builder::new()
             .prefix(&"d".repeat(prefix_len))
             .rand_bytes(0)
@@ -1033,7 +1049,10 @@ fn s5_a_second_open_project_while_a_reopen_is_still_starting_is_conflict() {
 
 #[test]
 fn s5_a_reopen_past_the_socket_limit_fails_open_project_with_internal() {
-    let fx = Fixture::with_socket_len("{link}\nread go < '{dir}/go'\nexit 0", 102);
+    let fx = Fixture::with_socket_len(
+        "{link}\nread go < '{dir}/go'\nexit 0",
+        SOCKET_PATH_LIMIT - REOPEN_PREFIX_LEN,
+    );
     fx.serve_real_daemon();
     let (app, webview) = app(fx.config.clone(), None);
     let exited = daemon_exited(&app);
