@@ -114,7 +114,12 @@ export const Rail = () => {
 
   const spawnAgent = () => spawnAgentWith(null);
 
-  const spawnTerminal = () => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }));
+  const spawnTerminal = () =>
+    guarded(async () => {
+      const spawned = await app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() });
+
+      setWanted(spawned.id);
+    });
 
   const canSpawn = () => !pending() && daemonExit() === null;
 

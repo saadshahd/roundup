@@ -165,7 +165,15 @@ export const RailRowView = (props: {
         </Show>
       </p>
       <Show when={showsLiveLine() ? liveLine() : null}>
-        {(text) => <p class="live light">{text()}</p>}
+        {(text) => (
+          <p
+            class="live light"
+            style={{ left: `${props.row.depth * 2}ch` }}
+            title={text()}
+          >
+            {text()}
+          </p>
+        )}
       </Show>
     </div>
   );

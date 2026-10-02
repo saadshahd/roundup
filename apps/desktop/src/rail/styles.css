@@ -2,14 +2,18 @@
   position: sticky;
   bottom: 0;
   display: flex;
+  align-items: center;
   gap: 16px;
-  padding: 8px 0;
+  height: var(--rail-actions-height);
+  box-sizing: border-box;
   background: var(--ground);
 }
 
 .rail-row {
   padding-right: 8px;
   cursor: default;
+  position: relative;
+  scroll-margin-bottom: var(--rail-actions-height);
 }
 
 .rail-row[data-selected="true"] {
@@ -36,11 +40,17 @@
   text-overflow: ellipsis;
 }
 
+/* Overlaid, not stacked in flow: a row's own height never changes when its Live line shows or hides (U46), only what sits under it is covered while it shows. */
 .rail-row .live {
+  position: absolute;
+  top: 100%;
+  right: 8px;
+  z-index: 1;
   padding-left: 2ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
+  background: var(--ground);
 }
 
 .rail-row input {
@@ -76,6 +86,8 @@
 
 .rail-tree {
   position: relative;
+  /* The one value the pinned bar's own height and every row's scroll reservation both read (U44). */
+  --rail-actions-height: 40px;
 }
 
 .rail-row {
