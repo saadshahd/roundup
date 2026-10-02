@@ -25,7 +25,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 |---|---|---|
 | Architect | Owns `contracts/`, `CONTEXT.md`, ADRs. Approves contract changes. Turns recurring failures into new rules (see Loop on the loop). | Writes feature code. |
 | Builder | Failing test first, then code, in one worktree, one module where you can. Opens a PR. | Reviews its own PR. |
-| Reviewer | Reads the diff, the linked scenario, `AGENTS.md` and, on a re-review, the earlier verdicts, with a checkout to run `loop/rules.sh`. Approves or lists defects. | Sees the Builder's rationale or chat. |
+| Reviewer | Reads the diff, the linked scenario, `AGENTS.md` and, on a re-review, the earlier verdicts, with a checkout to run `loop/rules.sh`. Answers each `PRINCIPLES.md` gate the PR body names, from the diff. Approves or lists defects. | Sees the Builder's rationale or chat. |
 | Driver | Starts each step, merges when rule 1 holds, stops on the conditions below. | Writes code or reviews. |
 | QA | Runs the UI, drives scenarios, saves screenshots to `artifacts/ux/<scenario>/<step>.png`. | Edits code. |
 | Design critic | After a UI PR is approved, drives the app in the harness, captures screenshots and motion frames, scores them against the written rules in its prompt and writes `artifacts/ux/<id>/report.md`. Lists each broken rule in its report; the Driver files a Todo for it. | Edits code; gates a merge. |
@@ -42,7 +42,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | 4 | CI | GitHub | macOS runner | `check` job (`just check`: fmt, clippy, nextest, machete, oxlint + anti-slop, tsc, fallow) |
 | 5 | Review | Reviewer, a different id | laptop | an empty commit carrying only `Reviewed-by-Agent: <id>`; `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities); the verdict is posted first as a PR comment, by the Reviewer if it has `gh`, else by the Driver, and the same actor then pushes the approval commit (`docs/boxd.md`, "Where a Reviewer's verdict goes"); the Driver checks the comment by hand |
 | 6 | Merge when rule 1 holds | Driver | laptop | all checks green; `loop/rules.sh base <pr>` exits 0 (the PR's base is `main`, L33) |
-| 7 | UX observers: screenshots, snapshot diff, critic report, run after the merge and gating nothing | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
+| 7 | UX observers: screenshots, `checks.json` per step, `loop/rules.sh delta` against `origin/main` (L42), critic report; the Checks that are `vitest` tests gate in step 4, the rest of this step gates nothing | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos (`docs/design-system.md`, "Baseline protocol") |
 | 8 | Red main | Triage | laptop | `gh run list` shows failure; revert, never fix forward |
 
 ## Driving the App in a browser
@@ -71,13 +71,14 @@ Every write the App can make (spawn, create Group, rename, promote, move, stop, 
 
 | Rule | Enforced by | Gap |
 |---|---|---|
-| 1 Done | `check` green (CI); by hand, the Driver runs `loop/rules.sh base <pr>` before every merge (L33); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml` (not a required check, so it does not yet block a merge); anti-slop via `pnpm lint` | e2e scenarios do not exist yet |
+| 1 Done | `check` green (CI); by hand, the Driver runs `loop/rules.sh base <pr>` before every merge (L33); different-agent approval via `loop/rules.sh trailers` in `.github/workflows/loop.yml` (not a required check, so it does not yet block a merge); anti-slop via `pnpm lint` | e2e scenarios do not exist yet; principle gates (`PRINCIPLES.md`) are answered by the Reviewer from the diff, for the ids the PR body names, by hand; their observers (P2 to P5) are not written |
 | 2 Slop | `pnpm lint` (anti-slop), `pnpm slop` (fallow), `cargo machete crates`, clippy | "public function with no test or caller" and "comment restates the line below" have no machine check beyond anti-slop's own rules |
 | 3 PR size guide | `loop/rules.sh size` (advisory only: prints when a PR spans more than one module directory or exceeds about 2000 changed lines; exits 0 whatever the size; an unknown base ref still fails) | "generated files" means `*.lock`, `pnpm-lock.yaml`, `*/generated/*`; extend as generators appear |
 | 4 Contract change | none | needs CODEOWNERS plus a required review. That is a GitHub setting; ask the user first |
 | 5 Reviewer input | by construction in `.agents/reviewer.md` and the Driver's invocation | not machine-checkable |
 | 6 Vocabulary | `loop/rules.sh vocab`: Avoid words from `CONTEXT.md` against public Rust items, TS exports and `contracts/` text | UI strings and RPC names outside `contracts/` are not scanned; enum variants are not scanned |
 | 7 Perf budget | none | needs a UI and a bench; Phase 5 |
+| 8 Visual change | `loop/rules.sh delta` (L42); `loop/rules.sh tokens` (L41) arrives with the Builder PR for U130; the Checks as `vitest` tests (U130 to U137) in `just check` | until U137 lands, the critic measures by hand and `delta` has no input; the PR body's `Moves:` line is read by the Reviewer, not a script |
 
 Required status checks and branch protection are GitHub settings on `main`. They are not set up and are outside the repo; they need the user's go-ahead.
 
