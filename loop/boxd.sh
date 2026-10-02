@@ -32,6 +32,11 @@ VM=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
 lock_held=0
+# The ru-toolchain snapshot carries a stray /node_modules/@types/node at the filesystem root (observed on ru-tsc-gate):
+# tsc's ambient @types lookup walks up every parent of ~/roundup and finds it, so a package that never declares
+# @types/node itself would still typecheck clean there although a clean runner's tsc fails it. run_check removes it
+# first, on every VM, so the check it observes never depends on anything outside the checkout.
+STRAY_NODE_MODULES=/node_modules
 
 cleanup() {
   local rc=$?
@@ -265,9 +270,9 @@ run_agent() {
   jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
 }
 
-# The check both `build` and `check` observe: install from the lockfile, then the repo's own definition of check.
+# The check both `build` and `check` observe.
 run_check() {
-  boxd machine exec "$VM" --timeout 1800 -- 'cd ~/roundup && . ~/.cargo/env && pnpm install --frozen-lockfile && just check' </dev/null
+  boxd machine exec "$VM" --timeout 1800 -- "cd ~/roundup && . ~/.cargo/env && sudo rm -rf $STRAY_NODE_MODULES && pnpm install --frozen-lockfile && just check" </dev/null
 }
 
 review() {

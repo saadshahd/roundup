@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
-import { callsTo, glyphOf, mountRail, rowNames, rowOf } from "./railFixture";
+import { glyphOf, mountRail, railCallsTo, rowNames, rowOf } from "./railFixture";
 import { agent, event, group, metaAgent, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -22,7 +22,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(screen.getByText("+ agent"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
   });
 
   it("u9_plus_agent_spawns_under_the_selected_group", async () => {
@@ -32,7 +32,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(screen.getByText("+ agent"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
   });
 
   it("u9_plus_agent_spawns_under_the_selected_meta_agent", async () => {
@@ -43,7 +43,7 @@ describe("u9 actions", () => {
     fireEvent.click(screen.getByText("+ agent"));
 
     await waitFor(() =>
-      expect(callsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "lead" }]),
+      expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "lead" }]),
     );
   });
 
@@ -57,7 +57,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(screen.getByText("+ agent"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
   });
 
   it("u9_the_new_agents_row_becomes_selected_once_the_tree_has_it", async () => {
@@ -80,7 +80,7 @@ describe("u9 actions", () => {
     answerWith(mounted, "agent.spawn");
 
     fireEvent.click(screen.getByText("+ agent"));
-    await waitFor(() => expect(callsTo(mounted.app, "agent.spawn")).toHaveLength(1));
+    await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toHaveLength(1));
 
     expect([rowNames(), mounted.rail.selected()]).toEqual([["g"], null]);
   });
@@ -92,7 +92,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(screen.getByText("+ terminal"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
   });
 
   it("u9_plus_terminal_spawns_at_the_top_level_with_no_selection", async () => {
@@ -101,7 +101,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(screen.getByText("+ terminal"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]));
   });
 
   it("u9_plus_group_creates_a_group_named_group_under_the_selected_group", async () => {
@@ -111,7 +111,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(screen.getByText("+ group"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.createGroup")).toEqual([{ name: "group", parent: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.createGroup")).toEqual([{ name: "group", parent: "g" }]));
   });
 
   it("u9_double_clicking_a_name_edits_it_and_enter_renames", async () => {
@@ -123,7 +123,7 @@ describe("u9 actions", () => {
     fireEvent.input(field, { target: { value: "renamed" } });
     fireEvent.keyDown(field, { key: "Enter" });
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.rename")).toEqual([{ id: "a", name: "renamed" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.rename")).toEqual([{ id: "a", name: "renamed" }]));
   });
 
   it("u9_escape_keeps_the_old_name_and_calls_nothing", async () => {
@@ -134,7 +134,7 @@ describe("u9 actions", () => {
     fireEvent.input(field, { target: { value: "renamed" } });
     fireEvent.keyDown(field, { key: "Escape" });
 
-    expect([callsTo(mounted.app, "rail.rename"), screen.queryByLabelText("name"), rowNames()]).toEqual([[], null, ["a"]]);
+    expect([railCallsTo(mounted.app, "rail.rename"), screen.queryByLabelText("name"), rowNames()]).toEqual([[], null, ["a"]]);
   });
 
   it("u9_an_empty_name_keeps_the_old_name_and_calls_nothing", async () => {
@@ -145,7 +145,7 @@ describe("u9 actions", () => {
     fireEvent.input(field, { target: { value: "   " } });
     fireEvent.keyDown(field, { key: "Enter" });
 
-    expect([callsTo(mounted.app, "rail.rename"), screen.queryByLabelText("name")]).toEqual([[], null]);
+    expect([railCallsTo(mounted.app, "rail.rename"), screen.queryByLabelText("name")]).toEqual([[], null]);
   });
 
   it("u9_hovering_a_plain_group_shows_promote_which_calls_rail_promote", async () => {
@@ -155,7 +155,7 @@ describe("u9 actions", () => {
     fireEvent.mouseEnter(rowOf("g"));
     fireEvent.click(screen.getByText("promote"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.promote")).toEqual([{ id: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.promote")).toEqual([{ id: "g" }]));
   });
 
   it("u9_promote_is_hidden_until_hover_and_never_on_an_agent", async () => {
@@ -253,7 +253,7 @@ describe("u9 actions", () => {
     fireEvent.mouseEnter(rowOf("g"));
     fireEvent.click(screen.getByText("promote"));
 
-    await waitFor(() => expect(callsTo(mounted.app, "rail.promote")).toEqual([{ id: "g" }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.promote")).toEqual([{ id: "g" }]));
   });
 
   it("u9_a_double_click_on_plus_agent_spawns_one_agent", async () => {
@@ -268,7 +268,7 @@ describe("u9 actions", () => {
     finish(SPAWNED);
 
     await waitFor(() => expect(button).toHaveProperty("disabled", false));
-    expect(callsTo(mounted.app, "agent.spawn")).toHaveLength(1);
+    expect(railCallsTo(mounted.app, "agent.spawn")).toHaveLength(1);
   });
 
   it("u9_plus_terminal_and_plus_group_are_disabled_while_a_spawn_is_pending", async () => {
