@@ -14,7 +14,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `pads.md` | `crates/pads` | P1–P9 |
 | `terminal.md` | `crates/terminal` | X1–X10 |
 | `agents.md` | `crates/agents` (+ the `rup signal` subcommand in `crates/rup`) | every `A` heading in the file |
-| `loop.md` | `loop/` | L1–L15 |
+| `loop.md` | `loop/` | every `L` heading in the file |
 | `mcp.md` | `crates/rup` (the `rup mcp` subcommand) | M1–M3 |
 | `daemon.md` | `crates/rupd` (D1); end-to-end tests in `crates/rup/tests` (D2–D4) | D1–D4 |
 | `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | S1–S5 |
