@@ -106,6 +106,12 @@ Three rules for every PR. Rule 5 in `AGENTS.md` carries the re-review input; the
 
 **A re-review gets the earlier findings.** After a reject, the Driver puts into the next Reviewer's prompt each earlier verdict comment (a comment whose first line is `VERDICT:`) and the diff from the rejected head to the new head, computed on the laptop because a VM checkout has neither the comments nor that head. The Reviewer checks each earlier finding is fixed, then reviews the delta. A finding on text unchanged since the rejected head blocks only when it breaks a rule of `AGENTS.md` or is a correctness defect (the text is wrong, not merely disliked); a taste finding on unchanged text is noted and does not block. The author's rationale stays out (rule 5). The cost is accepted: earlier findings may anchor the Reviewer, and without them docs PRs took up to seven rounds, each finding something new in text it had passed.
 
+## Shared files
+
+Every docs PR used to edit `.work/queue.md` and the table in `scenarios/README.md`, so each merge to `main` made the next PR conflict and void its review. `.gitattributes` with `merge=union` does not fix it: GitHub's own merge ignores custom drivers and attributes. Observed on 2026-10-02 with two scratch PRs (#177 and #178, closed) that inserted a row at the same place in both files, with `merge=union` on both files in the base branch: after #177 merged, GitHub reported #178 as `CONFLICTING` and `DIRTY`. A local `git merge` kept both rows, which is why the attribute looks as if it works.
+
+The fix is that two PRs from different squads touch different files (L50): a scenario file declares its own module on a `Module:` line, so `scenarios/README.md` needs no table; the queue's rows live in one file per id series, `.work/queue-<series>.md`, each with the id ranges that series reserves; `.work/queue.md` keeps only the protocol text. Two PRs in the same series still conflict, which is a real overlap. `loop/rules.sh queue` checks the shape. The move rewrites the files every open docs PR touches, so a Builder does it once, in one PR, when no docs PR is in the merge lane, and the Driver announces it first.
+
 ## Loop on the loop
 
 Triage tags each failure with a class (contract-drift, flaky-test, vocab, perf, slop-rule, ux-checklist). When one class recurs 3 times in a cycle, the Architect studies the cases, writes the rule as a yes/no question or a machine check, and lands it as a contract-change PR. A rule with no recurrence for 3 cycles is deleted. Each human-gate report lists what changed and why.
