@@ -1311,6 +1311,29 @@ mod tests {
         assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
     }
 
+    /// An ordinary event (a title change, say output) must not end the wait on its own: only
+    /// `TerminalExited` may. A large capacity means both sends land without a lag, so a mutant
+    /// that returns on any `Ok(_)` would stop at the title and leave `TerminalExited` unread.
+    #[tokio::test]
+    async fn wait_for_exit_keeps_waiting_past_an_ordinary_event() {
+        let (tx, mut rx) = broadcast::channel(8);
+        tx.send(EventData::TerminalTitle(TitleEvent {
+            id: "1".into(),
+            title: "a".into(),
+        }))
+        .unwrap();
+        tx.send(EventData::TerminalExited(ExitedEvent {
+            id: "1".into(),
+            code: Some(0),
+        }))
+        .unwrap();
+
+        super::wait_for_exit(&mut rx).await;
+
+        // Had the title event ended the wait, `TerminalExited` would still be sitting unread here.
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+
     /// A kill that fails must return its error at once, not wait for an exit event from a program
     /// the kill never touched: a real Terminal that is never killed proves the wait is skipped,
     /// since it would otherwise run out `KILL_WAIT_BOUND` before returning.
