@@ -155,7 +155,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
-  | H1–H12 | `scenarios/cards.md`, permission Cards, architect-swarm (H1–H10 written; the UI half is architect-b's, from the `U` ranges) |
+  | H1–H12 | `scenarios/decisions.md`, permission Cards, architect-swarm (H1–H10 written; the UI half is architect-b's, from the `U` ranges) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
