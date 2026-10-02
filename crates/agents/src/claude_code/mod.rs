@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
 
-pub use launch::Launcher;
+pub use launch::{Launcher, STATE_EVENTS};
 
 /// Env vars Claude Code sets when the program running it is itself inside a Claude Code run
 /// (A15). The Daemon can inherit these from its own environment; every program it starts must

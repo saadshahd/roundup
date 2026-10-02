@@ -14,11 +14,12 @@ use unicode_normalization::UnicodeNormalization;
 
 /// The hook events that carry state. Notification and SubagentStop are left out on purpose: the
 /// first arrives about 6 s late, the second fires spuriously (ADR 0006). PreToolUse is left out by
-/// H15's replay rule: dropping it from every fixture in `spikes/hooks-state/log*.jsonl` and from D2
-/// leaves every Status unchanged (it only ever repeats the Kind `UserPromptSubmit` already set), so
-/// Claude Code never runs its hook and a 100-tool-use loop costs one `rup signal` per tool use
-/// instead of two (`crates/agents/tests/state_events.rs` proves the rule, not this list by hand).
-const STATE_EVENTS: [&str; 8] = [
+/// H15's replay rule: dropping its Signal from every fixture in `spikes/hooks-state/log*.jsonl` and
+/// from D2, and replaying the fixture's titles alongside what is left, leaves every Status
+/// unchanged, so Claude Code never runs its hook and a 100-tool-use loop costs one `rup signal` per
+/// tool use instead of two (`crates/agents/tests/state_events.rs` proves the rule against this list
+/// itself, not a hand copy of it).
+pub const STATE_EVENTS: [&str; 8] = [
     "SessionStart",
     "UserPromptSubmit",
     "PermissionRequest",
