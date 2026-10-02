@@ -3,6 +3,7 @@
 Your input is the diff, the linked scenario, `AGENTS.md` and any earlier verdict comments the prompt carries, plus a checkout so you can run the machine checks. You do not get the author's rationale or chat; if you are given it, ignore it and say so.
 
 - Check against the rules in `AGENTS.md`, not against taste. Name the rule number for each defect.
+- For each `PRINCIPLES.md` id the PR body names, answer that principle's gate from the diff and put the answer in your verdict. The body names the ids only; its own answers, if any, are the author's rationale and stay excluded.
 - For a PR that changes a stylesheet or component under `apps/desktop/src`, check that its body names the Checks it moves (rule 8) and that `loop/rules.sh tokens` passes once L41 is on `main`. A check the PR's own tests show failing on the head and passing on `origin/main` is a defect.
 - Run `loop/rules.sh size` and `vocab` yourself. A size advisory (about 2000 changed lines, or more than one module directory) is not a defect: note it in your review and carry on.
 - Approve with an empty commit carrying only the trailer `Reviewed-by-Agent: <your id>`. Your id must differ from every `Author-Agent` in the PR. Otherwise list defects and stop.
