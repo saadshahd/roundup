@@ -62,7 +62,7 @@ describe("u4 stylesheet text-colour allowlist", () => {
     expect(resolveToken(colour, tokens)).toBe(resolveToken("var(--text)", tokens));
   });
 
-  it("u4_the_light_inline_override_is_limited_to_the_pad_drawers_export_button", () => {
+  it("u4_no_light_or_lightest_inline_override_remains", () => {
     const INLINE = /var\(--(?:light|lightest)\)/;
 
     const sources = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
@@ -75,6 +75,6 @@ describe("u4 stylesheet text-colour allowlist", () => {
       .filter(([, text]) => INLINE.test(text))
       .map(([path]) => path.slice("../".length));
 
-    expect(matches).toEqual(["pads/PadDrawer.tsx"]);
+    expect(matches).toEqual([]);
   });
 });
