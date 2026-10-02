@@ -9,6 +9,7 @@ import { USER } from "../testing/nodes";
 import type { FakeApp } from "../testing/fakeApp";
 import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import type { ConnectedProject } from "../state/connectedProject";
+import { Rail } from "../rail/Rail";
 import { Pane } from "./Pane";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
 import { toBase64 } from "./base64";
@@ -23,7 +24,9 @@ type FakeEmulator = Emulator & {
   type(bytes: Uint8Array): void;
 };
 
-const fakeEmulators = () => {
+/** `show` always builds the same `.pane-screen` child so `host.textContent` stays `id`; `focusOnShow` additionally
+ * gives it focus, as the real emulator's `show` does (emulator.ts), for tests that follow focus into the pane. */
+const fakeEmulators = (focusOnShow = false) => {
   const made = new Map<string, FakeEmulator>();
 
   const factory: EmulatorFactory = (id) => {
@@ -43,7 +46,15 @@ const fakeEmulators = () => {
       },
       show: (host) => {
         emulator.host = host;
-        host.replaceChildren(id);
+
+        const screenEl = document.createElement("div");
+
+        screenEl.textContent = id;
+        screenEl.tabIndex = 0;
+        screenEl.dataset.terminal = id;
+        host.replaceChildren(screenEl);
+
+        if (focusOnShow) screenEl.focus();
 
         return emulator.size;
       },
@@ -99,6 +110,26 @@ export const mountPane = async (
 
   const { container } = render(() => (
     <ConnectedProjectContext.Provider value={connected}>
+      <Pane createEmulator={factory} />
+    </ConnectedProjectContext.Provider>
+  ));
+
+  return { app, connected, emulators: made, container };
+};
+
+/** A Rail above a Pane in one open Project, so a spawn's new row can be watched handing focus to its Terminal (U33). */
+export const mountRailAndPane = async (tree: RailNode[]): Promise<Mounted> => {
+  const app = createFakeApp();
+
+  app.handlers["rail.tree"] = () => tree;
+  app.handlers["terminal.list"] = () => [];
+
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+  const { factory, made } = fakeEmulators(true);
+
+  const { container } = render(() => (
+    <ConnectedProjectContext.Provider value={connected}>
+      <Rail />
       <Pane createEmulator={factory} />
     </ConnectedProjectContext.Provider>
   ));
