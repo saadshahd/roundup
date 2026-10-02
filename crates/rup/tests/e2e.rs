@@ -1,4 +1,5 @@
-//! D2 to D4: the whole Daemon, run as the App runs it, with a fake `claude` for every Agent.
+//! D2 to D4, and H15: the whole Daemon, run as the App runs it, with a fake `claude` for every
+//! Agent.
 
 #[path = "e2e/daemon.rs"]
 mod daemon;
@@ -395,4 +396,57 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
     .unwrap_err();
 
     assert!(report.contains("connection closed"), "{report}");
+}
+
+/// H15: a loop of 100 tool uses, with the real `rup` hook command registered in the settings file
+/// `agent.spawn` writes, trying the hook for `PreToolUse` and `PostToolUse` around each use. The
+/// fake `claude` skips an event with no entry in the settings, exactly as Claude Code itself would;
+/// each hook command that does run is `rup signal`, so a command that exits 0 proves the Daemon
+/// answered `agent.signal` for it. The Daemon must see exactly the `STATE_EVENTS` Signals: every
+/// `PostToolUse` and not one `PreToolUse`.
+#[tokio::test]
+async fn h15_the_daemon_sees_exactly_the_signals_of_state_events_from_a_hundred_tool_use_loop() {
+    let report = tempfile::NamedTempFile::new().unwrap();
+    let report_path = report.path().to_string_lossy().into_owned();
+    let project = start(&[
+        ("FAKE_CLAUDE_LOOP", "100"),
+        ("FAKE_CLAUDE_LOOP_REPORT", &report_path),
+    ]);
+    let client = project.client().await;
+    project.spawn_agent(&client).await;
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let ran: Vec<String> = loop {
+        if let Ok(text) = std::fs::read_to_string(report.path())
+            && let Ok(ran) = serde_json::from_str::<Vec<String>>(&text)
+        {
+            break ran;
+        }
+        assert!(Instant::now() < deadline, "the loop never finished");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+
+    assert_eq!(ran.len(), 100, "{ran:?}");
+    assert!(
+        ran.iter().all(|event| event == "PostToolUse"),
+        "a PreToolUse hook ran: {ran:?}"
+    );
+}
+
+/// H15's last clause: once a Signal reaches the Daemon, the Kind it folds to must be visible to a
+/// subscribed client within rule 7's keystroke-to-render budget, the same local round trip a
+/// Signal and its resulting Status event both make.
+#[tokio::test]
+async fn h15_the_kind_flips_within_the_keystroke_to_render_budget_after_the_signal_arrives() {
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let agent = project.spawn_agent(&client).await;
+
+    let started = Instant::now();
+    signal(&client, &agent.id, json!({"hook_event_name": "Stop"})).await;
+    let kind = next_kind(&mut client).await;
+    let elapsed = started.elapsed();
+
+    assert_eq!(kind, Kind::Idle);
+    assert!(elapsed < Duration::from_millis(16), "{elapsed:?}");
 }

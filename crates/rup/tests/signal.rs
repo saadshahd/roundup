@@ -188,6 +188,62 @@ fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arriv
     assert!(stderr.contains("may or may not have arrived"), "{stderr}");
 }
 
+/// H15: `rup signal` runs its `tokio::main` on a current-thread runtime (`crates/rup/src/main.rs`)
+/// so a hook process never costs the OS more than one thread to schedule. Caught straight from
+/// `/proc`, while the process is alive and blocked on a Daemon that never answers, so a mutant
+/// that swaps in the default multi-threaded runtime (which starts a worker thread per core) fails
+/// this even though it still exits 1 in time.
+#[test]
+fn h15_rup_signal_never_runs_more_than_one_os_thread() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("silent.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        // Accepted and kept open, never answered, so `rup signal` stays alive and blocked.
+        let mut held = vec![];
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rup"))
+        .args(["signal", "1"])
+        .env("RUPD_SOCKET", &socket)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"hook_event_name":"Stop"}"#)
+        .unwrap();
+    let pid = child.id();
+
+    // A multi-threaded runtime spawns its worker threads lazily, a few ms after the process
+    // starts, so one read right after spawning would pass even on the mutant; the max over the
+    // whole window is what actually proves "never more than one".
+    let deadline = Instant::now() + HOOK_TIMEOUT / 2;
+    let mut max_tasks = 0;
+    while Instant::now() < deadline {
+        if let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/task")) {
+            max_tasks = max_tasks.max(entries.count());
+        }
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(max_tasks > 0, "pid {pid}: never read its thread count");
+    assert_eq!(max_tasks, 1, "pid {pid}: expected exactly one OS thread");
+}
+
 #[test]
 fn a4_signal_with_the_wrong_number_of_arguments_exits_1_not_2() {
     let nowhere = tempfile::tempdir().unwrap().path().join("missing.sock");

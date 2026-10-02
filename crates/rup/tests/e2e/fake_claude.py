@@ -5,10 +5,17 @@ It does only what Claude Code does that roundup can see: it runs the hook comman
 `--settings` file once per payload, and talks MCP to the `roundup` server from the `--mcp-config`
 file. What it does comes from the environment, so one script serves every scenario:
 
-  FAKE_CLAUDE_PAYLOADS  a JSONL file of recorded hook payloads
-  FAKE_CLAUDE_EVENTS    comma-separated hook event names; the first recorded payload of each is played
-  FAKE_CLAUDE_PROMPT    replaces the prompt of the played UserPromptSubmit
-  FAKE_CLAUDE_TOOL      JSON {"name", "arguments"}: a tool to call on the `roundup` server
+  FAKE_CLAUDE_PAYLOADS     a JSONL file of recorded hook payloads
+  FAKE_CLAUDE_EVENTS       comma-separated hook event names; the first recorded payload of each is played
+  FAKE_CLAUDE_PROMPT       replaces the prompt of the played UserPromptSubmit
+  FAKE_CLAUDE_TOOL         JSON {"name", "arguments"}: a tool to call on the `roundup` server
+  FAKE_CLAUDE_LOOP         a count N: run a tool-use loop of N iterations, each trying the hook
+                           command for PreToolUse then PostToolUse (H15, scenario control.md);
+                           an event with no entry in `--settings` (a dropped one) is skipped, the
+                           same way Claude Code itself never runs a command for an unregistered
+                           event
+  FAKE_CLAUDE_LOOP_REPORT  a file path: after the loop, written with a JSON list of the event
+                           names whose hook command actually ran, in order
 
 It then sleeps until the Daemon stops it.
 """
@@ -36,6 +43,24 @@ def play_hooks():
             payload["prompt"] = os.environ["FAKE_CLAUDE_PROMPT"]
         command = settings["hooks"][event][0]["hooks"][0]["command"]
         subprocess.run(command, shell=True, input=json.dumps(payload), text=True, check=True)
+
+
+def play_loop():
+    settings = json.load(open(flag("--settings")))
+    count = int(os.environ["FAKE_CLAUDE_LOOP"])
+    ran = []
+    for _ in range(count):
+        for event in ("PreToolUse", "PostToolUse"):
+            hooks = settings["hooks"].get(event)
+            if not hooks:
+                continue
+            payload = json.dumps({"hook_event_name": event, "tool_name": "Bash"})
+            command = hooks[0]["hooks"][0]["command"]
+            subprocess.run(command, shell=True, input=payload, text=True, check=True)
+            ran.append(event)
+    if "FAKE_CLAUDE_LOOP_REPORT" in os.environ:
+        with open(os.environ["FAKE_CLAUDE_LOOP_REPORT"], "w") as report:
+            json.dump(ran, report)
 
 
 def call_tool(tool):
@@ -69,6 +94,8 @@ def call_tool(tool):
 
 if "FAKE_CLAUDE_EVENTS" in os.environ:
     play_hooks()
+if "FAKE_CLAUDE_LOOP" in os.environ:
+    play_loop()
 if "FAKE_CLAUDE_TOOL" in os.environ:
     call_tool(json.loads(os.environ["FAKE_CLAUDE_TOOL"]))
 time.sleep(3600)
