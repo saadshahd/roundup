@@ -55,7 +55,7 @@ case "$1 $2" in
       *claude*)
         case "${STUB_MODE:-}" in
           no-output) exit 1 ;;
-          deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;;
+          deadline) sleep "${STUB_CLAUDE_SLEEP:-0}"; echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;;
           limit) echo '{"type":"result","is_error":true,"api_error_status":429,"result":"x"}'; exit 1 ;;
           events-forever)
             echo $$ >"$STUB_DIR/exec-$3.pid"
@@ -65,6 +65,11 @@ case "$1 $2" in
           limit-then-more)
             echo '{"type":"result","is_error":true,"api_error_status":429,"result":"x"}'
             echo '{"type":"system","subtype":"turn_end"}' ;;
+          retry-429-then-ok)
+            echo '{"type":"system","subtype":"turn_end","api_error_status":429}'
+            jq -cn --arg r ok '{type:"result",is_error:false,result:$r,num_turns:1,duration_ms:1000,total_cost_usd:0.1}' ;;
+          error-no-limit)
+            jq -cn --arg r boom '{type:"result",is_error:true,result:$r}' ;;
           ok-quotes-limit)
             phrase="usage"" limit and rate"" limit"
             jq -cn --arg r "ok, mentions the $phrase case but succeeded" '{type:"result",is_error:false,result:$r,num_turns:1,duration_ms:1000,total_cost_usd:0.1}' ;;
@@ -474,6 +479,9 @@ expect_true "L19 no second VM after the agent ran" test "$(count_log 'machine ne
 expect_true "L19 the no-output event is recorded with VM and phase" grep -q ' ru-t agent no-output' loop/out/events.log
 new_repo; STUB_MODE=deadline expect_code 1 "L19 a wedged agent run fails"
 expect_true "L19 the deadline event is recorded, not retried" bash -c "grep -q ' ru-t agent deadline-exceeded' loop/out/events.log && test \"\$(grep -c 'machine new ru-t ' log)\" = 1"
+new_repo; BOXD_AGENT_TIMEOUT=1 STUB_CLAUDE_SLEEP=2 STUB_MODE=deadline expect_code 1 "L19 a silent run past BOXD_AGENT_TIMEOUT still fails"
+expect_true "L19 no timeout message on a silent run past BOXD_AGENT_TIMEOUT" bash -c '! grep -q "agent timed out after" err'
+expect_true "L19 the no-output message is used instead" grep -q "agent produced no output" err
 new_repo; STUB_MODE=check-deadline expect_code 1 "L19 a build whose check hits the deadline fails"
 expect_true "L19 the build check's deadline event is recorded with VM and phase" grep -q ' ru-t check deadline-exceeded' loop/out/events.log
 
@@ -577,8 +585,22 @@ if loop/boxd.sh kill '../x' >out 2>err; then echo "FAIL: L14 hostile kill name a
 new_repo; loop/boxd.sh build t prompt.md >out 2>err
 expect_true "L21 the event stream file is named like L17's run log" bash -c 'ls loop/out/runs/t-*.jsonl >/dev/null'
 expect_true "L21 the stream holds every event claude produced, not just the last" test "$(wc -l <"$(ls loop/out/runs/t-*.jsonl)" | tr -d ' ')" -ge 2
+expect_log 'output-format stream-json --verbose' "L21 claude is run with streamed, verbose output"
 
-new_repo; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever expect_code 1 "L21 an agent still producing events at the timeout exits 1"
+# Run in the background so the stream can be read while the fake claude (events-forever) is still running: the
+# stub's exec-<vm>.pid file is the bound the stub emits for "still running".
+new_repo
+BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err &
+build_pid=$!
+stream=
+for _ in $(seq 100); do
+  stream=$(find loop/out/runs -name 't-*.jsonl' 2>/dev/null | head -1) || true
+  [ -n "$stream" ] && [ -s "$stream" ] && [ -e cp/exec-ru-t.pid ] && break
+  sleep 0.1
+done
+expect_true "L21 the first event is in the event stream while the stub still runs" bash -c "[ -n '$stream' ] && [ -s '$stream' ] && kill -0 \$(cat cp/exec-ru-t.pid) 2>/dev/null"
+got=0; wait "$build_pid" || got=$?
+if [ "$got" -eq 1 ]; then echo "ok:   L21 an agent still producing events at the timeout exits 1"; else echo "FAIL: L21 an agent still producing events at the timeout exits 1 (wanted exit 1, got $got)"; failures=$((failures + 1)); fi
 expect_true "L21 the timeout message names the seconds and the stream" grep -qE 'agent timed out after 3 s: loop/out/runs/t-.*\.jsonl' err
 expect_true "L21 a timed-out build skips the check" bash -c '! grep -q "just check" log'
 expect_true "L21 a timed-out build saves the diff so far as a partial patch" test -e loop/out/patches/t.partial.patch
@@ -603,17 +625,50 @@ expect_true "L21 the later successful run's patch is the latest result" test -e 
 
 new_repo; loop/boxd.sh review r prompt.md >out 2>err
 expect_true "L21 setup: a successful review writes the stable verdict" test -e loop/out/verdicts/r.md
-STUB_MODE=events-then-exit loop/boxd.sh review r prompt.md >out 2>err || true
+got=0; STUB_MODE=events-then-exit loop/boxd.sh review r prompt.md >out 2>err || got=$?
+expect_true "L21 a result-less review exits 1" test "$got" -eq 1
 expect_true "L21 a result-less review after a successful one removes the stale verdict" bash -c '! test -e loop/out/verdicts/r.md'
+
+# A stale result file must go even on an exit path that never reaches build()'s or review()'s own cleanup branch:
+# a failed check (not a timed-out or result-less run), a no-output run and a paused run all exit before that point.
+new_repo; STUB_MODE='' loop/boxd.sh build t prompt.md >out 2>err
+expect_true "L21 setup: a successful build writes the stable patch (2)" test -e loop/out/patches/t.patch
+got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
+expect_true "L21 a failed check keeps its exit code (2)" test "$got" -eq 7
+expect_true "L21 a failed check after a successful build removes the stale patch" bash -c '! test -e loop/out/patches/t.patch'
+
+new_repo; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
+expect_true "L21 setup: a timed-out build writes the partial patch" test -e loop/out/patches/t.partial.patch
+got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
+expect_true "L21 a failed check after a timed-out build removes the stale partial patch" bash -c '! test -e loop/out/patches/t.partial.patch'
+
+new_repo; loop/boxd.sh review r prompt.md >out 2>err
+expect_true "L21 setup: a successful review writes the stable verdict (2)" test -e loop/out/verdicts/r.md
+got=0; STUB_MODE=no-output loop/boxd.sh review r prompt.md >out 2>err || got=$?
+expect_true "L19 a no-output review exits 1" test "$got" -eq 1
+expect_true "L21 a no-output review after a successful one removes the stale verdict" bash -c '! test -e loop/out/verdicts/r.md'
+
+new_repo; loop/boxd.sh review r prompt.md >out 2>err
+expect_true "L21 setup: a successful review writes the stable verdict (3)" test -e loop/out/verdicts/r.md
+got=0; STUB_MODE=limit loop/boxd.sh review r prompt.md >out 2>err || got=$?
+expect_true "L4 a paused review exits 75" test "$got" -eq 75
+expect_true "L4 a paused review after a successful one removes the stale verdict" bash -c '! test -e loop/out/verdicts/r.md'
 
 new_repo; STUB_MODE=limit-then-more expect_code 1 "L21 an event after the result event is read as ended without a result"
 expect_true "L21 no pause when the 429 result is not the stream's last event" bash -c '! test -e loop/out/PAUSED'
 expect_true "L21 the trailing event is reported as ended without a result" grep -q 'agent ended without a result' err
+
+new_repo; STUB_MODE=retry-429-then-ok expect_code 0 "L21 a non-final 429 event before a successful result never pauses"
+expect_true "L21 no PAUSED from a non-final 429 retry event" bash -c '! test -e loop/out/PAUSED'
 
 new_repo; STUB_MODE=ok-quotes-limit expect_code 0 "L4 a successful result that quotes the limit-phrase case never pauses"
 expect_true "L4 no PAUSED from a successful result quoting the limit-phrase case" bash -c '! test -e loop/out/PAUSED'
 
 new_repo; STUB_MODE=limit-text expect_code 75 "L4 an error result naming the limit-phrase case without a 429 status pauses"
 expect_true "L4 PAUSED written for the limit-phrase case" test -e loop/out/PAUSED
+
+new_repo; STUB_MODE=error-no-limit expect_code 1 "L4 an error result with no limit phrase and no 429 status fails the build"
+expect_true "L4 no PAUSED from a plain error result" bash -c '! test -e loop/out/PAUSED'
+expect_true "L21 no patch is written for a plain error result" bash -c '! test -e loop/out/patches/t.patch'
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

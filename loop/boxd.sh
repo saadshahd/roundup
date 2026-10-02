@@ -276,10 +276,12 @@ review() {
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" verdict="$OUT/verdicts/$name.md" base agent_rc=0 last
   base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   require_claude
+  # A result file is always from the latest run: most non-success exits below (no-output, timeout, a pause) leave
+  # run_agent through `exit`, never back to this function, so an earlier run's stale verdict can only be cleared here.
+  rm -f "$verdict"
   provision "$name" "$base" "$ref" "$prompt"
   run_agent "${BOXD_MODEL:-opus}" "$stream" || agent_rc=$?
-  # A run with no final result event writes no verdict; an earlier run's verdict would misreport this one as done.
-  if [ "$agent_rc" -eq 2 ]; then rm -f "$verdict"; exit 1; fi
+  [ "$agent_rc" -ne 2 ] || exit 1
   last=$(tail -n 1 "$stream")
   jq -r .result <<<"$last" >"$verdict"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
@@ -290,11 +292,12 @@ build() {
   validate_args "$name" "$prompt"
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" patch="$OUT/patches/$name.patch" partial="$OUT/patches/$name.partial.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log" agent_rc=0 check_rc=0 last
   require_claude
+  # A result file is always from the latest run: most non-success exits below (no-output, timeout, a pause) leave
+  # run_agent through `exit`, never back to this function, so an earlier run's stale patch can only be cleared here.
+  rm -f "$patch" "$partial"
   provision "$name" HEAD HEAD "$prompt"
   run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
-  # No final result event means no check and no patch; an earlier run's patch would misreport this one as done.
   if [ "$agent_rc" -eq 2 ]; then
-    rm -f "$patch"
     boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached' </dev/null >"$partial" || true
     exit 1
   fi
@@ -304,7 +307,6 @@ build() {
   ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
   [ "$check_rc" -eq 0 ] || exit "$check_rc"
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
-  rm -f "$partial"
   last=$(tail -n 1 "$stream")
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
 }
