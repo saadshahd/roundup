@@ -184,24 +184,44 @@ await_reboot() {
   return 3
 }
 
-# Put <ref> in ~/roundup on the VM as a git repo: tag `base` is <base-ref>'s tree, HEAD is <ref>'s tree. A non-empty
-# <prompt> file is copied to /tmp/prompt.md.
+# Put <ref> in ~/roundup on the VM as a git repo: tag `base` is <base-ref>, HEAD is <ref>. A non-empty <prompt>
+# file is copied to /tmp/prompt.md. A commit ref gets its real history (L22): nothing is replayed or folded, so
+# a merge, a trailer and an empty commit all survive exactly as they are on the real branch. A tree ref (the
+# merged tree `check` provisions) has no history to carry, so it is just committed on top of base.
 upload_checkout() {
-  local base_ref=$1 ref=$2 prompt=$3
+  local name=$1 base_ref=$2 ref=$3 prompt=$4
+  [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
+  if [ "$(git cat-file -t --end-of-options "$ref")" = commit ]; then
+    upload_commit_checkout "$name" "$base_ref" "$ref"
+  else
+    upload_tree_checkout "$base_ref" "$ref"
+  fi
+}
+
+# A bundle's refs are named, not raw SHAs, so <name>-ref and <name>-base stand in for <ref> and <base_ref> only
+# long enough to build it, named per-run so parallel reviews (swarm) cannot race on the same temporary ref. The
+# VM fetches the bundle, checks out <ref>'s own commit and tags <base_ref>'s commit `base`: the checkout IS the
+# branch, with every commit's author, message and trailer exactly as the real branch has them.
+upload_commit_checkout() {
+  local name=$1 base_ref=$2 ref=$3 base_sha ref_sha
+  local ref_name="refs/boxd-review/$name-ref" base_name="refs/boxd-review/$name-base"
+  ref_sha=$(git rev-parse --verify --end-of-options "$ref")
+  base_sha=$(git rev-parse --verify --end-of-options "$base_ref")
+  git update-ref "$ref_name" "$ref_sha"
+  git update-ref "$base_name" "$base_sha"
+  git bundle create - "$ref_name" "$base_name" | boxd machine cp - "$VM:/tmp/r.bundle" >/dev/null
+  git update-ref -d "$ref_name"
+  git update-ref -d "$base_name"
+  boxd machine exec "$VM" -- "mkdir -p ~/roundup && cd ~/roundup && git init -q && git fetch -q /tmp/r.bundle '+refs/*:refs/bundle/*' && git checkout -q --detach $ref_sha && git tag base $base_sha" </dev/null
+}
+
+# A tree has no history: commit it on top of base, matching what `check` provisions for a merged PR tree.
+upload_tree_checkout() {
+  local base_ref=$1 ref=$2
   git archive --format=tar.gz --end-of-options "$base_ref" | boxd machine cp - "$VM:/tmp/base.tgz" >/dev/null
   git archive --format=tar.gz --end-of-options "$ref" | boxd machine cp - "$VM:/tmp/src.tgz" >/dev/null
-  [ -z "$prompt" ] || boxd machine cp "$prompt" "$VM:/tmp/prompt.md" >/dev/null </dev/null
-  # Replay the PR's own commits, so a Reviewer sees the real messages, authors and trailers. A series cannot carry a merge
-  # commit, so a range with one (or a series that does not apply) falls back to one `head` commit holding the ref's tree.
-  if [ -n "$(git rev-list --merges --end-of-options "$base_ref..$ref")" ]; then
-    echo "boxd.sh: $ref contains a merge commit; the checkout gets one commit named head instead of the PR's commits" >&2
-  else
-    git format-patch --stdout --binary --end-of-options "$base_ref..$ref" | boxd machine cp - "$VM:/tmp/series.mbox" >/dev/null
-  fi
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
-    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q --empty=keep /tmp/series.mbox ||
-      { git -c user.email=builder@roundup -c user.name=builder am --abort || { echo "boxd.sh: git am --abort failed" >&2; exit 1; }; echo "boxd.sh: the PR commits did not replay; the checkout gets one commit named head" >&2; }; } &&
     git rm -rqf . && tar xzf /tmp/src.tgz -C ~/roundup && git add -A >/dev/null &&
     { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
 }
@@ -219,7 +239,7 @@ provision() {
     else
       started=$SECONDS
       set +e
-      ( set -e; upload_checkout "$base_ref" "$ref" "$prompt" )
+      ( set -e; upload_checkout "$name" "$base_ref" "$ref" "$prompt" )
       rc=$?
       set -e
       if [ "$rc" -ne 0 ]; then
