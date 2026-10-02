@@ -46,7 +46,8 @@ impl Drop for Open {
 
 enum Phase {
     Closed,
-    Opening,
+    /// The Project reopened, if any (S5): what to fall back to if the Daemon fails to start.
+    Opening(Option<Project>),
     Open(Open),
     Exited(Project),
 }
@@ -69,7 +70,7 @@ impl AppState {
         match &*self.phase() {
             Phase::Open(open) => Some(open.project.clone()),
             Phase::Exited(project) => Some(project.clone()),
-            Phase::Closed | Phase::Opening => None,
+            Phase::Closed | Phase::Opening(_) => None,
         }
     }
 
@@ -78,11 +79,11 @@ impl AppState {
         app: &AppHandle<R>,
         path: &Path,
     ) -> Result<Project, RpcError> {
-        self.begin_opening()?;
+        self.begin_opening(path)?;
         match self.start_daemon(app, path).await {
             Ok(project) => Ok(project),
             Err(err) => {
-                *self.phase() = Phase::Closed;
+                self.fail_opening();
                 Err(err)
             }
         }
@@ -118,7 +119,7 @@ impl AppState {
                 }
                 Ok(())
             }
-            Phase::Closed | Phase::Opening | Phase::Exited(_) => {
+            Phase::Closed | Phase::Opening(_) | Phase::Exited(_) => {
                 pump.abort();
                 Err(RpcError::internal("the Daemon went away while subscribing"))
             }
@@ -136,17 +137,35 @@ impl AppState {
             .expect("the phase lock is never held across a panic")
     }
 
-    fn begin_opening(&self) -> Result<(), RpcError> {
+    /// A Project whose Daemon exited may reopen on the same path (S5); any other path, or any
+    /// path while a Daemon runs or is starting, is `CONFLICT` because the App holds one Project.
+    fn begin_opening(&self, path: &Path) -> Result<(), RpcError> {
         let mut phase = self.phase();
-        match *phase {
+        match &*phase {
             Phase::Closed => {
-                *phase = Phase::Opening;
+                *phase = Phase::Opening(None);
                 Ok(())
             }
-            Phase::Opening | Phase::Open(_) | Phase::Exited(_) => {
+            Phase::Exited(project) if project.path == path.display().to_string() => {
+                let project = project.clone();
+                *phase = Phase::Opening(Some(project));
+                Ok(())
+            }
+            Phase::Opening(_) | Phase::Open(_) | Phase::Exited(_) => {
                 Err(RpcError::conflict("a Project is already open"))
             }
         }
+    }
+
+    /// Reverts a failed open: back to `Closed` for a first open, back to `Exited` with the same
+    /// Project for a failed reopen, so the App still holds that one Project (S5) and is ready to
+    /// try again.
+    fn fail_opening(&self) {
+        let mut phase = self.phase();
+        let Phase::Opening(reopened) = &mut *phase else {
+            return;
+        };
+        *phase = reopened.take().map_or(Phase::Closed, Phase::Exited);
     }
 
     async fn start_daemon<R: Runtime>(
@@ -197,7 +216,7 @@ impl AppState {
         match &*self.phase() {
             Phase::Open(open) => Ok(Arc::clone(&open.client)),
             Phase::Exited(_) => Err(RpcError::internal("the Daemon has exited")),
-            Phase::Closed | Phase::Opening => Err(RpcError::conflict("no Project is open")),
+            Phase::Closed | Phase::Opening(_) => Err(RpcError::conflict("no Project is open")),
         }
     }
 

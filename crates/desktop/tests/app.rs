@@ -721,6 +721,187 @@ fn s1_a_project_path_ending_in_dotdot_is_named_after_the_directory_it_reaches() 
 }
 
 #[test]
+fn s5_reopening_with_the_same_path_starts_a_new_working_daemon() {
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    let reopened = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+
+    assert_eq!(
+        reopened,
+        json!({ "name": "my-project", "path": fx.project.display().to_string() })
+    );
+    let reply = invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "daemon.ping", "params": null }),
+    );
+    assert_eq!(reply, Ok(json!({ "pong": true })));
+}
+
+#[test]
+fn s5_subscribe_after_reopen_receives_the_new_daemons_events() {
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+    let (channel, received) = event_channel();
+    tauri::async_runtime::block_on(app.state::<AppState>().subscribe(channel)).unwrap();
+
+    tauri::async_runtime::block_on(async {
+        let client = rpc::Client::connect(&fx.real_daemon_socket())
+            .await
+            .unwrap();
+        client
+            .request("todo.create", json!({ "title": "after reopen" }))
+            .await
+            .unwrap();
+    });
+
+    let event = received.recv_timeout(WAIT).unwrap();
+    assert_eq!(event["name"], "todo.created");
+}
+
+#[test]
+fn s5_daemon_exited_fires_again_when_the_reopened_daemon_exits() {
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+
+    fx.release();
+
+    assert_eq!(exited.recv_timeout(WAIT).unwrap(), json!({ "code": 0 }));
+}
+
+#[test]
+fn s5_after_an_exit_a_different_path_is_conflict() {
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+    let other = fx.dir.path().join("other-project");
+    std::fs::create_dir(&other).unwrap();
+
+    let error = invoke(&webview, "open_project", path_arg(&other)).unwrap_err();
+
+    assert_eq!(error["code"], code::CONFLICT);
+}
+
+#[test]
+fn s5_a_failed_reopen_is_internal() {
+    let fx = Fixture::new(
+        "n_file='{dir}/n'\n\
+         n=$(( $(cat \"$n_file\" 2>/dev/null || echo 0) + 1 ))\n\
+         echo \"$n\" > \"$n_file\"\n\
+         if [ \"$n\" -eq 1 ]; then\n\
+         {link}\n\
+         read go < '{dir}/go'\n\
+         exit 0\n\
+         else\n\
+         echo 'boom: reopen failed' >&2\n\
+         exit 3\n\
+         fi\n",
+    );
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    assert_eq!(error["code"], code::INTERNAL);
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("boom: reopen failed")
+    );
+}
+
+#[test]
+fn s5_after_a_failed_reopen_a_different_path_is_still_conflict() {
+    let fx = Fixture::new(
+        "n_file='{dir}/n'\n\
+         n=$(( $(cat \"$n_file\" 2>/dev/null || echo 0) + 1 ))\n\
+         echo \"$n\" > \"$n_file\"\n\
+         if [ \"$n\" -eq 1 ]; then\n\
+         {link}\n\
+         read go < '{dir}/go'\n\
+         exit 0\n\
+         else\n\
+         echo 'boom: reopen failed' >&2\n\
+         exit 3\n\
+         fi\n",
+    );
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+    let other = fx.dir.path().join("other-project");
+    std::fs::create_dir(&other).unwrap();
+
+    let error = invoke(&webview, "open_project", path_arg(&other)).unwrap_err();
+
+    assert_eq!(error["code"], code::CONFLICT);
+}
+
+#[test]
+fn s5_after_a_failed_reopen_the_same_path_can_be_retried() {
+    let fx = Fixture::new(
+        "n_file='{dir}/n'\n\
+         n=$(( $(cat \"$n_file\" 2>/dev/null || echo 0) + 1 ))\n\
+         echo \"$n\" > \"$n_file\"\n\
+         if [ \"$n\" -eq 1 ]; then\n\
+         {link}\n\
+         read go < '{dir}/go'\n\
+         exit 0\n\
+         elif [ \"$n\" -eq 2 ]; then\n\
+         echo 'boom: reopen failed' >&2\n\
+         exit 3\n\
+         else\n\
+         {link}\n\
+         exec cat\n\
+         fi\n",
+    );
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    let reopened = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+
+    assert_eq!(
+        reopened,
+        json!({ "name": "my-project", "path": fx.project.display().to_string() })
+    );
+}
+
+#[test]
 fn s3_when_the_app_exits_the_socket_file_it_owned_is_gone() {
     let fx = Fixture::new(SERVE_AND_WAIT);
     fx.serve_real_daemon();
