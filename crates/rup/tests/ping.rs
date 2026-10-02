@@ -1,3 +1,5 @@
+#[path = "support/ready.rs"]
+mod ready;
 mod support;
 
 use std::time::Duration;
@@ -6,7 +8,7 @@ use std::time::Duration;
 async fn ping_round_trips_through_the_daemon() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("rupd.sock");
-    let (daemon, listener) = support::bind(dir.path(), &socket);
+    let (daemon, listener) = support::open_and_bind(dir.path(), &socket);
     tokio::spawn(rupd::serve(listener, daemon));
 
     let client = rpc::Client::connect(&socket).await.unwrap();
@@ -32,7 +34,7 @@ async fn ping_wait_for_ping_rejects_a_listener_that_never_answers() {
     });
 
     let outcome =
-        tokio::time::timeout(Duration::from_millis(300), support::wait_for_ping(&socket)).await;
+        tokio::time::timeout(Duration::from_millis(300), ready::wait_for_ping(&socket)).await;
 
     assert!(
         outcome.is_err(),

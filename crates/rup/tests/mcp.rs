@@ -71,12 +71,11 @@ struct Project {
     daemon: tokio::task::JoinHandle<std::io::Result<()>>,
 }
 
-async fn start_daemon() -> Project {
+fn start_daemon() -> Project {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("rupd.sock");
-    let (daemon, listener) = support::bind(dir.path(), &socket);
+    let (daemon, listener) = support::open_and_bind(dir.path(), &socket);
     let daemon = tokio::spawn(rupd::serve(listener, daemon));
-    support::wait_for_ping(&socket).await;
     Project {
         _dir: dir,
         socket,
@@ -170,7 +169,7 @@ const M1_METHODS: [&str; 13] = [
 
 #[tokio::test]
 async fn m1_the_server_is_named_roundup() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
 
     let info = shim.client.peer_info().expect("initialized");
@@ -183,7 +182,7 @@ async fn m1_the_server_is_named_roundup() {
 
 #[tokio::test]
 async fn m1_offers_one_tool_per_method_and_no_others() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
 
     let tools = shim.client.list_all_tools().await.unwrap();
@@ -197,7 +196,7 @@ async fn m1_offers_one_tool_per_method_and_no_others() {
 
 #[tokio::test]
 async fn m1_input_schemas_are_the_contract_schemas() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
 
     let tools = shim.client.list_all_tools().await.unwrap();
@@ -273,7 +272,7 @@ async fn m1_list_tools_send_null_params_to_the_daemon() {
 
 #[tokio::test]
 async fn m2_a_created_todo_is_a_touch_by_the_calling_agent() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
 
     let result = shim.call("todo_create", json!({ "title": "x" })).await;
@@ -296,7 +295,7 @@ async fn m2_a_created_todo_is_a_touch_by_the_calling_agent() {
 
 #[tokio::test]
 async fn m2_a_daemon_error_is_a_tool_error_carrying_code_and_message() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let owner = client_as(&project.socket, agent("owner")).await;
     owner
         .request("pad.create", json!({ "name": "notes" }))
@@ -316,7 +315,7 @@ async fn m2_a_daemon_error_is_a_tool_error_carrying_code_and_message() {
 
 #[tokio::test]
 async fn m2_the_server_keeps_serving_after_a_daemon_error() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
     let refused = shim.call("todo_get", json!({ "id": 99 })).await;
     assert_eq!(refused.is_error, Some(true));
@@ -378,7 +377,7 @@ async fn m3_a_call_the_daemon_never_answers_exits_1_saying_it_may_have_been_appl
 
 #[tokio::test]
 async fn m3_stdout_carries_only_protocol_messages_up_to_the_exit() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let mut child = start_rup_mcp(&project.socket, "a1");
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
@@ -436,7 +435,7 @@ async fn m3_stdout_carries_only_protocol_messages_up_to_the_exit() {
 
 #[tokio::test]
 async fn m3_the_call_after_the_daemon_goes_away_makes_the_shim_exit_nonzero() {
-    let project = start_daemon().await;
+    let project = start_daemon();
     let mut shim = spawn_shim(&project.socket, "a1").await;
     project.daemon.abort();
     let _ = project.daemon.await;

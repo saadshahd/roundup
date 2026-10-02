@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use contracts::{ActorKind, EventData, Kind};
 use serde_json::json;
 
+#[path = "support/ready.rs"]
+mod ready;
 mod support;
 
 const SERVE_ENV: &str = "ROUNDUP_TEST_SERVE_DIR";
@@ -26,7 +28,7 @@ async fn serve_for_the_parent() {
         return;
     };
     let dir = Path::new(&dir);
-    let (daemon, listener) = support::bind(dir, &dir.join("rupd.sock"));
+    let (daemon, listener) = support::open_and_bind(dir, &dir.join("rupd.sock"));
     rupd::serve(listener, daemon).await.unwrap();
 }
 
@@ -52,7 +54,7 @@ impl Served {
             .spawn()
             .unwrap();
         let served = Self { dir, child };
-        support::wait_for_ping(&served.socket()).await;
+        ready::wait_for_ping(&served.socket()).await;
         served
     }
 
