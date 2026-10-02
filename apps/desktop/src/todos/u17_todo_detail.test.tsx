@@ -16,8 +16,8 @@ const shelf = () => [todo(4, { title: "migrate users" }), blocked(), todo(10, { 
 
 const drawer = () => screen.getByRole("complementary", { name: "drawer" });
 
-// A blocked Todo's own row and its blocker's "waits on #<id>" link can share the same accessible
-// name; the row is the candidate that is not that light "word" link.
+// A regex like /#4/ matches both a blocked Todo's own row ("· #4 migrate users") and its
+// blocker's "#4" link; the row is the candidate that is not that light "word" link.
 const rowButton = async (title: RegExp): Promise<HTMLElement> => {
   const row = (await screen.findAllByRole("button", { name: title })).find((candidate) => candidate.className !== "word");
 
@@ -368,5 +368,14 @@ describe("u17 Todo detail", () => {
 
     await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
     expect(reportError).toHaveBeenCalledWith("boom");
+  });
+
+  it("u17_rowButton_resolves_the_row_not_a_blockers_link_when_the_link_renders_first", async () => {
+    await mountTodos([todo(7, { title: "waits later", blocked: true, blockers: [9] }), todo(9, { title: "later todo" })]);
+    await screen.findByText(/^waits on/);
+
+    const row = await rowButton(/#9/);
+
+    expect(row.className).not.toBe("word");
   });
 });

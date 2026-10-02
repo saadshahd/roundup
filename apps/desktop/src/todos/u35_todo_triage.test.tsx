@@ -111,6 +111,17 @@ describe("u35 Todo triage without the Drawer", () => {
 
     expect((await screen.findByText(/cannot complete/)).textContent).toBe("✕ cannot complete");
     expect(screen.queryByText(/^waits on/)).toBeNull();
+  });
+
+  it("u35_a_failed_complete_still_calls_todo_complete_with_the_rows_id", async () => {
+    const { app } = await mountTodos(shelf());
+    await screen.findByText(/^waits on/);
+    app.handlers["todo.complete"] = () => Promise.reject(new RpcError(-32000, "cannot complete"));
+
+    fireEvent.mouseEnter(rowOf(5));
+    fireEvent.click(screen.getByText("complete"));
+    await screen.findByText(/cannot complete/);
+
     expect(callsTo(app, "todo.complete")).toEqual([{ method: "todo.complete", params: { id: 5 } }]);
   });
 
@@ -130,12 +141,14 @@ describe("u35 Todo triage without the Drawer", () => {
 
   it("u35_an_open_rows_text_at_rest_never_includes_complete", async () => {
     await mountTodos([todo(3)]);
+    await screen.findByText(/todo 3/);
 
-    expect(await screen.findByRole("button", { name: "· #3 todo 3" })).toBeTruthy();
+    expect(rowOf(3).textContent).toBe("· #3 todo 3");
+    expect(screen.queryByText("complete")).toBeNull();
   });
 
-  it("u35_a_successful_complete_leaves_the_row_unchanged_until_todo_updated_refetches_the_list", async () => {
-    const { app, store } = await mountTodos([todo(3)]);
+  it("u35_a_successful_complete_leaves_the_row_unchanged_until_todo_updated_arrives", async () => {
+    const { app } = await mountTodos([todo(3)]);
     await screen.findByText(/todo 3/);
 
     fireEvent.mouseEnter(rowOf(3));
@@ -146,6 +159,14 @@ describe("u35 Todo triage without the Drawer", () => {
       [{ method: "todo.list", params: null }],
       "· #3 todo 3",
     ]);
+  });
+
+  it("u35_todo_updated_after_a_successful_complete_refetches_the_list_and_removes_the_row", async () => {
+    const { app, store } = await mountTodos([todo(3)]);
+    await screen.findByText(/todo 3/);
+    fireEvent.mouseEnter(rowOf(3));
+    fireEvent.click(screen.getByText("complete"));
+    await waitFor(() => expect(callsTo(app, "todo.complete")).toHaveLength(1));
 
     store.todos = [todo(3, { done: true })];
     app.emit(todoEvent("todo.updated", todo(3, { done: true })));
