@@ -50,6 +50,9 @@ const PadBody = (props: {
     left.owner.kind === right.owner.kind &&
     left.owner.id === right.owner.id;
 
+  /** The DOM field is the draft's source of truth while mounted; `shown()` only covers the gap before the ref attaches. */
+  const currentDraft = () => textField?.value ?? shown();
+
   onCleanup(
     connected.events.subscribe((event) => {
       if (event.name === "pad.changed" && event.data.name === name) pendingActor = event.actor;
@@ -77,9 +80,7 @@ const PadBody = (props: {
 
         setPad(current);
 
-        const typed = textField?.value ?? shown();
-
-        if (typed === origin()) {
+        if (currentDraft() === origin()) {
           settle(current);
 
           return;
@@ -139,9 +140,7 @@ const PadBody = (props: {
 
   const keepMine = () =>
     act(async () => {
-      const typed = textField?.value ?? shown();
-
-      adopt(await connected.app.rpc("pad.write", { name, text: typed }));
+      adopt(await connected.app.rpc("pad.write", { name, text: currentDraft() }));
       // adopt alone won't clear this while a quick refocus keeps the field dirty.
       setConflictActor(null);
     });

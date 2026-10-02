@@ -7,9 +7,9 @@ import {
   openShelf,
   padOf,
   waitForReload,
+  writeAdopted,
 } from "./padsFixture";
 import { USER } from "../testing/nodes";
-import type { Event as DaemonEvent } from "@contracts/Event";
 import type { Pad } from "@contracts/pad/Pad";
 
 afterEach(cleanup);
@@ -56,6 +56,18 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
 
     expect(calls()).not.toContain("pad.write");
     expect(field.value).toBe("mine, edited");
+    expect(state.pads[0]?.text).toBe("mine\nagent line");
+  });
+
+  it("u36_typing_more_while_the_line_shows_keeps_the_line_and_blur_sends_no_write", async () => {
+    const { calls, field, state } = await openConflict();
+
+    fireEvent.input(field, { target: { value: "mine, edited more" } });
+    fireEvent.blur(field);
+
+    expect(screen.getByText("changed by auth-refactor")).toBeTruthy();
+    expect(calls()).not.toContain("pad.write");
+    expect(field.value).toBe("mine, edited more");
     expect(state.pads[0]?.text).toBe("mine\nagent line");
   });
 
@@ -108,6 +120,19 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
       expect(app.calls.some((call) => call.method === "pad.write")).toBe(true),
     );
     expect(screen.queryByText(/changed by/)).toBeNull();
+  });
+
+  it("u36_keep_mine_keeps_the_line_while_its_write_is_in_flight", async () => {
+    const { app } = await openConflict();
+    const reply = deferred<Pad>();
+    app.handlers["pad.write"] = () => reply.promise;
+
+    fireEvent.click(screen.getByText("keep mine"));
+
+    expect(screen.getByText("changed by auth-refactor")).toBeTruthy();
+
+    reply.resolve(padOf("release-checklist", USER, "mine, edited"));
+    await waitFor(() => expect(screen.queryByText(/changed by/)).toBeNull());
   });
 
   it("u36_keep_mine_never_overwrites_text_typed_after_a_quick_refocus", async () => {
@@ -347,7 +372,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     fireEvent.input(field, { target: { value: "newer" } });
     reply.resolve(padOf("release-checklist", USER, "new"));
     await reply.promise;
-    await new Promise((done) => setTimeout(done, 0));
+    await writeAdopted();
 
     fireEvent.input(field, { target: { value: "old" } });
 
@@ -371,7 +396,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     fireEvent.input(field, { target: { value: "newer" } });
     reply.resolve(padOf("release-checklist", USER, "new"));
     await reply.promise;
-    await new Promise((done) => setTimeout(done, 0));
+    await writeAdopted();
 
     fireEvent.input(field, { target: { value: "new" } });
     state.pads = [padOf("release-checklist", USER, "new plus agent")];
@@ -435,7 +460,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     fireEvent.input(field, { target: { value: "mine, edited" } });
     reply.resolve(padOf("release-checklist", USER, "mine, edited"));
     await reply.promise;
-    await new Promise((done) => setTimeout(done, 0));
+    await writeAdopted();
 
     state.pads = [padOf("release-checklist", USER, "mine")];
     app.emit({
@@ -471,16 +496,19 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     // shape is built the way a boundary value would arrive (round-tripped through JSON, as
     // the Daemon's own notifications do) rather than asserted straight from an object literal.
     // Fired in the same tick, before pad.list's reply resolves and the effect reads
-    // pendingActor: it proves the subscribe filter at PadDrawer.tsx:52 keys on event.name,
+    // pendingActor: it proves the subscribe filter at PadDrawer.tsx:58 keys on event.name,
     // not just the coincidence that data.name matches the Pad's name.
 
+    // JSON.parse returns `any`, so `impostor` carries no asserted type here; the contract's
+    // `rail.changed` variant has no `data`, and a cast would force a shape the type checker
+    // has already proven wrong.
     const impostor = JSON.parse(
       JSON.stringify({
         actor: USER,
         name: "rail.changed",
         data: { name: "release-checklist" },
       }),
-    ) as DaemonEvent;
+    );
 
     app.emit(impostor);
     await waitForReload(app);

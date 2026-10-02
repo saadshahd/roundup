@@ -103,3 +103,6 @@ export const waitForReload = (app: FakeApp, atLeast = 1) =>
       app.calls.filter((call) => call.method === "pad.list").length,
     ).toBeGreaterThan(atLeast),
   );
+
+/** A resolved `pad.write` reply reaches `write`'s `adopt` call (PadDrawer.tsx) one microtask after a test's own `await` on the reply: `rpc` (fakeApp.ts) is itself `async`, so unwrapping the handler's promise takes one more turn than the test's direct `await` on that same promise. A test awaits this, after resolving a deferred `pad.write` reply, before the next input that depends on `adopt` having run. */
+export const writeAdopted = () => Promise.resolve();
