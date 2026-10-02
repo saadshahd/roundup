@@ -125,12 +125,35 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
+  | U51 | quick switcher |
+  | U52 | first run: recent folders and the `claude` line |
+  | U53 | Todos list motion |
+  | U54 | keyboard help on `?` |
+  | U55 | diagnose the empty-Terminal notch |
+  | U56 | right-click menu: stop, remove |
+  | U57 | no pane header |
+  | U58 | an Agent's Pads under it |
+  | U59 | the terminal blends with the app |
+  | U60 | an Agent's Todos under it |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
+  | A14 | hold an early Signal until the Agent is registered |
+  | A15 | clean environment for every program the Daemon starts |
+  | A16 | `rail.remove` |
+  | T8 | `Todo.creator` |
+  | S6 | first-run facts in the App seam (`recent_projects`, `claude_binary`) |
   | C1 | dropped-call outcome (`scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
+  | L16 | `review` replays an empty approval commit |
+  | L17–L20 | loop hardening: run logs, swarm throttle, run events and retry, ref per prompt |
+  | L21 | streamed agent run |
+  | L22 | `review` keeps the branch's trailers across a merge |
+  | L23 | VM tools |
+  | L24 | agent search servers |
+  | L25 | design critic run |
+  | L26 | wake sources |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
