@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use contracts::{ActorKind, EventData, Kind};
 use serde_json::json;
 
+mod support;
+
 const SERVE_ENV: &str = "ROUNDUP_TEST_SERVE_DIR";
 /// Claude Code kills a command hook after this (the `timeout` roundup gives it in the settings).
 const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -24,11 +26,8 @@ async fn serve_for_the_parent() {
         return;
     };
     let dir = Path::new(&dir);
-    let daemon = rupd::Daemon::open(&dir.join(".roundup")).unwrap();
-    let listener = tokio::net::UnixListener::bind(dir.join("rupd.sock")).unwrap();
-    rupd::serve(listener, std::sync::Arc::new(daemon))
-        .await
-        .unwrap();
+    let (daemon, listener) = support::bind(dir, &dir.join("rupd.sock"));
+    rupd::serve(listener, daemon).await.unwrap();
 }
 
 /// A Daemon child process that is killed when this drops.
@@ -53,13 +52,8 @@ impl Served {
             .spawn()
             .unwrap();
         let served = Self { dir, child };
-        for _ in 0..500 {
-            if rpc::Client::connect(&served.socket()).await.is_ok() {
-                return served;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        panic!("the Daemon never listened");
+        support::wait_for_ping(&served.socket()).await;
+        served
     }
 
     fn socket(&self) -> std::path::PathBuf {
