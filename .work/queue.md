@@ -34,6 +34,19 @@ Status as of this file: the MVP slice is merged except the MVP gate, which QA an
 | #70 | `daemon-e2e` | D2–D4 |
 | #74 | `u30-chip`, jump to what needs you | U30 (was V1) |
 | #75 | `ux-spawn`, spawn shortcuts and pinned actions | U32 |
+| #67 | boxd.md corrections | docs |
+| #69 | X8 made deterministic | X8 |
+| #77, #92, #103 | loop: agent exec timeout 1800 s, the Reviewer VM replays the PR's commits, an empty approval commit replays | L5, L9, L16 |
+| #79, #82 | architect: next batches, wording follow-ups | docs |
+| #83 | `rpc`: a dropped call is `UNKNOWN_OUTCOME` | C1 |
+| #84, #104 | `agents`: refuse a symlinked `.roundup/agents`; its test compares canonical paths | A13 |
+| #85 | `audit-pads` coverage | P2, P3, P7 |
+| #86 | `u45-chip`: `⌘J` chord rules and the chip's look | U45, U48 |
+| #87 | `ux-todos`: Todo triage | U35 |
+| #93, #95, #98 | perf: keystroke probe, macOS baselines, R12 pinned | R11, R12, K1–K3 |
+| #96, #97, #99, #100, #101 | architect: U39 retired, R13 text, queue rows, R13 prompt, where a verdict is recorded | docs |
+| #105, #107 | architect: D4 deadline and Builder prompt, U33 open-field rules | D4, U33 |
+| closed | #90 (U39 hook, superseded by #93) and #91 (sweep-rupd-harness: its dedup grew the code, +52/−20, and net deletion was its only observer) | |
 
 ## Open
 
@@ -41,13 +54,14 @@ Every row points at a PR number where one exists; `gh pr list` is the truth when
 
 | PR | Item | Scenarios | Module | Observer | State |
 |---|---|---|---|---|---|
-| #67 | boxd.md corrections | docs | `docs` | reviewer approval | open |
-| #81 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in flight, rejected by a boxd Reviewer (verdict `/tmp/verdict-pr81.md`), being fixed: `↓` in the rename field cancels the rename and Enter on a row's collapse or promote button selects the row (both fixed by acting only on keys whose target is a row); six guards and the `Enter` shows-the-Terminal clause are untested, and the "selected row is tabbable" test selects the first row |
-| none yet | spawn with a prompt (V3's field; `⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass, and the U32 test case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green; the PR comes out of `loop/boxd.sh swarm` with no laptop worktree | #80, Claimed-by: boxd-agents 2026-10-01; in flight, rejected by a boxd Reviewer (verdict `/tmp/verdict-pr80.md`), being fixed: three clauses untested (the browser never sees the chord, focus goes to the pane, the field opens at the top of the Rail), two mutants survive (any key closes the field, trimming), and three comments restate code. The prompt is trimmed by the spec (decided), and `⌘N` is ignored while the field is open |
-| none yet | scrollback (V5) | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; `just check` green; QA RSS with ten Terminals printing 100 000 lines each | ready, ids reserved; no existing test narrowed |
-| none yet | Todo triage (V7) | U35 | `apps/desktop`: only `src/todos/**` | `u35_` tests pass; `just check` green; `u15_todo_list.test.tsx` unchanged and green | ready, ids reserved; row text at rest and the second line's text must stay exactly as U15 asserts |
-| none yet | Pad edits never overwrite another Actor (V8) | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; `just check` green; the u20 tests U36 names stay green and the one it replaces is replaced as U36 says | ready, ids reserved |
-| none yet | reopen, App half (V4) | S5 | `crates/desktop`: only `crates/desktop/**` | `s5_` Rust tests pass; `just check` green; `s1_a_second_open_project_is_conflict` and `s3_after_the_daemon_exits_rpc_fails_with_internal` keep passing | ready, ids reserved |
+| #80 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop` (`src/rail/spawn*`) | `u33_` tests pass; the U32 case "cmd and shift" is narrowed to keep `⇧⌘T` doing nothing; `just check` green | Claimed-by: boxd-agents 2026-10-01. Spec is on main (#107). Resumes: rebase, a `u33_` test that a successful spawn ends the field, reuse `paneHarness` |
+| #81 | Rail keyboard (V2 subset: up and down, a visible focus ring, Enter selects) | U31 | `apps/desktop` | `u31_` tests pass | in fix rounds after a boxd Reviewer's rejection: act only on keys whose target is a row (`↓` in the rename field, Enter on collapse or promote), and cover six untested guards |
+| #88 | Pad edits never overwrite another Actor | U36 | `apps/desktop`: only `src/pads/**` | `u36_` tests pass; the u20 tests U36 names stay green | in fix rounds |
+| #89 | reopen, App half | S5 | `crates/desktop` | `s5_` tests pass; `s1_` and `s3_` tests stay | in fix rounds |
+| #94 | scrollback | U34 | `apps/desktop`: only `src/terminal/**` | `u34_` tests pass; QA RSS with ten Terminals | in VM review (conflict with #93 resolved) |
+| #102 | load-aware perf comparison; amends rule 7 and `docs/perf.md` | R13 | `crates/perf`, `AGENTS.md` rule 7, `docs/perf.md` | `r13_` tests; the R1–R12 and K tests stay | in review |
+| #106 | loop hardening: unique run logs and check VM names, slot wait, retry before the agent, per-prompt ref | L17–L20 | `loop/boxd.sh` | `loop/boxd.test.sh` | in review |
+| none | D4 flake: one deadline, a readable failure, a state-based wait if a lost event is proven | D4 (a proven lost event: A14) | `crates/rup/tests/**` | the Builder reproduces first (about 30 runs, once under load); `just check` | ready: prompt `.work/prompts/d4-flake.md`; the Builder never edits the Daemon |
 | none | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
 ## Next batch
@@ -56,13 +70,8 @@ Text for every id is in `scenarios/` (U37–U41 in `ui.md`, A13 in `agents.md`, 
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
-| C1 | a dropped call is `UNKNOWN_OUTCOME`, not a failure | `crates/rpc/**`, plus every caller of `request` that matches `INTERNAL` for a drop, listed in the PR | `s3_after_the_daemon_exits_rpc_fails_with_internal` | now |
-| A13 | refuse a symlinked `.roundup/agents` | `crates/agents/**` | `a4_a_symlinked_config_is_written_through_and_stays_a_link`, `a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through` | now |
-| audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now |
-| audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests | now |
-| audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | now |
-| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**`; not `crates/perf/**` (audit-perf owns it) | every existing test unchanged | now; the Architect has not verified where the duplicates are, so the Builder first lists each duplicated block in the PR, and stops and reports if sharing needs a new crate |
-| R13 | load-aware perf comparison: `max_load_per_cpu` (OS to number, beside `baseline`) in `crates/perf/budgets.json`, skipped regression tests printed and listed in `target/perf.json`; also amends AGENTS.md rule 7 and docs/perf.md | `crates/perf/**`, `AGENTS.md` rule 7, `docs/perf.md` | the R1–R12 and K tests, and #95's baselines in `budgets.json` | after #95 merges (same crate, same files; #93 is merged); no Builder yet, the lead dispatches |
+| audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now; no PR yet |
+| audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | now; no PR yet |
 | U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
 | U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
 | U37 | reopen, webview half (V4) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` for everything before a reopen | after S5 and U34 (the centre screen sits near `src/terminal`) |
@@ -72,7 +81,6 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
-| U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
 | held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
@@ -108,13 +116,13 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U27–U28 | `ux-drawer` (focus on close, Esc, the Drawer edge) |
   | U29 | `ux-pads` (the Pad row) |
   | U30 | #74, jump to what needs you (merged) |
-  | U31 | Rail keyboard, builder-ux-drawer |
+  | U31 | #81, Rail keyboard |
   | U32 | #75, spawn shortcuts (merged) |
-  | U33 | spawn with a prompt, boxd-agents |
-  | S5 | reopen, App half, boxd-agents |
-  | U34 | scrollback, boxd-agents |
-  | U35 | Todo triage, boxd-agents |
-  | U36 | Pad edit safety, boxd-agents |
+  | U33 | #80, spawn with a prompt, boxd-agents |
+  | S5 | #89, reopen, App half |
+  | U34 | #94, scrollback |
+  | U35 | #87, Todo triage (merged) |
+  | U36 | #88, Pad edit safety |
   | U37 | reopen, webview half |
   | U38 | empty states |
   | U39 | retired: superseded by #93's build-time probe (`just perf-keystroke`, K1 to K3, R11); #90 closed. Rule 7's keystroke-to-render number is #93's real-window p95 in WKWebView, one probe and one pairing rule (the first render after the emulator parsed the typed character itself); no second in-app hook that pairs a keystroke with any later output, because it can end early on unrelated output and so bounds nothing. The Daemon-side cheap bound already exists as `just perf`'s write-to-output limit (R8) |
@@ -123,14 +131,18 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U42 | dropped: a false positive (a stuck key in the test driver), never an app defect |
   | U43 | dropped: not a bug (the automated double-click hit the Live line, not the name) |
   | U44, U46–U47, U49 | rail polish |
-  | U45, U48 | `⌘J` rules and the chip |
+  | U45, U48 | #86, `⌘J` rules and the chip (merged) |
   | U50 | Pad text fills its Drawer |
   | R11, R12 | #93, keystroke probe (merged) |
-  | R13 | load-aware perf comparison |
-  | A13 | symlinked agents directory |
-  | C1 | dropped-call outcome (`scenarios/rpc.md`) |
+  | R13 | #102, load-aware perf comparison |
+  | A13 | #84, #104, symlinked agents directory (merged) |
+  | C1 | #83, dropped-call outcome (merged; `scenarios/rpc.md`) |
   | L9–L14 | `boxd-swarm` (#73): L9 review, L10 input, L11 reboot, L12 swarm, L13 status, L14 kill; it also rewords L6 (secret) and L8 (cap) |
   | L15 | #66, `loop/boxd.sh check` and `bake` (merged) |
+  | L16 | #103, review replays an empty approval commit (merged) |
+  | L17–L20 | #106 loop hardening, boxd-agents: L17 run logs, L18 slot wait, L19 retry and events, L20 per-prompt ref |
+  | L21 | reserved: a streaming agent run for `loop/boxd.sh`, after #106 merges |
+  | A14 | reserved: only if the D4 Builder proves a lost status event on the signal path (A5) |
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
