@@ -128,13 +128,8 @@ async fn d3_provenance_names_the_agent_that_created_the_todo() {
 /// leave both exactly as they were; the user still reclaims the Pad by `pad.setOwner` (U18).
 #[tokio::test]
 async fn a16_removing_an_agent_leaves_its_pads_and_todos_untouched() {
-    let project = start(&[]);
+    let (project, agent, _todo) = agent_created_a_todo().await;
     let client = project.client().await;
-    let agent = project.spawn_agent(&client).await;
-    client
-        .request("todo.create", json!({"title": "split checkout"}))
-        .await
-        .unwrap();
     client
         .request("pad.create", json!({"name": "notes", "text": null}))
         .await
@@ -148,28 +143,34 @@ async fn a16_removing_an_agent_leaves_its_pads_and_todos_untouched() {
         .request("pad.setOwner", json!({"name": "notes", "owner": owner}))
         .await
         .unwrap();
+    let todos_before: Vec<Todo> =
+        serde_json::from_value(client.request("todo.list", json!(null)).await.unwrap()).unwrap();
+    let pads_before: Vec<Pad> =
+        serde_json::from_value(client.request("pad.list", json!(null)).await.unwrap()).unwrap();
 
     client
         .request("rail.remove", json!({"id": agent.id}))
         .await
         .unwrap();
 
-    let todos: Vec<Todo> =
+    let todos_after: Vec<Todo> =
         serde_json::from_value(client.request("todo.list", json!(null)).await.unwrap()).unwrap();
-    assert_eq!(todos.len(), 1);
-    assert_eq!(todos[0].title, "split checkout");
-    let pads: Vec<Pad> =
+    assert_eq!(todos_after, todos_before);
+    let pads_after: Vec<Pad> =
         serde_json::from_value(client.request("pad.list", json!(null)).await.unwrap()).unwrap();
-    assert_eq!(pads.len(), 1);
-    assert_eq!(pads[0].owner.id, agent.id);
+    assert_eq!(pads_after, pads_before);
 
-    client
-        .request(
-            "pad.setOwner",
-            json!({"name": "notes", "owner": Actor::user()}),
-        )
-        .await
-        .unwrap();
+    let reclaimed: Pad = serde_json::from_value(
+        client
+            .request(
+                "pad.setOwner",
+                json!({"name": "notes", "owner": Actor::user()}),
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reclaimed.owner, Actor::user());
 }
 
 /// How much memory the Daemon allows its own share of ten idle Agents (rule 7).

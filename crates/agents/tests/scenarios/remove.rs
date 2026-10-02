@@ -182,11 +182,35 @@ async fn a16_a_delete_failure_after_a_successful_stop_leaves_the_node_with_its_e
     let tree = f.tree().await;
     assert_eq!(tree.len(), 1);
     assert_eq!(tree[0].id, agent.id);
+    assert_eq!(status_of(&tree, &agent.id).kind, Kind::Done);
     drop(lock);
 
     f.remove(&agent.id).await.unwrap();
 
     assert!(f.tree().await.is_empty());
+}
+
+/// A16: a successful delete also drops the id from the Agents module's own run-tracking, not
+/// just the Rail, so a Signal for it goes back to `NOT_FOUND` instead of quietly reaching an
+/// Agent no longer on the Rail.
+#[tokio::test]
+async fn a16_a_removed_agents_id_no_longer_answers_agent_signal() {
+    let f = Fixture::running("sleep 30");
+    let agent = f.spawn(None, None).await.unwrap();
+
+    f.remove(&agent.id).await.unwrap();
+
+    let err = f
+        .call(
+            "agent.signal",
+            json!({
+                "id": agent.id,
+                "payload": json!({"hook_event_name": "PreToolUse", "tool_name": "Bash"}),
+            }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, code::NOT_FOUND);
 }
 
 #[tokio::test]

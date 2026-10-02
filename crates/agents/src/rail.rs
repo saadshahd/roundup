@@ -360,4 +360,29 @@ mod tests {
         let rest: Vec<_> = tree.iter().map(|n| (n.name.as_str(), n.order)).collect();
         assert_eq!(rest, [("a", 0), ("c", 1)]);
     }
+
+    /// A16: moving a Group's children and deleting the Group are one transaction. A trigger
+    /// that only rejects the DELETE (the UPDATEs `place` runs are untouched) tells this apart
+    /// from a mutant that commits the move before deleting in a second transaction: there, the
+    /// move would survive even though the delete failed.
+    #[test]
+    fn a16_a_groups_delete_failing_after_a_successful_move_rolls_both_back() {
+        let (_dir, mut rail) = rail();
+        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        let child = rail
+            .insert(NodeKind::Group, "child", Some(&group.id), None)
+            .unwrap();
+        rail.db
+            .execute_batch(
+                "CREATE TRIGGER forbid_delete BEFORE DELETE ON nodes
+                 BEGIN SELECT RAISE(ABORT, 'delete forbidden'); END;",
+            )
+            .unwrap();
+
+        let err = rail.remove(&group.id).unwrap_err();
+
+        assert_eq!(err.code, code::INTERNAL);
+        let found = rail.node(&child.id).unwrap();
+        assert_eq!(found.parent.as_deref(), Some(group.id.as_str()));
+    }
 }

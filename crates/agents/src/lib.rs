@@ -311,7 +311,9 @@ impl Shared {
     /// place, with the delete itself in one transaction (`Rail::remove`): a failed delete there
     /// leaves them still under it. A Meta-agent's children are already lifted by `stop` by the
     /// time the delete runs, so a failed delete after that just leaves the node `done` on the
-    /// Rail with no children of its own left to lose.
+    /// Rail with no children of its own left to lose. A successful delete also drops `id` from
+    /// `runs`, so a removed Agent's Slot does not sit there forever and a later `agent.signal`
+    /// for it is `NOT_FOUND` again, instead of quietly applying to a node no longer on the Rail.
     async fn remove(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
         let node = self.rail().node(id)?;
         if node.kind == NodeKind::Agent || node.meta {
@@ -322,6 +324,7 @@ impl Shared {
             kill_or_already_gone(&*self.kill, terminal_id).await?;
         }
         self.rail().remove(id)?;
+        self.runs().remove(id);
         self.bus.emit(actor, EventData::RailChanged);
         Ok(())
     }
@@ -411,9 +414,13 @@ async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>)
             () = sleep_until(tick.unwrap_or_else(Instant::now)), if tick.is_some() => Observation::Tick,
         };
         let exited = matches!(observation, Observation::Exit { .. });
-        let tick_at = shared
-            .observe(Actor::daemon(), &id, observation)
-            .expect(REGISTERED);
+        let tick_at = match shared.observe(Actor::daemon(), &id, observation) {
+            Ok(tick_at) => tick_at,
+            // `rail.remove` evicts `id` from `runs` once it deletes the node (A16); an Exit
+            // already in flight when that happened has nothing left to watch.
+            Err(err) if err.code == code::NOT_FOUND => return,
+            Err(err) => panic!("{REGISTERED}: {err}"),
+        };
         if exited {
             return;
         }
@@ -1146,5 +1153,93 @@ mod tests {
         let tree = shared.rail().tree().unwrap();
         let child_node = tree.iter().find(|n| n.id == child).unwrap();
         assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    }
+
+    /// A plain Terminal node, with no watcher, for a test that drives `remove` directly.
+    fn terminal_node(shared: &Shared, parent: Option<&str>) -> String {
+        shared
+            .rail()
+            .insert(NodeKind::Terminal, "t", parent, Some("1"))
+            .unwrap()
+            .id
+    }
+
+    #[tokio::test]
+    async fn a16_a_failed_kill_of_a_terminal_returns_the_error_and_deletes_nothing() {
+        let shared = shared_with_a_failing_kill();
+        let id = terminal_node(&shared, None);
+
+        let err = shared.remove(Actor::daemon(), &id).await.unwrap_err();
+
+        assert_eq!(err.code, rpc::code::INTERNAL);
+        assert_eq!(shared.rail().tree().unwrap().len(), 1);
+    }
+
+    /// A Terminal kill that fails once, then succeeds, so a test can retry a stop that failed.
+    struct FlakyKill(std::sync::atomic::AtomicBool);
+
+    #[async_trait]
+    impl KillsTerminals for FlakyKill {
+        async fn kill(&self, _id: &str) -> Result<(), rpc::RpcError> {
+            if self.0.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(rpc::RpcError::internal("the kill failed"))
+            }
+        }
+    }
+
+    /// `Shared` wired like `shared_with_a_failing_kill`, but its kill succeeds from the second
+    /// call on, so a retried `remove` can succeed.
+    fn shared_with_a_flaky_kill() -> (tempfile::TempDir, Arc<Shared>) {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Bus::new();
+        let shared = Arc::new(Shared {
+            rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
+            runs: Mutex::new(HashMap::new()),
+            bus: bus.clone(),
+            terminals: Arc::new(Terminals::open(dir.path(), bus).unwrap()),
+            kill: Arc::new(FlakyKill(std::sync::atomic::AtomicBool::new(false))),
+            clock: Arc::new(|| 0),
+            opened: 0,
+        });
+        (dir, shared)
+    }
+
+    /// The Status a failed stop leaves (`done`, from `agent.stop`'s own Stopped observation, set
+    /// before the kill that then fails) is exactly what lets a second `rail.remove` retry and
+    /// succeed.
+    #[tokio::test]
+    async fn a16_a_failed_stops_done_status_lets_a_second_remove_retry_and_succeed() {
+        let (_dir, shared) = shared_with_a_flaky_kill();
+        let id = running_agent(&shared, None);
+
+        let err = shared.remove(Actor::daemon(), &id).await.unwrap_err();
+
+        assert_eq!(err.code, rpc::code::INTERNAL);
+        let node = shared.present(shared.rail().node(&id).unwrap());
+        assert_eq!(node.status.unwrap().kind, Kind::Done);
+
+        shared.remove(Actor::daemon(), &id).await.unwrap();
+
+        assert!(shared.rail().tree().unwrap().is_empty());
+    }
+
+    /// `remove`'s eviction of `id` from `runs` can race a Terminal exit already in flight: the
+    /// watcher must end quietly, not panic through `REGISTERED`'s `.expect`.
+    #[tokio::test(start_paused = true)]
+    async fn a16_a_terminal_exit_after_its_id_is_evicted_from_runs_does_not_panic_the_watcher() {
+        let w = Watched::start();
+        w.shared.runs().remove("1");
+
+        w.send(EventData::TerminalExited(ExitedEvent {
+            id: "1".into(),
+            code: Some(0),
+        }));
+
+        tokio::time::timeout(PATIENCE, w.watcher)
+            .await
+            .expect("the watch ends")
+            .unwrap();
     }
 }
