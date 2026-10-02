@@ -35,10 +35,10 @@ struct Args {
     out: PathBuf,
 }
 
-/// Starts the Terminal's program: a raw tty, a `ready` line, then `cat`, so each typed byte comes back only through the program.
 /// The run opens a window over the user's screen and types into it; it starts only when this is `1`, set by someone the user asked to run it.
 const ALLOW_WINDOW: &str = "ROUNDUP_ALLOW_WINDOW";
 
+/// Starts the Terminal's program: a raw tty, a `ready` line, then `cat`, so each typed byte comes back only through the program.
 const SHELL: &str = "#!/bin/sh\nstty raw -echo\necho ready\nexec cat\n";
 
 async fn read_report(socket: &Path) -> io::Result<Value> {
