@@ -38,6 +38,10 @@ pub enum Observation {
     Stopped,
     /// The Agent's program ended. `None` when it was killed by a signal.
     Exit { code: Option<i32> },
+    /// The user's `decision.answer` reached the hook (`scenarios/decisions.md` H9).
+    Answered,
+    /// The hook's own side closed its connection with no later Signal (H7(b), H9).
+    Dismissed,
 }
 
 /// Turns one vendor's program into an Agent's Status. It emits `error`, `needs-you`, `working`,
