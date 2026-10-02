@@ -16,6 +16,13 @@
   background: rgba(0, 0, 0, 0.05);
 }
 
+.rail-row:focus {
+  outline-style: solid;
+  outline-width: 2px;
+  outline-color: var(--text);
+  outline-offset: -2px;
+}
+
 .rail-row .line {
   display: flex;
   gap: 8px;
@@ -40,6 +47,31 @@
   flex: 1;
   min-width: 0;
   font: inherit;
+}
+
+.spawn-prompt-field {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  padding: 4px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--lightest);
+}
+
+.spawn-prompt-field:hover {
+  background: var(--lightest);
+}
+
+.spawn-prompt-field:active {
+  background: var(--light);
+}
+
+.spawn-prompt-field:focus {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
 
 .rail-tree {

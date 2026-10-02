@@ -1,7 +1,9 @@
 mod common;
+mod held_signal;
 mod naming;
 mod promote;
 mod rail;
+mod remove;
 mod signal;
 mod spawn;
 mod terminal_node;

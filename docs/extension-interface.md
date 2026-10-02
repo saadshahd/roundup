@@ -45,7 +45,7 @@ Note on `agent.status`: the glyph is the most urgent Kind. Hooks add labels and 
 
 ## Bus
 
-Typed Messages `{from: Actor, to: Actor|Group|Topic, kind, body, replyTo}`. Subscriptions are by event (`todo.unblocked`, `agent.idle`, `pad.changed`), never by clock. Hooks never start a turn; delivery is a queued prompt the Agent consumes at its next safe point. Anything addressed to the user pre-fills and never submits.
+Typed Messages `{from: Actor, to: Actor, kind, body, replyTo}`. Subscriptions are by event (`todo.unblocked`, `agent.idle`, `pad.changed`), never by clock. Hooks never start a turn; delivery is a queued prompt the Agent consumes at its next safe point. Anything addressed to the user pre-fills and never submits.
 
 ## Meta-agents
 

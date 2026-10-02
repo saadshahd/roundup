@@ -3,6 +3,7 @@
 set -euo pipefail
 
 script="$(cd "$(dirname "$0")" && pwd)/boxd.sh"
+rules_script="$(cd "$(dirname "$0")" && pwd)/rules.sh"
 failures=0
 
 new_repo() {
@@ -13,6 +14,7 @@ new_repo() {
   git config user.name t
   mkdir loop bin
   cp "$script" loop/boxd.sh
+  cp "$rules_script" loop/rules.sh
   echo x >f
   git add -A
   git commit -qm base
@@ -44,7 +46,7 @@ case "$1 $2" in
       *" -- true")
         echo x >>"$STUB_DIR/trues"
         [ "$(wc -l <"$STUB_DIR/trues")" -gt "${STUB_NOANSWER:-0}" ] || exit 1 ;;
-      *"tar xzf /tmp/base.tgz"*)
+      *"tar xzf /tmp/base.tgz"* | *"git fetch -q /tmp/r.bundle"*)
         echo x >>"$STUB_DIR/tars"
         if [ "$(wc -l <"$STUB_DIR/tars")" -le "${STUB_TARFAIL:-0}" ]; then sleep "${STUB_TARFAIL_SLEEP:-0}"; exit 2; fi ;;
       *pgrep*)
@@ -62,7 +64,16 @@ case "$1 $2" in
       *"grep -rlF /tmp/warm"*) [ "${STUB_MODE:-}" != warm-dirty ] || exit 1 ;;
       *"grep -rIlE"*) [ "${STUB_MODE:-}" = bake-leak ] || exit 1 ;;
       *"just check"*)
-        case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac ;;
+        if [ -n "${STUB_FS_FIXTURE:-}" ]; then
+          cmd=${!#}
+          rewritten=$(printf '%s' "$cmd" | sed "s#/node_modules#$STUB_FS_FIXTURE/node_modules#g")
+          # If boxd.sh ever stops naming the stray path literally, the sed above silently no-ops: refuse rather
+          # than run an unrewritten "sudo rm -rf /node_modules" against the real filesystem.
+          [ "$rewritten" != "$cmd" ] || { echo "boxd stub: command has no /node_modules to rewrite into the fixture; refusing to run it unmodified" >&2; exit 1; }
+          HOME="$STUB_FS_FIXTURE/home" PATH="$STUB_FS_FIXTURE/bin:$PATH" FAKE_TSC_ROOT="$STUB_FS_FIXTURE" bash -c "$rewritten"
+        else
+          case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
+        fi ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -155,25 +166,50 @@ refused "L10 option-like name" review -x prompt.md
 refused "L10 option-like prompt file" build t -x
 refused "L10 option-like ref" review t prompt.md --output=x
 
-# The Reviewer's checkout: tag base is the merge-base, HEAD is the ref.
+# The Reviewer's checkout: tag base is the merge-base, HEAD is the ref, carried as a real git bundle (L22).
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
 loop/boxd.sh review r prompt.md feat >out 2>err
-expect_true "L9 base archive is the merge-base (no feature file)" bash -c '! tar tzf cp/base.tgz | grep -q "^g$"'
-expect_true "L9 src archive is the ref (has feature file)" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
-expect_log 'git tag base' "L9 base is tagged"
-expect_true "L9 the PR's commits are uploaded as a series" grep -q '^Subject: \[PATCH\] feat$' cp/series.mbox
-expect_log 'git .*am -q --empty=keep /tmp/series.mbox' "L9 the VM replays the PR's commits"
+expect_true "L9 the real history is bundled by name, not a raw SHA" bash -c "git bundle list-heads cp/r.bundle | grep -q 'refs/boxd-review/r-ref\$' && git bundle list-heads cp/r.bundle | grep -q 'refs/boxd-review/r-base\$'"
+expect_log 'git checkout -q --detach' "L9 the VM checks out the ref's own commit"
+expect_log 'git tag base' "L9 the VM tags base"
+expect_true "L9 no temporary bundle ref is left behind" test -z "$(git for-each-ref refs/boxd-review)"
 
-# Run the exact script the VM executes (taken from the stub's log) against a real repo in <work>, /tmp and ~ redirected.
-replay_on_vm() {
-  local w=$1
+# Run the exact script a given VM executed (taken from the stub's log) against a real repo in <work>, with
+# /tmp and ~ redirected, so the test proves what git on the VM actually does with the bundle it was given.
+replay_on_vm() { # replay_on_vm <work-dir> [vm-name, default ru-r]
+  local w=$1 vm=${2:-ru-r}
   mkdir -p "$w"
-  cp cp/base.tgz cp/src.tgz "$w"/
-  [ ! -e cp/series.mbox ] || cp cp/series.mbox "$w"/
-  awk '/^machine exec ru-r -- mkdir/ { p = 1; sub(/^machine exec ru-r -- /, "") } p { print } /-qm head;/ { p = 0 }' log | sed "s#/tmp/#$w/#g" >"$w/replay.sh"
+  cp "cp/by-vm/$vm/r.bundle" "$w/r.bundle" 2>/dev/null || cp cp/r.bundle "$w/r.bundle"
+  grep "^machine exec $vm -- mkdir -p ~/roundup" log | tail -1 | sed -e "s#^machine exec $vm -- ##" -e "s#/tmp/#$w/#g" >"$w/replay.sh"
   HOME=$w bash "$w/replay.sh" 2>"$w/replay.err"
 }
 vm_log() { git -C "$1/roundup" log --format="$2" base..HEAD; }
+
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+expect_true "L9 base's tree has no feature file" bash -c "! git -C '$dir/vm/roundup' cat-file -e base:g 2>/dev/null"
+expect_true "L9 the ref's tree lands at HEAD (has the feature file)" test -e "$dir/vm/roundup/g"
+
+# base has its own parent here, so a base that landed one commit off (tagging the merge-base's parent instead
+# of the merge-base itself) would be a different real commit, not just a tree that happens to look the same.
+new_repo; echo second >main2; git add main2; git commit -qm second; git update-ref refs/remotes/origin/main HEAD
+git switch -qc feat; echo y >g; git add g; git commit -qm feat
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+expect_true "L9 HEAD is pinned to the ref's own commit hash, not a replay" test "$(git -C "$dir/vm/roundup" rev-parse HEAD)" = "$(git rev-parse feat)"
+expect_true "L9 base is pinned to the real merge-base hash, not an ancestor of it" test "$(git -C "$dir/vm/roundup" rev-parse base)" = "$(git merge-base origin/main feat)"
+
+# A merge commit in the range is bundled too: it reaches the VM as a real commit with its own two parents,
+# not replayed as a non-merge series plus a stood-in resolution commit (L9's merge clause).
+new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+git switch -q main; echo z >h; git add h; git -c user.name=bob -c user.email=b@b commit -qm other
+git update-ref refs/remotes/origin/main main
+git switch -q feat; git merge -q --no-edit main
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+expect_true "L9 the ref's own merge commit lands at HEAD unchanged" test "$(git -C "$dir/vm/roundup" rev-parse HEAD)" = "$(git rev-parse feat)"
+expect_true "L9 a merge commit in the range keeps its own two parents" test "$(git -C "$dir/vm/roundup" rev-list --merges base..HEAD | wc -l | tr -d ' ')" = 1
 
 new_repo; git switch -qc feat; echo y >g; git add g
 git -c user.name=alice -c user.email=a@a commit -qm 'feat
@@ -184,30 +220,85 @@ replay_on_vm "$dir/vm"
 expect_true "L9 the replay keeps the author and the trailer" test "$(vm_log "$dir/vm" '%an|%s|%(trailers:key=Author-Agent,valueonly)')" = "alice|feat|alice-agent"
 expect_true "L9 the replay adds no synthetic head commit" test "$(vm_log "$dir/vm" '%s')" = feat
 
-# A branch that already ends in an empty approval commit replays whole: plain `git am` stops on an empty patch.
+# A branch that already ends in an empty approval commit replays whole: a bundle carries every real commit,
+# empty or not, so the empty commit needs no special handling.
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git commit -q --allow-empty -m 'review: approve'
 loop/boxd.sh review r prompt.md feat >out 2>err
-expect_true "L16 an empty approval commit is in the series" grep -q '^Subject: \[PATCH 2/2\] review: approve$' cp/series.mbox
 replay_on_vm "$dir/vm"
 expect_true "L16 the VM keeps the empty approval commit on top" test "$(vm_log "$dir/vm" '%s' | paste -sd, -)" = "review: approve,feat"
+expect_true "L16 the approval commit is still empty on the VM" test -z "$(git -C "$dir/vm/roundup" diff-tree --no-commit-id --name-only -r HEAD)"
 
-# A series cannot carry a merge commit: the range falls back to one `head` commit with the ref's tree.
-new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
-git switch -q main; echo z >h; git add h; git commit -qm other; git switch -q feat; git merge -q --no-edit main
-loop/boxd.sh review r prompt.md feat >out 2>err
-expect_true "L9 a range with a merge commit uploads no series" test ! -e cp/series.mbox
-expect_true "L9 the merge fallback says so" grep -q 'merge commit' err
-replay_on_vm "$dir/vm"
-expect_true "L9 a merge range gets one head commit holding the ref's tree" bash -c "test \"\$(git -C '$dir/vm/roundup' log --format=%s base..HEAD)\" = head && test -e '$dir/vm/roundup/g' && test -e '$dir/vm/roundup/h'"
+# L22: review carries the branch's real history, so a merge, its author and its trailers reach the VM exactly
+# as they are on the real branch, and loop/rules.sh trailers base gives the same verdict on both.
+norm_hashes() { sed -E 's/\b[0-9a-f]{7,40}\b/<hash>/g'; }
+# merge_trailers_repo [no-alice-trailer] [no-fixup]: the shape PR #113 itself has. feat (alice, Author-Agent
+# unless asked to omit it) and the current origin/main (bob, Author-Agent) both change the same line of f; feat
+# merges that advanced origin/main, the merge conflicts, and (unless no-fixup) dave's follow-up fixup commit (no
+# trailer of its own — the bug in finding 1) finishes it, then an empty approval commit (carol, Reviewed-by-Agent).
+# Bob's commit becomes the merge-base, so it is upstream of the range, same as any commit already on main before
+# the PR branched. Without the fixup commit the merge commit (excluded from trailers by --no-merges) is the only
+# place dave's resolution lands, so the range is clean: alice's trailer and carol's approval are all it checks.
+merge_trailers_repo() {
+  local alice_trailer=$'\n\nAuthor-Agent: alice-agent' skip_fixup=0 arg
+  for arg in "$@"; do
+    [ "$arg" != no-alice-trailer ] || alice_trailer=''
+    [ "$arg" != no-fixup ] || skip_fixup=1
+  done
+  git switch -qc feat
+  echo alice-version >f
+  git -c user.name=alice -c user.email=a@a commit -qam "feat$alice_trailer"
+  git switch -q main
+  echo bob-version >f
+  git -c user.name=bob -c user.email=b@b commit -qam 'other
 
-# A series that does not apply also falls back to the head commit.
-new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
+Author-Agent: bob-agent'
+  git update-ref refs/remotes/origin/main main
+  git switch -q feat
+  git merge -q --no-edit main || true
+  echo resolved >f
+  git add f
+  git -c user.name=dave -c user.email=d@d commit -q --no-edit
+  if [ "$skip_fixup" -eq 0 ]; then
+    echo more >>f
+    git -c user.name=dave -c user.email=d@d commit -qam 'fixup after merge'
+  fi
+  git commit -q --allow-empty -m 'review: approve
+
+Reviewed-by-Agent: carol-agent'
+  git tag base "$(git merge-base origin/main feat)"
+}
+
+new_repo; merge_trailers_repo
 loop/boxd.sh review r prompt.md feat >out 2>err
-printf 'From 0 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] x\n\n---\n nope | 1 +\n 1 file changed\n\ndiff --git a/nope b/nope\n--- a/nope\n+++ b/nope\n@@ -1 +1,2 @@\n a\n+b\n' >cp/series.mbox
 replay_on_vm "$dir/vm"
-expect_true "L9 a series that does not apply falls back to one head commit" test "$(vm_log "$dir/vm" '%s')" = head
-expect_true "L9 the fallback leaves no am in progress" test ! -e "$dir/vm/roundup/.git/rebase-apply"
-expect_true "L9 the fallback says so" grep -q 'did not replay' "$dir/vm/replay.err"
+expect_true "L22 the checkout tree still matches the ref" test "$(cat "$dir/vm/roundup/f")" = "$(git show feat:f)"
+expect_true "L22 the approval commit is still newest" test "$(vm_log "$dir/vm" '%s' | head -1)" = "review: approve"
+expect_true "L22 no head commit is invented" bash -c "! git -C '$dir/vm/roundup' log --format=%s base..HEAD | grep -qx head"
+real_rc=0; real_out=$(loop/rules.sh trailers base 2>&1) || real_rc=$?
+vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || vm_rc=$?
+expect_true "L22 the fixup commit's missing trailer is rejected on the real branch" test "$real_rc" != 0
+expect_true "L22 the VM's trailers exit code matches the real branch" test "$vm_rc" = "$real_rc"
+expect_true "L22 the VM's trailers findings match the real branch" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
+
+new_repo; merge_trailers_repo no-alice-trailer
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+real_rc=0; real_out=$(loop/rules.sh trailers base 2>&1) || real_rc=$?
+vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || vm_rc=$?
+expect_true "L22 two commits missing Author-Agent are rejected on the real branch" test "$real_rc" != 0
+expect_true "L22 the VM rejects it the same way" test "$vm_rc" = "$real_rc"
+expect_true "L22 the rejection matches once hashes are normalized" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
+
+# A conflicted merge is not itself a rejection: with no fixup commit on top, trailers passes on both sides, so a
+# checkout that always rejected a merge-shaped range the same way would not pass this one.
+new_repo; merge_trailers_repo no-fixup
+loop/boxd.sh review r prompt.md feat >out 2>err
+replay_on_vm "$dir/vm"
+real_rc=0; real_out=$(loop/rules.sh trailers base 2>&1) || real_rc=$?
+vm_rc=0; vm_out=$(cd "$dir/vm/roundup" && loop/rules.sh trailers base 2>&1) || vm_rc=$?
+expect_true "L22 a conflicted merge with no fixup commit passes trailers on the real branch" test "$real_rc" = 0
+expect_true "L22 the VM passes it the same way" test "$vm_rc" = "$real_rc"
+expect_true "L22 the pass matches once hashes are normalized" test "$(norm_hashes <<<"$vm_out")" = "$(norm_hashes <<<"$real_out")"
 expect_log '--auto-destroy-timeout 4200' "L5 VM has an auto-destroy timer"
 expect_log 'machine exec ru-r --timeout 1800 .*claude' "L5 the agent may run as long as the check"
 expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
@@ -215,7 +306,7 @@ expect_log 'machine reboot ru-r' "L11 VM is rebooted after restore"
 # L15: `check` merges on this machine and runs on an isolated VM. The origin lives beside the repo, not inside it.
 check_repo() {
   new_repo
-  git init -q --bare "$dir-origin.git"
+  git init -q -b main --bare "$dir-origin.git"
   git remote add origin "$dir-origin.git"
   git push -q origin HEAD:main HEAD:refs/pull/54/head HEAD:refs/heads/builder/x
   git fetch -q origin
@@ -267,6 +358,102 @@ expect_true "L15 a GitHub token in the check output is masked" bash -c '! grep -
 
 check_repo; got=0; STUB_MODE=no-secret run_check_ref 54 || got=$?
 expect_true "L15 check needs no Claude secret" test "$got" -eq 0
+
+# L40: the check must not depend on anything outside the checkout (see STRAY_NODE_MODULES in boxd.sh for why the stray
+# directory exists). The stub replays boxd.sh's own "just check" command for real (sed-rewriting the literal
+# /node_modules path into the fixture, like L9's replay_on_vm rewrites /tmp/) against a two-package pnpm workspace
+# fixture below a planted node_modules/@types/node. `pnpm`, `just` and `tsc` are faked on PATH so the ubuntu-latest
+# runner, which has none of the three installed, never needs them for real: the fake `pnpm` only links a package's
+# own node_modules/@types/node when its package.json declares the dependency, the fake `just` runs a justfile
+# recipe's body, and the fake `tsc` walks up to FAKE_TSC_ROOT exactly as the real ambient-@types lookup does.
+build_l40_fixture() { # build_l40_fixture <dir> <declared: yes|no>
+  local f=$1 declared=$2
+  mkdir -p "$f/home/roundup/packages/pkg-a/src" "$f/home/roundup/packages/types-node" "$f/node_modules/@types/node" "$f/bin" "$f/home/.cargo"
+  touch "$f/node_modules/@types/node/index.d.ts" "$f/home/.cargo/env"
+  printf '{"name":"fixture-workspace","private":true}\n' >"$f/home/roundup/package.json"
+  printf 'packages:\n  - "packages/*"\n' >"$f/home/roundup/pnpm-workspace.yaml"
+  printf 'check:\n    pnpm -r --if-present typecheck\n' >"$f/home/roundup/justfile"
+  if [ "$declared" = yes ]; then
+    printf '{"name":"pkg-a","private":true,"version":"0.0.0","scripts":{"typecheck":"tsc"},"devDependencies":{"@types/node":"workspace:*"}}\n' >"$f/home/roundup/packages/pkg-a/package.json"
+  else
+    printf '{"name":"pkg-a","private":true,"version":"0.0.0","scripts":{"typecheck":"tsc"}}\n' >"$f/home/roundup/packages/pkg-a/package.json"
+  fi
+  printf 'export function readEnv() { return process.env.X }\n' >"$f/home/roundup/packages/pkg-a/src/index.ts"
+  printf '{"name":"@types/node","private":true,"version":"0.0.0"}\n' >"$f/home/roundup/packages/types-node/package.json"
+  cat >"$f/bin/tsc" <<'TSC'
+#!/usr/bin/env bash
+set -euo pipefail
+dir=$PWD
+found=0
+while :; do
+  [ -d "$dir/node_modules/@types/node" ] && { found=1; break; }
+  [ "$dir" = "$FAKE_TSC_ROOT" ] && break
+  dir=$(dirname "$dir")
+done
+if [ "$found" -eq 0 ] && grep -q 'process\.' src/index.ts 2>/dev/null; then
+  echo "$PWD/src/index.ts(1,1): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node?" >&2
+  exit 2
+fi
+echo "tsc: no errors"
+TSC
+  chmod +x "$f/bin/tsc"
+  cat >"$f/bin/pnpm" <<'PNPM'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  install)
+    for pkg in packages/*/package.json; do
+      jq -e '.devDependencies["@types/node"] // empty' "$pkg" >/dev/null 2>&1 || continue
+      mkdir -p "$(dirname "$pkg")/node_modules/@types"
+      ln -sfn "$(cd "$(dirname "$pkg")/../types-node" && pwd)" "$(dirname "$pkg")/node_modules/@types/node"
+    done
+    ;;
+  -r)
+    shift
+    [ "${1:-}" != --if-present ] || shift
+    script=$1
+    for pkg in packages/*/package.json; do
+      cmd=$(jq -r --arg s "$script" '.scripts[$s] // empty' "$pkg")
+      [ -n "$cmd" ] || continue
+      (cd "$(dirname "$pkg")" && eval "$cmd")
+    done
+    ;;
+esac
+PNPM
+  chmod +x "$f/bin/pnpm"
+  cat >"$f/bin/just" <<'JUST'
+#!/usr/bin/env bash
+set -euo pipefail
+recipe=$1
+mapfile -t lines < <(awk -v r="$recipe:" '
+  $0 == r { found=1; next }
+  found && NF && $0 !~ /^[ \t]/ { found=0 }
+  found { sub(/^[ \t]+/, ""); print }
+' justfile)
+for line in "${lines[@]}"; do eval "$line"; done
+JUST
+  chmod +x "$f/bin/just"
+  # Root-owned, like the stray directory actually found on the VM: a fix that drops `sudo rm` would leave this in place.
+  # sudo and chown are only ever applied under $f, a mktemp'd directory, never the host's real /node_modules.
+  sudo chown -R root:root "$f/node_modules"
+}
+l40_repo() { check_repo; fixture="$dir/fixture"; build_l40_fixture "$fixture" "$1"; }
+
+l40_repo no
+got=0; STUB_FS_FIXTURE="$fixture" run_check_ref 54 || got=$?
+expect_true "L40 an undeclared package fails when the stray node_modules is removed" test "$got" -ne 0
+l40_log=$(ls loop/out/runs/check-54-*.log)
+expect_true "L40 the saved log holds the tsc error naming the package's file" grep -q 'packages/pkg-a/src/index.ts.*error TS2580' "$l40_log"
+
+l40_repo yes
+got=0; STUB_FS_FIXTURE="$fixture" run_check_ref 54 || got=$?
+expect_true "L40 the same tree passes once the package declares @types/node" test "$got" -eq 0
+
+# The stub's own safety net: if a command ever reaches it with no /node_modules to rewrite, it must refuse rather
+# than run an unrewritten "sudo rm -rf /node_modules" against the real filesystem.
+got=0; STUB_FS_FIXTURE="$fixture" boxd machine exec ru-x --timeout 1800 -- "cd ~/roundup && just check" >out 2>err || got=$?
+expect_true "L40 the stub refuses a command with no /node_modules to rewrite" test "$got" -eq 1
+expect_true "L40 the refusal names why" grep -q 'refusing to run it unmodified' err
 
 for bad_ref in 'x; rm -rf ~' -x --tags; do
   check_repo; got=0; run_check_ref "$bad_ref" || got=$?
@@ -356,13 +543,17 @@ expect_true "L19 the build check's deadline event is recorded with VM and phase"
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
 export BOXD_LOCK_WAIT=30
 loop/boxd.sh swarm review prompt.md@feat p2.md >out 2>err
-expect_true "L20 the prompt with @feat reviews feat" bash -c 'tar tzf cp/by-vm/ru-reviewer-1/src.tgz | grep -q "^g$"'
-expect_true "L20 the prompt without a ref reviews HEAD" bash -c '! tar tzf cp/by-vm/ru-reviewer-2/src.tgz | grep -q "^g$"'
+replay_on_vm "$dir/vm1" ru-reviewer-1
+replay_on_vm "$dir/vm2" ru-reviewer-2
+expect_true "L20 the prompt with @feat reviews feat" test -e "$dir/vm1/roundup/g"
+expect_true "L20 the prompt without a ref reviews HEAD" bash -c "! test -e '$dir/vm2/roundup/g'"
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
 export BOXD_LOCK_WAIT=30
 BOXD_REF=feat loop/boxd.sh swarm review prompt.md@main p2.md >out 2>err
-expect_true "L20 an explicit ref beats BOXD_REF" bash -c '! tar tzf cp/by-vm/ru-reviewer-1/src.tgz | grep -q "^g$"'
-expect_true "L20 a prompt without a ref falls back to BOXD_REF" bash -c 'tar tzf cp/by-vm/ru-reviewer-2/src.tgz | grep -q "^g$"'
+replay_on_vm "$dir/vm1" ru-reviewer-1
+replay_on_vm "$dir/vm2" ru-reviewer-2
+expect_true "L20 an explicit ref beats BOXD_REF" bash -c "! test -e '$dir/vm1/roundup/g'"
+expect_true "L20 a prompt without a ref falls back to BOXD_REF" test -e "$dir/vm2/roundup/g"
 new_repo; echo p >'a@b.md'; loop/boxd.sh swarm review 'a@b.md' >out 2>err || true
 expect_true "L20 an existing file with an @ in its name is a plain prompt" grep -qx 'ru-reviewer-1 ok' out
 new_repo; got=0; loop/boxd.sh swarm review prompt.md@nope >out 2>err || got=$?
@@ -398,7 +589,8 @@ if grep -q 'machine new' log; then echo "FAIL: L12 a VM was made before the bad 
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main
 BOXD_REF=feat loop/boxd.sh swarm review prompt.md >out 2>err
 expect_log 'machine new ru-reviewer-1 ' "L12 swarm review names ru-reviewer-<n>"
-expect_true "L12 swarm review checks out BOXD_REF" bash -c 'tar tzf cp/src.tgz | grep -q "^g$"'
+replay_on_vm "$dir/vm" ru-reviewer-1
+expect_true "L12 swarm review checks out BOXD_REF" test -e "$dir/vm/roundup/g"
 
 refused "L12 swarm with an unknown role" swarm nope prompt.md
 refused "L12 swarm with no prompt files" swarm build

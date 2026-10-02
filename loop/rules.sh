@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md rules 1, 3 and 6. Usage: loop/rules.sh size|trailers|vocab [base-ref]
+# Machine checks for AGENTS.md rules 1, 3, 6 and 8. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir>
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
+caller_dir=$PWD
 cd "$(dirname "$0")/.."
 
 base=${2:-origin/main}
@@ -116,9 +117,53 @@ vocab() {
   return "$bad"
 }
 
+visual_check_ids="D1 D2 D3 D4 D5 D6 D7 D8 D9 D10"
+
+# A directory argument names a path from where the script was run, not from the repo root it moves to.
+caller_path() { (cd "$caller_dir" && cd "$1" 2>/dev/null && pwd); }
+
+checks_files() { (cd "$1" && find . -name '*.checks.json' | sed 's|^\./||'); }
+
+# The status of check $2 in checks file $1. Anything but pass or fail is an error, never a pass.
+check_status() {
+  local status
+  status=$(jq -r --arg id "$2" '.[$id].status // "missing"' "$1") || { echo "delta: $1 is not JSON" >&2; return 2; }
+  case $status in
+    pass | fail) echo "$status" ;;
+    *) echo "delta: $1 check $2 has status '$status', not pass or fail" >&2; return 2 ;;
+  esac
+}
+
+# Rule 8: compares two builds' design checks (docs/design-system.md). Exit 1 when a check regressed, 2 when the input cannot be compared.
+delta() {
+  local base_dir head_dir files out="" regressed=0 file dir id was now verdict
+  base_dir=$(caller_path "$1") && head_dir=$(caller_path "$2") || { echo "delta: usage: delta <base-dir> <head-dir>, both directories" >&2; return 2; }
+  files=$(sort -u <(checks_files "$base_dir") <(checks_files "$head_dir"))
+  [ -n "$files" ] || { echo "delta: no .checks.json files in $base_dir or $head_dir" >&2; return 2; }
+  while read -r file; do
+    for dir in "$base_dir" "$head_dir"; do
+      [ -f "$dir/$file" ] || { echo "delta: $file is missing from $dir" >&2; return 2; }
+    done
+    for id in $visual_check_ids; do
+      was=$(check_status "$base_dir/$file" "$id") || return 2
+      now=$(check_status "$head_dir/$file" "$id") || return 2
+      case "$was $now" in
+        "fail pass") verdict=fixed ;;
+        "pass fail") verdict=regressed; regressed=1 ;;
+        "fail fail") verdict=still-failing ;;
+        *) verdict=still-passing ;;
+      esac
+      out+="${file%.checks.json} $id $verdict"$'\n'
+    done
+  done <<<"$files"
+  printf '%s' "$out"
+  return "$regressed"
+}
+
 case "${1:-}" in
   size) size ;;
   trailers) trailers ;;
   vocab) vocab ;;
+  delta) delta "${2:-}" "${3:-}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;
 esac

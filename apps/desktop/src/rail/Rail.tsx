@@ -4,9 +4,11 @@ import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { createRailDrag } from "./drag";
+import { adjacentId } from "./keys";
 import { ancestorsOf, layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
+import { SpawnPromptField } from "./SpawnPromptField";
 import "./styles.css";
 
 const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
@@ -20,6 +22,8 @@ export const Rail = () => {
   const [failure, setFailure] = createSignal<string | null>(null);
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
+  /** Gates `⌘N` in the chord handler and the `+ agent` click below, so an open field is never dropped mid-type (U33). */
+  const [composing, setComposing] = createSignal(false);
 
   const [dragged, setDragged] = createSignal<string | null>(null);
 
@@ -27,7 +31,11 @@ export const Rail = () => {
     layoutRail(rail.nodes, { collapsed: collapsed(), unfolded: unfolded(), now: now(), dragged: dragged() }),
   );
 
+  /** U38: the empty line waits for the first `rail.tree` (always answered before the Rail mounts) and yields to a fetch failure, which the centre shows instead. */
+  const isEmpty = createMemo(() => rail.nodes.length === 0 && rail.failure() === null);
+
   const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
+  const nodeIds = createMemo(() => nodeRows().map((row) => row.node.id));
   const layoutKey = createMemo(() => nodeRows().map((row) => `${row.key}@${row.depth}`).join());
   const keys = createMemo(() => rows().map((row) => row.key));
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])));
@@ -43,6 +51,34 @@ export const Rail = () => {
   };
 
   const [container, setContainer] = createSignal<HTMLElement>();
+  const [field, setField] = createSignal<HTMLInputElement>();
+
+  const rowElement = (id: string) => container()?.querySelector<HTMLElement>(`[data-id="${id}"]`);
+
+  const focusRow = (id: string) => rowElement(id)?.focus();
+
+  const tabbableId = createMemo(() => {
+    const selected = rail.selected();
+    const ids = nodeIds();
+
+    return ids.find((id) => id === selected) ?? ids[0] ?? null;
+  });
+
+  const moveFocus = (current: string, direction: 1 | -1) => focusRow(adjacentId(nodeIds(), current, direction));
+
+  const onRailKeyDown = (press: KeyboardEvent) => {
+    const focusedId = press.target instanceof HTMLElement ? press.target.dataset.id : undefined;
+
+    if (focusedId === undefined) return;
+
+    if (press.key === "ArrowDown" || press.key === "ArrowUp") {
+      press.preventDefault();
+      moveFocus(focusedId, press.key === "ArrowDown" ? 1 : -1);
+    } else if (press.key === "Enter") {
+      press.preventDefault();
+      rail.select(focusedId);
+    }
+  };
 
   const drag = createRailDrag({
     container,
@@ -68,12 +104,15 @@ export const Rail = () => {
     return selected?.kind === "group" ? selected.id : null;
   };
 
-  const spawnAgent = () =>
+  const spawnAgentWith = (prompt: string | null) =>
     guarded(async () => {
-      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt: null, parent: parent() });
+      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt, parent: parent() });
 
       setWanted(spawned.id);
+      setComposing(false);
     });
+
+  const spawnAgent = () => spawnAgentWith(null);
 
   const spawnTerminal = () => guarded(() => app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() }));
 
@@ -89,13 +128,27 @@ export const Rail = () => {
     const clear = () => setFailure(null);
 
     const chord = (press: KeyboardEvent) => {
-      if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+      if (!press.metaKey || press.ctrlKey || press.altKey) return;
 
-      const spawn = { n: spawnAgent, t: spawnTerminal }[press.key.toLowerCase()];
+      const key = press.key.toLowerCase();
+
+      if (press.shiftKey) {
+        if (key !== "n") return;
+
+        press.preventDefault();
+
+        if (canSpawn()) setComposing(true);
+
+        return;
+      }
+
+      const spawn = { n: spawnAgent, t: spawnTerminal }[key];
 
       if (!spawn) return;
 
       press.preventDefault();
+
+      if (key === "n" && composing()) return;
 
       if (canSpawn()) spawn();
     };
@@ -116,7 +169,7 @@ export const Rail = () => {
       const above = new Set(untrack(() => ancestorsOf(rail.nodes, id)));
 
       setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
-      queueMicrotask(() => container()?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" }));
+      queueMicrotask(() => rowElement(id)?.scrollIntoView({ block: "nearest" }));
     }),
   );
 
@@ -139,7 +192,21 @@ export const Rail = () => {
         "--shift-ms": reducedMotion() ? "0ms" : "120ms",
       }}
     >
-      <div role="tree" aria-label="rail" aria-disabled={daemonExit() !== null ? true : undefined}>
+      <Show when={composing()}>
+        <SpawnPromptField
+          ref={setField}
+          onSubmit={(prompt) => {
+            if (canSpawn()) spawnAgentWith(prompt);
+          }}
+          onCancel={() => setComposing(false)}
+        />
+      </Show>
+      <div
+        role="tree"
+        aria-label="rail"
+        aria-disabled={daemonExit() !== null ? true : undefined}
+        onKeyDown={onRailKeyDown}
+      >
         <For each={keys()}>
           {(key) => (
             <Show when={byKey().get(key)}>
@@ -164,6 +231,7 @@ export const Rail = () => {
                           row={view()}
                           exit={rail.exitOf(view().node)}
                           selected={rail.selected() === view().node.id}
+                          tabbable={tabbableId() === view().node.id}
                           now={now}
                           onSelect={() => rail.select(view().node.id)}
                           onToggle={() => setCollapsed((open) => toggled(open, view().node.id))}
@@ -198,6 +266,10 @@ export const Rail = () => {
           )}
         </For>
       </div>
+      <Show when={isEmpty()}>
+        <p>no agents yet</p>
+        <p>⌘N starts one</p>
+      </Show>
       <Show when={drag.state()}>
         {(dragging) => (
           <div
@@ -209,7 +281,19 @@ export const Rail = () => {
       </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <div class="rail-actions">
-        <button class="word" disabled={!canSpawn()} onClick={spawnAgent}>
+        <button
+          class="word"
+          disabled={!canSpawn()}
+          onClick={() => {
+            if (composing()) {
+              field()?.focus();
+
+              return;
+            }
+
+            spawnAgent();
+          }}
+        >
           + agent
         </button>
         <button
