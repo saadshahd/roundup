@@ -18,6 +18,9 @@ Items dispatched and not finished. A row names no PR number: find it with `gh pr
 | reopen, App half | S5 | `crates/desktop` | `s5_` tests pass; `s1_` and `s3_` tests stay |  |
 | load-aware perf comparison; amends rule 7 and `docs/perf.md` | R13 | `crates/perf`, `AGENTS.md` rule 7, `docs/perf.md` (`budgets.json`, `budget.rs`, `gate.rs`, `tests/r13.rs`); `audit-perf` waits for it | `r13_` tests; the R1–R12 and K tests stay |  |
 | D4 flake: one deadline, a readable failure, a state-based wait if a lost event is proven | D4 (a proven lost event: A14) | `crates/rup/tests/**` | the Builder reproduces first (about 30 runs, once under load); `just check` | Prompt `.work/prompts/d4-flake.md`; the Builder never edits the Daemon |
+| A14 fix: hold an early Signal until the Agent is registered | A14 (D4 stays the end-to-end proof) | `crates/agents/**` | `a14_` tests fail before the fix and pass after; `just check` | |
+| `Screens.isAtBottom` no longer depends on call order | U34 (no new text) | `apps/desktop/src/terminal/screens.ts` and its tests | a `u34_` test that fails when the order is wrong | |
+| `review` keeps the branch's trailers across a merge | L22 (text ships with its PR) | `loop/boxd.sh` and its tests | `loop/boxd.test.sh` | |
 | MVP gate | U2–U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | runs in parallel with UX work; not a blocker for it |
 
 ## Next batch
@@ -27,6 +30,9 @@ Text for an id is its heading in `scenarios/` (`grep -n '^\*\*<id>' scenarios/*.
 | Id | Item | Owns | Keeps green | Starts |
 |---|---|---|---|---|
 | audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | now |
+| U51 | quick switcher on `⌘K` | `apps/desktop/src/switcher/**`, one mount line in `src/App.tsx` | U30, U32, U12 tests | now |
+| S6 | first-run facts: `recent_projects`, `claude_status` (App seam, approved in the scenario) | `crates/desktop/**` | `s1_` to `s5_` tests | now |
+| U52 | first run lists recent folders and the `claude` line | `apps/desktop/src/app/FirstRun.tsx`, `src/app/seam.ts`, `src/testing/fakeApp.ts` | `u2_first_run.test.tsx` | needs S6 on main |
 | audit-perf | coverage audit: R1–R7 | `crates/perf/**` | existing tests | after R13 is on main (R13 owns `crates/perf` until then) |
 | U41 | Rail by keyboard, the rest (V2) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests | after U31 |
 | U40 | the Drawer takes and gives back focus (V9) | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests; narrows `u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing` | after U31 |
@@ -90,6 +96,9 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U44, U46–U47, U49 | rail polish |
   | U45, U48 | `⌘J` rules and the chip |
   | U50 | Pad text fills its Drawer |
+  | U51 | quick switcher |
+  | U52 | first run: recent folders and the `claude` line |
+  | S6 | first-run facts in the App seam |
   | R11, R12 | keystroke probe |
   | R13 | load-aware perf comparison |
   | A13 | symlinked agents directory |
@@ -99,7 +108,12 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | L16 | review replays an empty approval commit |
   | L17–L20 | loop hardening, boxd-agents: L17 run logs, L18 slot wait, L19 retry and events, L20 per-prompt ref |
   | L21 | reserved: a streaming agent run for `loop/boxd.sh`, after L17–L20 are on main |
+  | L22 | review keeps the branch's trailers across a merge |
+  | L23 | VM tools: the plugins, skills and hooks a VM agent has, by role |
+  | L24 | MCP search servers on VMs |
   | A14 | an early Signal is applied, not `NOT_FOUND` (`scenarios/agents.md`; the fix is its own Builder item in `crates/agents`) |
+
+  An id with no heading in `scenarios/` is reserved on purpose: its text arrives with its own PR, so a check that finds no heading for a reserved id is not a defect.
 
   Every Builder has ids; the Architect reserves more on request. `scenarios/ux.md` is gone: every candidate in it now has a `U` id above.
 - **Every item names scenarios and an observer.** An item with no scenario ids, or with no observer a Reviewer can run, is returned to the Architect. A new idea starts as a scenario in `scenarios/` (an Architect PR), then becomes a row here.
