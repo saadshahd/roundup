@@ -13,13 +13,25 @@ use std::time::{Duration, Instant};
 use contracts::{ActorKind, EventData, Kind};
 use serde_json::json;
 
-#[path = "support/ready.rs"]
-mod ready;
 mod support;
 
 const SERVE_ENV: &str = "ROUNDUP_TEST_SERVE_DIR";
 /// Claude Code kills a command hook after this (the `timeout` roundup gives it in the settings).
 const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long `Served::start` waits for the child rupd's socket to accept a connection.
+const READY_BOUND: Duration = Duration::from_secs(3);
+
+/// Wait until `socket` accepts a connection, bounded so a rupd that never comes up fails the test
+/// instead of hanging it.
+async fn wait_until_connectable(socket: &Path) {
+    tokio::time::timeout(READY_BOUND, async {
+        while rpc::Client::connect(socket).await.is_err() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("rupd never started listening");
+}
 
 /// Not a test: with `SERVE_ENV` set this process becomes a Daemon until it is killed.
 #[tokio::test]
@@ -54,7 +66,7 @@ impl Served {
             .spawn()
             .unwrap();
         let served = Self { dir, child };
-        ready::wait_for_ping(&served.socket()).await;
+        wait_until_connectable(&served.socket()).await;
         served
     }
 
@@ -227,4 +239,13 @@ fn a4_signal_with_the_wrong_number_of_arguments_exits_1_not_2() {
             "{args:?}"
         );
     }
+}
+
+#[tokio::test]
+#[should_panic(expected = "rupd never started listening")]
+async fn wait_until_connectable_gives_up_instead_of_hanging_when_nothing_binds_the_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("never-bound.sock");
+
+    wait_until_connectable(&socket).await;
 }
