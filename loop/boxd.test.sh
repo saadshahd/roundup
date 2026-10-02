@@ -750,6 +750,12 @@ expect_true "L21 no PAUSED from a non-final 429 retry event" bash -c '! test -e 
 new_repo; STUB_MODE=ok-quotes-limit expect_code 0 "L4 a successful result that quotes the limit-phrase case never pauses"
 expect_true "L4 no PAUSED from a successful result quoting the limit-phrase case" bash -c '! test -e loop/out/PAUSED'
 
+new_repo; got=0; STUB_MODE=ok-quotes-limit loop/boxd.sh review r prompt.md >out 2>err || got=$?
+expect_true "L21 a review whose result quotes the limit-phrase case exits 0" test "$got" -eq 0
+expect_true "L4 no PAUSED from a review quoting the limit-phrase case" bash -c '! test -e loop/out/PAUSED'
+phrase="usage"" limit and rate"" limit"
+expect_true "L21 the verdict still holds the result text when it quotes the limit-phrase case" grep -qF "mentions the $phrase case but succeeded" loop/out/verdicts/r.md
+
 new_repo; STUB_MODE=limit-text expect_code 75 "L4 an error result naming the limit-phrase case without a 429 status pauses"
 expect_true "L4 PAUSED written for the limit-phrase case" test -e loop/out/PAUSED
 

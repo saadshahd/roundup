@@ -296,8 +296,9 @@ review() {
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" verdict="$OUT/verdicts/$name.md" base agent_rc=0 last
   base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   require_claude
-  # A result file is always from the latest run: most non-success exits below (no-output, timeout, a pause) leave
-  # run_agent through `exit`, never back to this function, so an earlier run's stale verdict can only be cleared here.
+  # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
+  # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
+  # this function exits right after, so an earlier run's stale verdict can only be cleared here.
   rm -f "$verdict"
   provision "$name" "$base" "$ref" "$prompt"
   run_agent "${BOXD_MODEL:-opus}" "$stream" || agent_rc=$?
@@ -312,8 +313,9 @@ build() {
   validate_args "$name" "$prompt"
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" patch="$OUT/patches/$name.patch" partial="$OUT/patches/$name.partial.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log" agent_rc=0 check_rc=0 last
   require_claude
-  # A result file is always from the latest run: most non-success exits below (no-output, timeout, a pause) leave
-  # run_agent through `exit`, never back to this function, so an earlier run's stale patch can only be cleared here.
+  # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
+  # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
+  # this function exits after saving the partial patch below, so an earlier run's stale patch can only be cleared here.
   rm -f "$patch" "$partial"
   provision "$name" HEAD HEAD "$prompt"
   run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
