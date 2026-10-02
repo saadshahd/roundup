@@ -248,6 +248,6 @@ describe("u5 Drawer and last touch", () => {
     const [color, padding] = [getComputedStyle(close).color, getComputedStyle(panel).paddingRight];
     sheet.remove();
 
-    expect([close.classList.contains("word"), color, padding]).toEqual([true, "var(--light)", "72px"]);
+    expect([close.classList.contains("word"), color, padding]).toEqual([true, "var(--grey)", "72px"]);
   });
 });
