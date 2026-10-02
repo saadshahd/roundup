@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -9,18 +9,69 @@ import { createTodosState } from "./state";
 import { TodoDrawer } from "./TodoDrawer";
 import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
 
-const OpenRow = (props: { todo: Todo; known: ReadonlyMap<number, Todo>; onOpen: (todo: Todo) => void }) => {
+const OpenRow = (props: {
+  todo: Todo;
+  known: ReadonlyMap<number, Todo>;
+  onOpen: (todo: Todo) => void;
+  onComplete: (todo: Todo) => Promise<string | null>;
+}) => {
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
+  const [hovered, setHovered] = createSignal(false);
+  const [focused, setFocused] = createSignal(false);
+  const [failure, setFailure] = createSignal<string | null>(null);
+
+  const complete = async () => setFailure(await props.onComplete(props.todo));
+
+  // Matches U9's rule: a failure clears on the next click anywhere, not only inside its own row.
+  onMount(() => {
+    const clear = () => setFailure(null);
+
+    document.addEventListener("click", clear);
+    onCleanup(() => document.removeEventListener("click", clear));
+  });
 
   return (
-    <div>
-      <RowButton onClick={() => props.onOpen(props.todo)}>
-        <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
-      </RowButton>
-      <Show when={waitingOn().length > 0}>
-        <p class="light" style={{ "padding-left": "2ch" }}>
-          waits on {waitingOn().map((blocker) => `#${blocker.id}`).join(", ")}
-        </p>
+    <div
+      data-id={props.todo.id}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusIn={() => setFocused(true)}
+      onFocusOut={(event) => {
+        const next = event.relatedTarget;
+
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+
+        setFocused(false);
+      }}
+    >
+      <div style={{ display: "flex", "justify-content": "space-between", gap: "1ch" }}>
+        <RowButton onClick={() => props.onOpen(props.todo)}>
+          <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
+        </RowButton>
+        <Show when={hovered() || focused()}>
+          <button type="button" class="word" onClick={() => void complete()}>
+            complete
+          </button>
+        </Show>
+      </div>
+      <Show
+        when={failure()}
+        fallback={
+          <Show when={waitingOn().length > 0}>
+            <p class="light" style={{ "padding-left": "2ch" }}>
+              waits on <For each={waitingOn()}>{(blocker, index) => (
+                <>
+                  <Show when={index() > 0}>{", "}</Show>
+                  <button type="button" class="word" onClick={() => props.onOpen(blocker)}>
+                    #{blocker.id}
+                  </button>
+                </>
+              )}</For>
+            </p>
+          </Show>
+        }
+      >
+        {(message) => <ErrorLine message={message()} />}
       </Show>
     </div>
   );
@@ -47,6 +98,8 @@ export const Todos = () => {
   };
 
   const show = (todo: Todo) => connected.drawer.open(() => <TodoDrawer id={todo.id} todos={todos} />);
+
+  const complete = (todo: Todo) => failureOf(() => connected.app.rpc("todo.complete", { id: todo.id }));
 
   return (
     <section aria-label="todos">
@@ -76,7 +129,7 @@ export const Todos = () => {
       </Show>
       <For each={open()}>
         {(todo) => (
-          <OpenRow todo={todo} known={todos.byId()} onOpen={show} />
+          <OpenRow todo={todo} known={todos.byId()} onOpen={show} onComplete={complete} />
         )}
       </For>
       <Show when={done().length > 0}>

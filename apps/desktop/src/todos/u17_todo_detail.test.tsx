@@ -16,9 +16,19 @@ const shelf = () => [todo(4, { title: "migrate users" }), blocked(), todo(10, { 
 
 const drawer = () => screen.getByRole("complementary", { name: "drawer" });
 
+// A regex like /#4/ matches both a blocked Todo's own row ("· #4 migrate users") and its
+// blocker's "#4" link; the row is the candidate that is not that light "word" link.
+const rowButton = async (title: RegExp): Promise<HTMLElement> => {
+  const row = (await screen.findAllByRole("button", { name: title })).find((candidate) => candidate.className !== "word");
+
+  if (!row) throw new Error(`no row for ${title}`);
+
+  return row;
+};
+
 const openDrawerOf = async (title: RegExp, todos = shelf(), reducedMotion = true) => {
   const mounted = await mountTodos(todos, reducedMotion);
-  fireEvent.click(await screen.findByRole("button", { name: title }));
+  fireEvent.click(await rowButton(title));
   await within(drawer()).findByText("+ blocker");
 
   return mounted;
@@ -73,7 +83,7 @@ describe("u17 Todo detail", () => {
       { actor: { kind: "user", id: "you", parent: null }, verb: "wrote", item: "todo:5", at: new Date(2026, 0, 5, 13, 10).getTime() },
     ];
 
-    fireEvent.click(await screen.findByRole("button", { name: /#5/ }));
+    fireEvent.click(await rowButton(/#5/));
 
     expect((await within(drawer()).findByText(/^last/)).textContent).toBe("last  you wrote 13:10");
   });
@@ -258,7 +268,7 @@ describe("u17 Todo detail", () => {
     app.handlers["provenance.history"] = () => [
       { actor: USER, verb: "wrote", item: "todo:5", at: new Date(2026, 0, 5, 13, 10).getTime() },
     ];
-    fireEvent.click(await screen.findByRole("button", { name: /#5/ }));
+    fireEvent.click(await rowButton(/#5/));
 
     const last = await within(drawer()).findByText(/^last/);
 
@@ -314,7 +324,7 @@ describe("u17 Todo detail", () => {
     const { app } = await mountTodos(shelf());
     app.handlers["todo.get"] = () => Promise.reject(new RpcError(-32001, "gone"));
 
-    fireEvent.click(await screen.findByRole("button", { name: /#5/ }));
+    fireEvent.click(await rowButton(/#5/));
 
     await within(drawer()).findByText(/gone/);
     expect([within(drawer()).queryByText("complete"), within(drawer()).queryByText("delete")]).toEqual([null, null]);
@@ -358,5 +368,14 @@ describe("u17 Todo detail", () => {
 
     await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
     expect(reportError).toHaveBeenCalledWith("boom");
+  });
+
+  it("u17_rowButton_resolves_the_row_not_a_blockers_link_when_the_link_renders_first", async () => {
+    await mountTodos([todo(7, { title: "waits later", blocked: true, blockers: [9] }), todo(9, { title: "later todo" })]);
+    await screen.findByText(/^waits on/);
+
+    const row = await rowButton(/#9/);
+
+    expect(row.className).not.toBe("word");
   });
 });

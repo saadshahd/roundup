@@ -1,6 +1,7 @@
 import { createMemo, onCleanup, Show } from "solid-js";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount, nextAttention } from "./attention";
+import "./attentionChip.styles.css";
 
 /** `<n> need you` in the header, and `⌘J`: both select the next Agent that needs the user. */
 export const AttentionChip = () => {
@@ -14,8 +15,13 @@ export const AttentionChip = () => {
     if (next) rail.select(next.id);
   };
 
-  const onKey = (key: KeyboardEvent) => {
-    if (key.metaKey && key.key === "j") jump();
+  const onKey = (press: KeyboardEvent) => {
+    if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+
+    if (press.key.toLowerCase() !== "j") return;
+
+    press.preventDefault();
+    jump();
   };
 
   document.addEventListener("keydown", onKey);
@@ -25,7 +31,7 @@ export const AttentionChip = () => {
     <Show when={count() > 0}>
       <>
         {"   "}
-        <button class="word" onClick={jump}>{`${count()} need you`}</button>
+        <button class="word ink attention-chip" title="⌘J" onClick={jump}>{`${count()} need you`}</button>
       </>
     </Show>
   );
