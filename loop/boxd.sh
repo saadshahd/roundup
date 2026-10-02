@@ -173,7 +173,7 @@ upload_checkout() {
   fi
   boxd machine exec "$VM" -- 'mkdir -p ~/roundup && tar xzf /tmp/base.tgz -C ~/roundup && cd ~/roundup &&
     git init -q && git add -A >/dev/null && git -c user.email=builder@roundup -c user.name=builder commit -qm base && git tag base &&
-    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q /tmp/series.mbox ||
+    { [ ! -s /tmp/series.mbox ] || git -c user.email=builder@roundup -c user.name=builder am -q --empty=keep /tmp/series.mbox ||
       { git am --abort; echo "boxd.sh: the PR commits did not replay; the checkout gets one commit named head" >&2; }; } &&
     git rm -rqf . && tar xzf /tmp/src.tgz -C ~/roundup && git add -A >/dev/null &&
     { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm head; }' </dev/null
