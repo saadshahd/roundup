@@ -14,6 +14,7 @@ The App is the Tauri 2 shell in `crates/desktop` (ADR 0001). It starts a Daemon 
 | `subscribe` | `{channel}` (a Tauri `Channel`) | `null`; then every Daemon `Event` is sent on the channel, in the Daemon's order |
 | `recent_projects` | none | the absolute paths of recently opened Projects, most recent first (S6) |
 | `claude_binary` | none | `{path, version}` of the `claude` the App would run, or `null` (S6) |
+| `daemon_proof` | none | the `proof` string the App gave this Daemon, which `decision.answer` needs (H4); it never reaches an Agent |
 
 Every command fails with `{code, message}`, using the codes in `rpc::code`; an error from the Daemon passes through unchanged. When the Daemon ends while the App runs, the App emits the Tauri event `daemon-exited` with `{code: number | null}`.
 
