@@ -13,7 +13,21 @@ const expandedOf = (row: HTMLElement): boolean | null => {
   return value === null ? null : value === "true";
 };
 
-const rowElement = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-id="${id}"]`);
+/** The row right after `row` in Rail order, one level deeper: `→`'s first child (U41). A child folded into U8's
+ * `✓ n done` line is never it, because the Rail renders no row for it until the fold opens. */
+const firstVisibleChildOf = (row: HTMLElement): string | undefined => {
+  const next = row.nextElementSibling;
+
+  if (!(next instanceof HTMLElement) || next.dataset.id === undefined) return undefined;
+
+  const level = Number(row.getAttribute("aria-level"));
+  const nextLevel = Number(next.getAttribute("aria-level"));
+
+  return nextLevel > level ? next.dataset.id : undefined;
+};
+
+const rowElement = (id: string): HTMLElement | null =>
+  document.querySelector<HTMLElement>(`[role="tree"] [data-id="${id}"]`);
 
 const focusTabbableRow = (): void => document.querySelector<HTMLElement>('[role="tree"] [tabindex="0"]')?.focus();
 
@@ -29,7 +43,7 @@ export const Keys = () => {
 
     if (id === undefined) return;
 
-    const step = railStep(rail.nodes, id, direction, expandedOf(row));
+    const step = railStep(rail.nodes, id, direction, expandedOf(row), firstVisibleChildOf(row));
 
     if (step.kind === "collapse" || step.kind === "expand") {
       row.querySelector<HTMLElement>('button[aria-label="collapse"]')?.click();

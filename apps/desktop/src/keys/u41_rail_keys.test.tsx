@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, group } from "../testing/nodes";
+import { agent, group, metaAgent, MINUTE, NOW } from "../testing/nodes";
 import { rowOf } from "../rail/railFixture";
 import type { EmulatorFactory } from "../terminal/emulator";
 import { mountKeys } from "./keysFixture";
@@ -10,6 +10,30 @@ afterEach(cleanup);
 /** A terminal screen that is actually focusable, standing in for xterm's real helper textarea (as in `u31_rail_keyboard.test.tsx`). */
 const focusableEmulator = (): EmulatorFactory => () => {
   const field = document.createElement("textarea");
+
+  return {
+    write: () => {},
+    onInput: () => {},
+    show: (host) => {
+      host.replaceChildren(field);
+      field.focus();
+
+      return { cols: 80, rows: 24 };
+    },
+    fit: () => ({ cols: 80, rows: 24 }),
+    focus: () => field.focus(),
+    isAtBottom: () => true,
+    onScroll: () => {},
+    scrollToBottom: () => {},
+    dispose: () => {},
+  };
+};
+
+/** An emulator that marks its field with the Terminal `id` it was created for, so a test can tell which Terminal the pane shows. */
+const terminalMarkerEmulator = (): EmulatorFactory => (id: string) => {
+  const field = document.createElement("textarea");
+
+  field.dataset.terminal = id;
 
   return {
     write: () => {},
@@ -61,9 +85,23 @@ describe("u41 rail by keyboard, the rest", () => {
       fireEvent.keyDown(document, { key: "2", metaKey: true }),
     ];
 
-    const ignored = fireEvent.keyDown(document, { key: "1" });
+    expect(handled).toEqual([false, false]);
+  });
 
-    expect([handled, ignored]).toEqual([[false, false], true]);
+  it("u41_a_plain_1_with_no_modifier_is_ignored", async () => {
+    await mountKeys([agent("a", "idle", "x")]);
+
+    expect(fireEvent.keyDown(document, { key: "1" })).toBe(true);
+  });
+
+  it("u41_a_cmd_chord_with_another_key_does_nothing", async () => {
+    await mountKeys([agent("a", "idle", "x")], { pane: focusableEmulator() });
+    rowOf("a").focus();
+
+    const notPrevented = fireEvent.keyDown(document.activeElement ?? document, { key: "3", metaKey: true });
+
+    expect(notPrevented).toBe(true);
+    expect(document.activeElement).toBe(rowOf("a"));
   });
 
   it.each<[string, KeyboardEventInit]>([
@@ -148,8 +186,64 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(document.activeElement).toBe(rowOf("a"));
   });
 
+  it("u41_right_selects_the_first_visible_child_skipping_a_row_folded_into_done", async () => {
+    const { rail } = await mountKeys([
+      group("g"),
+      agent("old", "done", "finished", { parent: "g", order: 0, status: { kind: "done", label: "finished", since: NOW - 11 * MINUTE } }),
+      agent("live", "idle", "x", { parent: "g", order: 1 }),
+    ]);
+
+    rowOf("g").focus();
+
+    press("ArrowRight");
+
+    expect(rail.selected()).toBe("live");
+    expect(document.activeElement).toBe(rowOf("live"));
+  });
+
+  it("u41_right_on_an_expanded_meta_agent_selects_its_first_child", async () => {
+    const { rail } = await mountKeys([metaAgent("m", "working", "x"), agent("a", "idle", "y", { parent: "m" })]);
+
+    rowOf("m").focus();
+
+    press("ArrowRight");
+
+    expect(rail.selected()).toBe("a");
+    expect(document.activeElement).toBe(rowOf("a"));
+  });
+
+  it("u41_left_on_an_expanded_meta_agent_selects_its_parent_main_has_no_fold_for_it_yet", async () => {
+    const { rail } = await mountKeys([
+      group("g"),
+      metaAgent("m", "working", "x", { parent: "g" }),
+      agent("child", "idle", "y", { parent: "m" }),
+    ]);
+
+    rowOf("m").focus();
+
+    press("ArrowLeft");
+
+    expect(rail.selected()).toBe("g");
+    expect(document.activeElement).toBe(rowOf("g"));
+    expect(screen.getAllByRole("treeitem")).toHaveLength(3);
+  });
+
   it("u41_right_on_a_leaf_with_no_children_does_nothing", async () => {
     const { rail } = await mountKeys([agent("a", "idle", "x")]);
+    rowOf("a").focus();
+
+    press("ArrowRight");
+
+    expect(rail.selected()).toBeNull();
+    expect(document.activeElement).toBe(rowOf("a"));
+  });
+
+  it("u41_right_on_a_leaf_followed_by_a_sibling_does_not_select_the_sibling", async () => {
+    const { rail } = await mountKeys([
+      agent("a", "idle", "x", { order: 0 }),
+      agent("b", "idle", "y", { order: 1 }),
+    ]);
+
     rowOf("a").focus();
 
     press("ArrowRight");
@@ -164,6 +258,30 @@ describe("u41 rail by keyboard, the rest", () => {
 
     expect(press("ArrowLeft")).toBe(false);
     expect(press("ArrowRight")).toBe(false);
+  });
+
+  it.each<[string, KeyboardEventInit]>([
+    ["ctrl", { ctrlKey: true }],
+    ["alt", { altKey: true }],
+    ["shift", { shiftKey: true }],
+    ["cmd", { metaKey: true }],
+  ])("u41_arrow_left_with_a_modifier_does_nothing_%s", async (_, held) => {
+    await mountKeys([group("g"), agent("child", "idle", "x", { parent: "g" })]);
+    rowOf("g").focus();
+
+    const notPrevented = press("ArrowLeft", held);
+
+    expect(notPrevented).toBe(true);
+    expect(rowOf("g").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("u41_shift_f2_does_nothing", async () => {
+    await mountKeys([agent("a", "idle", "x")]);
+    rowOf("a").focus();
+
+    press("F2", { shiftKey: true });
+
+    expect(screen.queryByLabelText("name")).toBeNull();
   });
 
   it("u41_arrow_left_in_the_pane_reaches_the_terminal", async () => {
@@ -205,6 +323,24 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(screen.getByLabelText("name").closest("[role=treeitem]")?.getAttribute("data-id")).toBe("a");
   });
 
+  it("u41_f2_prevents_the_default_action", async () => {
+    const { rail } = await mountKeys([agent("a", "idle", "x")]);
+    rail.select("a");
+    rowOf("a").focus();
+
+    expect(press("F2")).toBe(false);
+  });
+
+  it("u41_a_plain_key_other_than_f2_does_not_open_rename", async () => {
+    const { rail } = await mountKeys([agent("a", "idle", "x")]);
+    rail.select("a");
+    rowOf("a").focus();
+
+    press("j");
+
+    expect(screen.queryByLabelText("name")).toBeNull();
+  });
+
   it("u41_f2_does_nothing_with_no_selection", async () => {
     await mountKeys([agent("a", "idle", "x")]);
     rowOf("a").focus();
@@ -222,5 +358,27 @@ describe("u41 rail by keyboard, the rest", () => {
     press("F2");
 
     expect(screen.queryByLabelText("name")).toBeNull();
+  });
+
+  it("u41_right_selecting_a_row_shows_its_terminal_exactly_as_a_click_does", async () => {
+    await mountKeys(
+      [group("g"), agent("child", "idle", "x", { parent: "g" })],
+      { pane: terminalMarkerEmulator() },
+    );
+    rowOf("g").focus();
+
+    press("ArrowRight");
+
+    expect(document.querySelector<HTMLElement>(".pane-screen [data-terminal]")?.dataset.terminal).toBe("t-child");
+  });
+
+  it("u41_selecting_a_row_by_keyboard_calls_no_method_of_its_own", async () => {
+    const { app } = await mountKeys([group("g"), agent("child", "idle", "x", { parent: "g" })]);
+    rowOf("g").focus();
+    const before = app.calls.length;
+
+    press("ArrowRight");
+
+    expect(app.calls.length).toBe(before);
   });
 });
