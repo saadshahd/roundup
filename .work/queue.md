@@ -75,6 +75,13 @@ From the audit of main 9784d54 (ux-auditor-1; screenshots in `/tmp/ux2-shots/`).
 | U45, U48 | `⌘J` chord rules; the chip's look | `src/rail/AttentionChip.tsx`, `src/rail/u30_jump.test.tsx`, one new css file for the chip | the `u30_` tests | now (confirmed by the auditor) |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U50 | the Pad's text fills its Drawer | `apps/desktop/src/pads/**` | `u20_` tests | after U36 merges |
+| A15 | clean environment for what the Daemon starts | `crates/agents/**` (`crates/terminal/**` only for the spawn call, said in the PR) | the `a` tests | now |
+| A16 | `rail.remove` | `crates/agents/**`, `crates/contracts/**` and its generated files, `crates/desktop/**` pass-through (contract change, Architect approved here) | the `a` tests | now |
+| U56 | right-click menu: stop, remove | `apps/desktop/src/rail/menu/**`, one mount line in `Rail.tsx` | `u9_`, `u31_`, `u33_` tests | after A16, U31 and U33 merge |
+| U57 | no pane header | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests | after U56 merges |
+| U58 | an Agent's Pads under it, on demand | `apps/desktop/src/rail/pads/**`, one mount in `RailRow.tsx`, `src/pads/**` | `u18_`, `u20_` tests | after U31, U33 and U36 merge |
+| U59 | the terminal blends with the app | `apps/desktop/src/terminal/theme.ts`, `Pane.tsx`, `styles.css` | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` | after U57 and the contrast item merge |
+| U60 | an Agent's Todos under it | reserved | | waits for a decision on `Todo.creator` |
 | held | contrast of Live lines (`--light` 2.57:1, `--lightest` 1.68:1) and the empty-xterm notch | shared color tokens in `src/styles.css` (a shared file); the notch needs a diagnosis | U4, U25 | held for the lead's decision; moving Live lines to `--grey` changes U4's palette |
 
 The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
