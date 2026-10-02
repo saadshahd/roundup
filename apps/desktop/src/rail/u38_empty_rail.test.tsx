@@ -19,8 +19,15 @@ describe("u38 empty Rail", () => {
   });
 
   it("u38_the_empty_rail_lines_disappear_once_a_row_exists", async () => {
-    await mountRail([node("a")]);
+    const tree: RailNode[] = [];
+    const { app } = await mountRail(tree);
 
+    await screen.findByText("no agents yet");
+
+    tree.push(node("a"));
+    app.emit(event({ name: "rail.changed" }));
+
+    await screen.findByText("a");
     expect([screen.queryByText("no agents yet"), screen.queryByText("⌘N starts one")]).toEqual([null, null]);
   });
 

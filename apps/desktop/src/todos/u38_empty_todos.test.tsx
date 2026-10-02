@@ -37,9 +37,50 @@ describe("u38 empty Todos", () => {
   });
 
   it("u38_no_todos_yet_disappears_once_a_todo_exists", async () => {
-    await mountTodos([todo(1)]);
-    await screen.findByText(/todo 1/);
+    const { app, store } = await mountTodos([]);
 
+    await screen.findByText("no todos yet");
+
+    store.todos = [todo(1)];
+    app.emit(event({ name: "todo.created", data: todo(1) }));
+
+    await screen.findByText(/todo 1/);
+    expect(screen.queryByText("no todos yet")).toBeNull();
+  });
+
+  it("u38_a_stale_first_todo_list_reply_never_sets_no_todos_yet_before_the_newest_one_lands", async () => {
+    const app = createFakeApp();
+    const replies: ReturnType<typeof Promise.withResolvers<ReturnType<typeof todo>[]>>[] = [];
+
+    app.handlers["todo.list"] = () => {
+      const reply = Promise.withResolvers<ReturnType<typeof todo>[]>();
+
+      replies.push(reply);
+
+      return reply.promise;
+    };
+
+    const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+
+    render(() => (
+      <ConnectedProjectContext.Provider value={connected}>
+        <Todos />
+      </ConnectedProjectContext.Provider>
+    ));
+
+    await waitFor(() => expect(replies.length).toBe(1));
+
+    app.emit(event({ name: "todo.created", data: todo(1) }));
+    await waitFor(() => expect(replies.length).toBe(2));
+
+    replies[0]?.resolve([]);
+    await new Promise((done) => setTimeout(done, 0));
+
+    expect(screen.queryByText("no todos yet")).toBeNull();
+
+    replies[1]?.resolve([todo(1)]);
+
+    expect(await screen.findByText(/todo 1/)).toBeTruthy();
     expect(screen.queryByText("no todos yet")).toBeNull();
   });
 
