@@ -30,7 +30,7 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## Contract change (rule 4, with the first Builder PR)
 
-`agent.context {id}` returns `{self, parent, ask, peers, todos}`; the MCP tool `agent_context` is its caller. `agent.brief {id}` returns `{stdout}`, the hook output built in `claude_code/`, which `rup context` prints verbatim, so `rup` holds no vendor string (P4), as `rup signal` forwards a vendor payload it does not parse. `agent.channelUp {id}` is called once by `rup mcp` at start (E6); `daemon.identify` is not used for it, because hooks identify too. E6 adds `RailNode.channel` (`pending`, `up`, `missing`, `null`) and the event `agent.channel`. The contract PR states every caller, including the webview's `RailNode` fixtures. E8, the Chip, is a webview scenario written after this lands. `rpc::code` gains nothing.
+`agent.context {id}` returns `{self, parent, ask, peers, todos}`; the MCP tool `agent_context` is its caller. `agent.brief {id}` returns `{stdout}`, the hook output: `crates/rupd` composes the Brief's start text from the Rail and the Todos, and `claude_code/` wraps it in the vendor's JSON (`crates/rupd` calls an `Adapter` function for that), which `rup context` prints verbatim, so `rup` holds no vendor string (P4), as `rup signal` forwards a vendor payload it does not parse. `agent.channelUp {id}` is called once by `rup mcp` at start (E6); `daemon.identify` is not used for it, because hooks identify too. E6 adds `RailNode.channel` (`pending`, `up`, `missing`, `null`) and the event `agent.channel`. The contract PR states every caller, including the webview's `RailNode` fixtures. E8, the Chip, is a webview scenario written after this lands. `rpc::code` gains nothing.
 
 ## The gates
 
