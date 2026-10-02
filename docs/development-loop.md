@@ -40,7 +40,7 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | 2 | Write the failing test, then the code | Builder | local worktree, or a boxd VM when unattended (`loop/boxd.sh build`) | `just check` passes. That the test failed first is not machine-checked (gap) |
 | 3 | Open a PR (one module, about 2000 lines) with commit trailers `Author-Agent: <id>` | Builder | laptop | `loop/rules.sh size` (rule 3) |
 | 4 | CI | GitHub | macOS runner | `check` job (`just check`: fmt, clippy, nextest, machete, oxlint + anti-slop, tsc, fallow) |
-| 5 | Review | Reviewer, a different id | laptop | an empty commit carrying only `Reviewed-by-Agent: <id>`; `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities) |
+| 5 | Review | Reviewer, a different id | laptop | an empty commit carrying only `Reviewed-by-Agent: <id>`; `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities); the verdict is posted first as a PR comment (`docs/boxd.md`, "Where a Reviewer's verdict goes"), which the Merger checks by hand |
 | 6 | Merge when rule 1 holds | Driver | laptop | all checks green |
 | 7 | UX observers: screenshots, snapshot diff, critic score | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos |
 | 8 | Red main | Triage | laptop | `gh run list` shows failure; revert, never fix forward |
