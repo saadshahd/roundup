@@ -1,6 +1,6 @@
 //! Agents, the Rail tree and the Claude Code adapter. Owner: agents Builder.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -80,6 +80,7 @@ impl Shared {
             Slot::Starting {
                 since,
                 named: false,
+                held: VecDeque::new(),
             },
         );
     }
@@ -126,10 +127,20 @@ impl Shared {
         let mut rail = first_prompt.is_some().then(|| self.rail());
         let (prompt, tick_at) = {
             let mut runs = self.runs();
-            let run = runs
-                .get_mut(id)
-                .and_then(Slot::run_mut)
-                .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
+            let run = match runs.get_mut(id) {
+                Some(Slot::Running(run)) => run,
+                // A14: a Signal here is held, in arrival order, for when the Agent is
+                // registered, instead of `NOT_FOUND`; anything else cannot arrive this early
+                // (`watch` only starts once the Agent is `Running`).
+                Some(Slot::Starting { held, .. }) => {
+                    let Observation::Signal(payload) = observation else {
+                        return Err(RpcError::not_found(format!("agent {id}")));
+                    };
+                    hold(id, held, actor, payload);
+                    return Ok(None);
+                }
+                None => return Err(RpcError::not_found(format!("agent {id}"))),
+            };
             let changed = run.adapter.observe(observation);
             let idle = changed
                 .as_ref()
@@ -175,6 +186,9 @@ enum Slot {
         since: i64,
         /// A `rail.rename` came while it started; its first prompt must not undo it.
         named: bool,
+        /// Signals that reached `agent.signal` in this window, in arrival order, applied once
+        /// the Agent is registered (A14).
+        held: VecDeque<(Actor, Value)>,
     },
     Running(Run),
 }
@@ -187,13 +201,23 @@ impl Slot {
             Self::Starting { named, .. } => *named = true,
         }
     }
+}
 
-    fn run_mut(&mut self) -> Option<&mut Run> {
-        match self {
-            Self::Running(run) => Some(run),
-            Self::Starting { .. } => None,
-        }
+/// How many Signals a `Slot::Starting` holds (A14); past this, the oldest is dropped and logged,
+/// as A5 does for a payload the adapter refuses.
+const HELD_BOUND: usize = 8;
+
+/// Queue `payload` for `id`, dropping and logging the oldest once `held` already holds
+/// `HELD_BOUND`.
+fn hold(id: &str, held: &mut VecDeque<(Actor, Value)>, actor: Actor, payload: Value) {
+    if held.len() >= HELD_BOUND {
+        held.pop_front();
+        eprintln!(
+            "agents: dropping the oldest Signal held for {id}: more than {HELD_BOUND} arrived \
+             before it was registered"
+        );
     }
+    held.push_back((actor, payload));
 }
 
 /// An Agent's program and what is left to tell it.
@@ -423,17 +447,28 @@ impl Agents {
             }
         };
         let clock = Arc::clone(&self.shared.clock);
-        let named = matches!(
-            self.shared.runs().get(id),
-            Some(Slot::Starting { named: true, .. })
-        );
-        let run = Run {
-            adapter: ClaudeCode::starting(move || clock()),
-            prompt,
-            named,
-            terminal_id: spawned.id.clone(),
+        // Replaced for `Running` in the same lock section it is read from, so `agent.signal`
+        // never finds `id` missing between the two (A14: it is never `NOT_FOUND` for an id that
+        // was spawned).
+        let held = {
+            let mut runs = self.shared.runs();
+            let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
+                unreachable!("spawn marks {id} Starting before run_agent runs")
+            };
+            let run = Run {
+                adapter: ClaudeCode::starting(move || clock()),
+                prompt,
+                named,
+                terminal_id: spawned.id.clone(),
+            };
+            runs.insert(id.to_owned(), Slot::Running(run));
+            held
         };
-        self.shared.runs().insert(id.to_owned(), Slot::Running(run));
+        for (actor, payload) in held {
+            self.shared
+                .observe(actor, id, Observation::Signal(payload))
+                .expect(REGISTERED);
+        }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
