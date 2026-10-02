@@ -1,6 +1,6 @@
 {
   "cold_start_ms": {"limit": 300, "baseline": {"macos": 7.1}, "noise": 0.3},
-  "rss_extra_mb": {"limit": 150, "noise": 0.05, "baseline": {"linux": 1.6, "macos": 3.14}},
+  "rss_extra_mb": {"limit": 150, "noise": 0.05, "baseline": {"linux": 1.6, "macos": 3.1}},
   "write_to_output_p95_ms": {"limit": 16, "noise": 0.001, "baseline": {"linux": 0.066, "macos": 0.056}},
   "terminal_write_p95_ms": {"noise": 0.001, "baseline": {"linux": 0.055, "macos": 0.0365}},
   "ping_p95_ms": {"noise": 0.001, "baseline": {"linux": 0.025}},

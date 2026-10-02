@@ -161,7 +161,7 @@ fn r8_the_committed_baselines_are_the_recorded_values() {
     let recorded = [
         ("cold_start_ms", "macos", 7.1),
         ("rss_extra_mb", "linux", 1.6),
-        ("rss_extra_mb", "macos", 3.14),
+        ("rss_extra_mb", "macos", 3.1),
         ("write_to_output_p95_ms", "linux", 0.066),
         ("write_to_output_p95_ms", "macos", 0.056),
         ("terminal_write_p95_ms", "linux", 0.055),

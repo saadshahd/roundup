@@ -44,7 +44,7 @@ Recorded on one Apple M4 Max laptop (16 cores); the key is the OS only, so the n
 
 macOS cold start is stable (1.07) where the Linux VM's was not (3.08), so it is gated here.
 
-**Load changes latency far more than 10%.** The same 7 metrics with 8 busy loops running (load 7 to 14): cold start x1.4, `ping` x2.1, `write_to_output` x2.2, `rail.tree` 10 Groups x8, 40 Groups x1.0 to 1.9 and widely spread; `rss_extra_mb` did not move (3.10 against 3.14). So a latency miss on a busy machine proves nothing, and a memory miss proves a lot.
+**Load changes latency far more than 10%.** The same 7 metrics with 8 busy loops running (load 7 to 14): cold start x1.4, `ping` x2.1, `write_to_output` x2.2, `rail.tree` 10 Groups x8, 40 Groups x1.0 to 1.9 and widely spread; `rss_extra_mb` did not move (3.10 against a median of 3.14, committed as 3.1 because clippy rejects a literal that looks like pi). So a latency miss on a busy machine proves nothing, and a memory miss proves a lot.
 
 **Observed false fail.** A `just perf` at load 7.5 (the baseline's loads were 4 to 6) put `write_to_output_p95_ms` at 0.064 ms against a ceiling of 0.063 ms and failed; nothing had regressed. The gate does not yet know the load: until it skips latency comparisons above a load per core (only proposed, as R13 in docs PR #97; not built), a latency miss is rerun when the machine is quieter before it is believed.
 
