@@ -21,6 +21,16 @@ describe("u41 rail by keyboard, the rest: railStep", () => {
     expect(railStep(nodes, "a", "left", null, undefined)).toEqual({ kind: "select", id: "g" });
   });
 
+  it("u41_left_at_depth_three_selects_the_immediate_parent_not_the_root", () => {
+    const nodes = [
+      group("outer"),
+      group("inner", { parent: "outer" }),
+      agent("leaf", "idle", "x", { parent: "inner" }),
+    ];
+
+    expect(railStep(nodes, "leaf", "left", null, undefined)).toEqual({ kind: "select", id: "inner" });
+  });
+
   it("u41_left_on_a_top_level_leaf_does_nothing", () => {
     const nodes = [agent("a", "idle", "x")];
 

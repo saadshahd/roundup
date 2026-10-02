@@ -1,8 +1,6 @@
 import { render } from "@solidjs/testing-library";
 import { createSignal, Show } from "solid-js";
-import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
-import type { DaemonExit } from "../app/seam";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { Rail } from "../rail/Rail";
 import { ConnectedProjectContext, connectProject } from "../state/connectedProject";
@@ -16,16 +14,12 @@ import { Keys } from "./Keys";
 type KeysNeighbors = { pane?: true | EmulatorFactory; drawer?: boolean };
 
 /** The Rail and `Keys` on a fake Daemon whose tree is `tree`, as `railFixture`'s `mountRail` sets up for U31 and U32. */
-export const mountKeys = async (
-  tree: RailNode[],
-  neighbors: KeysNeighbors = {},
-  daemonExit: Accessor<DaemonExit | null> = () => null,
-) => {
+export const mountKeys = async (tree: RailNode[], neighbors: KeysNeighbors = {}) => {
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => tree;
 
   const [now] = createSignal(NOW);
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now, daemonExit);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, now, () => null);
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>

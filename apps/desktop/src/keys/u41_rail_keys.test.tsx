@@ -77,6 +77,20 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(document.activeElement).toBe(document.querySelector(".pane-screen textarea"));
   });
 
+  it("u41_cmd_1_focuses_the_selected_row_among_several", async () => {
+    const { rail } = await mountKeys(
+      [agent("a", "idle", "x", { order: 0 }), agent("b", "idle", "y", { order: 1 })],
+      { pane: focusableEmulator() },
+    );
+
+    rail.select("b");
+    screen.getByRole("textbox").focus();
+
+    press("1", { metaKey: true });
+
+    expect(document.activeElement).toBe(rowOf("b"));
+  });
+
   it("u41_cmd_1_and_cmd_2_are_handled_by_the_webview_so_the_browser_never_sees_them", async () => {
     await mountKeys([agent("a", "idle", "x")]);
 
@@ -148,6 +162,21 @@ describe("u41 rail by keyboard, the rest", () => {
 
     expect(rail.selected()).toBe("g");
     expect(document.activeElement).toBe(rowOf("g"));
+  });
+
+  it("u41_left_at_depth_three_selects_the_immediate_parent_not_the_root", async () => {
+    const { rail } = await mountKeys([
+      group("outer"),
+      group("inner", { parent: "outer" }),
+      agent("leaf", "idle", "x", { parent: "inner" }),
+    ]);
+
+    rowOf("leaf").focus();
+
+    press("ArrowLeft");
+
+    expect(rail.selected()).toBe("inner");
+    expect(document.activeElement).toBe(rowOf("inner"));
   });
 
   it("u41_left_on_a_top_level_leaf_does_nothing", async () => {
@@ -380,5 +409,26 @@ describe("u41 rail by keyboard, the rest", () => {
     press("ArrowRight");
 
     expect(app.calls.length).toBe(before);
+  });
+
+  it.each<[string, string]>([
+    ["left", "ArrowLeft"],
+    ["right", "ArrowRight"],
+    ["f2", "F2"],
+  ])("u41_%s_in_an_open_drawer_does_nothing", async (_, key) => {
+    const { rail, connected } = await mountKeys(
+      [group("g"), agent("child", "idle", "x", { parent: "g" })],
+      { drawer: true },
+    );
+
+    rowOf("g").focus();
+    connected.drawer.open(() => <input aria-label="field" />);
+    screen.getByLabelText("field").focus();
+
+    const notPrevented = press(key);
+
+    expect(notPrevented).toBe(true);
+    expect(rail.selected()).toBeNull();
+    expect(screen.queryByLabelText("name")).toBeNull();
   });
 });
