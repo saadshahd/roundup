@@ -50,18 +50,22 @@ export const Rail = () => {
 
   const focusRow = (id: string) => rowElement(id)?.focus();
 
-  /** The row a keyboard-only move has focused, between an arrow press and the next `rail.select` call. */
+  /** The row a keyboard-only move has focused; read for the roving tabindex only while nothing is selected, and cleared whenever the selection changes so it cannot resurface once the selection is gone. */
   const [focusOverride, setFocusOverride] = createSignal<string | null>(null);
 
   createEffect(on(rail.selected, () => setFocusOverride(null)));
 
   const tabbableId = createMemo(() => {
+    const selected = rail.selected();
+
+    if (selected !== null) return selected;
+
     const ids = nodeIds();
     const override = focusOverride();
 
     if (override !== null && ids.includes(override)) return override;
 
-    return rail.selected() ?? ids[0] ?? null;
+    return ids[0] ?? null;
   });
 
   const selectRow = (id: string) => {
@@ -81,15 +85,15 @@ export const Rail = () => {
   const onRailKeyDown = (press: KeyboardEvent) => {
     if (!(press.target instanceof HTMLElement) || press.target.getAttribute("role") !== "treeitem") return;
 
-    const focusedId = press.target.dataset.id ?? null;
+    // SAFETY: every row sets `data-id` (RailRow.tsx); this would start lying only if a treeitem ever shipped without one.
+    const focusedId = press.target.dataset.id as string;
 
     if (press.key === "ArrowDown" || press.key === "ArrowUp") {
       press.preventDefault();
       moveFocus(focusedId, press.key === "ArrowDown" ? 1 : -1);
     } else if (press.key === "Enter") {
       press.preventDefault();
-
-      if (focusedId !== null) selectRow(focusedId);
+      selectRow(focusedId);
     }
   };
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { agent, event, group, terminal } from "../testing/nodes";
 import type { EmulatorFactory } from "../terminal/emulator";
 import styles from "./styles.css?inline";
-import { mountRail, rowOf } from "./railFixture";
+import { mountRail, rowOf, tabbableRows } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -171,7 +171,7 @@ describe("u31 rail keyboard", () => {
     const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
     rail.select("b");
 
-    const tabbable = screen.getAllByRole("treeitem").filter((row) => row.tabIndex === 0);
+    const tabbable = tabbableRows();
 
     expect(tabbable).toEqual([rowOf("b")]);
   });
@@ -179,7 +179,7 @@ describe("u31 rail keyboard", () => {
   it("u31_with_nothing_selected_the_first_row_is_tabbable", async () => {
     await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
 
-    const tabbable = screen.getAllByRole("treeitem").filter((row) => row.tabIndex === 0);
+    const tabbable = tabbableRows();
 
     expect(tabbable).toEqual([rowOf("a")]);
   });
@@ -303,6 +303,27 @@ describe("u31 rail keyboard", () => {
     expect(rail.selected()).toBeNull();
   });
 
+  it("u31_the_selected_row_stays_tabbable_after_an_arrow_press_elsewhere", async () => {
+    const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x"), agent("c", "idle", "x")]);
+    fireEvent.click(rowOf("b"));
+
+    press("ArrowDown");
+
+    const tabbable = tabbableRows();
+    expect(tabbable).toEqual([rowOf("b")]);
+    expect(rail.selected()).toBe("b");
+  });
+
+  it("u31_reselecting_the_same_row_after_an_arrow_move_keeps_it_tabbable", async () => {
+    await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
+    fireEvent.click(rowOf("a"));
+    press("ArrowDown");
+    fireEvent.click(rowOf("a"));
+
+    const tabbable = tabbableRows();
+    expect(tabbable).toEqual([rowOf("a")]);
+  });
+
   it("u31_a_selection_made_elsewhere_takes_over_the_roving_tabindex", async () => {
     const { rail } = await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
     rowOf("a").focus();
@@ -323,7 +344,7 @@ describe("u31 rail keyboard", () => {
     mounted.app.emit(event({ name: "rail.changed" }));
     await mounted.rail.settled();
 
-    const tabbable = screen.getAllByRole("treeitem").filter((row) => row.tabIndex === 0);
+    const tabbable = tabbableRows();
 
     expect(tabbable).toEqual([rowOf("a")]);
   });
