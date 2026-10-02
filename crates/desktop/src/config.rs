@@ -48,6 +48,20 @@ impl Config {
         })
     }
 
+    /// The socket path for one Daemon run: `socket` unchanged for the first (`run` 0), and a
+    /// fresh path for each further run (a reopen, S5) so the old and new Daemon never share one.
+    pub fn socket_for_run(&self, run: u64) -> PathBuf {
+        if run == 0 {
+            return self.socket.clone();
+        }
+        let file_name = self
+            .socket
+            .file_name()
+            .expect("the socket path has a file name");
+        self.socket
+            .with_file_name(format!("{run}-{}", file_name.to_string_lossy()))
+    }
+
     pub fn from_env() -> Result<Self, String> {
         let exe = std::env::current_exe()
             .map_err(|err| format!("cannot find the App's own executable: {err}"))?;

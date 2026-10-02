@@ -1,4 +1,4 @@
-//! Scenarios S1 to S3 (`scenarios/app.md`). A fake `rupd` is a state script; the real Daemon runs
+//! Scenarios S1 to S5 (`scenarios/app.md`). A fake `rupd` is a state script; the real Daemon runs
 //! in-process on a socket the script links to the one the App chose.
 
 use std::collections::BTreeSet;
@@ -742,6 +742,8 @@ fn s5_reopening_with_the_same_path_starts_a_new_working_daemon() {
         json!({ "method": "daemon.ping", "params": null }),
     );
     assert_eq!(reply, Ok(json!({ "pong": true })));
+
+    fx.release();
 }
 
 #[test]
@@ -769,6 +771,8 @@ fn s5_subscribe_after_reopen_receives_the_new_daemons_events() {
 
     let event = received.recv_timeout(WAIT).unwrap();
     assert_eq!(event["name"], "todo.created");
+
+    fx.release();
 }
 
 #[test]
@@ -899,6 +903,112 @@ fn s5_after_a_failed_reopen_the_same_path_can_be_retried() {
         reopened,
         json!({ "name": "my-project", "path": fx.project.display().to_string() })
     );
+}
+
+#[test]
+fn s5_reopening_starts_rupd_on_a_socket_path_unique_to_the_new_run() {
+    let fx = Fixture::new(
+        "printf '%s\\n' \"$@\" > '{dir}/args'\nprintf '%s' \"$RUPD_SOCKET\" > '{dir}/socket'\n{link}\nread go < '{dir}/go'\nexit 0",
+    );
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(fx.dir.path().join("args")).unwrap(),
+        format!("{}\n--attached\n", fx.project.display())
+    );
+    let reopened_socket = std::fs::read_to_string(fx.dir.path().join("socket")).unwrap();
+    assert_ne!(reopened_socket, fx.config.socket.display().to_string());
+
+    fx.release();
+}
+
+#[test]
+fn s5_until_the_reopen_rpc_still_fails_with_internal() {
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    let error = invoke(
+        &webview,
+        "rpc",
+        json!({ "method": "daemon.ping", "params": null }),
+    )
+    .unwrap_err();
+
+    assert_eq!(error["code"], code::INTERNAL);
+}
+
+#[test]
+fn s5_while_the_reopened_daemon_runs_a_second_open_project_is_conflict() {
+    let fx = Fixture::new("{link}\nread go < '{dir}/go'\nexit 0");
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+    invoke(&webview, "open_project", path_arg(&fx.project)).unwrap();
+
+    let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    assert_eq!(error["code"], code::CONFLICT);
+
+    fx.release();
+}
+
+#[test]
+fn s5_a_second_open_project_while_a_reopen_is_still_starting_is_conflict() {
+    let fx = Fixture::new(
+        "n_file='{dir}/n'\n\
+         n=$(( $(cat \"$n_file\" 2>/dev/null || echo 0) + 1 ))\n\
+         echo \"$n\" > \"$n_file\"\n\
+         if [ \"$n\" -eq 1 ]; then\n\
+         {link}\n\
+         read go < '{dir}/go'\n\
+         exit 0\n\
+         else\n\
+         touch '{dir}/reopening-started'\n\
+         read go < '{dir}/go'\n\
+         {link}\n\
+         exec cat\n\
+         fi\n",
+    );
+    fx.serve_real_daemon();
+    let (app, webview) = app(fx.config.clone(), None);
+    let exited = daemon_exited(&app);
+    open(&webview, &fx.project);
+    fx.release();
+    exited.recv_timeout(WAIT).unwrap();
+
+    let handle = app.handle().clone();
+    let project = fx.project.clone();
+    let reopening = tauri::async_runtime::spawn(async move {
+        handle
+            .state::<AppState>()
+            .open_project(&handle, &project)
+            .await
+    });
+    let started = fx.dir.path().join("reopening-started");
+    eventually("the reopen to start", || started.exists());
+
+    let error = invoke(&webview, "open_project", path_arg(&fx.project)).unwrap_err();
+
+    assert_eq!(error["code"], code::CONFLICT);
+
+    fx.release();
+    let reopened = tauri::async_runtime::block_on(reopening).unwrap().unwrap();
+    assert_eq!(reopened.path, fx.project.display().to_string());
 }
 
 #[test]
