@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Pad } from "@contracts/pad/Pad";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -16,17 +16,32 @@ export const Pads = () => {
   const failure = createFailure();
   const listFailure = createFailure();
   let newestReload = 0;
+  /** True once the newest `pad.list` has answered, so U38's empty line never flashes before it. */
+  const [isLoaded, setIsLoaded] = createSignal(false);
 
-  /** Only the newest request may set the list: a slower, older reply would put stale Pads back. */
-  const reload = () =>
-    listFailure.run(async () => {
-      newestReload += 1;
+  /** Only the newest request may set the list, or its failure, or `isLoaded`: a slower, older reply must not put stale Pads back, overwrite a later failure, or flash the empty line while a retry is still in flight. */
+  const reload = async () => {
+    newestReload += 1;
 
-      const mine = newestReload;
+    const mine = newestReload;
+
+    try {
       const listed = await connected.app.rpc("pad.list", null);
 
-      if (mine === newestReload) setPads(listed);
-    });
+      if (mine !== newestReload) return;
+
+      setPads(listed);
+      listFailure.clear();
+    } catch (thrown) {
+      if (!(thrown instanceof Error)) throw thrown;
+
+      if (mine !== newestReload) return;
+
+      listFailure.show(thrown.message);
+    }
+
+    setIsLoaded(true);
+  };
 
   onCleanup(
     connected.events.subscribe((event) => {
@@ -47,6 +62,8 @@ export const Pads = () => {
       await connected.app.rpc("pad.setOwner", { name, owner: USER });
       await reload();
     });
+
+  const isEmpty = createMemo(() => isLoaded() && pads().length === 0 && listFailure.message() === null);
 
   return (
     <section aria-label="pads">
@@ -75,6 +92,9 @@ export const Pads = () => {
       </Show>
       <Show when={listFailure.message()}>
         {(message) => <ErrorLine message={message()} />}
+      </Show>
+      <Show when={isEmpty()}>
+        <p>no pads yet</p>
       </Show>
       <PadRows
         pads={pads}
