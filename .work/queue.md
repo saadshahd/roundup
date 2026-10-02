@@ -66,6 +66,9 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 | G contract | `project.setWorktrees`, `project.get`, `agent.worktreeState`, `agent.land`, `agent.discard`, `RailNode.worktree` (docs/worktrees.md) | `crates/contracts/**` with `contracts/generated/**`, and every `RailNode` literal (the webview fixtures, `seeds.ts`, the e2e tests) | `cargo test -p contracts`, `just check` | after the worktrees docs PR, A16 (the contract PR adds `worktree_unlanded` to `rail.remove`, which A16 introduces) and T8's implementation merge, because all three edit `crates/contracts/**` and `seeds.ts`; committee approval (rule 4) |
 | G1, G2, G3, G7 | the `worktrees` setting, spawn provisions a Worktree, status, a Rail move leaves the Worktree alone | `crates/agents/src/worktree.rs`, `crates/agents/src/rail.rs` and `lib.rs` (shared with A16: merges after it), `agents.db`'s schema, `crates/rup/tests/**` e2e (D4 owns it and `sweep-rupd-harness` changes it: merges after both) | the `a4_` tests, `just check` | after G contract, A16, D4 and `sweep-rupd-harness` merge |
 | G4, G5, G6 | Landing, safe removal and discard, restart | the same files as G1 to G3 | the `g1_` to `g3_` tests and `g7_` | after G1, G2, G3 merge |
+| H1b | permission spike follow-up: always-allow persistence, `AskUserQuestion` after an answer, Esc on its UI, and macOS recorded (H1 itself is the committed `spikes/hooks-permission/REPORT.md`) | `spikes/hooks-permission/**` | `finding` lines in the report | none (needs a login and network; not in `just check`) |
+| H2–H10 | permission Decisions in the Daemon: `Decision`, `agent.permission`, `decision.list`, `decision.answer`, `decision.opened`, `decision.cleared`; `rup permission`; the settings hook line (contract change) | `crates/contracts/**` and generated files, `crates/agents/src/decision.rs` (new), `crates/agents/src/claude_code/**`, `crates/agents/src/lib.rs`, `crates/rup/src/main.rs`, `crates/rup/tests/**`, `crates/rupd/src/**` (the `proof` handshake), `crates/desktop/src/daemon.rs` (passes the `proof`), `crates/desktop/src/lib.rs` (the `daemon_proof` command), `apps/desktop/src/app/**` (its call), `scenarios/app.md` (the seam table row), `docs/adr/0006-claude-code-hooks-for-state.md`, `apps/desktop/src/testing/seeds.ts` | `h2_`–`h10_` tests, and the `a1_`, `a4_`, `d2_` tests named for the `PermissionRequest` line | after #161 merges, and after the A14 (#114), A15 and A16 Builder PRs (they edit `crates/agents/src/lib.rs`) |
+| (UI half of Decisions) | the Decision in the App: its text, `allow` and `deny`, clearing | architect-b writes the scenario; ids from `U100` to `U129` | | after H2–H10 merge |
 | L43 | `loop/rules.sh ranges` | `loop/rules.sh`, `loop/rules.test.sh` | `l43_` tests | after the L41 row's `loop/rules.sh` PR and the L44–L49 row's PR merge (all three own `loop/rules.sh` and `loop/rules.test.sh`, one at a time); `docs/squads.md` is on main (#126) |
 | E7 | spike: does the real Claude Code take a Brief, a `SessionStart` context and an MCP server at start | `spikes/context-injection/**` | the report; no app code | now; needs the installed `claude` |
 | E1-E6 | Brief, `agent.context`, `rup context`, `agent_context`, `rup mcp` connecting at start, the `RailNode.channel` field (the Chip is E8, reserved); the contract rides in this PR (committee approval) | `crates/agents/src/**`, `crates/agents/tests/**` and `claude_code/`, `crates/rupd/src/**` (it composes the Rail and the Todos for E2), `crates/rup/src/**`, `crates/contracts/**` with `contracts/generated/**`, `crates/rup/tests/**`, every `RailNode` literal (the webview fixtures, `seeds.ts`) | the `e1_` to `e6_` tests, with the `a4_` and `m1_` tests kept green; `just check` | after E7, after B12 and T8's implementation merge |
@@ -154,7 +157,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | L23 | VM tools |
   | L24 | agent search servers |
   | L25 | design critic run |
-  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check` |
+  | L26–L27 | `loop/wake.sh`: L26 `watch`, L27 `check`; architect-b's split of #133 |
   | L40 | `boxd check` does not depend on files outside the checkout (round cap on #140: amend; one more reject on the same clause retires it) |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
@@ -164,6 +167,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | A30, B1–B29 | `scenarios/messages.md`, architect-b (A30 in `agents.md`) |
   | L44–L49 | `scenarios/loop.md`: merge policy, `loop/rules.sh` `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` and stall kind f (rows below) |
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
+  | H1–H12 | `scenarios/decisions.md`, permission Decisions, architect-swarm (H1–H10 written; the UI half is architect-b's, from the `U` ranges) |
   | L43 | `loop/rules.sh ranges`: squad ranges hold only unused ids |
   | E1–E9 | `scenarios/awareness.md`, architect-c (E1–E7 written; E8–E9 reserved) |
   | F1–F9 | `scenarios/spawn-boundary.md`, architect-c (F1–F5 written; F6 the Rail's `stray` badge; F7–F9 reserved) |
