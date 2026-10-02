@@ -26,6 +26,7 @@ impl Todos {
         })
     }
 
+    /// The creator is the calling Actor; a `creator` field sent in the params is ignored.
     fn create(&self, ctx: &Ctx, p: CreateParams) -> Result<Value, RpcError> {
         let todo = self.store()?.insert(
             &p.title,
@@ -443,6 +444,14 @@ mod tests {
         }
     }
 
+    fn ext(id: &str, parent: &str) -> Actor {
+        Actor {
+            kind: ActorKind::Ext,
+            id: id.into(),
+            parent: Some(parent.into()),
+        }
+    }
+
     #[tokio::test]
     async fn t8_creator_is_the_calling_actor_on_create_list_get_and_the_event() {
         let dir = tempfile::tempdir().unwrap();
@@ -526,6 +535,48 @@ mod tests {
         let h = Harness::new(dir.path());
         let got = h.call("todo.get", json!({"id": 1})).await.unwrap();
         assert_eq!(got["creator"], serde_json::to_value(agent("a")).unwrap());
+    }
+
+    #[tokio::test]
+    async fn t8_creator_from_an_extension_is_stored_as_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let caller = ext("git-sync", "a");
+        let expected = serde_json::to_value(&caller).unwrap();
+        {
+            let h = Harness::new(dir.path());
+            let created = h
+                .call_as(caller.clone(), "todo.create", json!({"title": "x"}))
+                .await
+                .unwrap();
+            assert_eq!(created["creator"], expected);
+            let got = h
+                .call("todo.get", json!({"id": created["id"]}))
+                .await
+                .unwrap();
+            assert_eq!(got["creator"], expected);
+        }
+        let h = Harness::new(dir.path());
+        let got = h.call("todo.get", json!({"id": 1})).await.unwrap();
+        assert_eq!(got["creator"], expected);
+    }
+
+    /// Mutant M8: a stored `creator` that fails to parse must error, not silently read as the user.
+    #[tokio::test]
+    async fn t8_unparseable_creator_fails_as_internal() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("todos.db");
+        {
+            let h = Harness::new(dir.path());
+            h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        }
+        rusqlite::Connection::open(&db_path)
+            .unwrap()
+            .execute("UPDATE todos SET creator = 'not json' WHERE id = 1", [])
+            .unwrap();
+
+        let h = Harness::new(dir.path());
+        let err = h.call("todo.get", json!({"id": 1})).await.unwrap_err();
+        assert_eq!(err.code, code::INTERNAL);
     }
 
     /// A `todos.db` written before `creator` existed, by hand, as T8 asks.

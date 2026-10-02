@@ -22,7 +22,6 @@ pub struct Todo {
     pub creator: Actor,
 }
 
-/// The creator is the calling Actor; a `creator` field sent here is ignored.
 #[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "todo/")]
 pub struct CreateParams {

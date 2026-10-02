@@ -227,3 +227,13 @@ fn creator_json(creator: &Actor) -> String {
 fn parse_creator(text: &str) -> serde_json::Result<Actor> {
     serde_json::from_str(text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_creator_matches_actor_user() {
+        assert_eq!(parse_creator(LEGACY_CREATOR).unwrap(), Actor::user());
+    }
+}
