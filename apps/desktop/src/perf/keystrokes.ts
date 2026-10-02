@@ -17,17 +17,19 @@ const percentile = (sorted: number[], share: number): number => {
 
 /** Keydown to the first render that shows its echo. A render before the echo reached the screen's buffer is the previous frame's and does not count. */
 export const createKeystrokeProbe = (now: () => number, typed: string) => {
-  const latencies: number[] = [];
-  let pending: { at: number; echoed: boolean; counted: () => void } | null = null;
-  let dropped = 0;
+  const latencies: { key: number; ms: number }[] = [];
+  const droppedKeys: number[] = [];
+  let pending: { key: number; at: number; echoed: boolean; counted: () => void } | null = null;
+  let keys = 0;
 
   return {
     /** Resolves when the key's echo has been rendered, or at `abandon`. */
     keydown: (): Promise<void> =>
       new Promise((resolve) => {
-        if (pending) dropped += 1;
+        if (pending) droppedKeys.push(pending.key);
 
-        pending = { at: now(), echoed: false, counted: resolve };
+        pending = { key: keys, at: now(), echoed: false, counted: resolve };
+        keys += 1;
       }),
     /** Called with each chunk the emulator has parsed. Only the typed character itself is the echo; anything else is the program's own output. */
     written: (bytes: Uint8Array) => {
@@ -36,23 +38,27 @@ export const createKeystrokeProbe = (now: () => number, typed: string) => {
     rendered: () => {
       if (!pending?.echoed) return;
 
-      latencies.push(now() - pending.at);
+      latencies.push({ key: pending.key, ms: now() - pending.at });
       pending.counted();
       pending = null;
     },
     abandon: () => {
       if (!pending) return;
 
-      dropped += 1;
+      droppedKeys.push(pending.key);
       pending.counted();
       pending = null;
     },
+    /** `skip` is the number of leading keys typed, whether or not they came back: warm-up drops stay out of the count. */
     summary: (skip: number): Summary => {
-      const sorted = latencies.slice(skip).sort((a, b) => a - b);
+      const sorted = latencies
+        .filter(({ key }) => key >= skip)
+        .map(({ ms }) => ms)
+        .sort((a, b) => a - b);
 
       return {
         n: sorted.length,
-        dropped,
+        dropped: droppedKeys.filter((key) => key >= skip).length,
         p50: percentile(sorted, 0.5),
         p95: percentile(sorted, 0.95),
         p99: percentile(sorted, 0.99),

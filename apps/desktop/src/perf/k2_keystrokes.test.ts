@@ -79,4 +79,21 @@ describe("k2 a sample is keydown to the render that shows its echo", () => {
 
     expect(probe.summary(1)).toEqual({ n: 20, dropped: 0, p50: 10, p95: 19, p99: 20, max: 20 });
   });
+
+  it("k2_the_warm_up_is_counted_in_keys_so_a_dropped_warm_up_key_stays_out_of_the_drops", async () => {
+    const time = clock();
+    const probe = createKeystrokeProbe(time.now, "a");
+    const sleep = async () => {};
+
+    await typeKeys(probe, { press: () => {}, sleep, random: () => 0 }, 1);
+
+    void probe.keydown();
+    probe.written(bytes("a"));
+    time.advance(6);
+    probe.rendered();
+    await typeKeys(probe, { press: () => {}, sleep, random: () => 0 }, 1);
+
+    expect(probe.summary(1)).toMatchObject({ n: 1, dropped: 1, p50: 6 });
+    expect(probe.summary(0)).toMatchObject({ n: 1, dropped: 2 });
+  });
 });
