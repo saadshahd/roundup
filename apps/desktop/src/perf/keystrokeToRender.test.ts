@@ -8,47 +8,68 @@ describe("u39 keystroke-to-render tracking", () => {
     expect(tracker.api.p95()).toBeNull();
   });
 
-  it("u39_pairs_a_keydown_with_the_next_output_fifo", () => {
+  it("u39_every_keystroke_pending_before_an_output_closes_against_it", () => {
     const tracker = createKeystrokeToRender();
 
     tracker.stamp(0);
     tracker.stamp(10);
-    tracker.close(20);
-    tracker.close(50);
+    tracker.outputArrived(20)(20);
 
-    expect(tracker.api.keystrokeToRender).toEqual([20, 40]);
+    expect(tracker.api.keystrokeToRender).toEqual([20, 10]);
+  });
+
+  it("u39_a_keystroke_stamped_after_the_output_arrived_waits_for_the_next_one", () => {
+    const tracker = createKeystrokeToRender();
+
+    tracker.stamp(0);
+    const settle = tracker.outputArrived(20);
+
+    tracker.stamp(22);
+    settle(30);
+
+    expect(tracker.api.keystrokeToRender).toEqual([30]);
+
+    tracker.outputArrived(40)(40);
+
+    expect(tracker.api.keystrokeToRender).toEqual([30, 18]);
   });
 
   it("u39_an_output_with_no_pending_keystroke_closes_nothing", () => {
     const tracker = createKeystrokeToRender();
 
-    tracker.close(100);
+    tracker.outputArrived(100)(100);
 
     expect(tracker.api.keystrokeToRender).toEqual([]);
   });
 
-  it("u39_an_unanswered_keystroke_past_one_second_is_dropped_and_counted", () => {
+  it("u39_an_idle_unanswered_keystroke_past_one_second_is_dropped_and_counted", () => {
     const tracker = createKeystrokeToRender();
 
     tracker.stamp(0);
-    tracker.stamp(1000);
+    tracker.dropStale(1000);
 
     expect(tracker.api.unanswered).toBe(1);
     expect(tracker.api.keystrokeToRender).toEqual([]);
-
-    tracker.close(1010);
-
-    expect(tracker.api.keystrokeToRender).toEqual([10]);
   });
 
   it("u39_a_keystroke_answered_just_under_one_second_is_not_dropped", () => {
     const tracker = createKeystrokeToRender();
 
     tracker.stamp(0);
-    tracker.close(999);
+    tracker.outputArrived(999)(999);
 
     expect(tracker.api.unanswered).toBe(0);
     expect(tracker.api.keystrokeToRender).toEqual([999]);
+  });
+
+  it("u39_a_stale_keystroke_at_output_arrival_is_counted_not_closed", () => {
+    const tracker = createKeystrokeToRender();
+
+    tracker.stamp(0);
+    tracker.outputArrived(1000)(1000);
+
+    expect(tracker.api.unanswered).toBe(1);
+    expect(tracker.api.keystrokeToRender).toEqual([]);
   });
 
   it("u39_p95_is_the_nearest_rank_95th_percentile", () => {
@@ -56,7 +77,7 @@ describe("u39 keystroke-to-render tracking", () => {
 
     for (let elapsed = 1; elapsed <= 20; elapsed += 1) {
       tracker.stamp(0);
-      tracker.close(elapsed);
+      tracker.outputArrived(elapsed)(elapsed);
     }
 
     expect(tracker.api.p95()).toBe(19);
@@ -67,7 +88,7 @@ describe("u39 keystroke-to-render tracking", () => {
 
     for (let i = 0; i < 1001; i += 1) {
       tracker.stamp(i);
-      tracker.close(i + 1);
+      tracker.outputArrived(i + 1)(i + 1);
     }
 
     expect(tracker.api.keystrokeToRender).toHaveLength(1000);

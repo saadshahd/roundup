@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import { createFakeApp } from "../testing/fakeApp";
 import { event } from "../testing/nodes";
@@ -20,6 +20,24 @@ const paneKeydownTarget = (): HTMLElement => {
   document.body.append(pane);
 
   return input;
+};
+
+const paneHeaderStopButton = (): HTMLElement => {
+  const pane = document.createElement("div");
+
+  pane.className = "pane";
+
+  const header = document.createElement("div");
+
+  header.className = "pane-header";
+
+  const stop = document.createElement("button");
+
+  header.append(stop);
+  pane.append(header);
+  document.body.append(pane);
+
+  return stop;
 };
 
 const outputEvent = (id: string): DaemonEvent => event({ name: "terminal.output", data: { id, data: "" } });
@@ -62,6 +80,7 @@ describe("u39 the ?perf keystroke-to-render hook", () => {
   afterEach(() => {
     document.body.replaceChildren();
     delete window.__perf;
+    vi.useRealTimers();
   });
 
   it("u39_without_perf_in_the_url_the_app_passes_through_untouched", async () => {
@@ -103,6 +122,50 @@ describe("u39 the ?perf keystroke-to-render hook", () => {
     expect(window.__perf?.keystrokeToRender).toEqual([16]);
   });
 
+  it("u39_two_keystrokes_before_one_output_both_close_against_it", async () => {
+    const { app, wrapped, setTime, runFrame } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    setTime(0);
+    paneKeydownTarget().dispatchEvent(keydown());
+
+    setTime(10);
+    paneKeydownTarget().dispatchEvent(keydown());
+
+    setTime(20);
+    app.emit(outputEvent("t1"));
+    runFrame();
+
+    expect(window.__perf?.keystrokeToRender).toEqual([20, 10]);
+  });
+
+  it("u39_a_keystroke_typed_after_the_output_arrived_waits_for_the_next_output", async () => {
+    const { app, wrapped, setTime, runFrame } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    setTime(0);
+    paneKeydownTarget().dispatchEvent(keydown());
+
+    setTime(20);
+    app.emit(outputEvent("t1"));
+
+    setTime(22);
+    paneKeydownTarget().dispatchEvent(keydown());
+
+    setTime(30);
+    runFrame();
+
+    expect(window.__perf?.keystrokeToRender).toEqual([30]);
+
+    setTime(40);
+    app.emit(outputEvent("t2"));
+    runFrame();
+
+    expect(window.__perf?.keystrokeToRender).toEqual([30, 18]);
+  });
+
   it("u39_a_keydown_outside_the_pane_is_not_stamped", async () => {
     const { app, wrapped, runFrame } = setup("?perf");
 
@@ -113,6 +176,49 @@ describe("u39 the ?perf keystroke-to-render hook", () => {
     runFrame();
 
     expect(window.__perf?.keystrokeToRender).toEqual([]);
+  });
+
+  it("u39_a_keydown_on_the_pane_header_is_not_stamped", async () => {
+    const { app, wrapped, runFrame } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    paneHeaderStopButton().dispatchEvent(keydown());
+    app.emit(outputEvent("t1"));
+    runFrame();
+
+    expect(window.__perf?.keystrokeToRender).toEqual([]);
+  });
+
+  it("u39_a_keydown_whose_target_is_not_an_element_is_not_stamped", async () => {
+    const { app, wrapped, runFrame } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    expect(() => document.dispatchEvent(keydown())).not.toThrow();
+    app.emit(outputEvent("t1"));
+    runFrame();
+
+    expect(window.__perf?.keystrokeToRender).toEqual([]);
+  });
+
+  it("u39_capture_stamps_a_keydown_even_if_the_pane_stops_it_from_bubbling", async () => {
+    const { app, wrapped, setTime, runFrame } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    const input = paneKeydownTarget();
+
+    input.addEventListener("keydown", (keydownEvent) => keydownEvent.stopPropagation());
+
+    setTime(5);
+    input.dispatchEvent(keydown());
+
+    setTime(21);
+    app.emit(outputEvent("t1"));
+    runFrame();
+
+    expect(window.__perf?.keystrokeToRender).toEqual([16]);
   });
 
   it("u39_a_non_output_event_schedules_no_frame", async () => {
@@ -152,5 +258,39 @@ describe("u39 the ?perf keystroke-to-render hook", () => {
 
     expect(window.__perf?.unanswered).toBe(1);
     expect(window.__perf?.keystrokeToRender).toEqual([10]);
+  });
+
+  it("u39_an_unanswered_keystroke_is_dropped_and_counted_even_when_nothing_else_happens", async () => {
+    vi.useFakeTimers();
+
+    const { wrapped, setTime } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    setTime(0);
+    paneKeydownTarget().dispatchEvent(keydown());
+
+    setTime(1000);
+    vi.advanceTimersByTime(1000);
+
+    expect(window.__perf?.unanswered).toBe(1);
+    expect(window.__perf?.keystrokeToRender).toEqual([]);
+  });
+
+  it("u39_p95_reads_through_the_installed_hook", async () => {
+    const { app, wrapped, setTime, runFrame } = setup("?perf");
+
+    await wrapped.subscribe(() => undefined);
+
+    for (const elapsed of [10, 20, 30, 40]) {
+      setTime(0);
+      paneKeydownTarget().dispatchEvent(keydown());
+
+      setTime(elapsed);
+      app.emit(outputEvent("t1"));
+      runFrame();
+    }
+
+    expect(window.__perf?.p95()).toBe(40);
   });
 });

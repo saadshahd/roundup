@@ -5,49 +5,56 @@ export type PerfApi = {
   p95(): number | null;
 };
 
-const UNANSWERED_AFTER_MS = 1000;
+export const UNANSWERED_AFTER_MS = 1000;
 
 /** Steady-state cap on `keystrokeToRender`, so a long `?perf` run holds flat memory, like U34's scrollback bound. */
 const MAX_SAMPLES = 1000;
 
-/** Nearest-rank percentile, `values.length > 0`; mirrors `crates/perf/src/measure.rs`'s `percentile`. */
+/** Nearest-rank percentile; mirrors `crates/perf/src/measure.rs`'s `percentile`. */
 const percentile95 = (values: readonly number[]): number | null => {
   if (values.length === 0) return null;
 
   const sorted = [...values].sort((a, b) => a - b);
   const index = Math.ceil(sorted.length * 0.95) - 1;
-  const value = sorted[index];
 
-  if (value === undefined) throw new Error(`percentile index ${index} out of range for ${sorted.length} values`);
-
-  return value;
+  return sorted[index] ?? null;
 };
+
+type Stamp = { time: number };
 
 type Tracker = {
   api: PerfApi;
-  /** Opens a stamp for a keystroke typed at `now`. */
   stamp(now: number): void;
-  /** Closes the oldest open stamp against a render that landed at `now`. */
-  close(now: number): void;
+  /** Counts and drops every stamp that has been open for `UNANSWERED_AFTER_MS` as of `now`. */
+  dropStale(now: number): void;
+  /**
+   * Hands every stamp still open at `now` to a closer the caller runs once the frame after the
+   * event's handlers has passed, so a keystroke typed after this output arrived is left open for
+   * the next one instead of being paired with an output that isn't "after" it.
+   */
+  outputArrived(now: number): (closedAt: number) => void;
 };
 
-/** FIFO of open stamps, oldest first: the next `close` always answers the earliest unclosed `stamp`. */
 export const createKeystrokeToRender = (): Tracker => {
-  const pending: number[] = [];
+  const pending: Stamp[] = [];
   const keystrokeToRender: number[] = [];
   let unanswered = 0;
 
   const dropStale = (now: number): void => {
-    while (pending.length > 0) {
+    while (true) {
       const oldest = pending[0];
 
-      if (oldest === undefined) throw new Error("pending queue invariant violated: length > 0 with no head");
-
-      if (now - oldest < UNANSWERED_AFTER_MS) break;
+      if (oldest === undefined || now - oldest.time < UNANSWERED_AFTER_MS) break;
 
       pending.shift();
       unanswered += 1;
     }
+  };
+
+  const record = (elapsed: number): void => {
+    keystrokeToRender.push(elapsed);
+
+    if (keystrokeToRender.length > MAX_SAMPLES) keystrokeToRender.shift();
   };
 
   return {
@@ -59,19 +66,17 @@ export const createKeystrokeToRender = (): Tracker => {
       p95: () => percentile95(keystrokeToRender),
     },
     stamp: (now) => {
-      dropStale(now);
-      pending.push(now);
+      pending.push({ time: now });
     },
-    close: (now) => {
+    dropStale,
+    outputArrived: (now) => {
       dropStale(now);
 
-      const opened = pending.shift();
+      const closing = pending.splice(0, pending.length);
 
-      if (opened === undefined) return;
-
-      keystrokeToRender.push(now - opened);
-
-      if (keystrokeToRender.length > MAX_SAMPLES) keystrokeToRender.shift();
+      return (closedAt) => {
+        for (const entry of closing) record(closedAt - entry.time);
+      };
     },
   };
 };
