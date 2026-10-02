@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, pad, todo};
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, CallToolResult, ProtocolVersion};
+use rmcp::model::{CallToolRequestParams, CallToolResult, PaginatedRequestParams, ProtocolVersion};
 use rmcp::service::{RoleClient, RunningService};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -430,6 +430,84 @@ async fn m3_stdout_carries_only_protocol_messages_up_to_the_exit() {
         let message: Value = serde_json::from_str(line).unwrap_or_else(|_| panic!("{line}"));
         assert_eq!(message["jsonrpc"], "2.0", "{line}");
     }
+}
+
+/// Raw `tools/list` over stdio, against a Daemon that only answers `daemon.identify`: listing
+/// tools never touches the Daemon, so this stand-in is enough. Returns the reply's `result`.
+async fn raw_tools_list(socket: &Path, cursor: Option<&str>) -> Value {
+    let mut child = start_rup_mcp(socket, "a1");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut params = json!({});
+    if let Some(cursor) = cursor {
+        params = json!({ "cursor": cursor });
+    }
+    for message in [
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": ProtocolVersion::LATEST_WITH_INITIALIZE.as_str(),
+            "capabilities": {},
+            "clientInfo": { "name": "test", "version": "0" },
+        }}),
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": params }),
+    ] {
+        write_line(&mut stdin, &message).await;
+    }
+    loop {
+        let line = tokio::time::timeout(BOUND, stdout.next_line())
+            .await
+            .expect("the shim answered tools/list")
+            .unwrap()
+            .expect("stdout is open until the shim answers tools/list");
+        let message: Value = serde_json::from_str(&line).unwrap();
+        if message["id"] == 2 {
+            return message["result"].clone();
+        }
+    }
+}
+
+#[tokio::test]
+async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let _requests = fake_daemon(&socket, &["daemon.identify"]);
+
+    let result = raw_tools_list(&socket, None).await;
+
+    assert_eq!(result["tools"].as_array().unwrap().len(), 13);
+    assert!(result["ttlMs"].is_u64(), "{result}");
+}
+
+#[tokio::test]
+async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let _requests = fake_daemon(&socket, &["daemon.identify"]);
+
+    let result = raw_tools_list(&socket, Some("past-the-end")).await;
+
+    assert_eq!(result["tools"].as_array().unwrap().len(), 0);
+    assert!(result["ttlMs"].is_u64(), "{result}");
+}
+
+#[tokio::test]
+async fn m4_a_second_page_carries_a_numeric_ttl_ms() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let _requests = fake_daemon(&socket, &["daemon.identify"]);
+    let shim = spawn_shim(&socket, "a1").await;
+
+    let page = shim
+        .client
+        .list_tools(Some(
+            PaginatedRequestParams::default()
+                .with_cursor(Some("any-cursor-a-client-might-send-back".into())),
+        ))
+        .await
+        .unwrap();
+
+    assert!(page.tools.is_empty());
+    assert!(page.ttl_ms.is_some_and(|ms| ms > 0), "{:?}", page.ttl_ms);
 }
 
 #[tokio::test]

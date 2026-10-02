@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use contracts::{Actor, ActorKind, IdentifyParams, pad, todo};
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
+    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
+    Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
+    ServerConfig, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData, ServerHandler, ServiceExt};
@@ -19,6 +20,12 @@ use tokio::sync::mpsc;
 
 /// A Todo or Pad call is a few SQLite statements; past this the Daemon is wedged, and a hung tool call would hang the Agent's turn.
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long a client may treat a `tools/list` reply as fresh (SEP-2549; required numeric by protocol
+/// version 2026-07-28, which the interactive Claude Code 2.1.288 enforces even against an older server).
+/// The tool set is fixed for the whole life of this process, so an hour avoids needless refetching
+/// without claiming the tools are fresh forever across a future `rup` upgrade that restarts the shim.
+const TOOLS_TTL_MS: u64 = 3_600_000;
 
 struct Offered {
     method: &'static str,
@@ -155,12 +162,18 @@ impl ServerHandler for Shim {
 
     async fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParams>,
+        request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(
-            self.tools.iter().map(|offer| offer.tool.clone()).collect(),
-        ))
+        // Every tool is always in the one page handed out with no cursor; a cursor asks for
+        // whatever comes after that page, which is nothing.
+        let tools = match request.and_then(|r| r.cursor) {
+            Some(_) => Vec::new(),
+            None => self.tools.iter().map(|offer| offer.tool.clone()).collect(),
+        };
+        Ok(ListToolsResult::with_all_items(tools)
+            .with_ttl_ms(TOOLS_TTL_MS)
+            .with_cache_scope(CacheScope::Public))
     }
 
     async fn call_tool(
