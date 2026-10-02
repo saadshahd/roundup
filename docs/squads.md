@@ -10,7 +10,7 @@ A squad is one scenario writer, its Builders and its reviewer pool. It writes sc
 |---|---|---|---|
 | ui-rail | `apps/desktop/src/rail`, `drawer`, `todos`, `pads` | `ui-rail.md` | U61 to U79 |
 | ui-surfaces | `apps/desktop/src` outside those four (switcher, first run, help, pane, empty and error states, and the keystroke probe) | `ui-surfaces.md` | U80 to U99 |
-| daemon | `crates/agents`, `crates/terminal`, `crates/todos`, `crates/pads`, `crates/rupd`, `crates/rup`, `crates/rpc`, `crates/desktop` | `agents.md`, `terminal.md`, `todos.md`, `pads.md`, `daemon.md`, `mcp.md`, `rpc.md`, `app.md` | A17 to A29, X11 to X20, T9 to T15, P10 to P14, D5 to D9, M4 to M6, C2 to C9, S7 to S12 |
+| daemon | `crates/agents`, `crates/terminal`, `crates/todos`, `crates/pads`, `crates/rupd`, `crates/rup`, `crates/rpc`, `crates/desktop` | `agents.md`, `terminal.md`, `todos.md`, `pads.md`, `daemon.md`, `mcp.md`, `rpc.md`, `app.md` | A20 to A29, X11 to X20, T10 to T15, P11 to P14, D8 to D9, M4 to M6, C2 to C9, S8 to S12 (A17 to A19, T9, P10, D5 to D7 and S7 are held) |
 | loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L32 to L39 (L26 to L31 stay with their holders) |
 | perf | `crates/perf`, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
 
