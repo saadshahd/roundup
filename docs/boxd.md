@@ -23,13 +23,13 @@ The strongest reason to use a VM is the first row: unattended permission-skippin
 
 ## Where a Reviewer's verdict goes
 
-A boxd Reviewer cannot post to GitHub: its VM has no login, by design (`GitHub on a VM`). `loop/boxd.sh review` writes its answer to `loop/out/verdicts/<name>.md` on the laptop, and that file is lost when `loop/out/` is cleaned, so an approval that leaves only an empty `Reviewed-by-Agent` commit leaves no record of what was checked. The record is a PR comment, posted from the laptop by whoever launched the review, before the approval commit is pushed:
+A boxd Reviewer cannot post to GitHub: its VM has no login, by design (`GitHub on a VM`). `loop/boxd.sh review` writes its answer to `loop/out/verdicts/<name>.md` on the laptop, and that file is lost when `loop/out/` is cleaned, so an approval that leaves only an empty `Reviewed-by-Agent` commit leaves no record of what was checked. The record is a PR comment, and it comes before the approval commit. A Reviewer that has `gh` (one that runs on the laptop) posts its own verdict and then pushes the approval commit. For a boxd Reviewer the Driver, who launched the review on the laptop, posts the verdict and then pushes the approval commit; the VM does neither. The comment is posted with:
 
 ```
 gh pr comment <pr> --body-file loop/out/verdicts/<name>.md
 ```
 
-The verdict's first line is `VERDICT: approve` or `VERDICT: reject`; it names the commit it reviewed (the approval commit's parent), the commands it ran with their exit codes, the mutations it tried and their results, and each defect with its rule number. A Reviewer that does not run on a VM leaves its findings the same way: the Driver posts them. The Merger confirms by hand that the PR holds an approving verdict naming the parent of the newest `Reviewed-by-Agent` commit, as it already confirms that no merge follows the approval (`loop/rules.sh trailers` reads `--no-merges`). Nothing machine-checks the comment yet; a `--post <pr>` option on `review` would need its own scenario.
+The verdict's first line is `VERDICT: approve` or `VERDICT: reject`; it names the full SHA of the commit it reviewed (the approval commit's parent; for a reject, the head it reviewed, since no approval commit exists), the commands it ran with their exit codes, the mutations it tried and their results, and each defect with its rule number. The Merger confirms by hand that the PR holds an approving verdict whose full SHA equals `git rev-parse <newest Reviewed-by-Agent commit>^`, as it already confirms that no merge follows the approval (`loop/rules.sh trailers` reads `--no-merges`). Nothing machine-checks the comment yet; a `--post <pr>` option on `review` would need its own scenario.
 
 ## tsc on the VM
 
