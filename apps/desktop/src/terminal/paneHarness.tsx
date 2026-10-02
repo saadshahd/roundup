@@ -9,6 +9,7 @@ import { USER } from "../testing/nodes";
 import type { FakeApp } from "../testing/fakeApp";
 import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import type { ConnectedProject } from "../state/connectedProject";
+import { Rail } from "../rail/Rail";
 import { Pane } from "./Pane";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
 import { toBase64 } from "./base64";
@@ -54,7 +55,14 @@ export const fakeEmulators = () => {
       },
       show: (host) => {
         emulator.host = host;
-        host.replaceChildren(id);
+
+        const screenEl = document.createElement("div");
+
+        screenEl.textContent = id;
+        screenEl.tabIndex = 0;
+        screenEl.dataset.terminal = id;
+        host.replaceChildren(screenEl);
+        screenEl.focus();
 
         return emulator.size;
       },
@@ -131,6 +139,21 @@ export const mountPane = async (
 
   const { container } = render(() => (
     <ConnectedProjectContext.Provider value={connected}>
+      <Pane createEmulator={factory} />
+    </ConnectedProjectContext.Provider>
+  ));
+
+  return { app, connected, emulators: made, container };
+};
+
+/** A Rail above a Pane in one open Project, so a spawn's new row can be watched handing focus to its Terminal (U33). */
+export const mountRailAndPane = async (tree: RailNode[]): Promise<Mounted> => {
+  const { app, connected } = await connectFakeProject(tree);
+  const { factory, made } = fakeEmulators();
+
+  const { container } = render(() => (
+    <ConnectedProjectContext.Provider value={connected}>
+      <Rail />
       <Pane createEmulator={factory} />
     </ConnectedProjectContext.Provider>
   ));
