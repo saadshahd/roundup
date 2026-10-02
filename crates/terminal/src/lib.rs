@@ -39,6 +39,20 @@ const READ_CHUNK: usize = 8192;
 /// exhausted and `kill` cannot run.
 const WRITE_BACKLOG: usize = 16;
 
+/// Env vars Claude Code sets when the program running it is itself inside a Claude Code run (A15).
+/// The Daemon can inherit these from its own environment; every program it starts must not, or it
+/// would believe itself nested in that run too.
+const CLAUDE_CODE_MARKERS: [&str; 8] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+];
+
 /// A freshly spawned Terminal: its id and every event it emits, from the first byte of output.
 pub struct Spawned {
     pub id: String,
@@ -137,6 +151,10 @@ impl Terminals {
         command.cwd(&params.cwd);
         for (name, value) in &params.env {
             command.env(name, value);
+        }
+        // Last, so none of them survive even if a caller passed one in `params.env`.
+        for marker in CLAUDE_CODE_MARKERS {
+            command.env_remove(marker);
         }
         // The reader and input threads start before the program (the reader receives the child over a
         // channel), so no later failure can leave a program that nobody waits for.
