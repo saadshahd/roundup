@@ -142,6 +142,9 @@ impl Launcher {
                 self.rup.display()
             )));
         }
+        // Refuse a symlinked agents directory (A13) before writing anything, through the
+        // link or beside it: the Project's own files are not ours to trust, and a link
+        // could land a write anywhere.
         let agents_dir = agents_dir(&dir);
         if is_symlink(&agents_dir) {
             return Err(invalid(format!("{} is a symlink", agents_dir.display())));
@@ -333,8 +336,6 @@ fn landing(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
-/// The per-Agent files live under `.roundup/agents`, never through a symlink planted there
-/// (A13): the Project's own files are not ours to trust, and a link could land a write anywhere.
 fn agents_dir(dir: &Path) -> PathBuf {
     dir.join("agents")
 }

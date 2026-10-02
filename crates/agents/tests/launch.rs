@@ -276,7 +276,32 @@ fn a13_a_symlinked_agents_directory_is_refused() {
     );
     assert!(agents.symlink_metadata().unwrap().file_type().is_symlink());
     assert!(std::fs::read_dir(&elsewhere).unwrap().next().is_none());
+    assert!(!s.dir.join("1.settings.json").exists());
+    assert!(!s.dir.join("1.mcp.json").exists());
     assert!(!s.claude_json.exists());
+}
+
+#[test]
+fn a13_a_real_agents_directory_works_as_before() {
+    let s = setup();
+    let agents = s.dir.join("agents");
+    std::fs::create_dir(&agents).unwrap();
+
+    let argv = s.prepare("1").unwrap();
+
+    assert!(Path::new(&argv[2]).starts_with(&agents));
+    assert!(Path::new(&argv[4]).starts_with(&agents));
+}
+
+#[test]
+fn a13_a_missing_agents_directory_is_created_as_before() {
+    let s = setup();
+    let agents = s.dir.join("agents");
+    assert!(!agents.exists());
+
+    s.prepare("1").unwrap();
+
+    assert!(agents.is_dir());
 }
 
 #[test]
