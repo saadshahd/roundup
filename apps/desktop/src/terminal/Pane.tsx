@@ -20,6 +20,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   /** U38: a failure that fills this region shows in its place, never beside its empty line. */
   const notice = createMemo(() => props.notice ?? screens.failure(terminalId()));
   const [screen, setScreen] = createSignal<HTMLDivElement>();
+  let pane: HTMLDivElement | undefined;
   let pendingFrame: number | null = null;
 
   // Window resize only: opening a Drawer overlays the pane and never changes its size.
@@ -64,6 +65,34 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     return screens.isAtBottom(id) ? null : id;
   });
 
+  const onKeyDown = (press: KeyboardEvent): void => {
+    if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+
+    const target = press.target;
+
+    if (!(target instanceof Element) || !target.closest(".pane-screen")) return;
+
+    if (target.closest('input, textarea, [contenteditable="true"]') && !target.closest(".xterm-helper-textarea")) return;
+
+    const id = terminalId();
+
+    if (id === null) return;
+
+    const key = press.key.toLowerCase();
+
+    if (key !== "c" && key !== "v") return;
+
+    press.preventDefault();
+    press.stopPropagation();
+
+    const clipboard = navigator.clipboard;
+
+    if (key === "c") void screens.copy(id, clipboard);
+    else void screens.paste(id, clipboard);
+  };
+
+  onCleanup(() => pane?.removeEventListener("keydown", onKeyDown, true));
+
   window.addEventListener("resize", refitNextFrame);
   onCleanup(() => {
     window.removeEventListener("resize", refitNextFrame);
@@ -74,7 +103,10 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   });
 
   return (
-    <div class="pane">
+    <div class="pane" ref={(element) => {
+      pane = element;
+      element.addEventListener("keydown", onKeyDown, true);
+    }}>
       <div class="pane-body">
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
