@@ -253,11 +253,23 @@ describe("u103 a reloaded pane shows the screen", () => {
   it("u103_a_failed_snapshot_shows_one_failure_line_and_the_emulator_starts_blank", async () => {
     const { app, pending, snapshots, log } = await mount();
 
-    app.emit(chunk("t-a", "live", 0));
     await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
     pending[0]?.(new Error("boom"));
 
     expect((await screen.findByText(/^✕ terminal\.snapshot:/)).tagName).toBe("P");
+    expect(log()).toEqual([]);
+    app.emit(chunk("t-a", "live", 0));
+    expect(log()).toEqual(["live"]);
+  });
+
+  it("u103_output_held_during_a_failed_initial_snapshot_continues_as_live_output", async () => {
+    const { app, pending, snapshots, log } = await mount();
+
+    app.emit(chunk("t-a", "live", 0));
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+    expect(log()).toEqual([]);
+    pending[0]?.(new Error("boom"));
+
     await vi.waitFor(() => expect(log()).toEqual(["live"]));
     app.emit(chunk("t-a", "more", 4));
     expect(log()).toEqual(["live", "more"]);
