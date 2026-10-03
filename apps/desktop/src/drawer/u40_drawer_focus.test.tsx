@@ -26,6 +26,8 @@ const mountPaneWithDrawer = async () => {
     write: () => {},
     setSize: () => {},
     reset: () => {},
+    selection: () => "",
+    paste: () => {},
     onInput: (listener) => field.addEventListener("input", () => listener(new TextEncoder().encode(field.value))),
     show: (host) => {
       host.replaceChildren(field);

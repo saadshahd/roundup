@@ -21,6 +21,8 @@ export type Screens = {
   isAtBottom(id: string): boolean;
   /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
   returnToBottom(id: string): void;
+  copy(id: string, clipboard: Pick<Clipboard, "writeText">): Promise<void>;
+  paste(id: string, clipboard: Pick<Clipboard, "readText">): Promise<void>;
   /** The selected Terminal's last failed call or `terminal.output`, until a later call for that Terminal succeeds. */
   failure(id: string | null): string | null;
   dispose(): void;
@@ -41,14 +43,15 @@ type Holder = {
 
 type FailureEntry = { message: string; order: number };
 
-type TerminalFailures = { snapshot: FailureEntry | null; live: FailureEntry | null };
+type TerminalFailures = { snapshot: FailureEntry | null; live: FailureEntry | null; clipboard: FailureEntry | null };
 
 const newestFailure = (state: TerminalFailures | undefined): FailureEntry | null => {
-  if (!state?.snapshot) return state?.live ?? null;
+  if (!state) return null;
 
-  if (!state.live) return state.snapshot;
-
-  return state.snapshot.order > state.live.order ? state.snapshot : state.live;
+  return [state.snapshot, state.live, state.clipboard].reduce<FailureEntry | null>(
+    (latest, entry) => entry && (!latest || entry.order > latest.order) ? entry : latest,
+    null,
+  );
 };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
@@ -60,7 +63,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
   const setFailure = (id: string, kind: keyof TerminalFailures, message: string | null): void => {
     setFailures((current) => {
-      const previous = current.get(id) ?? { snapshot: null, live: null };
+      const previous = current.get(id) ?? { snapshot: null, live: null, clipboard: null };
 
       if (message === null && previous[kind] === null) return current;
 
@@ -73,7 +76,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
       next.delete(id);
 
-      if (state.snapshot !== null || state.live !== null) next.set(id, state);
+      if (state.snapshot !== null || state.live !== null || state.clipboard !== null) next.set(id, state);
 
       return next;
     });
@@ -257,6 +260,37 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
   const emulatorFor = (id: string): Emulator => holderFor(id).emulator;
 
+  const copy = async (id: string, clipboard: Pick<Clipboard, "writeText">): Promise<void> => {
+    const selection = emulatorFor(id).selection();
+
+    if (!selection) return;
+
+    try {
+      await clipboard.writeText(selection);
+      setFailure(id, "clipboard", null);
+    } catch (thrown) {
+      if (!(thrown instanceof Error)) throw thrown;
+
+      setFailure(id, "clipboard", thrown.message);
+    }
+  };
+
+  const paste = async (id: string, clipboard: Pick<Clipboard, "readText">): Promise<void> => {
+    if (exited(id) || daemonExit() !== null) return;
+
+    try {
+      const text = await clipboard.readText();
+
+      if (text && !exited(id) && daemonExit() === null) emulatorFor(id).paste(text);
+
+      setFailure(id, "clipboard", null);
+    } catch (thrown) {
+      if (!(thrown instanceof Error)) throw thrown;
+
+      setFailure(id, "clipboard", thrown.message);
+    }
+  };
+
   const show = (id: string, host: HTMLElement, focus?: boolean): Size => {
     const holder = holderFor(id);
     const size = holder.emulator.show(host, focus);
@@ -297,6 +331,8 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     resize,
     isAtBottom: (id) => holderFor(id).atBottom(),
     returnToBottom: (id) => holderFor(id).returnToBottom(),
+    copy,
+    paste,
     failure: (id) => {
       const current = failures();
 
