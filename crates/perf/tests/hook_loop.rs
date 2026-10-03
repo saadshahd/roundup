@@ -49,3 +49,32 @@ async fn h15_calls_that_exit_0_report_their_wall_time() {
 
     assert!(elapsed.as_millis() > 0);
 }
+
+#[tokio::test]
+async fn h15_hook_calls_runs_exactly_the_calls_asked_for_cycling_the_payloads() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("log");
+    let rup = dir.path().join("rup");
+    std::fs::write(
+        &rup,
+        format!(
+            "#!/bin/sh\ncat >>{}\necho >>{}\n",
+            log.display(),
+            log.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&rup, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (pre, post) = (dir.path().join("pre"), dir.path().join("post"));
+    std::fs::write(&pre, "pre").unwrap();
+    std::fs::write(&post, "post").unwrap();
+
+    hook_calls(&rup, &dir.path().join("s"), "1", &[&pre, &post], 5)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap(),
+        "pre\npost\npre\npost\npre\n"
+    );
+}
