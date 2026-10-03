@@ -4,7 +4,7 @@ use contracts::EventData;
 use contracts::terminal::{Snapshot, TerminalId};
 use rpc::{Module, code};
 
-use crate::common::{ctx, open, sh, until_exit, until_printed};
+use crate::common::{PATIENCE, ctx, open, sh, until_exit, until_printed};
 
 #[tokio::test]
 async fn u104_snapshot_restores_the_visible_screen_and_input_modes() {
@@ -166,7 +166,19 @@ async fn u104_snapshot_cuts_old_history_before_the_visible_screen_at_one_megabyt
     );
     params.cols = 1000;
     let mut spawned = terminals.spawn(params).await.unwrap();
-    until_exit(&mut spawned.events).await;
+    tokio::time::timeout(PATIENCE, async {
+        loop {
+            match spawned.events.recv().await {
+                Ok(EventData::TerminalExited(_)) => break,
+                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    panic!("events closed before the Terminal exited")
+                }
+            }
+        }
+    })
+    .await
+    .expect("the Terminal exits in time");
     let snapshot = terminals.snapshot(&spawned.id).unwrap();
     let data = STANDARD.decode(snapshot.data).unwrap();
     assert!(data.len() <= 1_048_576);
