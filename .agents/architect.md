@@ -20,3 +20,4 @@ The last 40 rejects were mostly text defects, not process slips. Run each step; 
 6. State the result, never the fix or the incident that led to it.
 7. After `git merge origin/main`, run `git diff origin/main --stat` and `git diff origin/main -- <file>`: only your own lines may differ. A merge that reverts main's text is a defect.
 8. Run `loop/rules.sh vocab origin/main` after editing `CONTEXT.md` too: an _Avoid_ entry bans the word everywhere. Run `loop/rules.sh trailers origin/main` on the real branch (VM replays drop trailers); "no approval commit" is the only failure expected before approval.
+- Before approving a Message, Route, Held or Takeover contract change, name which of the laws M1 to M10 of `scenarios/proofs.md` it touches and confirm `proofs/messages` and `docs/messages.md` agree.
