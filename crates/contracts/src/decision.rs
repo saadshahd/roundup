@@ -45,13 +45,14 @@ pub enum Answer {
 }
 
 /// `proof` is checked against the value the Daemon holds (H4); a missing or wrong one is
-/// `FORBIDDEN`.
+/// `FORBIDDEN`, so the field must deserialize even when the caller sends none.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "decision/")]
 pub struct AnswerParams {
     pub id: String,
     pub answer: Answer,
-    pub proof: String,
+    #[ts(optional)]
+    pub proof: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -150,7 +151,7 @@ mod tests {
         let params = AnswerParams {
             id: "d1".into(),
             answer: Answer::Deny,
-            proof: "secret".into(),
+            proof: Some("secret".into()),
         };
 
         let wire = serde_json::to_value(&params).unwrap();
@@ -168,6 +169,17 @@ mod tests {
         let bad = json!({"id": "d1", "answer": "ask", "proof": "secret"});
 
         assert!(serde_json::from_value::<AnswerParams>(bad).is_err());
+    }
+
+    /// H4: a missing `proof` must still deserialize, as `None`, so the Daemon can answer
+    /// `FORBIDDEN` instead of `rpc::params` turning it into `INVALID_PARAMS` first.
+    #[test]
+    fn h4_a_missing_proof_deserializes_as_none() {
+        let no_proof = json!({"id": "d1", "answer": "allow"});
+
+        let params: AnswerParams = serde_json::from_value(no_proof).unwrap();
+
+        assert_eq!(params.proof, None);
     }
 
     #[test]

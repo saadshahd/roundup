@@ -3,6 +3,6 @@ import type { Answer } from "./Answer";
 
 /**
  * `proof` is checked against the value the Daemon holds (H4); a missing or wrong one is
- * `FORBIDDEN`.
+ * `FORBIDDEN`, so the field must deserialize even when the caller sends none.
  */
-export type AnswerParams = { id: string, answer: Answer, proof: string, };
+export type AnswerParams = { id: string, answer: Answer, proof?: string, };
