@@ -1,0 +1,52 @@
+name: merge-ready
+
+# Runs from the default branch's copy of this file and checks out the default branch only: a PR's
+# own files are read as data and never executed (L55).
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted]
+  workflow_run:
+    workflows: [check, loop]
+    types: [completed]
+
+permissions:
+  contents: read
+  statuses: write
+  pull-requests: read
+  checks: read
+
+concurrency:
+  group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  merge-ready:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: set the merge-ready status on the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_FROM_PR: ${{ github.event.pull_request.number }}
+          PR_FROM_COMMENT: ${{ github.event.issue.pull_request && github.event.issue.number }}
+          PR_FROM_RUN: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          pr="${PR_FROM_PR:-${PR_FROM_COMMENT:-$PR_FROM_RUN}}"
+          [ -n "$pr" ] || { echo "no pull request for this event"; exit 0; }
+          sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+          set +e
+          out=$(loop/rules.sh merge-ready "$pr" 2>&1)
+          code=$?
+          set -e
+          state=success
+          if [ "$code" -ne 0 ]; then state=failure; fi
+          if [ "$code" -eq 2 ]; then out="merge-ready not built"; fi
+          desc=$(printf '%s' "$out" | head -n1 | cut -c1-140)
+          gh api "repos/$REPO/statuses/$sha" -f state="$state" -f context=merge-ready -f description="${desc:-$state}"
