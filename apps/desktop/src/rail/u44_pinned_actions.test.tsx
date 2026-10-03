@@ -14,10 +14,16 @@ describe("u44 a row brought into view is never under the pinned actions", () => 
 
     const bar = getComputedStyle(screen.getByText("+ agent").closest(".rail-actions") ?? document.body);
     const row = getComputedStyle(rowOf("a"));
-    const values = [bar.height, row.scrollMarginBottom];
+
+    const values = [
+      bar.height,
+      row.scrollMarginBottom,
+      bar.getPropertyValue("--rail-actions-height"),
+      row.getPropertyValue("--rail-actions-height"),
+    ];
 
     sheet.remove();
 
-    expect(values).toEqual(["var(--rail-actions-height)", "var(--rail-actions-height)"]);
+    expect(values).toEqual(["var(--rail-actions-height)", "var(--rail-actions-height)", "40px", "40px"]);
   });
 });

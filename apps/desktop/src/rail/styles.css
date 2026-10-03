@@ -29,28 +29,27 @@
 
 .rail-row .line {
   display: flex;
+  align-items: center;
   gap: 8px;
   white-space: pre;
 }
 
 .rail-row .name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Overlaid, not stacked in flow: a row's own height never changes when its Live line shows or hides (U46), only what sits under it is covered while it shows. */
+/* Name keeps priority: Live only grows into what the name's ellipsis leaves, so a row stays one line (U46). */
 .rail-row .live {
-  position: absolute;
-  top: 100%;
-  right: 8px;
-  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
   padding-left: 2ch;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: pre;
-  background: var(--ground);
+  white-space: nowrap;
+  text-align: right;
 }
 
 .rail-row input {

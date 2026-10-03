@@ -90,6 +90,8 @@ export const RailRowView = (props: {
 
   const liveLine = () => liveLineOf(props.row.node, props.exit, props.now());
   const showsLiveLine = () => !props.dragging && (props.selected || hovered() || isUnprompted(props.row.node));
+  /** An Agent or a Meta-agent: the only rows whose Live line is status-driven and can flicker on hover (U46). */
+  const isAgentRow = () => props.row.node.status !== null;
 
   return (
     <div
@@ -149,6 +151,13 @@ export const RailRowView = (props: {
             onCancel={() => setEditing(false)}
           />
         </Show>
+        <Show when={isAgentRow() && showsLiveLine() ? liveLine() : null}>
+          {(text) => (
+            <span class="live light" title={text()}>
+              {text()}
+            </span>
+          )}
+        </Show>
         <Show when={props.row.collapsed}>
           {(collapsed) => <span class="light">{collapsed().children}</span>}
         </Show>
@@ -164,7 +173,7 @@ export const RailRowView = (props: {
           </button>
         </Show>
       </p>
-      <Show when={showsLiveLine() ? liveLine() : null}>
+      <Show when={!isAgentRow() && showsLiveLine() ? liveLine() : null}>
         {(text) => (
           <p
             class="live light"
