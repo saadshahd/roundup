@@ -41,7 +41,7 @@ One prompt file per role in `.agents/`. Builders and Reviewers can run Codex or 
 | 3 | Open a PR (one module, about 2000 lines) with commit trailers `Author-Agent: <id>` | Builder | laptop | `loop/rules.sh size` (rule 3) |
 | 4 | CI | GitHub | macOS runner | `check` job (`just check`: fmt, clippy, nextest, machete, oxlint + anti-slop, tsc, fallow) |
 | 5 | Review | Reviewer, a different id | laptop | the verdict is posted first as a PR comment, by the Reviewer if it has `gh`, else by the Driver (`docs/boxd.md`, "Where a Reviewer's verdict goes"); the Driver checks the comment by hand. **Block lane:** an empty commit carrying only `Reviewed-by-Agent: <id>` follows it, and `loop/rules.sh trailers` checks that it differs from every `Author-Agent` (two self-asserted strings, not identities); the same actor pushes it. **Post lane** (`loop/rules.sh class` prints `post`, L44): no approval commit; the verdict is due 60 minutes after the merge (L47). The verdict carries a line `Reviewed-by-Agent: <id>` (L44 to L49 count only verdicts whose id differs from every author), and the post lane's Reviewer pushes no approval commit. Only a real defect gets `VERDICT: reject`; wording, process and taste findings are notes in an approve |
-| 6 | Merge | Driver | laptop | `loop/rules.sh merge-ready <pr>` exits 0 (L46: the base is `main`, required checks passed, fewer than 3 rejects or an Architect pick, and the lane's trailer condition). Until it exists on `main`, the Driver runs `base <pr>` and `trailers` by hand and a PR is block lane unless the by-path post lane of `AGENTS.md` rule 1 applies |
+| 6 | Merge | Driver | laptop | `loop/rules.sh merge-ready <pr>` exits 0 (L46: the base is `main`, required checks passed, fewer than 3 rejects or an Architect pick, and the lane's trailer condition). The Driver passes the printed SHA to `gh pr merge --match-head-commit <sha>`; the gate never merges or executes PR code |
 | 7 | UX observers: screenshots, `checks.json` per step, `loop/rules.sh delta` against `origin/main` (L42), critic report; the Checks that are `vitest` tests gate in step 4, the rest of this step gates nothing | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos (`docs/design-system.md`, "Baseline protocol") |
 | 8 | Red main, or an unfixed post-merge defect | Triage | laptop | `gh run list` shows failure, or `loop/rules.sh revert-due` prints a PR (L48); revert, never fix forward |
 
@@ -119,3 +119,28 @@ The fix is that two PRs from different squads touch different files (L50): a sce
 ## Loop on the loop
 
 Triage tags each failure with a class (contract-drift, flaky-test, vocab, perf, slop-rule, ux-checklist). When one class recurs 3 times in a cycle, the Architect studies the cases, writes the rule as a yes/no question or a machine check, and lands it as a contract-change PR. A rule with no recurrence for 3 cycles is deleted. Each human-gate report lists what changed and why.
+
+## Merge gate input and proof
+
+`loop/rules.sh base|class|rounds|merge-ready|proof <pr>` reads GitHub data with
+paginated, bounded `gh api` calls. It fetches missing commit objects without
+checking out the PR. Run the gate from the trusted default-branch checkout.
+`merge-ready` checks both `check` and `rules` on the exact printed head SHA,
+including when that head is an empty approval commit. It ignores the
+`merge-ready` status itself to avoid a circular dependency.
+Loop rules that describe screenshots do not make a loop-only PR visible.
+
+The block lane requires an empty independent approval, either at the head or
+carried through later merges of `main` that pass L54, and runs `proof`. The post lane needs Author-Agent
+trailers on non-merge commits and both successful checks. The `loop` workflow runs
+`ci-trailers <pr>`, which applies the same lane-specific trailer rules. Labels (L57) and architect approval
+for contract changes remain separate gates for the Driver.
+
+In `## Proof`, name the full head SHA and include a fenced test-output block,
+with a passing line for each scenario id on its `Scenarios:` line. A visible PR also
+has a `Shows:` line and one line per scenario and before/after capture, such as
+`U1 before [image](https://github.com/OWNER/REPO/blob/proof/pr-12/proof/before.png) 1280×800`.
+The scenario text must name that window size. The proof branch contains only
+regular media files under `proof/`, within L53's size limits. Capture review
+and confirmation that a harness caption identifies its seed remain Reviewer
+checks; the gate checks references, dimensions, file metadata and captions.
