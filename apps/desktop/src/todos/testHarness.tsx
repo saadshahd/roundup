@@ -5,7 +5,7 @@ import { Layout } from "../app/Layout";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
 import { createFakeApp } from "../testing/fakeApp";
-import { event } from "../testing/nodes";
+import { event, USER } from "../testing/nodes";
 import { todoHandlers } from "../testing/stores";
 import type { TodoStore } from "../testing/stores";
 import { Todos } from "./Todos";
@@ -18,6 +18,7 @@ export const todo = (id: number, over: Partial<Todo> = {}): Todo => ({
   blockers: [],
   blocked: false,
   created_at: 0,
+  creator: USER,
   ...over,
 });
 
@@ -46,10 +47,10 @@ export const mountTodos = async (initial: Todo[], reducedMotion = true) => {
   return { app, store, connected, unmount };
 };
 
-export const callsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
+export const todoCallsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
   app.calls.filter((call) => call.method === method);
 
-export const rowOf = (id: number): HTMLElement => {
+export const todoRowOf = (id: number): HTMLElement => {
   const found = document.querySelector<HTMLElement>(`[data-id="${id}"]`);
 
   if (!found) throw new Error(`no row for #${id}`);
