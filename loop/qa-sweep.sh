@@ -3,9 +3,13 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-head=${QA_SWEEP_HEAD:-$(git rev-parse origin/main)}
-if [[ -z ${QA_SWEEP_HEAD:-} && $(git rev-parse HEAD) != "$head" ]]; then
+head=$(git rev-parse HEAD)
+if [[ ${QA_SWEEP_TEST_MODE:-0} != 1 && $head != $(git rev-parse origin/main) ]]; then
   printf 'L52: checkout is not origin/main; sweep the latest main\n' >&2
+  exit 1
+fi
+if [[ ${QA_SWEEP_TEST_MODE:-0} != 1 && -n ${QA_SWEEP_URL:-} ]]; then
+  printf 'L52: alternate URL is for test mode only\n' >&2
   exit 1
 fi
 started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -97,16 +101,19 @@ geometry='(() => {
     if (element && box(element).width > innerWidth + 1) overflow.push(name + " wider than viewport");
   }
   const open = drawer && !drawer.hasAttribute("inert");
+  const closedDrawerVisible = !!(drawer && !open && (() => { const r = box(drawer); return r.width > 0 && r.height > 0 && r.left < innerWidth - 1 && r.right > 1 && r.top < innerHeight - 1 && r.bottom > 1; })());
+  if (closedDrawerVisible) overflow.push("closed Drawer remains on-screen");
   if (open) {
     const r = box(drawer);
-    if (r.right > innerWidth + 1 || r.left < -1 || r.width > innerWidth + 1) overflow.push("Drawer outside viewport");
+    if (r.width <= 0 || r.height <= 0 || r.right > innerWidth + 1 || r.left < -1 || r.width > innerWidth + 1) overflow.push("Drawer outside viewport");
   }
   return {
     blank: !rail || !centre || !shelf || !document.body.innerText.trim(),
     viewport:{width:innerWidth,height:innerHeight},
     boxes:{rail:rail && box(rail),centre:centre && box(centre),shelf:shelf && box(shelf)},
     overflow,
-    drawer:open ? box(drawer) : null
+    drawer:open ? box(drawer) : null,
+    closedDrawerVisible
   };
 })()'
 
@@ -119,11 +126,28 @@ measure() {
   jq -e '.overflow | type == "array"' <<< "$metrics" >/dev/null || fail "agent-browser returned no overflow boxes for $label"
   jq -e --argjson width "$width" --argjson height "$height" '.viewport == {width:$width,height:$height}' <<< "$metrics" >/dev/null || fail "viewport was not ${width}×${height} for $label"
   if [[ $(jq -r '.blank' <<< "$metrics") == true ]]; then fail "blank page at ${width}×${height}"; fi
+  if ! jq -e '[.boxes.rail,.boxes.centre,.boxes.shelf] | all(.width > 0 and .height > 0)' <<< "$metrics" >/dev/null; then
+    record_finding "$label at ${width}×${height}: Rail, centre or Shelf has no visible area"
+  fi
   actual=$(jq -r '.drawer != null' <<< "$metrics")
   if [[ $actual != "$open" ]]; then fail "Drawer state missing for $label at ${width}×${height}"; fi
+  centre_width=$(jq -r '.boxes.centre.width // 0' <<< "$metrics")
+  if [[ $open == false ]]; then
+    baseline_centre_width=$centre_width
+  elif ! awk -v a="$centre_width" -v b="$baseline_centre_width" 'BEGIN { d=a-b; if (d<0) d=-d; exit !(d<=1) }'; then
+    record_finding "$label at ${width}×${height}: Drawer resized centre from $baseline_centre_width to $centre_width"
+  fi
   while IFS= read -r defect; do
     [[ -z $defect ]] || record_finding "$label at ${width}×${height}: $defect"
   done < <(jq -r '.overflow[]' <<< "$metrics")
+}
+
+verify_closed() {
+  label=$1 width=$2 height=$3
+  metrics=$(browser --json eval "$geometry" | jq -e '.data.result') || fail "agent-browser geometry failed after closing $label at ${width}×${height}"
+  if [[ $(jq -r '.closedDrawerVisible' <<< "$metrics") != false ]]; then
+    record_finding "$label at ${width}×${height}: closed Drawer remains on-screen"
+  fi
 }
 
 for size in 640x400 1280x800; do
@@ -136,14 +160,17 @@ for size in 640x400 1280x800; do
   measure todo "$width" "$height" true
   browser click '.drawer .close' >/dev/null || fail "Todo Drawer could not close at ${width}×${height}"
   browser wait --fn 'document.querySelector("[aria-label=drawer]").hasAttribute("inert")' >/dev/null || fail "Todo Drawer remained open at ${width}×${height}"
+  verify_closed todo "$width" "$height"
 
   browser scrollintoview '[aria-label="pads"] button[title="pad-3"]' >/dev/null || fail "Pad row could not be reached at ${width}×${height}"
   browser click '[aria-label="pads"] button[title="pad-3"]' >/dev/null || fail "Pad Drawer could not open at ${width}×${height}"
   measure pad "$width" "$height" true
   browser click '.drawer .close' >/dev/null || fail "Pad Drawer could not close at ${width}×${height}"
   browser wait --fn 'document.querySelector("[aria-label=drawer]").hasAttribute("inert")' >/dev/null || fail "Pad Drawer remained open at ${width}×${height}"
+  verify_closed pad "$width" "$height"
   jq -nc --arg size "${width}×${height}" '$size' >> "$work/viewports"
 done
 
 for id in L52 U5 U15 U20; do jq -nc --arg id "$id" '$id' >> "$work/scenarios"; done
 printf 'l52_two_viewports_and_each_drawer_passed: %s findings\n' "$finding_count"
+if (( finding_count )); then exit 1; fi
