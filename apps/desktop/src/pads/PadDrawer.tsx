@@ -168,8 +168,11 @@ const PadBody = (props: {
   const done = () => {
     if (conflictActor()) return;
 
+    const draft = currentDraft();
+
     switchingView = true;
-    void leaveField(currentDraft());
+    setShown(draft);
+    void leaveField(draft);
     editor = undefined;
     setMode("read");
   };

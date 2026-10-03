@@ -51,6 +51,59 @@ describe("u67 formatted Pad editing", () => {
     expect(sourceForDocument(source, original, original, () => serialized)).toBe(source);
   });
 
+  it("u67_undo_done_reopen_done_keeps_exact_source_without_a_write", async () => {
+    const source = "*emphasis*  \n\n# Heading\n\n";
+    const { app, state } = await open(source);
+    const field = await screen.findByRole("textbox", { name: "Editor" });
+    const originalRects = Range.prototype.getClientRects;
+    const originalBounds = Range.prototype.getBoundingClientRect;
+    Range.prototype.getClientRects = () => document.createElement("span").getClientRects();
+    Range.prototype.getBoundingClientRect = () => new DOMRect();
+
+    try {
+      const paragraph = field.querySelector("p");
+
+      if (!paragraph) throw new Error("Pad Editor paragraph is missing");
+
+      paragraph.insertBefore(document.createTextNode("X"), paragraph.firstChild);
+      fireEvent.input(field);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      fireEvent.keyDown(field, { key: "z", code: "KeyZ", ctrlKey: true });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      expect(field.textContent).not.toContain("X");
+      fireEvent.click(screen.getByRole("button", { name: "done" }));
+      expect(app.calls.filter((call) => call.method === "pad.write")).toHaveLength(0);
+
+      fireEvent.click(screen.getByRole("button", { name: "edit" }));
+      await screen.findByRole("textbox", { name: "Editor" });
+      fireEvent.click(screen.getByRole("button", { name: "done" }));
+      expect(app.calls.filter((call) => call.method === "pad.write")).toHaveLength(0);
+      expect(state.pads[0]?.text).toBe(source);
+    } finally {
+      Range.prototype.getClientRects = originalRects;
+      Range.prototype.getBoundingClientRect = originalBounds;
+    }
+  });
+
+  it("u67_source_formatted_preview_switches_keep_exact_source", async () => {
+    const source = "*emphasis*  \n\n# Heading\n\n";
+    const { app, state } = await open(source);
+    await screen.findByRole("textbox", { name: "Editor" });
+    fireEvent.click(screen.getByRole("button", { name: "source" }));
+    await screen.findByRole("textbox", { name: "Editor" });
+    fireEvent.click(screen.getByRole("button", { name: "formatted" }));
+    await screen.findByRole("textbox", { name: "Editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "edit" }));
+    await screen.findByRole("textbox", { name: "Editor" });
+    fireEvent.click(screen.getByRole("button", { name: "done" }));
+
+    expect(app.calls.filter((call) => call.method === "pad.write")).toHaveLength(0);
+    expect(state.pads[0]?.text).toBe(source);
+  });
+
   it("u67_untrusted_source_has_no_active_html_or_unsafe_link", async () => {
     await open('<img src=x onerror="alert(1)">\n\n[bad](javascript:alert(1))');
 
