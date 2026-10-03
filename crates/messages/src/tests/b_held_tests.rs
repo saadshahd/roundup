@@ -19,14 +19,14 @@ use std::pin::Pin;
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 
-use contracts::agent::StatusEvent;
+use contracts::agent::{NodeKind, StatusEvent};
 use contracts::{Actor, Event, EventData, Kind, Status};
 use rpc::code;
 use serde_json::{Value, json};
 use tokio::sync::broadcast::Receiver;
 
 use super::*;
-use super::{FakeRail, agent, agent_node};
+use super::{FakeRail, agent, agent_node, node};
 
 type Calls = Arc<StdMutex<Vec<(String, String)>>>;
 
@@ -60,6 +60,16 @@ impl Held2 {
 
     fn over(dir: &Path, rail: Arc<FakeRail>, bus: Bus) -> Self {
         let (deliver, calls) = recording();
+        Self::over_with(dir, rail, bus, deliver, calls)
+    }
+
+    fn over_with(
+        dir: &Path,
+        rail: Arc<FakeRail>,
+        bus: Bus,
+        deliver: Deliver,
+        calls: Calls,
+    ) -> Self {
         let events = bus.subscribe();
         let agents: Arc<dyn Module> = rail.clone();
         let messages = Arc::new(Messages::open(dir, bus.clone(), agents, deliver).unwrap());
@@ -557,4 +567,268 @@ fn b2_a_messages_opened_before_any_runtime_still_types_on_idle() {
             h.becomes("b", Kind::Idle);
             assert_eq!(h.typed(1).await.len(), 1);
         });
+}
+
+/// A `deliver` that records the call, then waits for `release` before it answers `Ok`.
+fn blocking() -> (Deliver, Calls, Arc<tokio::sync::Notify>) {
+    let calls: Calls = Arc::default();
+    let seen = Arc::clone(&calls);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let gate = Arc::clone(&release);
+    let deliver: Deliver = Arc::new(move |id: String, text: String| {
+        seen.lock().unwrap().push((id, text));
+        let gate = Arc::clone(&gate);
+        let done: Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> =
+            Box::pin(async move {
+                gate.notified().await;
+                Ok(())
+            });
+        done
+    });
+    (deliver, calls, release)
+}
+
+/// A `deliver` that records the call and refuses it with `Busy`.
+fn refusing() -> (Deliver, Calls) {
+    let calls: Calls = Arc::default();
+    let seen = Arc::clone(&calls);
+    let deliver: Deliver = Arc::new(move |id: String, text: String| {
+        seen.lock().unwrap().push((id, text));
+        let done: Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> =
+            Box::pin(async { Err(Refusal::Busy) });
+        done
+    });
+    (deliver, calls)
+}
+
+#[tokio::test]
+async fn b6_a_message_recorded_delivered_before_begin_stays_delivered() {
+    let dir = tempfile::tempdir().unwrap();
+    let (deliver, calls, release) = blocking();
+    let rail = FakeRail::new(vec![agent_node("b", Kind::Working)]);
+    let h = Held2::over_with(dir.path(), rail, Bus::new(), deliver, calls);
+    h.send_as(agent("a"), "b", "one").await;
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+
+    let begin = tokio::time::timeout(
+        Duration::from_secs(1),
+        h.call("takeover.begin", json!({"agent": "b"})),
+    )
+    .await;
+    release.notify_waiters();
+    h.settle().await;
+    h.call("takeover.end", json!({"agent": "b"})).await.unwrap();
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+    h.settle().await;
+
+    assert!(begin.is_ok(), "begin waited for a prompt being typed");
+    assert_eq!(h.get(1).await["status"], "delivered");
+    assert_eq!(h.typed(1).await.len(), 1, "typed twice");
+}
+
+#[tokio::test]
+async fn b6_pending_messages_are_held_when_a_takeover_begins() {
+    let (_dir, mut h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+    h.send_as(Actor::user(), "b", "two").await;
+    h.names();
+
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+
+    let states = h.states().await;
+    assert_eq!(
+        (states[&1].clone(), states[&2].clone()),
+        (held("takeover"), pending())
+    );
+    assert_eq!(h.names(), ["message.held", "takeover.changed"]);
+}
+
+#[tokio::test]
+async fn b7_messages_released_by_an_end_go_behind_those_already_pending() {
+    let (_dir, h) = project();
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+    h.send_as(agent("a"), "b", "one").await;
+    h.send_as(Actor::user(), "b", "two").await;
+    h.call("takeover.end", json!({"agent": "b"})).await.unwrap();
+
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+
+    let typed = h.typed(2).await;
+    assert!(
+        typed[0].ends_with("two") && typed[1].ends_with("one"),
+        "{typed:?}"
+    );
+}
+
+#[tokio::test]
+async fn b7_a_message_sent_after_a_release_goes_behind_it() {
+    let (_dir, h) = project();
+    h.route("b", "ask-first").await;
+    h.send_as(agent("a"), "b", "one").await;
+    h.call("message.deliver", json!({"id": 1})).await.unwrap();
+    h.route("b", "auto").await;
+    h.send_as(agent("a"), "b", "two").await;
+
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+
+    let typed = h.typed(2).await;
+    assert!(
+        typed[0].ends_with("one") && typed[1].ends_with("two"),
+        "{typed:?}"
+    );
+}
+
+#[tokio::test]
+async fn b7_a_hold_released_on_reopen_goes_behind_the_pending_messages() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+    h.send_as(Actor::user(), "b", "two").await;
+
+    let h = h.restarted();
+    h.states().await;
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+
+    let typed = h.typed(2).await;
+    assert!(
+        typed[0].ends_with("two") && typed[1].ends_with("one"),
+        "{typed:?}"
+    );
+}
+
+#[tokio::test]
+async fn b2_an_idle_records_delivered_and_emits_message_delivered() {
+    let (_dir, mut h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+    h.names();
+
+    h.becomes("b", Kind::Idle);
+    h.until(1, "delivered").await;
+
+    assert_eq!(h.names(), ["agent.status", "message.delivered"]);
+}
+
+#[tokio::test]
+async fn b2_a_refused_delivery_leaves_the_message_pending_and_emits_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (deliver, calls) = refusing();
+    let rail = FakeRail::new(vec![agent_node("b", Kind::Working)]);
+    let mut h = Held2::over_with(dir.path(), rail, Bus::new(), deliver, calls);
+    h.send_as(agent("a"), "b", "one").await;
+    h.names();
+
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.settle().await;
+
+    assert_eq!(h.get(1).await["status"], "pending");
+    assert_eq!(h.names(), ["agent.status"]);
+}
+
+#[tokio::test]
+async fn b2_typed_text_is_from_name_kind_body() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(
+        dir.path(),
+        vec![
+            agent_node("a", Kind::Working),
+            agent_node("b", Kind::Working),
+        ],
+    );
+    let question = json!({"to": "b", "kind": "question", "body": "x"});
+    h.call_as(agent("a"), "message.send", question)
+        .await
+        .unwrap();
+    h.send_as(Actor::user(), "b", "y").await;
+
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+
+    assert_eq!(
+        h.typed(2).await,
+        ["[from a, question] x", "[from you, note] y"]
+    );
+}
+
+#[tokio::test]
+async fn b9_a_done_lost_to_lag_still_drops_pending() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+    h.becomes("b", Kind::Done);
+    for _ in 0..2000 {
+        h.bus.emit(
+            Actor::daemon(),
+            EventData::AgentStatus(StatusEvent {
+                id: "z".into(),
+                status: Status {
+                    kind: Kind::Working,
+                    label: "x".into(),
+                    since: 0,
+                },
+            }),
+        );
+    }
+
+    h.until(1, "dropped").await;
+
+    assert_eq!(h.states().await[&1], dropped("receiver gone"));
+}
+
+#[test]
+fn b2_a_reopened_store_opened_before_any_runtime_types_on_an_idle_before_the_first_call() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
+    let runtime = || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+    };
+    runtime().block_on(first.send_as(agent("a"), "b", "one"));
+
+    let h = first.restarted();
+    h.becomes("b", Kind::Idle);
+
+    runtime().block_on(async {
+        h.states().await;
+        assert_eq!(h.typed(1).await.len(), 1);
+    });
+}
+
+#[tokio::test]
+async fn b6_the_user_a_terminal_and_a_group_cannot_be_taken_over() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(
+        dir.path(),
+        vec![
+            node("t", NodeKind::Terminal, false, None),
+            node("g", NodeKind::Group, false, None),
+        ],
+    );
+
+    for id in ["you", "t", "g", "ghost"] {
+        for method in ["takeover.begin", "takeover.end"] {
+            let err = h.call(method, json!({"agent": id})).await.unwrap_err();
+            assert_eq!(err.code, code::NOT_FOUND, "{method} {id}");
+        }
+    }
 }
