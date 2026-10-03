@@ -293,9 +293,14 @@ provision() {
 }
 
 run_codex() {
-  local stream=$1 rc=0 last
+  local stream=$1 role=$2 rc=0 last context
+  if [ "$role" = build ]; then
+    context='The VM checkout at ~/roundup is your dedicated worktree. Edit it directly. Do not create a second worktree or keep the only patch outside this checkout.'
+  else
+    context='The VM checkout at ~/roundup is the repository for this review. Do not create another worktree.'
+  fi
   "$TIMEOUT_CMD" "$AGENT_TIMEOUT" boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -- \
-    'cd ~/roundup && . ~/.cargo/env && codex exec --json --ephemeral --ignore-user-config --dangerously-bypass-approvals-and-sandbox - </tmp/prompt.md' </dev/null >"$stream" 2>"${stream%.jsonl}.err" || rc=$?
+    "cd ~/roundup && . ~/.cargo/env && { printf '%s\\n' '$context'; cat /tmp/prompt.md; } | codex exec --json --ephemeral --ignore-user-config --dangerously-bypass-approvals-and-sandbox -" </dev/null >"$stream" 2>"${stream%.jsonl}.err" || rc=$?
   cat "${stream%.jsonl}.err" >&2
   [ -s "$stream" ] || { echo "boxd.sh: Codex produced no output" >&2; return 1; }
   last=$(tail -n 1 "$stream")
@@ -355,7 +360,7 @@ review() {
   require_agent
   provision "$name" "$base" "$ref" "$prompt"
   if [ "$AGENT_KIND" = codex ]; then
-    run_codex "$stream" || agent_rc=$?
+    run_codex "$stream" review || agent_rc=$?
     [ "$agent_rc" -eq 0 ] || exit 1
     local answer
     answer=$(jq -ers '
@@ -374,6 +379,19 @@ review() {
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
 }
 
+save_partial_patch() {
+  local partial=$1
+  PARTIAL_TMP=$partial.tmp
+  if boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached base' </dev/null >"$partial.tmp"; then
+    mv "$partial.tmp" "$partial"
+    PARTIAL_TMP=
+  else
+    rm -f "$partial.tmp"
+    echo "boxd.sh: could not read the diff so far from $VM; no $partial saved" >&2
+    return 1
+  fi
+}
+
 build() {
   local name=$1 prompt=$2
   validate_args "$name" "$prompt"
@@ -385,30 +403,28 @@ build() {
   rm -f "$patch" "$partial"
   provision "$name" HEAD HEAD "$prompt"
   if [ "$AGENT_KIND" = codex ]; then
-    run_codex "$stream" || agent_rc=$?
+    run_codex "$stream" build || agent_rc=$?
   else
     run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
   fi
   if [ "$agent_rc" -eq 2 ]; then
-    # Diffed against `base`, not HEAD, so a commit the agent already made lands in the partial too; written to a
-    # temp file and renamed only on success, so a failed extraction never leaves a stale empty .partial.patch.
-    PARTIAL_TMP=$partial.tmp
-    if boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached base' </dev/null >"$partial.tmp"; then
-      mv "$partial.tmp" "$partial"
-      PARTIAL_TMP=
-    else
-      rm -f "$partial.tmp"
-      echo "boxd.sh: could not read the diff so far from $VM; no $partial saved" >&2
-    fi
+    save_partial_patch "$partial" || true
     exit 1
   fi
   [ "$agent_rc" -eq 0 ] || exit "$agent_rc"
+  save_partial_patch "$partial" || exit 1
+  [ -s "$partial" ] || { echo "boxd.sh: $VM completed with no changes in ~/roundup; Builder output outside the checkout is not collected" >&2; exit 1; }
   # The observer is our own check, not the Builder's claim that it passed.
   run_check >"$checklog" 2>&1 || check_rc=$?
   tail -n 15 "$checklog" >&2
   ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
-  [ "$check_rc" -eq 0 ] || exit "$check_rc"
-  boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
+  [ "$check_rc" -eq 0 ] || { echo "boxd.sh: check failed; Builder changes remain in $partial" >&2; exit "$check_rc"; }
+  PARTIAL_TMP=$patch.tmp
+  boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$PARTIAL_TMP"
+  [ -s "$PARTIAL_TMP" ] || { echo "boxd.sh: $VM produced no final patch despite a nonempty candidate" >&2; exit 1; }
+  mv "$PARTIAL_TMP" "$patch"
+  PARTIAL_TMP=
+  rm -f "$partial"
   last=$(tail -n 1 "$stream")
   if [ "$AGENT_KIND" = codex ]; then
     jq -r '"boxd.sh: Codex complete, \(.usage.input_tokens // 0) input and \(.usage.output_tokens // 0) output tokens"' <<<"$last"

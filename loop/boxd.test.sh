@@ -144,8 +144,11 @@ case "$1 $2" in
         else
           case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
         fi ;;
-      *"git diff --cached base"*) echo "partial-diff-against-base"; [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1; [ -z "${STUB_DIFF_HANG:-}" ] || { trap '' TERM; sleep 3; exit 1; } ;;
-      *format-patch*) echo "patch" ;;
+      *"git diff --cached base"*)
+        [ -n "${STUB_DIFF_EMPTY:-}" ] || echo "partial-diff-against-base"
+        [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1
+        [ -z "${STUB_DIFF_HANG:-}" ] || { trap '' TERM; sleep 3; exit 1; } ;;
+      *format-patch*) echo "patch"; [ "${STUB_MODE:-}" != final-patch-fails ] || exit 7 ;;
     esac ;;
 esac
 S
@@ -186,6 +189,7 @@ expect_log 'machine new ru-t --from-snapshot ru-toolchain --auto-suspend-timeout
 expect_log 'machine cp ru-auth:.codex/auth.json -' "L64 Codex login comes from the named source VM"
 expect_log 'machine cp - ru-t:.codex/auth.json' "L64 Codex login is streamed directly to the Builder VM"
 expect_log 'codex exec --json' "L64 Builder runs Codex's JSON stream"
+expect_log 'dedicated worktree' "L21 Codex Builder receives the checkout location"
 expect_true "L64 the auth bytes never enter the run output" bash -c '! grep -q codex-auth-fixture out err log'
 expect_true "L64 transfer and guards precede checkout upload" awk '/machine cp - ru-t:\.codex\/auth\.json/ { auth = NR } /machine cp - ru-t:\/tmp\/r\.bundle/ { checkout = NR } END { exit !(auth && checkout && auth < checkout) }' log
 
@@ -213,6 +217,17 @@ grep -q 'machine new' log && { echo "FAIL: no VM while paused"; failures=$((fail
 
 new_repo; STUB_MODE=check-fails expect_code 7 "L5 failed check keeps its exit code"
 expect_log 'machine remove ru-t' "L5 VM destroyed after a failed check"
+expect_true "L21 failed check retains a candidate patch" test -s loop/out/patches/t.partial.patch
+expect_true "L21 failed check publishes no final patch" bash -c '! test -e loop/out/patches/t.patch'
+expect_true "L21 failed check names the saved candidate" grep -q 'check failed; Builder changes remain in loop/out/patches/t.partial.patch' err
+
+new_repo; STUB_DIFF_EMPTY=1 expect_code 1 "L21 completed Builder with no checkout diff fails before check"
+expect_true "L21 empty Builder output does not run check" bash -c '! grep -q "just check" log'
+expect_true "L21 empty Builder output names the checkout" grep -q 'no changes in ~/roundup' err
+
+new_repo; STUB_MODE=final-patch-fails expect_code 7 "L21 failed final patch extraction keeps the candidate"
+expect_true "L21 failed final extraction retains a candidate patch" test -s loop/out/patches/t.partial.patch
+expect_true "L21 failed final extraction publishes no final patch" bash -c '! test -e loop/out/patches/t.patch'
 
 
 new_repo; STUB_MODE=remove-fails expect_code 0 "L5 cleanup failure does not change the exit code"
@@ -859,8 +874,7 @@ got=0; STUB_MODE=events-then-exit loop/boxd.sh review r prompt.md >out 2>err || 
 expect_true "L21 a result-less review exits 1" test "$got" -eq 1
 expect_true "L21 a result-less review after a successful one removes the stale verdict" bash -c '! test -e loop/out/verdicts/r.md'
 
-# A stale result file must go even on an exit path that never reaches build()'s or review()'s own cleanup branch:
-# a failed check (not a timed-out or result-less run), a no-output run and a paused run all exit before that point.
+# A stale final result must go on failure. A completed build whose check fails keeps its new candidate.
 new_repo; STUB_MODE='' loop/boxd.sh build t prompt.md >out 2>err
 expect_true "L21 setup: a successful build writes the stable patch (2)" test -e loop/out/patches/t.patch
 got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
@@ -870,7 +884,8 @@ expect_true "L21 a failed check after a successful build removes the stale patch
 new_repo; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
 expect_true "L21 setup: a timed-out build writes the partial patch" test -e loop/out/patches/t.partial.patch
 got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
-expect_true "L21 a failed check after a timed-out build removes the stale partial patch" bash -c '! test -e loop/out/patches/t.partial.patch'
+expect_true "L21 a failed check after a timed-out build replaces the candidate patch" test -s loop/out/patches/t.partial.patch
+expect_true "L21 that failed check publishes no final patch" bash -c '! test -e loop/out/patches/t.patch'
 
 new_repo; loop/boxd.sh review r prompt.md >out 2>err
 expect_true "L21 setup: a successful review writes the stable verdict (2)" test -e loop/out/verdicts/r.md
