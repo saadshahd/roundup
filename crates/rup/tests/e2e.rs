@@ -427,3 +427,23 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
 
     assert!(report.contains("connection closed"), "{report}");
 }
+
+#[tokio::test]
+async fn g1_the_worktrees_setting_is_set_and_read_through_the_daemon() {
+    let project = start(&[]);
+    let client = project.client().await;
+
+    client
+        .request(
+            "project.setWorktrees",
+            json!({"on": true, "check": "just check"}),
+        )
+        .await
+        .unwrap();
+    let settings = client.request("project.get", json!(null)).await.unwrap();
+
+    assert_eq!(
+        settings,
+        json!({"worktrees": {"on": true, "check": "just check"}})
+    );
+}

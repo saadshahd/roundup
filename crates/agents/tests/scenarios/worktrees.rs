@@ -59,9 +59,8 @@ fn git_state(project: &Path) -> (String, String) {
     )
 }
 
-/// `git` on `PATH` that fails `git worktree add` and passes every other command to the real one.
-fn failing_git(dir: &Path) -> Git {
-    let real = String::from_utf8(
+fn real_git() -> String {
+    String::from_utf8(
         std::process::Command::new("sh")
             .arg("-c")
             .arg("command -v git")
@@ -71,13 +70,16 @@ fn failing_git(dir: &Path) -> Git {
     )
     .unwrap()
     .trim()
-    .to_owned();
+    .to_owned()
+}
+
+/// A `git` named `git` in `dir`, running `script` with the real one's path as `$REAL`, put in
+/// front of the real `PATH`.
+fn wrapped_git(dir: &Path, script: &str) -> Git {
     let wrapper = dir.join("git");
     std::fs::write(
         &wrapper,
-        format!(
-            "#!/bin/sh\nif [ \"$1\" = worktree ] && [ \"$2\" = add ]; then echo fake failure >&2; exit 1; fi\nexec '{real}' \"$@\"\n"
-        ),
+        format!("#!/bin/sh\nREAL='{}'\n{script}\n", real_git()),
     )
     .unwrap();
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -86,6 +88,27 @@ fn failing_git(dir: &Path) -> Git {
         dir.display(),
         std::env::var("PATH").unwrap()
     ))
+}
+
+/// `git` on `PATH` that fails `git worktree add` and passes every other command to the real one.
+fn failing_git(dir: &Path) -> Git {
+    wrapped_git(
+        dir,
+        "if [ \"$1\" = worktree ] && [ \"$2\" = add ]; then echo fake failure >&2; exit 1; fi\nexec \"$REAL\" \"$@\"",
+    )
+}
+
+/// `git` on `PATH` that fails any command that starts while another is still running, as two
+/// concurrent `git` commands on one repository can (`index.lock`).
+fn exclusive_git(dir: &Path) -> Git {
+    let busy = dir.join("busy");
+    wrapped_git(
+        dir,
+        &format!(
+            "mkdir '{busy}' 2>/dev/null || {{ echo concurrent git >&2; exit 1; }}\nsleep 0.05\n\"$REAL\" \"$@\"\ncode=$?\nrmdir '{busy}'\nexit $code",
+            busy = busy.display()
+        ),
+    )
 }
 
 #[tokio::test]
@@ -490,4 +513,88 @@ async fn g2_terminal_gets_no_worktree() {
 
     assert_eq!(node.worktree, None);
     assert_eq!(git_state(f.dir.path()), before);
+}
+
+#[tokio::test]
+async fn g2_start_failure_of_promote_leaves_a_plain_group() {
+    let mut f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let group = f.group("team", None).await;
+    let before = git_state(f.dir.path());
+    f.changed();
+    std::fs::remove_file(f.dir.path().join(".roundup/rup")).unwrap();
+
+    let err = promote(&f, &group).await.unwrap_err();
+
+    assert_eq!(err.code, code::INTERNAL);
+    let tree = f.tree().await;
+    assert_eq!(tree.len(), 1);
+    assert_eq!(tree[0].kind, NodeKind::Group);
+    assert!(!tree[0].meta);
+    assert_eq!(tree[0].worktree, None);
+    assert_eq!(git_state(f.dir.path()), before);
+    assert_eq!(f.changed(), 0);
+}
+
+#[tokio::test]
+async fn g2_a_record_failure_after_provisioning_leaves_no_branch_no_directory() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let before = git_state(f.dir.path());
+    // The Rail's own write of the finished Worktree is the one step this trigger refuses.
+    rusqlite::Connection::open(f.dir.path().join(".roundup/agents.db"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER refuse_ready BEFORE UPDATE OF worktree_state ON nodes
+             WHEN NEW.worktree_state = 'ready' BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .unwrap();
+
+    let err = f.spawn(None, None).await.unwrap_err();
+
+    assert_eq!(err.code, code::INTERNAL);
+    assert!(f.tree().await.is_empty());
+    assert_eq!(git_state(f.dir.path()), before);
+}
+
+#[tokio::test]
+async fn g2_concurrent_provisions_never_run_two_git_commands_at_once() {
+    let wrapper = tempfile::tempdir().unwrap();
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    let git = exclusive_git(wrapper.path());
+
+    let made: Vec<_> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..4)
+            .map(|n| {
+                let (git, project) = (&git, f.dir.path());
+                scope.spawn(move || git.provision(project, &format!("agent-{n}")))
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut paths: Vec<_> = made.into_iter().map(|w| w.unwrap().path).collect();
+    paths.sort();
+    paths.dedup();
+    assert_eq!(paths.len(), 4);
+}
+
+#[tokio::test]
+async fn g2_spawn_at_the_project_root_runs_in_the_worktree_root() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+
+    let node = f.spawn(None, None).await.unwrap();
+
+    let cwd = f
+        .terminals
+        .list()
+        .into_iter()
+        .find(|t| Some(&t.id) == node.terminal_id.as_ref())
+        .unwrap()
+        .cwd;
+    assert_eq!(
+        std::fs::canonicalize(cwd).unwrap(),
+        std::fs::canonicalize(node.worktree.unwrap().path).unwrap()
+    );
 }

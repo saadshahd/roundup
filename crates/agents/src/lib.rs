@@ -619,7 +619,11 @@ impl Agents {
             branch: made.branch.clone(),
             base: made.base.clone(),
         };
-        self.shared.rail().set_worktree(id, &recorded)?;
+        let recorded_ok = self.shared.rail().set_worktree(id, &recorded);
+        if let Err(err) = recorded_ok {
+            self.discard_worktree(id, made).await;
+            return Err(err);
+        }
         Ok(Some((mapped, made)))
     }
 
