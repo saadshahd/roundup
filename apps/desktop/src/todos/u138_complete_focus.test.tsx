@@ -53,6 +53,7 @@ describe("u138 completing a Todo by keyboard keeps focus", () => {
     mounted.app.handlers["todo.complete"] = () => {
       throw new RpcError(-32000, "boom");
     };
+
     (await rowButton(1)).focus();
     const complete = await screen.findByRole("button", { name: "complete" });
 
