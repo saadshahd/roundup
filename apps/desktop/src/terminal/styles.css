@@ -45,7 +45,7 @@
   height: 100%;
 }
 
-.pane-latest {
+.pane .pane-latest {
   position: absolute;
   bottom: 8px;
   left: 50%;

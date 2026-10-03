@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import type { ITerminalAddon, ITerminalOptions } from "@xterm/xterm";
@@ -58,6 +59,7 @@ const encoder = new TextEncoder();
 export const SCROLLBACK_LINES = 10_000;
 
 export const xtermOptions: ITerminalOptions = {
+  allowProposedApi: true,
   fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: 13,
   scrollback: SCROLLBACK_LINES,
@@ -76,6 +78,8 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
 
   return () => {
     const terminal = new Terminal(xtermOptions);
+    terminal.loadAddon(new Unicode11Addon());
+    terminal.unicode.activeVersion = "11";
     const fitter = new FitAddon();
     const element = document.createElement("div");
     let opened = false;
