@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, lazy, on, onCleanup, Show, Suspense } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Actor } from "@contracts/Actor";
 import type { Pad } from "@contracts/pad/Pad";
@@ -8,6 +8,12 @@ import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
 import { cutName, markedLine, wholeWord } from "./nameLine";
 import { ownerMark } from "./owner";
+import type { PadEditorHandle } from "./PadEditor";
+import "./styles.css";
+
+const PadMarkdown = lazy(() => import("./PadMarkdown"));
+
+const PadEditor = lazy(() => import("./PadEditor"));
 
 const PadBody = (props: {
   initial: Pad;
@@ -20,20 +26,21 @@ const PadBody = (props: {
   const [shown, setShown] = createSignal(props.initial.text);
   const [origin, setOrigin] = createSignal(props.initial.text);
   const [editing, setEditing] = createSignal(false);
+  const [mode, setMode] = createSignal<"read" | "edit" | "preview">("read");
   const [conflictActor, setConflictActor] = createSignal<Actor | null>(null);
   const actionFailure = createFailure();
   const [deleted, setDeleted] = createSignal(false);
-  let textField: HTMLTextAreaElement | undefined;
+  let editor: PadEditorHandle | undefined;
+  let reader: HTMLDivElement | undefined;
   let pendingActor: Actor | null = null;
   let closed = false;
+  let switchingView = false;
 
-  /** Moves the field and the dirty/clean baseline forward together and drops any conflict line; skip either and a resolved change still looks unresolved. The field is written directly because `shown()` can already equal `next.text` while the user's keystrokes left the real DOM value stale, and Solid skips the write when the signal itself does not change. */
+  /** Moves the source and its dirty/clean baseline together so a resolved change cannot remain a conflict. */
   const settle = (next: Pad) => {
     setOrigin(next.text);
     setShown(next.text);
-
-    if (textField) textField.value = next.text;
-
+    editor?.setText(next.text);
     setConflictActor(null);
   };
 
@@ -50,8 +57,7 @@ const PadBody = (props: {
     left.owner.kind === right.owner.kind &&
     left.owner.id === right.owner.id;
 
-  /** The DOM field is the draft's source of truth while mounted; `shown()` only covers the gap before the ref attaches. */
-  const currentDraft = () => textField?.value ?? shown();
+  const currentDraft = () => editor?.getText() ?? shown();
 
   onCleanup(
     connected.events.subscribe((event) => {
@@ -119,8 +125,9 @@ const PadBody = (props: {
   const append = (text: string) =>
     act(async () => {
       adopt(await connected.app.rpc("pad.append", { name, text }));
-
-      if (textField) textField.scrollTop = textField.scrollHeight;
+      queueMicrotask(() => {
+        if (reader) reader.scrollTop = reader.scrollHeight;
+      });
     });
 
   const exportToFile = () =>
@@ -133,11 +140,34 @@ const PadBody = (props: {
   const leaveField = async (typed: string) => {
     if (!editing()) return;
 
-    setEditing(false);
-
     if (conflictActor()) return;
 
+    setEditing(false);
     await write(typed);
+  };
+
+  const onText = (text: string) => {
+    setShown(text);
+    setEditing(ownedByUser());
+
+    if (text === origin()) settle(pad());
+  };
+
+  const onEditorBlur = (next: EventTarget | null) => {
+    if (switchingView) return;
+
+    if (next instanceof Node && next.parentElement?.closest(".pad-actions")) return;
+
+    void leaveField(currentDraft());
+  };
+
+  const done = () => {
+    if (conflictActor()) return;
+
+    switchingView = true;
+    void leaveField(currentDraft());
+    editor = undefined;
+    setMode("read");
   };
 
   const keepMine = () =>
@@ -150,7 +180,7 @@ const PadBody = (props: {
   const useTheirs = () => settle(pad());
 
   return (
-    <>
+    <div class="pad-body">
       <p style={markedLine}>
         <span style={wholeWord}>{ownerMark(pad().owner)}</span>{" "}
         <span title={name} style={cutName}>
@@ -176,25 +206,54 @@ const PadBody = (props: {
       <Show when={deleted()}>
         <ErrorLine message={`pad ${name} was deleted`} />
       </Show>
-      <textarea
-        ref={(element) => (textField = element)}
-        aria-label="text"
-        style={{
-          "font-family": "var(--mono)",
-          width: "100%",
-          flex: "1",
-          "min-height": "0",
-          resize: "none",
-        }}
-        readOnly={!ownedByUser()}
-        value={shown()}
-        onInput={(typed) => {
-          setEditing(ownedByUser());
-
-          if (typed.currentTarget.value === origin()) settle(pad());
-        }}
-        onBlur={(blurred) => void leaveField(blurred.currentTarget.value)}
-      />
+      <Show when={ownedByUser()}>
+        <div class="pad-actions">
+          <Show when={mode() === "read"}>
+            <button type="button" onClick={() => setMode("edit")}>edit</button>
+          </Show>
+          <Show when={mode() === "edit"}>
+            <button
+              type="button"
+              onClick={() => {
+                switchingView = true;
+                editor = undefined;
+                setMode("preview");
+              }}
+            >
+              Preview
+            </button>
+          </Show>
+          <Show when={mode() === "preview"}>
+            <button type="button" onClick={() => setMode("edit")}>edit</button>
+          </Show>
+          <Show when={mode() !== "read"}>
+            <button type="button" onClick={done}>done</button>
+          </Show>
+        </div>
+      </Show>
+      <Suspense>
+        <Show when={mode() === "edit" && ownedByUser()}>
+          <PadEditor
+            text={shown()}
+            onText={onText}
+            onBlur={onEditorBlur}
+            onReady={(ready) => {
+              editor = ready;
+              switchingView = false;
+            }}
+          />
+        </Show>
+        <Show when={mode() === "preview" && ownedByUser()}>
+          <PadMarkdown text={shown()} label="Preview" />
+        </Show>
+        <Show when={mode() === "read" || !ownedByUser()}>
+          <PadMarkdown
+            text={shown()}
+            label="Pad body"
+            onReader={(element) => (reader = element)}
+          />
+        </Show>
+      </Suspense>
       <Show when={conflictActor()}>
         {(actor) => (
           <p style={markedLine}>
@@ -237,7 +296,7 @@ const PadBody = (props: {
           }}
         />
       </Show>
-    </>
+    </div>
   );
 };
 

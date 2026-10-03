@@ -6,18 +6,18 @@ import { USER } from "../testing/nodes";
 afterEach(cleanup);
 
 describe("u50 the Pad's text fills its Drawer", () => {
-  it("u50_the_text_field_grows_to_fill_the_drawers_remaining_height", async () => {
+  it("u50_the_rendered_body_grows_to_fill_the_drawers_remaining_height", async () => {
     await openShelf([padOf("auth-notes", AGENT)]);
     const field = await openPad("auth-notes");
 
-    expect([field.style.flex, field.style.minHeight]).toEqual(["1 1 0%", "0px"]);
+    expect([getComputedStyle(field).flex, getComputedStyle(field).minHeight]).toEqual(["1 1 0%", "0px"]);
   });
 
-  it("u50_the_text_field_has_no_native_resize_grip", async () => {
+  it("u50_the_rendered_body_has_no_native_resize_grip", async () => {
     await openShelf([padOf("auth-notes", AGENT)]);
     const field = await openPad("auth-notes");
 
-    expect(field.style.resize).toBe("none");
+    expect(getComputedStyle(field).resize).toBe("none");
   });
 
   it("u50_the_owned_text_field_sits_below_the_owner_line_and_above_the_last_touch_line", async () => {

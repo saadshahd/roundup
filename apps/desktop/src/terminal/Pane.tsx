@@ -3,7 +3,6 @@ import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createXtermEmulators } from "./emulator";
 import type { EmulatorFactory } from "./emulator";
-import { isStoppable, paneHeader } from "./header";
 import { createScreens } from "./screens";
 import "./styles.css";
 
@@ -76,23 +75,6 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
   return (
     <div class="pane">
-      <div class="pane-header">
-        <Show when={selected()}>
-          {(node) => (
-            <>
-              <span class="pane-title">{paneHeader(node(), rail.exitOf(node()), connected.now())}</span>
-              <Show when={isStoppable(node(), rail.exitOf(node()))}>
-                <button type="button" class="word" disabled={connected.daemonExit() !== null} onClick={() => screens.stop(node())}>
-                  stop
-                </button>
-              </Show>
-            </>
-          )}
-        </Show>
-      </div>
-      <div class="pane-failure">
-        <Show when={notice()}>{(message) => <ErrorLine message={message()} />}</Show>
-      </div>
       <div class="pane-body">
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
@@ -105,6 +87,9 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
             </button>
           )}
         </Show>
+      </div>
+      <div class="pane-failure">
+        <Show when={notice()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
     </div>
   );

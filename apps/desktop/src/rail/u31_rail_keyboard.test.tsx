@@ -435,19 +435,20 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_enter_selecting_a_row_shows_its_terminal", async () => {
-    await mountRail(
+    const { rail } = await mountRail(
       [agent("a", "idle", "x"), agent("b", "idle", "x")],
       [],
       undefined,
       undefined,
       { pane: focusableEmulator() },
     );
+
     rowOf("a").focus();
     press("ArrowDown");
 
     press("Enter");
 
-    expect(document.querySelector(".pane-title")?.textContent).toContain("b");
+    expect(rail.selected()).toBe("b");
     expect(document.querySelector(".pane-screen textarea")).not.toBeNull();
   });
 });

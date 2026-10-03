@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AGENT,
   deferred,
+  enterEditor,
   openPad,
   openShelf,
   padOf,
@@ -46,17 +47,15 @@ describe("u20 open and edit", () => {
     expect(screen.getByText("export .md").className).toContain("light");
   });
 
-  it("u20_the_text_is_markdown_source_in_the_monospace_face", async () => {
+  it("u20_the_source_is_in_the_monospace_editor", async () => {
     await openShelf([
-      padOf("auth-notes", AGENT, "## refresh rotation\n- rotate on every use"),
+      padOf("auth-notes", USER, "## refresh rotation\n- rotate on every use"),
     ]);
 
     const field = await openPad("auth-notes");
 
-    expect([field.value, field.style.fontFamily]).toEqual([
-      "## refresh rotation\n- rotate on every use",
-      "var(--mono)",
-    ]);
+    expect(field.value).toBe("## refresh rotation\n- rotate on every use");
+    expect(getComputedStyle(field.closest(".cm-editor")!).fontFamily).toBe("var(--font-mono)");
   });
 
   it("u20_opening_calls_provenance_history_then_pad_read_once", async () => {
@@ -114,7 +113,7 @@ describe("u20 open and edit", () => {
     const field = await openPad("release-checklist");
 
     edit(field, "new");
-    await screen.findByDisplayValue("new");
+    await waitFor(() => expect(field.value).toBe("new"));
 
     expect(app.calls.filter((call) => call.method === "pad.write")).toEqual([
       {
@@ -153,7 +152,7 @@ describe("u20 open and edit", () => {
 
     fireEvent.input(append, { target: { value: " more" } });
     fireEvent.keyDown(append, { key: "Enter" });
-    await screen.findByDisplayValue("a more");
+    await waitFor(() => expect(screen.getByLabelText("Pad body").textContent).toContain("a more"));
 
     expect(app.calls.filter((call) => call.method === "pad.append")).toEqual([
       { method: "pad.append", params: { name: "auth-notes", text: " more" } },
@@ -202,7 +201,7 @@ describe("u20 open and edit", () => {
       name: "pad.changed",
       data: { name: "auth-notes" },
     });
-    await screen.findByDisplayValue("v2");
+    await waitFor(() => expect(screen.getByLabelText("Pad body").textContent).toContain("v2"));
 
     expect(calls().slice(before)).toEqual(["pad.list"]);
   });
@@ -219,7 +218,7 @@ describe("u20 open and edit", () => {
       data: { name: "auth-notes" },
     });
 
-    expect(await screen.findByDisplayValue("v2")).toBe(field);
+    await waitFor(() => expect(field.value).toBe("v2"));
   });
 
   it("u20_pad_changed_while_the_user_is_editing_leaves_the_text_alone", async () => {
@@ -318,16 +317,17 @@ describe("u20 open and edit", () => {
     expect([app.calls.some((call) => call.method === "pad.write"), state.pads[0]?.text]).toEqual([false, "mine plus agent"]);
   });
 
-  it("u20_a_pad_handed_over_while_the_cursor_is_in_the_text_saves_what_is_typed", async () => {
+  it("u20_a_pad_handed_over_while_the_reader_is_focused_can_save_what_is_typed", async () => {
     const { app, state } = await openShelf([padOf("auth-notes", AGENT, "v1")]);
     const field = await openPad("auth-notes");
     fireEvent.focus(field);
     state.pads = [padOf("auth-notes", USER, "v1")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
-    await waitFor(() => expect(field.readOnly).toBe(false));
+    await screen.findByRole("button", { name: "edit" });
+    const editor = await enterEditor();
 
-    fireEvent.input(field, { target: { value: "typed" } });
-    fireEvent.blur(field);
+    fireEvent.input(editor, { target: { value: "typed" } });
+    fireEvent.blur(editor);
 
     await waitFor(() => expect(state.pads[0]?.text).toBe("typed"));
     expect(app.calls.filter((call) => call.method === "pad.write")).toEqual([
@@ -352,7 +352,7 @@ describe("u20 open and edit", () => {
 
     fireEvent.blur(field);
 
-    expect(await screen.findByDisplayValue("mine plus")).toBe(field);
+    await waitFor(() => expect(field.value).toBe("mine plus"));
     expect(app.calls.some((call) => call.method === "pad.write")).toBe(false);
   });
 
@@ -373,7 +373,7 @@ describe("u20 open and edit", () => {
 
     fireEvent.blur(field);
 
-    expect(await screen.findByDisplayValue("mine plus agent")).toBe(field);
+    await waitFor(() => expect(field.value).toBe("mine plus agent"));
     expect(app.calls.some((call) => call.method === "pad.write")).toBe(false);
   });
 
@@ -435,14 +435,14 @@ describe("u20 open and edit", () => {
     const newest = replies.length - 1;
 
     replies.at(-1)?.resolve([padOf("auth-notes", AGENT, "newest")]);
-    await screen.findByDisplayValue("newest");
+    await waitFor(() => expect(screen.getByLabelText("Pad body").textContent).toContain("newest"));
     replies
       .slice(0, newest)
       .forEach((older) => older.resolve([padOf("auth-notes", AGENT, "older")]));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(field.value).toBe("newest");
+    expect(field.textContent).toContain("newest");
   });
 
   it("u20_two_quick_enters_in_the_append_field_append_once", async () => {
@@ -453,7 +453,7 @@ describe("u20 open and edit", () => {
 
     fireEvent.keyDown(append, { key: "Enter" });
     fireEvent.keyDown(append, { key: "Enter" });
-    await screen.findByDisplayValue("a more");
+    await waitFor(() => expect(screen.getByLabelText("Pad body").textContent).toContain("a more"));
 
     expect(
       app.calls.filter((call) => call.method === "pad.append"),
