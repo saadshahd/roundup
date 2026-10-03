@@ -14,7 +14,7 @@ export type DragState = {
   top: number;
   /** The height the dragged rows take: how far a shifted row moves. */
   room: number;
-  /** How far the pointer has moved down since the press: the dragged rows follow it. */
+  /** How far the dragged rows move from their measured place so their top stays `grabOffset` above the pointer. */
   lift: number;
   /** Ids of the dragged row and the rows that move with it. */
   lifted: ReadonlySet<string>;
@@ -28,6 +28,8 @@ type Snapshot = {
   rows: readonly NodeRow[];
   bounds: readonly { top: number; bottom: number }[];
   lifted: ReadonlySet<string>;
+  /** The dragged row's own top once the Live lines above it have hidden: what `lift` offsets from. */
+  liftedTop: number;
   /** The gap the dragged row came from, in the numbering of `rows`. */
   origin: number;
   room: number;
@@ -60,14 +62,16 @@ const measured = (container: HTMLElement, nodes: readonly RailNode[], rows: read
 
   const lifted = rows.flatMap((row) => (moving.has(row.node.id) ? [row.node.id] : []));
   const liftedBounds = lifted.map(boundsOf);
+  const liftedTop = Math.min(...liftedBounds.map((bounds) => bounds.top));
 
   return {
     nodes,
     rows: remaining,
     bounds: remaining.map((row) => boundsOf(row.node.id)),
     lifted: new Set(lifted),
+    liftedTop,
     origin: rows.findIndex((row) => row.node.id === id),
-    room: Math.max(...liftedBounds.map((bounds) => bounds.bottom)) - Math.min(...liftedBounds.map((bounds) => bounds.top)),
+    room: Math.max(...liftedBounds.map((bounds) => bounds.bottom)) - liftedTop,
     step,
   };
 };
@@ -134,6 +138,12 @@ export const createRailDrag = (source: {
     const nodes = [...source.nodes()];
     let snapshot: Snapshot | null = null;
 
+    // How far below the row's own top the pointer grabbed it, measured before the drag hides the Live lines above
+    // it: the row keeps this same offset from the pointer for the rest of the drag, however much those rows
+    // shrink once the drag starts (docs/motion.md, "Drag in the rail: follows pointer").
+    const pressedRow = container.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    const grabOffset = press.clientY - (pressedRow?.getBoundingClientRect().top ?? press.clientY);
+
     const follow = (move: PointerEvent) => {
       if (!snapshot && Math.hypot(move.clientX - press.clientX, move.clientY - press.clientY) < THRESHOLD_PX) return;
 
@@ -141,9 +151,11 @@ export const createRailDrag = (source: {
 
       snapshot ??= measured(container, nodes, source.rows(), id);
       measuredLayout = source.layoutKey();
-      setState(
-        stateAt(snapshot, id, container.getBoundingClientRect(), { x: move.clientX, y: move.clientY }, move.clientY - press.clientY),
-      );
+
+      const base = container.getBoundingClientRect();
+      const lift = move.clientY - base.top - grabOffset - snapshot.liftedTop;
+
+      setState(stateAt(snapshot, id, base, { x: move.clientX, y: move.clientY }, lift));
     };
 
     const release = () => {
