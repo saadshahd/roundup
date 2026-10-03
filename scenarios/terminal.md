@@ -1,5 +1,7 @@
 # Terminals
 
+Module: `crates/terminal`. Ids: X1–X10.
+
 **X1 output.** Given a Project, when `terminal.spawn {command: ["/bin/sh","-c","echo hi"]}` is called and a client is subscribed, then a `terminal.output` event whose base64 `data` decodes to bytes containing `hi` is emitted.
 
 **X2 input.** Given a Terminal running `cat`, when `terminal.write` sends `"ping\n"` (base64), then `terminal.output` events carry `ping` back.

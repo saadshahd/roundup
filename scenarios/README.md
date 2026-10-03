@@ -8,29 +8,6 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 - Every write or read of a Todo or Pad is a Touch: `ctx.touch(verb, "todo:<id>" | "pad:<name>")`.
 - Tests run without Claude, a network or a display. Anything that needs a real `claude` is replayed from `spikes/hooks-state/*.jsonl`.
 
-| File | Module | Ids |
-|---|---|---|
-| `todos.md` | `crates/todos` | every `T` heading in the file |
-| `pads.md` | `crates/pads` | every `P` heading in the file |
-| `terminal.md` | `crates/terminal` | X1–X10 |
-| `agents.md` | `crates/agents` (+ the `rup signal` subcommand in `crates/rup`) | every `A` heading in the file |
-| `loop.md` | `loop/` | every `L` heading in the file |
-| `mcp.md` | `crates/rup` (the `rup mcp` subcommand) | M1–M3 |
-| `daemon.md` | `crates/rupd` (D1, D7); end-to-end tests in `crates/rup/tests` (D2–D7) | every `D` heading in the file |
-| `messages.md` | `crates/messages` (with the tools in `crates/rup`) | every `B` heading in the file |
-| `app.md` | `crates/desktop` (the App: Tauri shell, App seam) | every `S` heading in the file |
-| `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
-| `ui-surfaces.md` | `apps/desktop` (the webview); the window half is S7 in `app.md` | U80–U85 |
-| `ui-persist.md` | `apps/desktop` (the webview) | U100 |
-| `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
-| `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
-| `decisions.md` | `crates/agents` (Decisions), `crates/rup` (`rup permission`), `spikes/hooks-permission` | every `H` heading in the file |
-| `control.md` | `crates/agents` (`agent.prompt`, `agent.interrupt`, `ask_user`), `crates/rup` | every `H` heading in the file |
-| `awareness.md` | `crates/agents` (Brief file, `claude_code/`), `crates/rupd` (`agent.context`, `agent.brief`), `crates/rup` | E1–E7 |
-| `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | every `F` heading in the file |
-| `rpc.md` | `crates/rpc` | C1 |
-| `worktrees.md` | `crates/agents` (`src/worktree.rs`); end-to-end tests in `crates/rup/tests` | G1–G7 |
-| `workspace.md` | root files | W1 |
-| `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | every `R` and `K` heading in the file |
+Each scenario file states its module and ids on its `Module:` line, just under its title (`scenarios/loop.md` L50); this file holds no table of files, so adding a scenario file edits no line here.
 
 The order of work, the PR each scenario belongs to and what can start now are in `.work/queue.md`.
