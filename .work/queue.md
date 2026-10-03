@@ -1,14 +1,16 @@
 # Work queue
 
-This is the queue until roundup can hold its own Todos (`docs/development-loop.md`). One line per item: scenario ids, module, owned files and the observer that says the item is done (`AGENTS.md` rule 1). An item without scenario ids and an observer is not ready and is not dispatched. Scenarios with the same PR key ship as one PR in one worktree. Line counts are estimates, sized to the guide of about 2000 lines (#39).
+This is the queue until roundup can hold its own Todos (`docs/development-loop.md`); the rows are in `.work/queue/*.md`. One line per item: scenario ids, module, owned files and the observer that says the item is done (`AGENTS.md` rule 1). An item without scenario ids and an observer is not ready and is not dispatched. Scenarios with the same PR key ship as one PR in one worktree. Line counts are estimates, sized to the guide of about 2000 lines (#39).
 
 Volatile state is not kept here (it goes stale within hours): no PR numbers, verdicts or merge status. Find a PR with `gh pr list --search "<id> in:title"`; `gh pr list --state merged` and `git log origin/main` are the record of what is done. A row names ids, an owner, owned files and an observer. Text for an id is its heading in `scenarios/` (`grep -n '^\*\*<id>[ .]' scenarios/*.md`); an id with no heading there is reserved in the id table below and its text arrives with its own PR, so check before dispatching it.
 
 A Builder edits only the files its row owns, never `scenarios/`, the README or this file. Observer for every row: `just check` green and the item's own tests (named by its id prefix) pass; UI rows also have QA drive a `just harness <seed>` page.
 
+The coverage audit: every scenario id in `scenarios/*.md` has a test with its lowercase id as a prefix, except the `L` ids, whose tests are shell scripts that name them `L<n>` (`loop/*.test.sh`), W1 (its observer is `just check`), F1 and F7 (records of runs of `spikes/spawn-boundary`), and the ids in flight. The ids above have exactly one test each. An audit Builder reads each of its scenarios clause by clause, adds one test per clause that no test asserts, adds none for a clause already covered, and puts a table of id, clause and test name in the PR. It adds no scenario text and changes no behavior; a clause that the code does not satisfy is a defect to report to the Architect, not to fix in the audit PR.
+
 ## In flight, Ready now, Waiting
 
-Rows are in `.work/queue/<squad>.md`, one file per squad of `docs/squads.md`, and `.work/queue/architects.md` for rows no squad owns (contracts, spikes, rows that cross squads). Each file keeps the three tables (In flight, Ready now, Waiting) with the rules their introductions give. To find a row, grep the id in `.work/queue/`.
+Rows are in `.work/queue/<squad>.md`, one file per squad of `docs/squads.md`, and `.work/queue/architects.md` for rows no squad owns (contracts, spikes, rows that cross squads). Each file keeps the tables it has (In flight, Ready now, Waiting). To find a row, grep the id in `.work/queue/`.
 
 ## Deferred past the MVP (no scenario yet)
 

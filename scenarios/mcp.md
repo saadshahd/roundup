@@ -1,6 +1,6 @@
 # Todos and Pads over MCP
 
-Module: `crates/rup` (the `rup mcp` subcommand). Ids: M1–M3.
+Module: `crates/rup` (the `rup mcp` subcommand). Ids: M1–M4.
 
 ADR 0007: the Daemon serves MCP to Agents through a stdio shim, so every call is a Touch by the calling Agent. The shim is `rup mcp <agent-id>` in `crates/rup`. Build it on the official Rust MCP SDK (`rmcp`), not a hand-rolled protocol. Tests start the built `rup` (`CARGO_BIN_EXE_rup`) against an in-process Daemon on a temp socket, as `crates/rup/tests/ping.rs` does, and speak MCP to it over stdio. No `claude` is involved.
 

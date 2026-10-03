@@ -1,6 +1,6 @@
 # UI: a Terminal after a webview reload (U103, U104)
 
-Module: `apps/desktop` (the webview); the Daemon half, `terminal.snapshot`, is `crates/terminal`. Ids: U103-U104.
+Module: `apps/desktop` (the webview); the Daemon half, `terminal.snapshot`, is `crates/terminal`. Ids: U103–U104.
 
 Reported by the user: after reloading the app, the selected Agent's Terminal pane was black with a cursor and one status line, while the running Claude Code held a full screen. U11 says `terminal.output` is never replayed, so an emulator created after a reload starts blank. These two scenarios give it the screen back. U103 is the webview half; U104 is the Daemon half and the contract text (rule 4: a new RPC method and a new event field need an architect other than the author).
 
