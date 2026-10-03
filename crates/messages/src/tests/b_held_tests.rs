@@ -541,3 +541,20 @@ async fn b10_a_message_to_the_user_is_delivered_at_once_with_no_status_event() {
     assert_eq!(h.names(), ["message.sent", "message.delivered"]);
     assert!(h.calls.lock().unwrap().is_empty());
 }
+
+/// The Daemon is built before its runtime exists (a desktop test builds it, then `block_on`s).
+#[test]
+fn b2_a_messages_opened_before_any_runtime_still_types_on_idle() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap()
+        .block_on(async {
+            h.send_as(agent("a"), "b", "wait for me").await;
+            h.becomes("b", Kind::Idle);
+            assert_eq!(h.typed(1).await.len(), 1);
+        });
+}
