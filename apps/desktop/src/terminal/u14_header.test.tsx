@@ -50,12 +50,13 @@ describe("pane empty states and error sizing", () => {
     const before = box();
 
     app.emit(event({ name: "terminal.output", data: { id: "t-a", data: "***", offset: 0 } }));
-    await screen.findByText(/^✕ terminal\.output:/);
+    const failure = await screen.findByRole("alert", { name: /^terminal\.output:/ });
 
     const after = box();
 
     sheet.remove();
 
     expect([before, after]).toEqual([["24px", "0"], ["24px", "0"]]);
+    expect(failure.querySelector('svg.lucide-x[aria-hidden="true"]')).not.toBeNull();
   });
 });

@@ -1,9 +1,12 @@
 import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
-import { group, USER } from "../testing/nodes";
+import { agent, group, USER } from "../testing/nodes";
 import { mountRail, rowOf } from "../rail/railFixture";
 import { openPad, openShelf, padOf, AGENT } from "../pads/padsFixture";
 import { mountTodos, todo } from "../todos/testHarness";
+import { resolveToken, tokensFrom, withStylesheets } from "../testing/contrast";
+import tokens from "../tokens.css?inline";
+import styles from "./styles.css?inline";
 
 afterEach(cleanup);
 
@@ -54,4 +57,24 @@ it("u86_pad_ownership_and_add_use_vectors_without_duplicate_drawer_names", async
   const drawer = screen.getByLabelText("drawer");
   expect(within(drawer).queryByRole("img", { name: "agent owned" })).toBeNull();
   vector(drawer, "diamond-plus");
+});
+
+it("u86_rail_marks_share_the_disclosures_scan_line_when_selected", async () => {
+  const sheet = document.head.appendChild(document.createElement("style"));
+  sheet.textContent = styles;
+
+  try {
+    await withStylesheets(async () => {
+      const { rail } = await mountRail([group("topic"), agent("a", "working", "w")]);
+      rail.select("a");
+
+      for (const name of ["topic", "a"]) {
+        const line = rowOf(name).querySelector(".line")!;
+        expect(resolveToken(getComputedStyle(line).minHeight, tokensFrom(tokens))).toBe("24px");
+        expect(getComputedStyle(rowOf(name)).minHeight).toBe("28px");
+      }
+    });
+  } finally {
+    sheet.remove();
+  }
 });
