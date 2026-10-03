@@ -10,6 +10,8 @@ import type { Emulator, EmulatorFactory, Size } from "./emulator";
 export type Screens = {
   /** The Terminal's emulator, created on first call; `terminal.output` arriving first creates it, so a pane shown later is not blank. */
   emulatorFor(id: string): Emulator;
+  /** Opens a Terminal's emulator in the pane and records the fitted size for later snapshot recovery. */
+  show(id: string, host: HTMLElement): Size;
   /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited, or a Daemon that has, takes no resize. */
   resize(id: string, size: Size): void;
   /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
@@ -37,6 +39,7 @@ type Holder = {
   restoring: boolean;
   complete: boolean;
   lostOutput: boolean;
+  shownSize: Size | null;
 };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
@@ -44,6 +47,22 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   const holders = new Map<string, Holder>();
   const [failure, setFailure] = createSignal<string | null>(null);
   let disposed = false;
+
+  const resize = (id: string, size: Size): void => {
+    const holder = holders.get(id);
+
+    if (holder?.shownSize) holder.shownSize = size;
+
+    if (!exited(id) && daemonExit() === null) void attempt(app.rpc("terminal.resize", { id, ...size }));
+  };
+
+  const reflow = (id: string, holder: Holder): void => {
+    if (disposed || !holder.shownSize) return;
+
+    const fitted = holder.emulator.fit();
+
+    if (fitted.cols !== holder.shownSize.cols || fitted.rows !== holder.shownSize.rows) resize(id, fitted);
+  };
 
   const takeFirst = (holder: Holder): OutputEvent | undefined => {
     const chunk = holder.pending.shift();
@@ -104,7 +123,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       if (holder.complete) holder.emulator.reset();
 
       holder.emulator.setSize({ cols: snapshot.cols, rows: snapshot.rows });
-      holder.emulator.write(bytes);
+      holder.emulator.write(bytes, () => requestAnimationFrame(() => reflow(id, holder)));
       holder.after = snapshot.after;
       holder.complete = true;
       setFailure(null);
@@ -194,7 +213,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     });
     const holder: Holder = {
       emulator, atBottom, returnToBottom, pending: [], pendingChars: 0,
-      after: null, restoring: false, complete: false, lostOutput: false,
+      after: null, restoring: false, complete: false, lostOutput: false, shownSize: null,
     };
 
     holders.set(id, holder);
@@ -204,6 +223,15 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   };
 
   const emulatorFor = (id: string): Emulator => holderFor(id).emulator;
+
+  const show = (id: string, host: HTMLElement): Size => {
+    const holder = holderFor(id);
+    const size = holder.emulator.show(host);
+
+    holder.shownSize = size;
+
+    return size;
+  };
 
   const stopListening = output.subscribe((chunk) => {
     try {
@@ -232,9 +260,8 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
   return {
     emulatorFor,
-    resize: (id, size) => {
-      if (!exited(id) && daemonExit() === null) void attempt(app.rpc("terminal.resize", { id, ...size }));
-    },
+    show,
+    resize,
     stop: (node) => {
       if (node.status !== null) {
         void attempt(app.rpc("agent.stop", { id: node.id }));

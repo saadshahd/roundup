@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../App";
+import { fromBase64 } from "../terminal/base64";
 import { SEEDS, seedApp } from "./seeds";
 import type { SeedName } from "./seeds";
 import type { Event as DaemonEvent } from "@contracts/Event";
@@ -101,6 +102,18 @@ describe("u26 the controls", () => {
     writeOutput("t-agent-1", "hi");
 
     expect(seen).toEqual([event({ name: "terminal.output", data: { id: "t-agent-1", offset: 0, data: "aGk=" } })]);
+  });
+
+  it("u103_the_fake_daemon_snapshot_matches_the_output_offsets_after_a_burst", async () => {
+    const { app, writeOutput, seen } = await listen("agents-10");
+
+    writeOutput("t-agent-1", "one ");
+    writeOutput("t-agent-1", "é");
+    const snapshot = await app.rpc("terminal.snapshot", { id: "t-agent-1" });
+
+    expect([snapshot.after, new TextDecoder().decode(fromBase64(snapshot.data))]).toEqual([6, "one é"]);
+    expect(seen.map((item) => item.name === "terminal.output" ? item.data.offset : null)).toEqual([0, 4]);
+    await expect(app.rpc("terminal.snapshot", { id: "absent" })).rejects.toMatchObject({ code: -32001 });
   });
 
   it("u26_emit_sends_the_event_it_is_given", async () => {

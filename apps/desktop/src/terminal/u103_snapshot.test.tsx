@@ -24,7 +24,7 @@ const snapshotOf = (text: string, after: number, size: Size = { cols: 100, rows:
 const chunk = (id: string, text: string, offset: number): DaemonEvent =>
   event({ name: "terminal.output", data: { id, data: toBase64(new TextEncoder().encode(text)), offset } });
 
-type Recorder = Emulator & { log: string[] };
+type Recorder = Emulator & { log: string[]; shown: boolean; fits: number };
 
 /** Records, in order, `size <cols>x<rows>` and each written text. */
 const recordingEmulators = () => {
@@ -33,13 +33,26 @@ const recordingEmulators = () => {
     const log: string[] = [];
     const emulator: Recorder = {
       log,
+      shown: false,
+      fits: 0,
       setSize: (size) => log.push(`size ${size.cols}x${size.rows}`),
       reset: () => log.push("reset"),
-      write: (bytes) => log.push(new TextDecoder().decode(bytes)),
+      write: (bytes, parsed) => {
+        log.push(new TextDecoder().decode(bytes));
+        parsed?.();
+      },
       onInput: () => {},
       onScroll: () => {},
-      show: () => ({ cols: 100, rows: 30 }),
-      fit: () => ({ cols: 100, rows: 30 }),
+      show: () => {
+        emulator.shown = true;
+
+        return { cols: 100, rows: 30 };
+      },
+      fit: () => {
+        emulator.fits += 1;
+
+        return { cols: 100, rows: 30 };
+      },
       focus: () => {},
       isAtBottom: () => true,
       scrollToBottom: () => {},
@@ -75,7 +88,7 @@ const mount = async (tree = [node("a")], terminals = [info("t-a")]) => {
   const snapshots = () => app.calls.filter((call) => call.method === "terminal.snapshot");
   const log = () => made.get("t-a")?.log ?? [];
 
-  return { app, pending, snapshots, log };
+  return { app, pending, snapshots, log, shown: () => made.get("t-a")?.shown ?? false, fits: () => made.get("t-a")?.fits ?? 0 };
 };
 
 const typed = (app: { calls: { method: string }[] }) => app.calls.filter((call) => call.method === "terminal.write");
@@ -110,6 +123,16 @@ describe("u103 a reloaded pane shows the screen", () => {
     expect(log()).toEqual([]);
     pending[0]?.(snapshotOf("screen", 0));
     await vi.waitFor(() => expect(log()).toContain("live"));
+  });
+
+  it("u103_a_snapshot_that_arrives_after_the_pane_was_shown_refits_the_emulator", async () => {
+    const { pending, snapshots, shown, fits } = await mount();
+
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+    expect(shown()).toBe(true);
+    pending[0]?.(snapshotOf("screen", 0, { cols: 120, rows: 40 }));
+
+    await vi.waitFor(() => expect(fits()).toBe(1));
   });
 
   it("u103_the_emulator_is_sized_then_gets_the_data_then_the_held_and_later_output_in_order", async () => {

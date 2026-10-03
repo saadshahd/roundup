@@ -9,7 +9,7 @@ export type Size = { cols: number; rows: number };
 
 /** One Terminal's screen. It exists before it is shown: bytes written to it wait for the first `show`. */
 export type Emulator = {
-  write(bytes: Uint8Array): void;
+  write(bytes: Uint8Array, parsed?: () => void): void;
   /** Restores the Daemon's screen at its recorded size before later output is written. */
   setSize(size: Size): void;
   /** Clears the last complete screen before a replacement snapshot is written. */
@@ -87,6 +87,7 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
     const fitter = new FitAddon();
     const element = document.createElement("div");
     let opened = false;
+    let loadedWebgl: RendererAddon | null = null;
 
     element.style.height = "100%";
     terminal.loadAddon(fitter);
@@ -99,8 +100,18 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
     };
 
     return {
-      write: (bytes) => terminal.write(bytes, probe && (() => probe.written(bytes))),
-      setSize: ({ cols, rows }) => terminal.resize(cols, rows),
+      write: (bytes, parsed) => terminal.write(bytes, () => {
+        probe?.written(bytes);
+        parsed?.();
+      }),
+      setSize: ({ cols, rows }) => {
+        if (opened && loadedWebgl && (terminal.cols !== cols || terminal.rows !== rows)) {
+          loadedWebgl.dispose();
+          loadedWebgl = null;
+        }
+
+        terminal.resize(cols, rows);
+      },
       reset: () => terminal.write("\x1bc"),
       onInput: (listener) => {
         terminal.onData((text) => listener(encoder.encode(text)));
@@ -113,7 +124,11 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
           terminal.open(element);
           opened = true;
 
-          if (!webglDenied) webglDenied = !attachRenderer(terminal, () => new WebglAddon(), console.warn);
+          if (!webglDenied) webglDenied = !attachRenderer(terminal, () => {
+            loadedWebgl = new WebglAddon();
+
+            return loadedWebgl;
+          }, console.warn);
 
           probe?.renderer(!webglDenied);
         }

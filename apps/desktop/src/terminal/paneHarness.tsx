@@ -44,8 +44,9 @@ export const fakeEmulators = () => {
       fits: 0,
       disposed: false,
       scrollsToBottom: 0,
-      write: (bytes) => {
+      write: (bytes, parsed) => {
         if (bytes.length > 0) emulator.written.push(bytes);
+        parsed?.();
       },
       setSize: (size) => { emulator.size = size; },
       reset: () => { emulator.written = []; },
