@@ -180,6 +180,19 @@ impl Store {
         self.get(id)
     }
 
+    /// Reverses `mark_delivered`: `id` goes back to `pending`, only if it is still `delivered`
+    /// (a refused `deliver`, B2). `false` when it was not `delivered` any more.
+    pub(crate) fn unmark_delivered(&self, id: u32) -> Result<bool, RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE messages SET status = 'pending' WHERE id = ?1 AND status = 'delivered'",
+                params![id],
+            )
+            .map_err(RpcError::internal)?;
+        Ok(changed == 1)
+    }
+
     fn list_pending_to(&self, to: &str) -> Result<Vec<Message>, RpcError> {
         self.db
             .prepare(
