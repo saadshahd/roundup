@@ -12,8 +12,8 @@ export type Emulator = {
   write(bytes: Uint8Array): void;
   /** Keystrokes and pastes, as the bytes the program expects, in the order they were typed. */
   onInput(listener: (bytes: Uint8Array) => void): void;
-  /** Moves the emulator into `host` (opening it the first time), gives it focus, and returns its fitted size. */
-  show(host: HTMLElement): Size;
+  /** Moves the emulator into `host` (opening it the first time), returns its fitted size, and focuses it unless restoring the Rail. */
+  show(host: HTMLElement, focus?: boolean): Size;
   /** Gives the keyboard back to the emulator. */
   focus(): void;
   /** The size that fills the emulator's current host. */
@@ -100,7 +100,7 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
         terminal.onData((text) => listener(encoder.encode(text)));
         terminal.onBinary((text) => listener(Uint8Array.from(text, (char) => char.charCodeAt(0))));
       },
-      show: (host) => {
+      show: (host, focus = true) => {
         host.replaceChildren(element);
 
         if (!opened) {
@@ -112,7 +112,7 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
           probe?.renderer(!webglDenied);
         }
 
-        terminal.focus();
+        if (focus) terminal.focus();
 
         return size();
       },

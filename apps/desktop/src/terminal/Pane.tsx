@@ -48,7 +48,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
       return;
     }
 
-    untrack(() => screens.resize(id, screens.emulatorFor(id).show(host)));
+    untrack(() => screens.resize(id, screens.emulatorFor(id).show(host, !rail.restored())));
   });
 
   // Solid settles every memo before it runs any effect, so an effect that creates the emulator would still be
