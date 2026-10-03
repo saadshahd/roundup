@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -9,11 +9,19 @@ import { createTodosState } from "./state";
 import { TodoDrawer } from "./TodoDrawer";
 import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
 
+/** U138: the row to focus once a completed Todo leaves the open list — the next one, else the previous, else none (the `+` button). */
+export const rowAfter = (id: number, openIds: readonly number[]): number | null => {
+  const at = openIds.indexOf(id);
+
+  return openIds[at + 1] ?? openIds[at - 1] ?? null;
+};
+
 const OpenRow = (props: {
   todo: Todo;
   known: ReadonlyMap<number, Todo>;
   onOpen: (todo: Todo) => void;
   onComplete: (todo: Todo) => Promise<string | null>;
+  registerRow: (id: number, row: HTMLButtonElement | null) => void;
 }) => {
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
   const [hovered, setHovered] = createSignal(false);
@@ -30,6 +38,8 @@ const OpenRow = (props: {
     onCleanup(() => document.removeEventListener("click", clear));
   });
 
+  onCleanup(() => props.registerRow(props.todo.id, null));
+
   return (
     <div
       data-id={props.todo.id}
@@ -45,7 +55,7 @@ const OpenRow = (props: {
       }}
     >
       <div class="row-head">
-        <RowButton onClick={() => props.onOpen(props.todo)}>
+        <RowButton onClick={() => props.onOpen(props.todo)} ref={(row) => props.registerRow(props.todo.id, row)}>
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
         <Show when={hovered() || focused()}>
@@ -88,6 +98,32 @@ export const Todos = () => {
   const done = createMemo(() => doneTodos(todos.all()));
   const isEmpty = createMemo(() => todos.isLoaded() && todos.all().length === 0 && todos.failure() === null);
 
+  const rows = new Map<number, HTMLButtonElement>();
+  let plusButton: HTMLButtonElement | undefined;
+
+  // U138: a completed Todo leaves the open list only once its `todo.updated` Event has refetched it, so the row to focus
+  // is held here until this list no longer carries `id`, then it is given to that target, else to the `+` button.
+  const [awaitingFocus, setAwaitingFocus] = createSignal<{ id: number; target: number | null }[]>([]);
+
+  createEffect(() => {
+    const openIds = new Set(open().map((todo) => todo.id));
+    const waiting = awaitingFocus();
+
+    if (waiting.every((request) => openIds.has(request.id))) return;
+
+    setAwaitingFocus(
+      waiting.filter((request) => {
+        if (openIds.has(request.id)) return true;
+
+        const target = request.target !== null ? rows.get(request.target) : undefined;
+
+        (target ?? plusButton)?.focus();
+
+        return false;
+      }),
+    );
+  });
+
   // The field closes before the call so a second Enter cannot create the Todo twice.
   const create = async (title: string) => {
     setTyping(false);
@@ -100,16 +136,28 @@ export const Todos = () => {
 
   const show = (todo: Todo) => connected.drawer.open(() => <TodoDrawer id={todo.id} todos={todos} />);
 
-  const complete = (todo: Todo) => failureOf(() => connected.app.rpc("todo.complete", { id: todo.id }));
+  const complete = async (todo: Todo) => {
+    const target = rowAfter(todo.id, open().map((candidate) => candidate.id));
+    const message = await failureOf(() => connected.app.rpc("todo.complete", { id: todo.id }));
+
+    if (message === null) setAwaitingFocus((waiting) => [...waiting, { id: todo.id, target }]);
+
+    return message;
+  };
 
   return (
     <section aria-label="todos">
       <p>
         todos{" "}
-        <button type="button" class="word" onClick={() => {
+        <button
+          type="button"
+          class="word"
+          ref={(button) => (plusButton = button)}
+          onClick={() => {
             setCreateFailure(null);
             setTyping(true);
-          }}>
+          }}
+        >
           +
         </button>
       </p>
@@ -133,7 +181,16 @@ export const Todos = () => {
       </Show>
       <For each={open()}>
         {(todo) => (
-          <OpenRow todo={todo} known={todos.byId()} onOpen={show} onComplete={complete} />
+          <OpenRow
+            todo={todo}
+            known={todos.byId()}
+            onOpen={show}
+            onComplete={complete}
+            registerRow={(id, row) => {
+              if (row) rows.set(id, row);
+              else rows.delete(id);
+            }}
+          />
         )}
       </For>
       <Show when={done().length > 0}>
