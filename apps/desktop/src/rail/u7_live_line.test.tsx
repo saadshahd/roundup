@@ -1,7 +1,7 @@
 import { cleanup, fireEvent } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
-import { exitedTerminal, glyphOf, liveLineOf, mountRail, rowOf } from "./railFixture";
+import { exitedTerminal, glyphOf, shownLiveLine, mountRail, rowOf } from "./railFixture";
 import { agent, MINUTE, NOW, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -16,7 +16,7 @@ describe("u7 live line", () => {
   it("u7_an_agents_live_line_is_its_label_and_elapsed_time", async () => {
     await mountRail([asking()]);
 
-    expect(liveLineOf("gateway")).toBe("asks: keep v1 routes?  4m");
+    expect(shownLiveLine("gateway")).toBe("asks: keep v1 routes?  4m");
   });
 
   it("u7_the_live_line_advances_with_the_clock", async () => {
@@ -24,16 +24,16 @@ describe("u7 live line", () => {
 
     setNow(NOW + MINUTE);
 
-    expect(liveLineOf("gateway")).toBe("asks: keep v1 routes?  5m");
+    expect(shownLiveLine("gateway")).toBe("asks: keep v1 routes?  5m");
   });
 
   it("u7_a_working_agents_live_line_is_hidden_until_hover", async () => {
     await mountRail([agent("docs", "working", "writing docs/auth.md")]);
-    const before = liveLineOf("docs");
+    const before = shownLiveLine("docs");
 
     fireEvent.mouseEnter(rowOf("docs"));
 
-    expect([before, liveLineOf("docs")]).toEqual([null, "writing docs/auth.md  just now"]);
+    expect([before, shownLiveLine("docs")]).toEqual([null, "writing docs/auth.md  just now"]);
   });
 
   it("u7_the_live_line_hides_again_when_the_pointer_leaves", async () => {
@@ -42,7 +42,7 @@ describe("u7 live line", () => {
 
     fireEvent.mouseLeave(rowOf("docs"));
 
-    expect(liveLineOf("docs")).toBeNull();
+    expect(shownLiveLine("docs")).toBeNull();
   });
 
   it("u7_a_working_agents_live_line_shows_on_selection", async () => {
@@ -50,19 +50,19 @@ describe("u7 live line", () => {
 
     rail.select("docs");
 
-    expect(liveLineOf("docs")).toBe("w  just now");
+    expect(shownLiveLine("docs")).toBe("w  just now");
   });
 
   it.each<Kind>(["blocked", "needs-you", "error"])("u7_a_%s_agents_live_line_shows_unprompted", async (kind) => {
     await mountRail([agent("a", kind, "label")]);
 
-    expect(liveLineOf("a")).toBe("label  just now");
+    expect(shownLiveLine("a")).toBe("label  just now");
   });
 
   it.each<Kind>(["working", "idle", "done"])("u7_a_%s_agents_live_line_is_not_unprompted", async (kind) => {
     await mountRail([agent("a", kind, "label")]);
 
-    expect(liveLineOf("a")).toBeNull();
+    expect(shownLiveLine("a")).toBeNull();
   });
 
   it("u7_a_running_terminal_has_no_live_line_even_when_selected", async () => {
@@ -70,7 +70,7 @@ describe("u7 live line", () => {
 
     rail.select("dev");
 
-    expect(liveLineOf("dev")).toBeNull();
+    expect(shownLiveLine("dev")).toBeNull();
   });
 
   it("u7_an_exited_terminal_with_a_known_code_reads_exited_code", async () => {
@@ -78,7 +78,7 @@ describe("u7 live line", () => {
 
     rail.select("dev");
 
-    expect(liveLineOf("dev")).toBe("exited 137");
+    expect(shownLiveLine("dev")).toBe("exited 137");
   });
 
   it("u7_an_exited_terminal_killed_by_a_signal_reads_exited_by_signal", async () => {
@@ -86,7 +86,7 @@ describe("u7 live line", () => {
 
     rail.select("dev");
 
-    expect(liveLineOf("dev")).toBe("exited by signal");
+    expect(shownLiveLine("dev")).toBe("exited by signal");
   });
 
   it("u7_a_node_with_no_terminal_id_reads_plain_exited", async () => {
@@ -94,7 +94,7 @@ describe("u7 live line", () => {
 
     rail.select("dev");
 
-    expect(liveLineOf("dev")).toBe("exited");
+    expect(shownLiveLine("dev")).toBe("exited");
   });
 
   it.each<[Kind, string]>([

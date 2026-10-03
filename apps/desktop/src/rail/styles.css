@@ -44,16 +44,31 @@
   text-overflow: ellipsis;
 }
 
-/* Live has no margin and the 2ch spacing sits in its text, so a Live line given no width takes none of the name's (U46). */
+/* Live has no margin and the 2ch spacing before the label sits in the label's text, so a Live line given no width takes none of the name's (U46). */
 .rail-row .line > .live {
+  display: flex;
   flex: 1 1 0;
   min-width: 0;
   margin-left: 0;
-  text-indent: 2ch;
+  gap: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
+}
+
+/* Shrinks and ellipsizes first, so the age at the row's right edge is always whole (U7). */
+.rail-row .line > .live > .live-label {
+  flex: 1 1 0;
+  min-width: 0;
+  text-indent: 2ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-row .line > .live > .live-age {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .rail-row input {
