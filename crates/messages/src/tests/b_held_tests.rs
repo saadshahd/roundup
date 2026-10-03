@@ -1063,7 +1063,7 @@ async fn b9_a_lag_while_the_rail_cannot_answer_still_drops_pending_once_it_can()
     status_flood(&h);
     h.settle().await;
     h.rail.fail(false);
-    status_flood(&h);
+    h.becomes("z", Kind::Working);
 
     h.until(1, "dropped").await;
     assert_eq!(h.states().await[&1], dropped("receiver gone"));
