@@ -27,7 +27,12 @@ echo "$*" >>"$STUB_LOG"
 timeout_s=1800
 prev=""
 for a in "$@"; do [ "$prev" != --timeout ] || timeout_s=$a; prev=$a; done
-if [ "$1 $2 $3" = "machine cp -" ]; then vm=${4%%:*}; mkdir -p "$STUB_DIR/by-vm/$vm"; tee "$STUB_DIR/by-vm/$vm/$(basename "$4")" >"$STUB_DIR/$(basename "$4")"; else cat >/dev/null 2>&1 || true; fi
+if [ "$1 $2" = "machine cp" ] && [[ $3 == *:.codex/auth.json ]] && [ "$4" = - ]; then
+  printf 'codex-auth-fixture'
+elif [ "$1 $2 $3" = "machine cp -" ]; then
+  if [[ $4 == *:.codex/auth.json ]] && [ "${STUB_MODE:-}" = codex-transfer-fails ]; then exit 1; fi
+  vm=${4%%:*}; mkdir -p "$STUB_DIR/by-vm/$vm"; tee "$STUB_DIR/by-vm/$vm/$(basename "$4")" >"$STUB_DIR/$(basename "$4")"
+else cat >/dev/null 2>&1 || true; fi
 case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
@@ -35,6 +40,7 @@ case "$1 $2" in
     elif [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
     elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'
     elif [ "${STUB_MODE:-}" = mixed ]; then echo '[{"name":"ru-builder-1"},{"name":"ru-reviewer-2"},{"name":"ru-x8-1"},{"name":"ru-builderx"},{"name":"ru-x-builder-9"},{"name":"ru-builder-x"},{"name":"ru-builder-1x"},{"name":"ru-builder-3"}]'
+    elif [ "${STUB_MODE:-}" = codex-running ]; then echo '[{"name":"ru-codex-1"}]'
     else (cd "$STUB_DIR" && ls alive-* 2>/dev/null || true) | jq -Rnc '[inputs | {name: sub("^alive-"; "")}]'; fi ;;
   "machine new")
     [ "${STUB_MODE:-}" != exists ] && [ ! -e "$STUB_DIR/alive-$3" ] || exit 1
@@ -46,6 +52,16 @@ case "$1 $2" in
     if [ -e "$STUB_DIR/exec-$3.pid" ]; then kill "$(cat "$STUB_DIR/exec-$3.pid")" 2>/dev/null || true; fi ;;
   "machine exec")
     case "$*" in
+      *"test -s ~/.codex/auth.json"*) [ "${STUB_MODE:-}" != codex-no-source ] ;;
+      *"codex login status"*) [ "${STUB_MODE:-}" != codex-no-login ] || exit 1; echo 'Logged in using ChatGPT' ;;
+      *"gh auth status"*)
+        case "${STUB_MODE:-}" in codex-github | codex-github-app) exit 1 ;; esac ;;
+      *"codex exec"*)
+        case "${STUB_MODE:-}" in
+          codex-fails) echo '{"type":"turn.failed","error":{"message":"failed"}}'; exit 1 ;;
+          codex-incomplete) echo '{"type":"thread.started"}' ;;
+          *) echo '{"type":"thread.started"}'; echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}' ;;
+        esac ;;
       *" -- true")
         echo x >>"$STUB_DIR/trues"
         [ "$(wc -l <"$STUB_DIR/trues")" -gt "${STUB_NOANSWER:-0}" ] || exit 1 ;;
@@ -53,7 +69,12 @@ case "$1 $2" in
         echo x >>"$STUB_DIR/tars"
         if [ "$(wc -l <"$STUB_DIR/tars")" -le "${STUB_TARFAIL:-0}" ]; then sleep "${STUB_TARFAIL_SLEEP:-0}"; exit 2; fi ;;
       *pgrep*)
-        case "$3" in ru-builder-1) echo agent-running ;; ru-reviewer-2) echo idle ;; *) exit 1 ;; esac ;;
+        case "$3" in
+          ru-builder-1) echo agent-running ;;
+          ru-reviewer-2) echo idle ;;
+          ru-codex-1) case "$*" in *"pgrep -x codex"*) echo agent-running ;; *) echo idle ;; esac ;;
+          *) exit 1 ;;
+        esac ;;
       *claude*)
         case "${STUB_MODE:-}" in
           no-output) exit 1 ;;
@@ -118,6 +139,7 @@ S
 }
 
 run() { STUB_MODE=${STUB_MODE:-} loop/boxd.sh build t prompt.md >out 2>err; }
+run_codex() { BOXD_AGENT=codex BOXD_CODEX_AUTH_VM=ru-auth STUB_MODE=${STUB_MODE:-} loop/boxd.sh build t prompt.md >out 2>err; }
 
 expect_code() {
   local want=$1 name=$2 got=0
@@ -140,6 +162,31 @@ new_repo; STUB_MODE='' expect_code 0 "L5 build succeeds"
 expect_log 'machine remove ru-t' "L5 VM destroyed after success"
 expect_log 'machine new ru-t .*--isolated' "L7 VM is isolated"
 expect_true "L5 patch written" test -s loop/out/patches/t.patch
+
+new_repo; run_codex || true
+expect_true "L64 Codex build completes and writes a patch" test -s loop/out/patches/t.patch
+expect_log 'machine new ru-t --from-snapshot ru-toolchain --auto-suspend-timeout' "L64 Codex Builder uses a normal snapshot VM"
+expect_log 'machine cp ru-auth:.codex/auth.json -' "L64 Codex login comes from the named source VM"
+expect_log 'machine cp - ru-t:.codex/auth.json' "L64 Codex login is streamed directly to the Builder VM"
+expect_log 'codex exec --json' "L64 Builder runs Codex's JSON stream"
+expect_true "L64 the auth bytes never enter the run output" bash -c '! grep -q codex-auth-fixture out err log'
+expect_true "L64 transfer and guards precede checkout upload" awk '/machine cp - ru-t:\.codex\/auth\.json/ { auth = NR } /machine cp - ru-t:\/tmp\/r\.bundle/ { checkout = NR } END { exit !(auth && checkout && auth < checkout) }' log
+
+new_repo; got=0; BOXD_AGENT=codex loop/boxd.sh build t prompt.md >out 2>err || got=$?
+expect_true "L64 missing source is refused before VM creation" bash -c "test $got != 0 && ! grep -q 'machine new' log"
+
+new_repo; STUB_MODE=codex-no-source run_codex && { echo "FAIL: L64 missing login holder accepted"; failures=$((failures + 1)); } || true
+expect_true "L64 missing login holder starts no VM" bash -c '! grep -q "machine new" log'
+
+for mode in codex-transfer-fails codex-no-login codex-github codex-github-app; do
+  new_repo; STUB_MODE=$mode run_codex && { echo "FAIL: L64 $mode accepted"; failures=$((failures + 1)); } || true
+  expect_true "L64 $mode refuses checkout and removes VM" bash -c "! grep -q 'machine cp - ru-t:/tmp/r.bundle' log && grep -q 'machine remove ru-t' log"
+done
+
+for mode in codex-fails codex-incomplete; do
+  new_repo; STUB_MODE=$mode run_codex && { echo "FAIL: L64 $mode accepted"; failures=$((failures + 1)); } || true
+  expect_true "L64 $mode does not run check" bash -c '! grep -q "just check" log'
+done
 
 new_repo; STUB_MODE=limit expect_code 75 "L4 limit error pauses with 75"
 expect_true "L4 PAUSED written" test -e loop/out/PAUSED
@@ -667,6 +714,8 @@ expect_true "L13 status shows agent-running" grep -qx 'ru-builder-1 agent-runnin
 expect_true "L13 status shows idle" grep -qx 'ru-reviewer-2 idle' out
 expect_true "L13 status shows unreachable" grep -qx 'ru-x8-1 unreachable' out
 expect_true "L13 status lists every ru- VM" test "$(wc -l <out | tr -d ' ')" = 8
+new_repo; STUB_MODE=codex-running loop/boxd.sh status >out 2>err
+expect_true "L64 status reports a running Codex Builder" grep -qx 'ru-codex-1 agent-running' out
 
 new_repo; STUB_MODE=mixed loop/boxd.sh kill all >out 2>err
 expect_log 'machine remove ru-builder-1' "L14 kill all removes swarm builders"
