@@ -43,7 +43,14 @@ export const EditableText = (props: {
     <Show
       when={editing()}
       fallback={
-        <p onDblClick={() => startWith(props.value)} style={{ "white-space": "pre-wrap", "min-height": "1.4em" }}>
+        <p
+          tabIndex={0}
+          onDblClick={() => startWith(props.value)}
+          onKeyDown={(key) => {
+            if (key.key === "Enter") startWith(props.value);
+          }}
+          style={{ "white-space": "pre-wrap", "min-height": "1.4em" }}
+        >
           <Show when={props.value !== ""} fallback={<span class="light">{`no ${props.name}`}</span>}>
             {props.value}
           </Show>
