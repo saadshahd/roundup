@@ -106,7 +106,7 @@ case "$1 $2" in
         else
           case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
         fi ;;
-      *"git diff --cached base"*) echo "partial-diff-against-base"; [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1 ;;
+      *"git diff --cached base"*) echo "partial-diff-against-base"; [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1; [ -z "${STUB_DIFF_HANG:-}" ] || { trap '' TERM; sleep 3; exit 1; } ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -574,6 +574,10 @@ expect_true "L21 no timeout message when the deadline came from boxd" bash -c '!
 expect_true "L21 the no-output message is used" grep -q "agent produced no output" err
 expect_true "L21 the deadline event is recorded for that run" grep -q " ru-t agent deadline-exceeded" loop/out/events.log
 new_repo; BOXD_TIMEOUT_CMD=no-such-timeout expect_code 2 "L21 a missing GNU timeout is refused at start-up"
+new_repo; got=0; BOXD_TIMEOUT_CMD=no-such-timeout loop/boxd.sh review r prompt.md >out 2>err || got=$?
+expect_true "L21 review refuses a missing GNU timeout before any VM" bash -c "test $got = 2 && grep -q 'needs GNU timeout' err && ! grep -q 'machine new' log"
+new_repo; got=0; BOXD_TIMEOUT_CMD=no-such-timeout loop/boxd.sh swarm build prompt.md >out 2>err || got=$?
+expect_true "L21 swarm refuses a missing GNU timeout before any VM" bash -c "test $got = 2 && grep -q 'needs GNU timeout' err && ! grep -q 'machine new' log"
 expect_true "L21 the refusal names timeout and coreutils and made no VM" bash -c 'grep -q "needs GNU timeout" err && ! grep -q "machine new" log'
 new_repo; STUB_MODE=check-deadline expect_code 1 "L19 a build whose check hits the deadline fails"
 expect_true "L19 the build check's deadline event is recorded with VM and phase" grep -q ' ru-t check deadline-exceeded' loop/out/events.log
@@ -735,6 +739,13 @@ new_repo; got=0; STUB_MODE=events-then-exit STUB_DIFF_FAILS=1 loop/boxd.sh build
 expect_true "L21 a failed diff extraction still exits 1" test "$got" -eq 1
 expect_true "L21 a failed diff extraction says no partial patch was saved" grep -q "could not read the diff so far" err
 expect_true "L21 a failed diff extraction leaves no partial patch, not even a truncated one" bash -c '! test -e loop/out/patches/t.partial.patch && ! test -e loop/out/patches/t.partial.patch.tmp'
+# A build killed while the diff is being read leaves no temp file: the exit trap removes it.
+new_repo; STUB_MODE=events-then-exit STUB_DIFF_HANG=1 loop/boxd.sh build t prompt.md >out 2>err &
+build_pid=$!
+for _ in $(seq 100); do [ -e loop/out/patches/t.partial.patch.tmp ] && break; sleep 0.1; done
+expect_true "L21 setup: the diff is being read into the temp file" test -e loop/out/patches/t.partial.patch.tmp
+kill -TERM "$build_pid"; wait "$build_pid" || true
+expect_true "L21 a build killed mid-diff leaves no temp file and no partial patch" bash -c '! test -e loop/out/patches/t.partial.patch.tmp && ! test -e loop/out/patches/t.partial.patch'
 expect_true "L21 no PAUSED from a result-less run" bash -c '! test -e loop/out/PAUSED'
 
 # A timed-out or result-less run removes the stable result file an earlier successful run left, and a later
