@@ -14,7 +14,7 @@ export type DragState = {
   top: number;
   /** The height the dragged rows take: how far a shifted row moves. */
   room: number;
-  /** How far the pointer has moved down since the press: the dragged rows follow it. */
+  /** How far the dragged rows move from their measured place so their top stays `grabOffset` above the pointer. */
   lift: number;
   /** Ids of the dragged row and the rows that move with it. */
   lifted: ReadonlySet<string>;
@@ -140,7 +140,7 @@ export const createRailDrag = (source: {
 
     // How far below the row's own top the pointer grabbed it, measured before the drag hides the Live lines above
     // it: the row keeps this same offset from the pointer for the rest of the drag, however much those rows
-    // shrink once the drag starts (F8).
+    // shrink once the drag starts (docs/motion.md, "Drag in the rail: follows pointer").
     const pressedRow = container.querySelector(`[data-id="${CSS.escape(id)}"]`);
     const grabOffset = press.clientY - (pressedRow?.getBoundingClientRect().top ?? press.clientY);
 

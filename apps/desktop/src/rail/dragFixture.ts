@@ -4,7 +4,7 @@ import { rowOf } from "./railFixture";
 
 const ROW_HEIGHT = 20;
 
-/** The extra height a row's Live line adds (F8: hiding it at drag start must not move the dragged row off the pointer). */
+/** The extra height a row's Live line adds (motion.md "follows pointer": hiding it at drag start must not move the dragged row off the pointer). */
 const LIVE_HEIGHT = 16;
 
 /** One indent step (2ch) in pixels. */
@@ -28,7 +28,7 @@ export const stubLayout = () =>
 
 /**
  * Like `stubLayout`, but a row showing its Live line (`.live`) is `LIVE_HEIGHT` taller, read fresh from the DOM on
- * every call: a row's height can shrink mid-drag once U7's Live line hides (F8), and later rows' tops must follow.
+ * every call: a row's height can shrink mid-drag once U7's Live line hides (motion.md "follows pointer"), and later rows' tops must follow.
  */
 export const stubVariableLayout = () =>
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
