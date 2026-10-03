@@ -33,6 +33,8 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
 
   const emulator: Emulator = {
     write: () => {},
+    setSize: () => {},
+    reset: () => {},
     onInput: () => {},
     show: () => ({ cols: 80, rows: 24 }),
     fit: () => ({ cols: 80, rows: 24 }),
@@ -71,6 +73,8 @@ const mountPaneWithFocusedTerminal = async () => {
 
   const emulator: Emulator = {
     write: () => {},
+    setSize: () => {},
+    reset: () => {},
     onInput: () => {},
     show: (host) => {
       host.replaceChildren(field);

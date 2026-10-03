@@ -9,7 +9,11 @@ export type Size = { cols: number; rows: number };
 
 /** One Terminal's screen. It exists before it is shown: bytes written to it wait for the first `show`. */
 export type Emulator = {
-  write(bytes: Uint8Array): void;
+  write(bytes: Uint8Array, parsed?: () => void): void;
+  /** Restores the Daemon's screen at its recorded size before later output is written. */
+  setSize(size: Size): void;
+  /** Clears the last complete screen before a replacement snapshot is written. */
+  reset(): void;
   /** Keystrokes and pastes, as the bytes the program expects, in the order they were typed. */
   onInput(listener: (bytes: Uint8Array) => void): void;
   /** Moves the emulator into `host` (opening it the first time), returns its fitted size, and focuses it unless restoring the Rail. */
@@ -73,7 +77,10 @@ export type EchoProbe = {
 };
 
 /** The real emulators (xterm.js). WebGL is tried until the webview first refuses it, then every later Terminal goes straight to the DOM renderer. */
-export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
+export const createXtermEmulators = (
+  probe?: EchoProbe,
+  createWebgl: () => RendererAddon = () => new WebglAddon(),
+): EmulatorFactory => {
   let webglDenied = false;
 
   return () => {
@@ -83,6 +90,7 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
     const fitter = new FitAddon();
     const element = document.createElement("div");
     let opened = false;
+    let loadedWebgl: RendererAddon | null = null;
 
     element.style.height = "100%";
     terminal.loadAddon(fitter);
@@ -95,7 +103,19 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
     };
 
     return {
-      write: (bytes) => terminal.write(bytes, probe && (() => probe.written(bytes))),
+      write: (bytes, parsed) => terminal.write(bytes, () => {
+        probe?.written(bytes);
+        parsed?.();
+      }),
+      setSize: ({ cols, rows }) => {
+        if (opened && loadedWebgl && (terminal.cols !== cols || terminal.rows !== rows)) {
+          loadedWebgl.dispose();
+          loadedWebgl = null;
+        }
+
+        terminal.resize(cols, rows);
+      },
+      reset: () => terminal.write("\x1bc"),
       onInput: (listener) => {
         terminal.onData((text) => listener(encoder.encode(text)));
         terminal.onBinary((text) => listener(Uint8Array.from(text, (char) => char.charCodeAt(0))));
@@ -107,7 +127,11 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
           terminal.open(element);
           opened = true;
 
-          if (!webglDenied) webglDenied = !attachRenderer(terminal, () => new WebglAddon(), console.warn);
+          if (!webglDenied) webglDenied = !attachRenderer(terminal, () => {
+            loadedWebgl = createWebgl();
+
+            return loadedWebgl;
+          }, console.warn);
 
           probe?.renderer(!webglDenied);
         }

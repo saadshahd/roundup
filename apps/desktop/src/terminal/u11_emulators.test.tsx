@@ -1,5 +1,5 @@
 import { cleanup, screen } from "@solidjs/testing-library";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountPane, output } from "./paneHarness";
 import { event, info, node, terminal } from "../testing/nodes";
 
@@ -15,10 +15,10 @@ describe("u11 one emulator per Terminal", () => {
     app.emit(output("t-b", "elsewhere"));
     app.emit(output("t-a", "two"));
 
-    expect([decoded(emulators.get("t-a")?.written ?? []), decoded(emulators.get("t-b")?.written ?? [])]).toEqual([
+    await vi.waitFor(() => expect([decoded(emulators.get("t-a")?.written ?? []), decoded(emulators.get("t-b")?.written ?? [])]).toEqual([
       ["one", "two"],
       ["elsewhere"],
-    ]);
+    ]));
   });
 
   it("u11_output_for_a_terminal_that_is_not_selected_still_creates_its_emulator", async () => {
@@ -26,7 +26,7 @@ describe("u11 one emulator per Terminal", () => {
 
     app.emit(output("t-a", "early"));
 
-    expect(decoded(emulators.get("t-a")?.written ?? [])).toEqual(["early"]);
+    await vi.waitFor(() => expect(decoded(emulators.get("t-a")?.written ?? [])).toEqual(["early"]));
   });
 
   it("u11_selecting_a_row_shows_its_emulator_and_no_other", async () => {
@@ -57,10 +57,10 @@ describe("u11 one emulator per Terminal", () => {
     app.emit(event({ name: "terminal.output", data: { id: "t-a", offset: 0, data: "***" } }));
     app.emit(output("t-a", "after"));
 
-    expect([screen.getByText(/^✕ terminal\.output:/).tagName, decoded(emulators.get("t-a")?.written ?? [])]).toEqual([
+    await vi.waitFor(() => expect([screen.getByText(/^✕ terminal\.output:/).tagName, decoded(emulators.get("t-a")?.written ?? [])]).toEqual([
       "P",
       ["after"],
-    ]);
+    ]));
   });
 
   it("u11_closing_the_pane_disposes_every_emulator", async () => {

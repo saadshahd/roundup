@@ -18,7 +18,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
   /** U38: a failure that fills this region shows in its place, never beside its empty line. */
-  const notice = createMemo(() => props.notice ?? screens.failure());
+  const notice = createMemo(() => props.notice ?? screens.failure(terminalId()));
   const [screen, setScreen] = createSignal<HTMLDivElement>();
   let pendingFrame: number | null = null;
 
@@ -47,7 +47,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
       return;
     }
 
-    untrack(() => screens.resize(id, screens.emulatorFor(id).show(host, !rail.restored())));
+    untrack(() => screens.resize(id, screens.show(id, host, !rail.restored())));
   });
 
   // Solid settles every memo before it runs any effect, so an effect that creates the emulator would still be
