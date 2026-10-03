@@ -58,6 +58,23 @@ case "$1 $2" in
         case "${STUB_MODE:-}" in codex-github | codex-github-app) exit 1 ;; esac ;;
       *"codex exec"*)
         case "${STUB_MODE:-}" in
+          codex-review*)
+            echo '{"type":"item.completed","item":{"type":"agent_message","text":"earlier answer"}}'
+            case "${STUB_MODE:-}" in
+              codex-review-incomplete) exit 0 ;;
+              codex-review-failed) echo '{"type":"turn.failed"}'; exit 1 ;;
+              codex-review-malformed) echo 'not json' ;;
+            esac
+            echo '{"type":"item.completed","item":{"type":"agent_message","text":"VERDICT: approve\nReviewed-by-Agent: codex-reviewer"}}'
+            echo '{"type":"item.completed","item":{"type":"command_execution","text":"tool output"}}'
+            echo '{"type":"item.started","item":{"type":"agent_message","text":"unfinished"}}'
+            echo '{"type":"item.completed","item":{"type":"agent_message","text":"  \n"}}'
+            echo '{"type":"turn.completed"}'
+            [ "${STUB_MODE:-}" != codex-review-exit ] || exit 1 ;;
+          codex-empty) exit 0 ;;
+          codex-blank)
+            echo '{"type":"item.completed","item":{"type":"agent_message","text":" \n"}}'
+            echo '{"type":"turn.completed"}' ;;
           codex-fails) echo '{"type":"turn.failed","error":{"message":"failed"}}'; exit 1 ;;
           codex-incomplete) echo '{"type":"thread.started"}' ;;
           *) echo '{"type":"thread.started"}'; echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}' ;;
@@ -175,16 +192,16 @@ expect_true "L64 transfer and guards precede checkout upload" awk '/machine cp -
 new_repo; got=0; BOXD_AGENT=codex loop/boxd.sh build t prompt.md >out 2>err || got=$?
 expect_true "L64 missing source is refused before VM creation" bash -c "test $got != 0 && ! grep -q 'machine new' log"
 
-new_repo; STUB_MODE=codex-no-source run_codex && { echo "FAIL: L64 missing login holder accepted"; failures=$((failures + 1)); } || true
+new_repo; if STUB_MODE=codex-no-source run_codex; then echo "FAIL: L64 missing login holder accepted"; failures=$((failures + 1)); fi
 expect_true "L64 missing login holder starts no VM" bash -c '! grep -q "machine new" log'
 
 for mode in codex-transfer-fails codex-no-login codex-github codex-github-app; do
-  new_repo; STUB_MODE=$mode run_codex && { echo "FAIL: L64 $mode accepted"; failures=$((failures + 1)); } || true
+  new_repo; if STUB_MODE=$mode run_codex; then echo "FAIL: L64 $mode accepted"; failures=$((failures + 1)); fi
   expect_true "L64 $mode refuses checkout and removes VM" bash -c "! grep -q 'machine cp - ru-t:/tmp/r.bundle' log && grep -q 'machine remove ru-t' log"
 done
 
 for mode in codex-fails codex-incomplete; do
-  new_repo; STUB_MODE=$mode run_codex && { echo "FAIL: L64 $mode accepted"; failures=$((failures + 1)); } || true
+  new_repo; if STUB_MODE=$mode run_codex; then echo "FAIL: L64 $mode accepted"; failures=$((failures + 1)); fi
   expect_true "L64 $mode does not run check" bash -c '! grep -q "just check" log'
 done
 
@@ -264,6 +281,35 @@ replay_on_vm() { # replay_on_vm <work-dir> [vm-name, default ru-r]
   HOME=$w bash "$w/replay.sh" 2>"$w/replay.err"
 }
 vm_log() { git -C "$1/roundup" log --format="$2" base..HEAD; }
+
+run_codex_review() { BOXD_AGENT=codex BOXD_CODEX_AUTH_VM=ru-auth STUB_MODE=${STUB_MODE:-codex-review} loop/boxd.sh review r prompt.md "${1:-HEAD}" >out 2>err; }
+
+new_repo; git switch -qc feat; echo feature >g; git add g; git commit -qm feature
+got=0; run_codex_review feat || got=$?
+expect_true "L65 Codex review succeeds" test "$got" -eq 0
+expect_true "L65 final nonempty completed agent message is the verdict" test "$(cat loop/out/verdicts/r.md 2>/dev/null)" = $'VERDICT: approve\nReviewed-by-Agent: codex-reviewer'
+expect_log 'machine new ru-r --from-snapshot ru-toolchain --auto-suspend-timeout' "L65 review uses a normal snapshot VM"
+expect_log 'codex exec --json' "L65 review invokes Codex"
+expect_true "L65 review never invokes Claude or reads its secret" bash -c '! grep -qE "claude|env list|OPENROUTER" log'
+expect_true "L65 transfer and both guards precede checkout upload" awk '/machine cp - ru-r:\.codex\/auth\.json/ { auth = NR } /chmod 600/ { login = NR } /gh auth status.*run github-app get-token/ { guard = NR } /machine cp .*ru-r:\/tmp\// { if (!first) first = NR } END { exit !(auth && login > auth && guard > login && first > guard) }' log
+replay_on_vm "$dir/vm"
+expect_true "L65 requested ref reaches the Reviewer" test "$(git -C "$dir/vm/roundup" rev-parse HEAD)" = "$(git rev-parse feat)"
+expect_true "L65 review base is the merge-base" test "$(git -C "$dir/vm/roundup" rev-parse base)" = "$(git merge-base origin/main feat)"
+expect_log 'machine remove ru-r' "L65 successful review cleans up"
+expect_true "L65 login holder survives" bash -c '! grep -q "machine remove ru-auth" log'
+
+for mode in codex-review-incomplete codex-review-failed codex-review-malformed codex-review-exit codex-empty codex-blank codex-no-message codex-no-source codex-no-login codex-transfer-fails codex-github codex-github-app; do
+  new_repo; mkdir -p loop/out/verdicts; echo stale >loop/out/verdicts/r.md
+  got=0; STUB_MODE=$mode run_codex_review || got=$?
+  expect_true "L65 $mode fails" test "$got" -ne 0
+  expect_true "L65 $mode removes stale verdict" test ! -e loop/out/verdicts/r.md
+  expect_true "L65 $mode leaves no Reviewer VM" bash -c '! compgen -G "cp/alive-*"'
+  expect_true "L65 $mode leaves login holder alone" bash -c '! grep -q "machine remove ru-auth" log'
+  case $mode in
+    codex-no-source | codex-no-login | codex-transfer-fails | codex-github | codex-github-app)
+      expect_true "L65 $mode refuses source upload" bash -c '! grep -q "machine cp .*:/tmp/" log' ;;
+  esac
+done
 
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat
 loop/boxd.sh review r prompt.md feat >out 2>err
