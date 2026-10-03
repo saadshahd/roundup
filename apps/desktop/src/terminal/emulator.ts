@@ -16,6 +16,8 @@ export type Emulator = {
   reset(): void;
   /** Keystrokes and pastes, as the bytes the program expects, in the order they were typed. */
   onInput(listener: (bytes: Uint8Array) => void): void;
+  selection(): string;
+  paste(text: string): void;
   /** Moves the emulator into `host` (opening it the first time), returns its fitted size, and focuses it unless restoring the Rail. */
   show(host: HTMLElement, focus?: boolean): Size;
   /** Gives the keyboard back to the emulator. */
@@ -120,6 +122,8 @@ export const createXtermEmulators = (
         terminal.onData((text) => listener(encoder.encode(text)));
         terminal.onBinary((text) => listener(Uint8Array.from(text, (char) => char.charCodeAt(0))));
       },
+      selection: () => terminal.getSelection(),
+      paste: (text) => terminal.paste(text),
       show: (host, focus = true) => {
         host.replaceChildren(element);
 

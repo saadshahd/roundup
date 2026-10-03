@@ -44,6 +44,8 @@ const recordingEmulators = () => {
         log.push(new TextDecoder().decode(bytes));
         parsed?.();
       },
+      selection: () => "",
+      paste: () => {},
       onInput: () => {},
       onScroll: () => {},
       show: () => {

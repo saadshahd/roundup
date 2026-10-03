@@ -18,6 +18,8 @@ const focusableEmulator = (): EmulatorFactory => () => {
     write: () => {},
     setSize: () => {},
     reset: () => {},
+    selection: () => "",
+    paste: () => {},
     onInput: () => {},
     show: (host) => {
       host.replaceChildren(field);

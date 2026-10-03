@@ -35,6 +35,8 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
     write: () => {},
     setSize: () => {},
     reset: () => {},
+    selection: () => "",
+    paste: () => {},
     onInput: () => {},
     show: () => ({ cols: 80, rows: 24 }),
     fit: () => ({ cols: 80, rows: 24 }),
@@ -75,6 +77,8 @@ const mountPaneWithFocusedTerminal = async () => {
     write: () => {},
     setSize: () => {},
     reset: () => {},
+    selection: () => "",
+    paste: () => {},
     onInput: () => {},
     show: (host) => {
       host.replaceChildren(field);
