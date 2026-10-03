@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inlineStyleCss, lookLiterals } from "../testing/lookLiterals";
 
 const [table = ""] = Object.values(
   import.meta.glob<string>("../../../../docs/design-system.md", { query: "?raw", import: "default", eager: true }),
@@ -41,16 +42,6 @@ const KNOWN_DIFFERENCES = new Map<string, string>();
 
 function valueOf(section: string, token: string): string | undefined {
   return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
-}
-
-// A look property per docs/design-system.md's five categories: colour (ends in "color", or "background"), font-size, radius, shadow, duration.
-const LOOK_PROPERTY = /(?:^|[\s;{])([\w-]*color|background|box-shadow|border-radius|font-size|[\w-]*duration):\s*([^;]+);/g;
-
-const isVarRead = (value: string): boolean => /^var\(--[\w-]+\)$/.test(value.trim());
-
-// Every look-property declaration in `css` that is not a `var(--…)` read, as `"property: value"`.
-function lookLiterals(css: string): string[] {
-  return [...css.matchAll(LOOK_PROPERTY)].flatMap((match) => (isVarRead(match[2]!) ? [] : [`${match[1]}: ${match[2]!.trim()}`]));
 }
 
 describe("u130 tokens", () => {
@@ -129,33 +120,23 @@ describe("u130 tokens", () => {
     expect(shadowed, "tokens.css's values must not be shadowed in styles.css").toEqual([]);
   });
 
-  it("u130_the_literal_scan_catches_a_raw_value_for_each_look_property", () => {
-    const cases: [string, string][] = [
-      ["color: #1d1d1f;", "color: #1d1d1f"],
-      ["background: #ffffff;", "background: #ffffff"],
-      ["border-left-color: #c7c7cc;", "border-left-color: #c7c7cc"],
-      ["box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);", "box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14)"],
-      ["border-radius: 6px;", "border-radius: 6px"],
-      ["font-size: 13px;", "font-size: 13px"],
-      ["transition-duration: 120ms;", "transition-duration: 120ms"],
-      ["animation-duration: 120ms;", "animation-duration: 120ms"],
-    ];
+  it("u130_styles_css_and_terminal_styles_css_have_no_look_literal_outside_a_var_read", () => {
+    const sheets = import.meta.glob<string>(["../styles.css", "../terminal/styles.css"], { query: "?raw", import: "default", eager: true });
 
-    for (const [declaration, expected] of cases) expect(lookLiterals(`.x { ${declaration} }`)).toEqual([expected]);
+    expect(Object.keys(sheets).sort()).toEqual(["../styles.css", "../terminal/styles.css"]);
+    expect(Object.entries(sheets).flatMap(([path, css]) => lookLiterals(css).map((literal) => `${path}: ${literal}`))).toEqual([]);
   });
 
-  it("u130_the_literal_scan_does_not_match_a_longer_property_name", () => {
-    expect(lookLiterals(".x { xbackground: red; }")).toEqual([]);
-  });
+  it("u130_inline_styles_in_drawer_pads_and_todos_have_no_look_literal_outside_a_var_read", () => {
+    const sources = import.meta.glob<string>(["../drawer/**/*.{ts,tsx}", "../pads/**/*.{ts,tsx}", "../todos/**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
 
-  it("u130_the_literal_scan_allows_a_var_read", () => {
-    expect(lookLiterals(".x { color: var(--text); background: var(--ground); font-size: var(--text-body); }")).toEqual([]);
-  });
-
-  it("u130_styles_css_has_no_look_literal_outside_a_var_read", () => {
-    const css = Object.values(import.meta.glob<string>("../styles.css", { query: "?raw", import: "default", eager: true }))[0] ?? "";
-
-    expect(lookLiterals(css)).toEqual([]);
+    expect(Object.keys(sources)).toEqual(expect.arrayContaining(["../drawer/DrawerHost.tsx", "../pads/PadDrawer.tsx", "../todos/Todos.tsx"]));
+    expect(Object.keys(sources).filter((path) => /\.test\./.test(path)), "test files are not scanned").toEqual([]);
+    expect(Object.entries(sources).flatMap(([path, source]) => lookLiterals(inlineStyleCss(source)).map((literal) => `${path}: ${literal}`))).toEqual([]);
   });
 
   // Slice 1 keeps the App light by setting no scheme at all; slice 3 deletes this test with the dark block.
