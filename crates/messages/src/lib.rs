@@ -1027,6 +1027,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn b3_deliver_of_a_held_message_emits_no_event_until_it_is_typed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+        h.events();
+
+        h.call("message.deliver", json!({"id": 1})).await.unwrap();
+
+        assert!(h.events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn b11_a_forbidden_get_leaves_no_touch() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+
+        let forbidden = h
+            .call_as(agent("c"), "message.get", json!({"id": 1}))
+            .await
+            .unwrap_err();
+
+        assert_eq!(forbidden.code, code::FORBIDDEN);
+        assert_eq!(h.touches(1), [(Verb::Wrote, "a".to_owned())]);
+    }
+
+    #[tokio::test]
     async fn b3_drop_clears_the_held_reason() {
         let dir = tempfile::tempdir().unwrap();
         let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
