@@ -16,6 +16,7 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
+| U111 | **top priority**: a Drawer never moves the layout (the user's screenshot bug; Moves: none) | `apps/desktop/src/drawer/**`, `apps/desktop/src/styles.css` (the `.columns` rule only), `apps/desktop/src/app/**` for the harness check | `u5_`, `u24_`, `u40_` tests narrowed; new `u111_` | U40 on main; before U105–U110 |
 | U105–U107, U109, U110 | the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3) | `apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns | after the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107 |
 | U101, U102 | Terminal copy and paste (Moves: D3); Terminal text size (Moves: D2) | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | U101 after U57 merges; U102 needs U100 (merged); ids U101–U129 are reserved |
 | U59 | the terminal blends with the app (Moves: D1, D5) | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U57 and the contrast tokens merge |
