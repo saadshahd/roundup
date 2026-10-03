@@ -35,12 +35,22 @@ steps.forEach((step, index) => expectedLight.set(`--space-${index + 1}`, `${step
 const normalised = (value: string) =>
   value.startsWith("#") ? value.toLowerCase() : value.toLowerCase().replace(/\s+/g, "").replace(/\d*\.?\d+/g, (number) => String(Number(number)));
 
-// Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moves `styles.css`, takes `#1d1d1f`
-// for `--text` with the `u4_` tests that read it, and deletes the entry; until then the App's text colour must not change.
-const KNOWN_DIFFERENCES = new Map([["--text", "#1c1c1e"]]);
+// Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moved `--text` to the table's
+// `#1d1d1f` and deleted its entry; a later slice may add one for `--selected`, which the table's value fails D5 on.
+const KNOWN_DIFFERENCES = new Map<string, string>();
 
 function valueOf(section: string, token: string): string | undefined {
   return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
+}
+
+// A look property per docs/design-system.md's five categories: colour (ends in "color", or "background"), font-size, radius, shadow, duration.
+const LOOK_PROPERTY = /(?:^|[\s;{])([\w-]*color|background|box-shadow|border-radius|font-size|[\w-]*duration):\s*([^;]+);/g;
+
+const isVarRead = (value: string): boolean => /^var\(--[\w-]+\)$/.test(value.trim());
+
+// Every look-property declaration in `css` that is not a `var(--…)` read, as `"property: value"`.
+function lookLiterals(css: string): string[] {
+  return [...css.matchAll(LOOK_PROPERTY)].flatMap((match) => (isVarRead(match[2]!) ? [] : [`${match[1]}: ${match[2]!.trim()}`]));
 }
 
 describe("u130 tokens", () => {
@@ -85,7 +95,11 @@ describe("u130 tokens", () => {
     );
 
     expect(wrong, "Tokens whose light value is not the table's").toEqual([]);
-    expect(valueOf(css, "--text"), "the named difference is real, or the entry goes").not.toBe(expectedLight.get("--text"));
+
+    for (const [name, difference] of KNOWN_DIFFERENCES)
+      expect(normalised(difference), `the named difference for ${name} is real, or the entry goes`).not.toBe(
+        normalised(expectedLight.get(name) ?? ""),
+      );
   });
 
   it("u130_main_and_the_harness_import_tokens_css_before_styles_css", () => {
@@ -113,6 +127,35 @@ describe("u130 tokens", () => {
     const shadowed = TOKENS.filter((token) => valueOf(css!, token));
 
     expect(shadowed, "tokens.css's values must not be shadowed in styles.css").toEqual([]);
+  });
+
+  it("u130_the_literal_scan_catches_a_raw_value_for_each_look_property", () => {
+    const cases: [string, string][] = [
+      ["color: #1d1d1f;", "color: #1d1d1f"],
+      ["background: #ffffff;", "background: #ffffff"],
+      ["border-left-color: #c7c7cc;", "border-left-color: #c7c7cc"],
+      ["box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);", "box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14)"],
+      ["border-radius: 6px;", "border-radius: 6px"],
+      ["font-size: 13px;", "font-size: 13px"],
+      ["transition-duration: 120ms;", "transition-duration: 120ms"],
+      ["animation-duration: 120ms;", "animation-duration: 120ms"],
+    ];
+
+    for (const [declaration, expected] of cases) expect(lookLiterals(`.x { ${declaration} }`)).toEqual([expected]);
+  });
+
+  it("u130_the_literal_scan_does_not_match_a_longer_property_name", () => {
+    expect(lookLiterals(".x { xbackground: red; }")).toEqual([]);
+  });
+
+  it("u130_the_literal_scan_allows_a_var_read", () => {
+    expect(lookLiterals(".x { color: var(--text); background: var(--ground); font-size: var(--text-body); }")).toEqual([]);
+  });
+
+  it("u130_styles_css_has_no_look_literal_outside_a_var_read", () => {
+    const css = Object.values(import.meta.glob<string>("../styles.css", { query: "?raw", import: "default", eager: true }))[0] ?? "";
+
+    expect(lookLiterals(css)).toEqual([]);
   });
 
   // Slice 1 keeps the App light by setting no scheme at all; slice 3 deletes this test with the dark block.

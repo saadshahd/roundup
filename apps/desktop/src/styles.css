@@ -3,7 +3,7 @@
   --lightest: #c7c7cc;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: var(--text-body);
   color: var(--text);
   background: var(--ground);
 }
