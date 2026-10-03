@@ -7,8 +7,8 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   test: {
     environment: "jsdom",
-    // Vitest returns empty CSS by default; the Drawer test needs the real rules to read computed positions.
-    css: { include: [/styles\.css/] },
+    // Vitest returns empty CSS by default; the Drawer and tokens tests need the real rules.
+    css: { include: [/styles\.css/, /tokens\.css/] },
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/testing/domStubs.ts"],
     // jsdom resolves the server build of solid-js unless told to use the browser one.

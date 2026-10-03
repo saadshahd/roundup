@@ -138,6 +138,30 @@ fn a4_signal_to_a_daemon_that_never_answers_exits_1_in_time() {
     );
 }
 
+/// H15: a lost Signal costs the hook exactly one line on stderr, never a retry and never a second
+/// write; Claude Code's own hook output is a line Claude Code shows the user, not several.
+#[test]
+fn h15_a_lost_signal_exits_1_with_exactly_one_stderr_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("silent.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        // Accepted and kept open, never answered.
+        let mut held = vec![];
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+
+    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(lines.len(), 1, "{stderr}");
+    assert!(lines[0].contains("may or may not"), "{stderr}");
+}
+
 #[test]
 fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arrived() {
     use std::io::{BufRead, BufReader};
@@ -162,6 +186,78 @@ fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arriv
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("may or may not have arrived"), "{stderr}");
+}
+
+/// The OS threads of a live process: `/proc/<pid>/task` on Linux, one `ps -M` row per thread on
+/// macOS (the header row is not one). 0 when the process is already gone.
+fn os_threads(pid: u32) -> usize {
+    if cfg!(target_os = "linux") {
+        return std::fs::read_dir(format!("/proc/{pid}/task")).map_or(0, Iterator::count);
+    }
+
+    let out = Command::new("ps")
+        .args(["-M", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .count()
+        .saturating_sub(1)
+}
+
+/// H15: `rup signal` runs its `tokio::main` on a current-thread runtime (`crates/rup/src/main.rs`)
+/// so a hook process never costs the OS more than one thread to schedule. Caught straight from
+/// the OS's thread list, while the process is alive and blocked on a Daemon that never answers, so a mutant
+/// that swaps in the default multi-threaded runtime (which starts a worker thread per core) fails
+/// this even though it still exits 1 in time.
+#[test]
+fn h15_rup_signal_never_runs_more_than_one_os_thread() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("silent.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        // Accepted and kept open, never answered, so `rup signal` stays alive and blocked.
+        let mut held = vec![];
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rup"))
+        .args(["signal", "1"])
+        .env("RUPD_SOCKET", &socket)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"hook_event_name":"Stop"}"#)
+        .unwrap();
+    let pid = child.id();
+
+    // A multi-threaded runtime spawns its worker threads lazily, a few ms after the process
+    // starts, so one read right after spawning would pass even on the mutant; the max over the
+    // whole window is what actually proves "never more than one".
+    let deadline = Instant::now() + HOOK_TIMEOUT / 2;
+    let mut max_tasks = 0;
+    while Instant::now() < deadline {
+        max_tasks = max_tasks.max(os_threads(pid));
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(max_tasks > 0, "pid {pid}: never read its thread count");
+    assert_eq!(max_tasks, 1, "pid {pid}: expected exactly one OS thread");
 }
 
 #[test]

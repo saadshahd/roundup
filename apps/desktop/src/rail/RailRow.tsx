@@ -149,6 +149,13 @@ export const RailRowView = (props: {
             onCancel={() => setEditing(false)}
           />
         </Show>
+        <Show when={showsLiveLine() ? liveLine() : null}>
+          {(text) => (
+            <span class="live light" title={text()}>
+              {text()}
+            </span>
+          )}
+        </Show>
         <Show when={props.row.collapsed}>
           {(collapsed) => <span class="light">{collapsed().children}</span>}
         </Show>
@@ -164,9 +171,6 @@ export const RailRowView = (props: {
           </button>
         </Show>
       </p>
-      <Show when={showsLiveLine() ? liveLine() : null}>
-        {(text) => <p class="live light">{text()}</p>}
-      </Show>
     </div>
   );
 };

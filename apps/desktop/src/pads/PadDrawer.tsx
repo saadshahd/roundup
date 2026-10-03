@@ -162,7 +162,7 @@ const PadBody = (props: {
         <button
           type="button"
           class="light"
-          style={{ all: "unset", cursor: "pointer", color: "var(--light)" }}
+          style={{ all: "unset", cursor: "pointer", color: "var(--grey)" }}
           onClick={() => void exportToFile()}
         >
           export .md
@@ -180,7 +180,9 @@ const PadBody = (props: {
         style={{
           "font-family": "var(--mono)",
           width: "100%",
-          "min-height": "16em",
+          flex: "1",
+          "min-height": "0",
+          resize: "none",
         }}
         readOnly={!ownedByUser()}
         value={shown()}

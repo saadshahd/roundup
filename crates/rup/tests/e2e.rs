@@ -1,4 +1,5 @@
-//! D2 to D4: the whole Daemon, run as the App runs it, with a fake `claude` for every Agent.
+//! D2 to D4, and H15: the whole Daemon, run as the App runs it, with a fake `claude` for every
+//! Agent.
 
 #[path = "e2e/daemon.rs"]
 mod daemon;
@@ -426,4 +427,76 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
     .unwrap_err();
 
     assert!(report.contains("connection closed"), "{report}");
+}
+
+/// H15: a loop of 100 tool uses, with the real `rup` hook command registered in the settings file
+/// `agent.spawn` writes, opened by a `UserPromptSubmit`, trying the hook for `PreToolUse` and
+/// `PostToolUse` around each use, then a final `Stop`. The fake `claude` skips an event with no
+/// entry in the settings, exactly as Claude Code itself would, and fails the loop if any hook
+/// command exits non-zero, so a finished loop means every `rup signal` answered. That proves only
+/// that the RPC call answered: a Daemon whose `agent.signal` handler dropped every Signal would
+/// still make `rup signal` exit 0, so a subscribed client must also see the Kind go `working` and
+/// then `idle`, and `rail.tree`, read straight from the Daemon's own Runs, must say `idle`.
+#[tokio::test]
+async fn h15_every_hook_call_of_a_hundred_tool_use_loop_is_answered_and_the_final_stop_leaves_the_agent_idle()
+ {
+    let report = tempfile::NamedTempFile::new().unwrap();
+    let report_path = report.path().to_string_lossy().into_owned();
+    let project = start(&[
+        ("FAKE_CLAUDE_LOOP", "100"),
+        ("FAKE_CLAUDE_LOOP_REPORT", &report_path),
+    ]);
+    let mut client = project.subscribed().await;
+    let agent = project.spawn_agent(&client).await;
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let ran: Vec<String> = loop {
+        if let Ok(text) = std::fs::read_to_string(report.path())
+            && let Ok(ran) = serde_json::from_str::<Vec<String>>(&text)
+        {
+            break ran;
+        }
+        assert!(Instant::now() < deadline, "the loop never finished");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+
+    assert_eq!(ran.len(), 200, "{ran:?}");
+    assert!(
+        ran.chunks(2)
+            .all(|pair| pair == ["PreToolUse", "PostToolUse"]),
+        "{ran:?}"
+    );
+
+    let mut seen_working = false;
+    loop {
+        match next_kind(&mut client).await {
+            Kind::Working => seen_working = true,
+            Kind::Idle if seen_working => break,
+            _ => {}
+        }
+    }
+
+    let tree = rail_tree(&client).await;
+    let node = tree.iter().find(|node| node.id == agent.id).unwrap();
+    assert_eq!(
+        node.status.as_ref().map(|status| status.label.as_str()),
+        Some("idle"),
+        "the Daemon's own Status for the Agent is not `idle` after the loop's final Stop, so it \
+         did not act on the Signals: {:?}",
+        node.status
+    );
+}
+
+/// H15's last clause: a Signal that changes the Kind reaches a subscribed client as a Status event,
+/// within the bound every e2e wait uses. The keystroke-to-render budget itself is rule 7's
+/// `just perf-keystroke`; a wall-clock assertion of it here would only measure the CI runner.
+#[tokio::test]
+async fn h15_a_signal_reaches_a_subscribed_client_as_a_status_event() {
+    let project = start(&[]);
+    let mut client = project.subscribed().await;
+    let agent = project.spawn_agent(&client).await;
+
+    signal(&client, &agent.id, json!({"hook_event_name": "Stop"})).await;
+
+    assert_eq!(next_kind(&mut client).await, Kind::Idle);
 }
