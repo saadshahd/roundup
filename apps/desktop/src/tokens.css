@@ -17,6 +17,8 @@
   --radius-control: 6px;
   --radius-drawer: 12px;
 
+  --duration-drawer: 180ms;
+
   --font-ui: -apple-system, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --text-caption: 11px;
