@@ -31,6 +31,12 @@ pub struct Started {
 /// crashed Daemon's leftover path never makes the next run's bind fail.
 pub struct OwnedSocket(PathBuf);
 
+impl OwnedSocket {
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
 impl Drop for OwnedSocket {
     fn drop(&mut self) {
         match std::fs::remove_file(&self.0) {
@@ -59,12 +65,12 @@ impl StderrTail {
     }
 }
 
-/// Starts `rupd <project> --attached` and returns once it answers `daemon.ping`.
-pub async fn start(config: &Config, project: &Path) -> Result<Started, RpcError> {
+/// Starts `rupd <project> --attached` on `socket` and returns once it answers `daemon.ping`.
+pub async fn start(config: &Config, project: &Path, socket: &Path) -> Result<Started, RpcError> {
     let mut child = Command::new(&config.rupd_bin)
         .arg(project)
         .arg("--attached")
-        .env("RUPD_SOCKET", &config.socket)
+        .env("RUPD_SOCKET", socket)
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -73,7 +79,7 @@ pub async fn start(config: &Config, project: &Path) -> Result<Started, RpcError>
         })?;
     let stdin = child.stdin.take().expect("stdin was requested piped");
     let stderr = child.stderr.take().expect("stderr was requested piped");
-    let socket = OwnedSocket(config.socket.clone());
+    let owned_socket = OwnedSocket(socket.to_path_buf());
     let tail = StderrTail::default();
     let drain = tauri::async_runtime::spawn(drain(stderr, tail.clone()));
 
@@ -82,8 +88,8 @@ pub async fn start(config: &Config, project: &Path) -> Result<Started, RpcError>
             Ok(status) => format!("exited before it answered ({})", describe(status)),
             Err(err) => format!("could not be waited on: {err}"),
         },
-        ready = timeout(config.ready_bound, ping_until_answered(&config.socket)) => match ready {
-            Ok(client) => return Ok(Started { client, stdin, child, socket }),
+        ready = timeout(config.ready_bound, ping_until_answered(socket)) => match ready {
+            Ok(client) => return Ok(Started { client, stdin, child, socket: owned_socket }),
             Err(_) => format!("did not answer daemon.ping within {:?}", config.ready_bound),
         },
     };

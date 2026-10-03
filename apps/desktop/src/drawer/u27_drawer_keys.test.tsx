@@ -58,13 +58,55 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
   return { connected, focused };
 };
 
+const mountPaneWithFocusedTerminal = async () => {
+  const app = createFakeApp();
+
+  app.handlers["rail.tree"] = () => [node("a")];
+  app.handlers["terminal.list"] = () => [info("t-a")];
+  app.handlers["terminal.write"] = () => null;
+  app.handlers["terminal.resize"] = () => null;
+
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => true, () => 0);
+  const field = document.createElement("textarea");
+
+  const emulator: Emulator = {
+    write: () => {},
+    onInput: () => {},
+    show: (host) => {
+      host.replaceChildren(field);
+
+      return { cols: 80, rows: 24 };
+    },
+    fit: () => ({ cols: 80, rows: 24 }),
+    focus: () => field.focus(),
+    isAtBottom: () => true,
+    onScroll: () => {},
+    scrollToBottom: () => {},
+    dispose: () => {},
+  };
+
+  render(() => (
+    <ConnectedProjectContext.Provider value={connected}>
+      <Pane createEmulator={() => emulator} />
+      <DrawerHost drawer={connected.drawer} reducedMotion={connected.reducedMotion} />
+    </ConnectedProjectContext.Provider>
+  ));
+
+  connected.rail.select("a");
+
+  return { connected, field };
+};
+
 describe("u27 focus returns", () => {
   it("u27_closing_the_drawer_gives_the_keyboard_back_to_the_shown_terminal", async () => {
-    const { connected, focused } = await mountPaneWithDrawer(true);
+    const { connected, field } = await mountPaneWithFocusedTerminal();
+    field.focus();
 
+    connected.drawer.open(() => <input aria-label="field" />);
+    await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     fireEvent.click(screen.getByText("close"));
 
-    await vi.waitFor(() => expect(focused).toEqual(["t-a"]));
+    await vi.waitFor(() => expect(document.activeElement).toBe(field));
     expect(connected.drawer.content()).toBeNull();
   });
 
