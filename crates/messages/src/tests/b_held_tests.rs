@@ -832,3 +832,131 @@ async fn b6_the_user_a_terminal_and_a_group_cannot_be_taken_over() {
         }
     }
 }
+
+/// A `deliver` that records the call, waits for `release`, then refuses with `Busy`.
+fn blocking_then_busy() -> (Deliver, Calls, Arc<tokio::sync::Notify>) {
+    let calls: Calls = Arc::default();
+    let seen = Arc::clone(&calls);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let gate = Arc::clone(&release);
+    let deliver: Deliver = Arc::new(move |id: String, text: String| {
+        seen.lock().unwrap().push((id, text));
+        let gate = Arc::clone(&gate);
+        let done: Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> =
+            Box::pin(async move {
+                gate.notified().await;
+                Err(Refusal::Busy)
+            });
+        done
+    });
+    (deliver, calls, release)
+}
+
+#[tokio::test]
+async fn b6_a_busy_refusal_during_a_takeover_holds_the_message_for_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (deliver, calls, release) = blocking_then_busy();
+    let rail = FakeRail::new(vec![agent_node("b", Kind::Working)]);
+    let mut h = Held2::over_with(dir.path(), rail, Bus::new(), deliver, calls);
+    h.send_as(agent("a"), "b", "one").await;
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+    h.names();
+
+    release.notify_waiters();
+    h.until(1, "held").await;
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+    h.settle().await;
+
+    assert_eq!(h.states().await[&1], held("takeover"));
+    assert_eq!(h.typed(1).await.len(), 1, "typed during the Takeover");
+    assert!(h.names().contains(&"message.held".to_owned()));
+}
+
+#[tokio::test]
+async fn b9_a_lag_drops_nothing_for_a_live_agent() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+    for _ in 0..2000 {
+        h.bus.emit(
+            Actor::daemon(),
+            EventData::AgentStatus(StatusEvent {
+                id: "z".into(),
+                status: Status {
+                    kind: Kind::Working,
+                    label: "x".into(),
+                    since: 0,
+                },
+            }),
+        );
+    }
+    h.settle().await;
+
+    assert_eq!(h.states().await[&1], pending());
+}
+
+#[tokio::test]
+async fn b2_a_reopened_store_on_a_runtime_types_on_an_idle_before_any_call() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+
+    let h = h.restarted();
+    h.becomes("b", Kind::Idle);
+
+    assert_eq!(h.typed(1).await.len(), 1);
+}
+
+#[tokio::test]
+async fn b6_drop_of_a_takeover_held_message() {
+    let (_dir, mut h) = project();
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+    h.send_as(agent("a"), "b", "one").await;
+    h.names();
+
+    h.call("message.drop", json!({"id": 1})).await.unwrap();
+    let later = h.send_as(agent("a"), "b", "two").await;
+    h.call("takeover.end", json!({"agent": "b"})).await.unwrap();
+
+    assert_eq!(h.states().await[&1], ("dropped".into(), Value::Null));
+    assert_eq!(
+        later["status"], "held",
+        "the Takeover went on after the drop"
+    );
+    assert_eq!(
+        h.names(),
+        [
+            "message.dropped",
+            "message.sent",
+            "message.held",
+            "takeover.changed"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn b1_held_for_takeover_messages_count_toward_the_bound_of_32() {
+    let (_dir, h) = project();
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+    for _ in 0..32 {
+        h.send_as(agent("a"), "b", "x").await;
+    }
+
+    let err = h
+        .call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "x"}),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code, code::CONFLICT);
+}

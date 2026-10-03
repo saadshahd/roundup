@@ -42,6 +42,15 @@ impl Store {
                 PRIMARY KEY (from_id, to_id)
             );",
         )?;
+        let has_rank = db
+            .prepare("SELECT 1 FROM pragma_table_info('messages') WHERE name = 'rank'")?
+            .exists([])?;
+        if !has_rank {
+            db.execute_batch(
+                "ALTER TABLE messages ADD COLUMN rank INTEGER NOT NULL DEFAULT 0;
+                 UPDATE messages SET rank = id WHERE status = 'pending';",
+            )?;
+        }
         let mut store = Self {
             db,
             active_takeovers: HashSet::new(),
@@ -180,17 +189,31 @@ impl Store {
         self.get(id)
     }
 
-    /// Reverses `mark_delivered`: `id` goes back to `pending`, only if it is still `delivered`
-    /// (a refused `deliver`, B2). `false` when it was not `delivered` any more.
-    pub(crate) fn unmark_delivered(&self, id: u32) -> Result<bool, RpcError> {
+    /// Reverses `mark_delivered` after a refused `deliver` (B2), only if `id` is still
+    /// `delivered`: it goes back to `pending`, or to `held` for `takeover` when a Takeover of its
+    /// receiver began while it was being typed and its sender is not the user (B6), so nothing is
+    /// typed during the Takeover. `None` when it was not `delivered` any more.
+    pub(crate) fn unmark_delivered(&self, id: u32) -> Result<Option<Message>, RpcError> {
+        let Some(message) = self.get(id)? else {
+            return Ok(None);
+        };
+        let held = message.from.kind != ActorKind::User && self.is_takeover_active(&message.to);
+        let (status, reason) = if held {
+            ("held", Some("takeover"))
+        } else {
+            ("pending", None)
+        };
         let changed = self
             .db
             .execute(
-                "UPDATE messages SET status = 'pending' WHERE id = ?1 AND status = 'delivered'",
-                params![id],
+                "UPDATE messages SET status = ?2, reason = ?3 WHERE id = ?1 AND status = 'delivered'",
+                params![id, status, reason],
             )
             .map_err(RpcError::internal)?;
-        Ok(changed == 1)
+        if changed == 0 {
+            return Ok(None);
+        }
+        self.get(id)
     }
 
     fn list_pending_to(&self, to: &str) -> Result<Vec<Message>, RpcError> {
@@ -503,5 +526,52 @@ mod tests {
 
         assert!(store.get_route("a", "b").is_err());
         assert!(store.list_routes().is_err());
+    }
+
+    #[test]
+    fn b8_a_store_written_before_rank_opens_and_takes_a_send() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let db = Connection::open(dir.path().join("messages.db")).unwrap();
+            db.execute_batch(
+                "CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_actor TEXT NOT NULL,
+                    to_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    reply_to INTEGER,
+                    status TEXT NOT NULL,
+                    reason TEXT,
+                    at INTEGER NOT NULL
+                );
+                INSERT INTO messages (from_actor, to_id, kind, body, status, at)
+                VALUES ('{\"kind\":\"agent\",\"id\":\"a\",\"parent\":null}', 'b', 'note', 'old', 'pending', 1);",
+            )
+            .unwrap();
+        }
+
+        let store = open(dir.path());
+        let new = put(&store, MessageStatus::Pending, None);
+
+        assert_eq!(store.next_pending("b").unwrap().unwrap().id, 1);
+        assert_eq!(new, 2);
+    }
+
+    #[test]
+    fn b6_begin_between_check_and_record_holds_the_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = open(dir.path());
+        let id = put(&store, MessageStatus::Pending, None);
+        assert_eq!(store.next_pending("b").unwrap().unwrap().id, id);
+
+        store.begin_takeover("b").unwrap();
+
+        assert!(store.mark_delivered(id).unwrap().is_none());
+        let message = store.get(id).unwrap().unwrap();
+        assert_eq!(
+            (message.status, message.reason),
+            (MessageStatus::Held, Some(Reason::Takeover))
+        );
     }
 }

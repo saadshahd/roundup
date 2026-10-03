@@ -1,6 +1,6 @@
 //! Messages between Actors, and the Routes that decide how they are delivered. Owner: messages
-//! Builder. This slice stores Messages and Routes and answers the user's and an Actor's calls;
-//! it never types into a Terminal, which is a later slice's job (H11, `Agents::prompt`).
+//! Builder. Stores Messages and Routes, answers the user's and an Actor's calls, and on an `idle`
+//! hands one Message to `Deliver` (slice 3 maps that to H11's `Agents::prompt`).
 
 mod store;
 
@@ -507,12 +507,12 @@ async fn resync(inner: &Arc<Inner>) {
         bus: inner.bus.clone(),
         touches: Arc::clone(&inner.touches),
     };
-    let Ok(tree) = inner.agents.call(&ctx, "rail.tree", Value::Null).await else {
-        return;
-    };
-    let Ok(nodes) = serde_json::from_value::<Vec<RailNode>>(tree) else {
-        return;
-    };
+    let tree = inner
+        .agents
+        .call(&ctx, "rail.tree", Value::Null)
+        .await
+        .expect("rail.tree");
+    let nodes: Vec<RailNode> = serde_json::from_value(tree).expect("rail.tree is a list of nodes");
     for node in nodes {
         if let Some(status) = node.status
             && matches!(status.kind, Kind::Done | Kind::Error)
@@ -539,18 +539,23 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str) {
     };
     let text = format!(
         "[from {}, {}] {}",
-        sender_label(&message.from),
+        message.from.id,
         kind_label(message.kind),
         message.body
     );
     if (inner.deliver)(agent.to_owned(), text).await.is_err() {
         // Busy, NotAccepted and NotFound are slice 3's: this slice leaves the Message pending.
-        inner
+        let reverted = inner
             .store
             .lock()
             .unwrap()
             .unmark_delivered(message.id)
             .expect("message store");
+        if let Some(held) = reverted.filter(|m| m.status == MessageStatus::Held) {
+            inner
+                .bus
+                .emit(Actor::daemon(), EventData::MessageHeld(held));
+        }
         return;
     }
     inner
@@ -589,22 +594,11 @@ fn on_ended(inner: &Arc<Inner>, agent: &str) {
     }
 }
 
-/// B2's `<sender's name>` for a Message's `kind` on the wire: `note` or `question`, never Rust's
-/// `Debug` spelling.
+/// B2's `<kind>`: `note` or `question` as on the wire, never Rust's `Debug` spelling.
 fn kind_label(kind: MessageKind) -> &'static str {
     match kind {
         MessageKind::Note => "note",
         MessageKind::Question => "question",
-    }
-}
-
-/// B2's `<sender's name>`: `you` for the user, the id otherwise. The Rail's display name is a
-/// later slice's refinement (typing itself is slice 3).
-fn sender_label(from: &Actor) -> &str {
-    if from.kind == ActorKind::User {
-        "you"
-    } else {
-        &from.id
     }
 }
 
