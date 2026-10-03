@@ -71,11 +71,13 @@ p {
   overflow: auto;
 }
 
+/* The right padding is always reserved for `complete`, so the title wraps the same at rest and on hover and never runs under it (QA F7, U112). */
 .shelf .row-head {
   position: relative;
+  padding-right: 9ch;
 }
 
-/* absolute: out of flow, so showing it never shrinks or wraps the title (U35) */
+/* absolute: out of flow, so showing it never shrinks or wraps the title (QA F7, U112) */
 .shelf .complete {
   position: absolute;
   top: 0;
