@@ -15,6 +15,16 @@ pub enum NodeKind {
     Terminal,
 }
 
+/// The git worktree Provisioning made for a node's Agent (G2, `scenarios/worktrees.md`).
+/// `base` is the branch that was checked out in the Project when it was made.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Worktree {
+    pub path: String,
+    pub branch: String,
+    pub base: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
 pub struct RailNode {
@@ -30,6 +40,8 @@ pub struct RailNode {
     pub meta: bool,
     /// The Terminal behind an Agent or Terminal node.
     pub terminal_id: Option<String>,
+    /// `None` for a Terminal, a plain Group, or when the Project's `worktrees` setting was off.
+    pub worktree: Option<Worktree>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
