@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one Builder task in a disposable, isolated boxd VM. Usage:
+# Run one Builder or Reviewer in a disposable boxd VM. Usage:
 #   loop/boxd.sh bake                       # build the ru-toolchain snapshot (once per toolchain change)
 #   loop/boxd.sh build <name> <prompt-file> # Builder run; writes loop/out/patches/<name>.patch
 #   loop/boxd.sh review <name> <prompt-file> [ref] # Reviewer run on ref (default HEAD) against its merge-base with origin/main;
@@ -161,6 +161,14 @@ require_codex() {
   [ ! -e "$PAUSED" ] || pause "paused since $(cat "$PAUSED")"
   [[ ${BOXD_CODEX_AUTH_VM:-} =~ ^ru-[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: BOXD_CODEX_AUTH_VM must name a ru- login holder" >&2; exit 2; }
   boxd machine exec "$BOXD_CODEX_AUTH_VM" -- 'test -s ~/.codex/auth.json && codex login status >/dev/null' </dev/null >/dev/null || { echo "boxd.sh: Codex login is unavailable on $BOXD_CODEX_AUTH_VM" >&2; exit 1; }
+}
+
+require_agent() {
+  case ${BOXD_AGENT:-claude} in
+    codex) AGENT_KIND=codex; require_codex ;;
+    claude) require_claude ;;
+    *) echo "boxd.sh: BOXD_AGENT must be codex or claude" >&2; exit 2 ;;
+  esac
 }
 
 transfer_codex_login() {
@@ -342,15 +350,25 @@ review() {
   local name=$1 prompt=$2 ref=${3:-HEAD}
   validate_args "$name" "$prompt"
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" verdict="$OUT/verdicts/$name.md" base agent_rc=0 last
-  base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
-  require_claude
-  # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
-  # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
-  # this function exits right after, so an earlier run's stale verdict can only be cleared here.
   rm -f "$verdict"
+  base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
+  require_agent
   provision "$name" "$base" "$ref" "$prompt"
+  if [ "$AGENT_KIND" = codex ]; then
+    run_codex "$stream" || agent_rc=$?
+    [ "$agent_rc" -eq 0 ] || exit 1
+    local answer
+    answer=$(jq -ers '
+      if any(.[]; .type == "turn.failed" or .type == "error") then error("Codex stream failed") else
+        [.[] | select(.type == "item.completed" and .item.type == "agent_message")
+          | .item.text | select(type == "string") | select(test("\\S"))]
+        | last // error("Codex produced no answer")
+      end' "$stream") || { echo "boxd.sh: no valid Codex verdict: $stream" >&2; exit 1; }
+    printf '%s\n' "$answer" >"$verdict"
+    return 0
+  fi
   run_agent "${BOXD_MODEL:-opus}" "$stream" || agent_rc=$?
-  [ "$agent_rc" -ne 2 ] || exit 1
+  [ "$agent_rc" -eq 0 ] || exit 1
   last=$(tail -n 1 "$stream")
   jq -r .result <<<"$last" >"$verdict"
   jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
@@ -360,11 +378,7 @@ build() {
   local name=$1 prompt=$2
   validate_args "$name" "$prompt"
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" patch="$OUT/patches/$name.patch" partial="$OUT/patches/$name.partial.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log" agent_rc=0 check_rc=0 last
-  case ${BOXD_AGENT:-claude} in
-    codex) AGENT_KIND=codex; require_codex ;;
-    claude) require_claude ;;
-    *) echo "boxd.sh: BOXD_AGENT must be codex or claude" >&2; exit 2 ;;
-  esac
+  require_agent
   # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
   # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
   # this function exits after saving the partial patch below, so an earlier run's stale patch can only be cleared here.
