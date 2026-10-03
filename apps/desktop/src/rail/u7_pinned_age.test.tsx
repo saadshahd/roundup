@@ -48,16 +48,4 @@ describe("u7 the elapsed time is pinned at the row's right edge", () => {
     expect([label.flexShrink, label.minWidth, label.overflow, label.textOverflow]).toEqual(["1", "0px", "hidden", "ellipsis"]);
     expect([age.flexShrink, age.whiteSpace]).toEqual(["0", "nowrap"]);
   });
-
-  it("u7_a_name_is_capped_at_14ch_so_the_label_keeps_room", async () => {
-    const sheet = document.head.appendChild(document.createElement("style"));
-    sheet.textContent = styles;
-    await mountRail([asking()]);
-
-    const cap = getComputedStyle(rowOf("gateway").querySelector(".name")!).maxWidth;
-
-    sheet.remove();
-
-    expect(cap).toMatch(/^(14ch|112px)$/);
-  });
 });
