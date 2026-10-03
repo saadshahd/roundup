@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
 import { USER } from "../testing/nodes";
-import { callsTo, mountTodos, rowOf, todo, todoEvent } from "./testHarness";
+import { mountTodos, todo, todoCallsTo as callsTo, todoEvent, todoRowOf as rowOf } from "./testHarness";
 
 afterEach(cleanup);
 
