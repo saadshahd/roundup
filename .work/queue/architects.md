@@ -10,6 +10,12 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 |---|---|---|---|---|
 | MVP gate | U2-U21 screenshots; cold start, keystroke-to-render p95, RSS with 10 idle Agents | QA and Driver, no Builder | the Phase 3 screenshot pack and the gate report | QA |
 
+## Ready now
+
+| Id | Item | Owns | Keeps green |
+|---|---|---|---|
+| U104 | **top priority: restore a Terminal's screen after a webview reload**; `terminal.snapshot` and output offsets (contract, rule 4) | `crates/terminal/**`, `crates/contracts/**` and generated files, `crates/rupd/src/**` | `u104_` tests replay a coloured, resized, alternate-screen Terminal into a fresh parser and check its screen, cursor, modes, 1000-line bound, output offsets and exited result; `just check`; independent architect approval |
+
 ## Waiting
 
 Scenario text is on main. The row starts when what it waits on has merged. A UI row ends its Item with `(Moves: <D ids>)`, the design-system checks it moves (`docs/design-system.md`, baseline protocol); the Builder's PR body repeats the line and corrects it if the diff moves other checks.
@@ -42,5 +48,4 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 | E1-E6 | Brief, `agent.context`, `rup context`, `agent_context`, `rup mcp` connecting at start, the `RailNode.channel` field (the Chip is E8, reserved); the contract rides in this PR (committee approval) | `crates/agents/src/**`, `crates/agents/tests/**` and `claude_code/`, `crates/rupd/src/**` (it composes the Rail and the Todos for E2), `crates/rup/src/**`, `crates/contracts/**` with `contracts/generated/**`, `crates/rup/tests/**`, every `RailNode` literal (the webview fixtures, `seeds.ts`) | the `e1_` to `e6_` tests, with the `a4_` and `m1_` tests kept green; `just check` | after E7, after B12 and T8's implementation merge |
 | F2, F3, F4, F5 | a Meta-agent has no shell, `agent_spawn`, the PATH shim, stray detection; the contract rides in this PR (committee approval) | `crates/agents/src/**`, `crates/agents/tests/**` and `claude_code/`, `crates/rup/src/**`, `crates/rup/tests/**`, `crates/contracts/**` with `contracts/generated/**`, every `RailNode` literal | the `f2_` to `f5_` tests, with the `a4_`, `a7_` and `m1_` tests kept green; `just check` | after #159 (G2, Home), #162 (E1) and #160 (B12) merge, and after E1 to E6 or in the same PR order |
 | F7 re-run | run `spikes/spawn-boundary/run-interactive.sh` on a `ru-spike-<x>` VM whenever the pinned `claude` version changes and update the report's interactive rows; a result that contradicts F2 goes to the Architect | `spikes/spawn-boundary/**` | the report's interactive rows, dated | F2 implemented |
-| U104 | `terminal.snapshot` and the `offset` on `terminal.output` (Daemon half; contract, rule 4) | `crates/terminal/**`, `crates/contracts/**` and generated files, `crates/rupd/src/**` | the `vt100` parser in `crates/terminal` on main |
 | Y1, Y2, Y3 | axe-core in `window.__axe()`, the per-frame sampler and the Drawer laws (Y2 is U111's real-window check), `loop/rules.sh laws` (prompt `.work/prompts/v-verify.md`) (Moves: none) | `apps/desktop/src/testing/**`, `apps/desktop/harness.html`, `apps/desktop/package.json`, `loop/rules.sh`, `loop/rules.test.sh` | `u26_` and `u137_` tests, the `loop/rules.sh` tests | U137 merged (it owns `testing/`), the U111 and U131 Builders merged (so `u111_` and `u131_` tests exist, or the sheet exits 1 at birth), a `u41_` test on main, and the last lane R prompt (`loop-rules-4.md`, PR #215) merged, so `loop/rules.sh` has one writer at a time; Y3 is the one `loop/rules.sh` slice here and starts last |
