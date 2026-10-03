@@ -12,9 +12,7 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 ## Ready now
 
-| Id | Item | Owns | Keeps green |
-|---|---|---|---|
-| U104 | **top priority: restore a Terminal's screen after a webview reload**; `terminal.snapshot` and output offsets (contract, rule 4) | `crates/terminal/**`, `crates/contracts/**` and generated files, `crates/rupd/src/**` | `u104_` tests replay a coloured, resized, alternate-screen Terminal into a fresh parser and check its screen, cursor, modes, 1000-line bound, output offsets and exited result; `just check`; independent architect approval |
+U104 merged in #265. Its webview half U103 is in PR #266.
 
 ## Waiting
 
