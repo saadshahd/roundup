@@ -35,6 +35,8 @@ pub enum EventData {
     MessageDropped(message::Message),
     #[serde(rename = "route.changed")]
     RouteChanged(message::Route),
+    #[serde(rename = "takeover.changed")]
+    TakeoverChanged(message::TakeoverChanged),
     #[serde(rename = "agent.status")]
     AgentStatus(agent::StatusEvent),
     #[serde(rename = "rail.changed")]

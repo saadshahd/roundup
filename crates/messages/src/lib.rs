@@ -4,7 +4,9 @@
 
 mod store;
 
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,30 +14,64 @@ use async_trait::async_trait;
 use contracts::agent::{NodeKind, RailNode};
 use contracts::message::{
     Delivery, ListParams, Message, MessageId, MessageStatus, Reason, Route, SendParams,
-    SetRouteParams,
+    SetRouteParams, TakeoverChanged, TakeoverParams,
 };
 use contracts::{Actor, ActorKind, EventData, Kind, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use store::Store;
+use tokio::sync::broadcast::error::RecvError;
 
 const MAX_BODY_BYTES: usize = 8192;
 const OPEN_BOUND: u32 = 32;
 
-pub struct Messages {
+/// Types a Message's text into an Agent's Terminal: the Agent id and the text. Slice 3 maps
+/// `Agents::prompt` onto this; tests pass a fake that records calls.
+pub type Deliver = Arc<
+    dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Why `deliver` could not type a Message, from `Agents::prompt` (B2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    Busy,
+    NotAccepted,
+    NotFound,
+}
+
+struct Inner {
     store: Mutex<Store>,
     /// Answers `rail.tree`, the only thing `message.send` needs to know about a receiver: whether
     /// it names an Agent (or a Meta-agent) at all, and that Agent's Kind.
     agents: Arc<dyn Module>,
+    bus: Bus,
+    deliver: Deliver,
+}
+
+pub struct Messages {
+    inner: Arc<Inner>,
 }
 
 impl Messages {
-    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    pub fn open(dir: &Path, _bus: Bus, agents: Arc<dyn Module>) -> Result<Self, OpenError> {
-        Ok(Self {
+    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused, and is
+    /// how this module learns a Kind changed (it reads `agent.status`); `deliver` types a
+    /// Message's text into an Agent's Terminal.
+    pub fn open(
+        dir: &Path,
+        bus: Bus,
+        agents: Arc<dyn Module>,
+        deliver: Deliver,
+    ) -> Result<Self, OpenError> {
+        let inner = Arc::new(Inner {
             store: Mutex::new(Store::open(&dir.join("messages.db"))?),
             agents,
-        })
+            bus,
+            deliver,
+        });
+        spawn_status_listener(Arc::clone(&inner));
+        Ok(Self { inner })
     }
 
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
@@ -84,10 +120,16 @@ impl Messages {
             let (status, reason) = if p.to == Actor::user().id {
                 (MessageStatus::Delivered, None)
             } else {
-                match store
+                let route = store
                     .get_route(&ctx.actor.id, &p.to)?
-                    .unwrap_or(Delivery::Auto)
-                {
+                    .unwrap_or(Delivery::Auto);
+                // B6: under a Takeover, an auto Message from any Actor but the user is held for
+                // it; the user's own Messages are delivered as B2 says, Takeover or not.
+                let held_for_takeover = ctx.actor.kind != ActorKind::User
+                    && route == Delivery::Auto
+                    && store.is_takeover_active(&p.to);
+                match route {
+                    _ if held_for_takeover => (MessageStatus::Held, Some(Reason::Takeover)),
                     Delivery::Auto => (MessageStatus::Pending, None),
                     Delivery::AskFirst => (MessageStatus::Held, Some(Reason::AskFirst)),
                     Delivery::Drop => (MessageStatus::Dropped, None),
@@ -138,9 +180,19 @@ impl Messages {
         reply(&messages)
     }
 
-    /// B3: moves a `held` Message to `pending`; B2 (typing it in) is a later slice.
-    fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
+    /// B3: moves a `held` Message to `pending`; B2 (typing it in) is a later slice. B9: a Message
+    /// held for an Agent that has since ended is `CONFLICT` and stays `held`.
+    async fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "deliver a held Message")?;
+        let message = self.get_or_not_found(p.id)?;
+        if let Some(status) = self.resolve_receiver(ctx, &message.to).await?
+            && matches!(status.kind, Kind::Done | Kind::Error)
+        {
+            return Err(RpcError::conflict(format!(
+                "{} cannot receive a Message: its Kind is {:?}",
+                message.to, status.kind
+            )));
+        }
         self.release_held(p.id, MessageStatus::Pending, None)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
         reply(&self.get_or_not_found(p.id)?)
@@ -183,6 +235,44 @@ impl Messages {
         reply(&self.store()?.list_routes()?)
     }
 
+    /// B6: starts a Takeover of `agent`. A repeated call, while one is already active, changes
+    /// nothing and is not an error.
+    async fn takeover_begin(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
+        require_user(ctx, "begin a Takeover")?;
+        let TakeoverParams { agent } = p;
+        if let Some(status) = self.resolve_receiver(ctx, &agent).await?
+            && matches!(status.kind, Kind::Done | Kind::Error)
+        {
+            return Err(RpcError::conflict(format!("{agent} has ended")));
+        }
+        let held = self.store()?.begin_takeover(&agent)?;
+        if let Some(held) = held {
+            for message in &held {
+                ctx.emit(EventData::MessageHeld(message.clone()));
+            }
+            ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
+                agent,
+                on: true,
+            }));
+        }
+        Ok(Value::Null)
+    }
+
+    /// B6: ends a Takeover of `agent`. A repeated call, or one with no Takeover active, changes
+    /// nothing and is not an error.
+    fn takeover_end(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
+        require_user(ctx, "end a Takeover")?;
+        let TakeoverParams { agent } = p;
+        let promoted = self.store()?.end_takeover(&agent)?;
+        if promoted.is_some() {
+            ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
+                agent,
+                on: false,
+            }));
+        }
+        Ok(Value::Null)
+    }
+
     /// `to`'s Status, when it names an Agent or a Meta-agent; `None` when it names the user.
     /// `NOT_FOUND` when it names no Actor; `INVALID_PARAMS` when it names a Terminal or a plain
     /// Group, neither of which can receive a Message.
@@ -200,6 +290,7 @@ impl Messages {
             touches: Arc::clone(&ctx.touches),
         };
         let tree = self
+            .inner
             .agents
             .call(&query_ctx, "rail.tree", Value::Null)
             .await?;
@@ -240,7 +331,8 @@ impl Messages {
     }
 
     fn store(&self) -> Result<MutexGuard<'_, Store>, RpcError> {
-        self.store
+        self.inner
+            .store
             .lock()
             .map_err(|_| RpcError::internal("message store poisoned"))
     }
@@ -296,7 +388,7 @@ fn now_ms() -> i64 {
 #[async_trait]
 impl Module for Messages {
     fn namespaces(&self) -> &'static [&'static str] {
-        &["message", "route"]
+        &["message", "route", "takeover"]
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
@@ -304,12 +396,102 @@ impl Module for Messages {
             "message.send" => self.send(ctx, params(value)?).await,
             "message.get" => self.get(ctx, params(value)?),
             "message.list" => self.list(ctx, params(value)?),
-            "message.deliver" => self.deliver(ctx, params(value)?),
+            "message.deliver" => self.deliver(ctx, params(value)?).await,
             "message.drop" => self.drop_message(ctx, params(value)?),
             "route.set" => self.set_route(ctx, params(value)?),
             "route.list" => self.list_routes(),
+            "takeover.begin" => self.takeover_begin(ctx, params(value)?).await,
+            "takeover.end" => self.takeover_end(ctx, params(value)?),
             _ => Err(RpcError::method_not_found(method)),
         }
+    }
+}
+
+/// Reads `agent.status` off `inner`'s bus for as long as `inner` has a subscriber: an `idle`
+/// Kind calls `deliver` once, for the oldest deliverable Message to that Agent (B2, B7); a `done`
+/// or `error` Kind ends any Takeover of it and drops its `pending` Messages with the reason
+/// `receiver gone` (B6, B9).
+fn spawn_status_listener(inner: Arc<Inner>) {
+    let mut events = inner.bus.subscribe();
+    tokio::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(contracts::Event {
+                    data: EventData::AgentStatus(status),
+                    ..
+                }) => on_status(&inner, &status.id, status.status.kind).await,
+                Ok(_) => {}
+                Err(RecvError::Lagged(_)) => {}
+                Err(RecvError::Closed) => break,
+            }
+        }
+    });
+}
+
+async fn on_status(inner: &Arc<Inner>, agent: &str, kind: Kind) {
+    match kind {
+        Kind::Idle => on_idle(inner, agent).await,
+        Kind::Done | Kind::Error => on_ended(inner, agent),
+        Kind::Working | Kind::Blocked | Kind::NeedsYou => {}
+    }
+}
+
+/// B2, B7: types the oldest pending Message to `agent`, if any; the next `idle` picks up the
+/// next one, so exactly one Message is typed per `idle`.
+async fn on_idle(inner: &Arc<Inner>, agent: &str) {
+    let Ok(Some(message)) = inner.store.lock().unwrap().next_pending(agent) else {
+        return;
+    };
+    let text = format!(
+        "[from {}, {:?}] {}",
+        sender_label(&message.from),
+        message.kind,
+        message.body
+    );
+    if (inner.deliver)(agent.to_owned(), text).await.is_err() {
+        // Busy, NotAccepted and NotFound are slice 3's: this slice leaves the Message pending.
+        return;
+    }
+    if let Ok(Some(delivered)) = inner.store.lock().unwrap().mark_delivered(message.id) {
+        inner.bus.emit(Actor::daemon(), EventData::MessageDelivered(delivered));
+    }
+}
+
+/// B6, B9: an Agent that exits ends its Takeover, if any, then drops every Message still
+/// `pending` for it (which now includes any just promoted from a `takeover` hold).
+fn on_ended(inner: &Arc<Inner>, agent: &str) {
+    let ended_takeover = inner.store.lock().unwrap().end_takeover(agent);
+    if matches!(ended_takeover, Ok(Some(_))) {
+        inner.bus.emit(
+            Actor::daemon(),
+            EventData::TakeoverChanged(TakeoverChanged {
+                agent: agent.to_owned(),
+                on: false,
+            }),
+        );
+    }
+    let Ok(dropped) = inner
+        .store
+        .lock()
+        .unwrap()
+        .drop_all_pending(agent, Reason::ReceiverGone)
+    else {
+        return;
+    };
+    for message in dropped {
+        inner
+            .bus
+            .emit(Actor::daemon(), EventData::MessageDropped(message));
+    }
+}
+
+/// B2's `<sender's name>`: `you` for the user, the id otherwise. The Rail's display name is a
+/// later slice's refinement (typing itself is slice 3).
+fn sender_label(from: &Actor) -> &str {
+    if from.kind == ActorKind::User {
+        "you"
+    } else {
+        &from.id
     }
 }
 
@@ -387,6 +569,11 @@ mod tests {
         }
     }
 
+    /// A `Deliver` for tests that never trigger an `idle` event: it is never called.
+    fn noop_deliver() -> Deliver {
+        Arc::new(|_, _| Box::pin(async { Ok(()) }))
+    }
+
     struct Harness {
         messages: Messages,
         bus: Bus,
@@ -399,7 +586,8 @@ mod tests {
             let bus = Bus::new();
             let bus_events = bus.subscribe();
             Self {
-                messages: Messages::open(dir, bus.clone(), FakeRail::new(rail)).unwrap(),
+                messages: Messages::open(dir, bus.clone(), FakeRail::new(rail), noop_deliver())
+                    .unwrap(),
                 bus,
                 bus_events,
                 touches: Arc::new(Touches::in_memory().unwrap()),
@@ -1390,6 +1578,7 @@ mod tests {
                     dir.path(),
                     bus.clone(),
                     FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                    noop_deliver(),
                 )
                 .unwrap(),
             );
@@ -1453,6 +1642,7 @@ mod tests {
                     dir.path(),
                     bus.clone(),
                     FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                    noop_deliver(),
                 )
                 .unwrap(),
             );

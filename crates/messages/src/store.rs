@@ -1,8 +1,9 @@
 //! SQLite persistence for Messages and Routes. `<dir>/messages.db` (ADR 0004, WAL).
 
+use std::collections::HashSet;
 use std::path::Path;
 
-use contracts::Actor;
+use contracts::{Actor, ActorKind};
 use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Reason, Route};
 use rpc::RpcError;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -12,6 +13,9 @@ use serde_json::Value;
 
 pub(crate) struct Store {
     db: Connection,
+    /// Agents under a Takeover. Held in memory only (B6): never persisted, so a restarted
+    /// Daemon has none.
+    active_takeovers: HashSet<String>,
 }
 
 impl Store {
@@ -28,7 +32,8 @@ impl Store {
                 reply_to INTEGER,
                 status TEXT NOT NULL,
                 reason TEXT,
-                at INTEGER NOT NULL
+                at INTEGER NOT NULL,
+                rank INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS routes (
                 from_id TEXT NOT NULL,
@@ -37,7 +42,31 @@ impl Store {
                 PRIMARY KEY (from_id, to_id)
             );",
         )?;
-        Ok(Self { db })
+        let mut store = Self {
+            db,
+            active_takeovers: HashSet::new(),
+        };
+        store.release_stale_takeovers()?;
+        Ok(store)
+    }
+
+    /// B6: no Takeover survives a restart, so a Message left `held` for the reason `takeover` by
+    /// a previous run becomes `pending`, in id order, before anything else uses this Store.
+    fn release_stale_takeovers(&mut self) -> rusqlite::Result<()> {
+        let ids: Vec<u32> = self
+            .db
+            .prepare("SELECT id FROM messages WHERE status = 'held' AND reason = 'takeover' ORDER BY id")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        for id in ids {
+            self.db.execute(
+                "UPDATE messages SET status = 'pending', reason = NULL,
+                     rank = (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages)
+                 WHERE id = ?1",
+                params![id],
+            )?;
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -54,8 +83,9 @@ impl Store {
     ) -> Result<Message, RpcError> {
         self.db
             .execute(
-                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, rank)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                     CASE WHEN ?6 = 'pending' THEN (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages) ELSE 0 END)",
                 params![
                     actor_json(from),
                     to,
@@ -107,11 +137,146 @@ impl Store {
         let changed = self
             .db
             .execute(
-                "UPDATE messages SET status = ?2, reason = ?3 WHERE id = ?1 AND status = 'held'",
+                "UPDATE messages SET status = ?2, reason = ?3,
+                     rank = CASE WHEN ?2 = 'pending' THEN (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages) ELSE rank END
+                 WHERE id = ?1 AND status = 'held'",
                 params![id, text_of(status), reason.map(text_of)],
             )
             .map_err(RpcError::internal)?;
         Ok(changed == 1)
+    }
+
+    /// The oldest `pending` Message to `to`, by the order it became deliverable (B7): its `rank`,
+    /// ties by id.
+    pub(crate) fn next_pending(&self, to: &str) -> Result<Option<Message>, RpcError> {
+        self.db
+            .query_row(
+                "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at
+                 FROM messages WHERE to_id = ?1 AND status = 'pending'
+                 ORDER BY rank ASC, id ASC LIMIT 1",
+                [to],
+                row_to_message,
+            )
+            .optional()
+            .map_err(RpcError::internal)
+    }
+
+    /// Records `id` `delivered`, only if it is still `pending` (B2's one conditional write).
+    /// `None` when it was not `pending` any more.
+    pub(crate) fn mark_delivered(&self, id: u32) -> Result<Option<Message>, RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE messages SET status = 'delivered', reason = NULL
+                 WHERE id = ?1 AND status = 'pending'",
+                params![id],
+            )
+            .map_err(RpcError::internal)?;
+        if changed == 0 {
+            return Ok(None);
+        }
+        self.get(id)
+    }
+
+    fn list_pending_to(&self, to: &str) -> Result<Vec<Message>, RpcError> {
+        self.db
+            .prepare(
+                "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at
+                 FROM messages WHERE to_id = ?1 AND status = 'pending' ORDER BY id",
+            )
+            .and_then(|mut stmt| stmt.query_map(params![to], row_to_message)?.collect())
+            .map_err(RpcError::internal)
+    }
+
+    fn list_takeover_held_to(&self, to: &str) -> Result<Vec<Message>, RpcError> {
+        self.db
+            .prepare(
+                "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at
+                 FROM messages WHERE to_id = ?1 AND status = 'held' AND reason = 'takeover'
+                 ORDER BY id",
+            )
+            .and_then(|mut stmt| stmt.query_map(params![to], row_to_message)?.collect())
+            .map_err(RpcError::internal)
+    }
+
+    pub(crate) fn is_takeover_active(&self, agent: &str) -> bool {
+        self.active_takeovers.contains(agent)
+    }
+
+    /// Begins a Takeover of `agent`: every Message to it that is `pending` and not from the user
+    /// becomes `held` with the reason `takeover`, in id order (B6). `None` when a Takeover was
+    /// already active (a repeated `begin` changes nothing); `Some` with the newly held Messages
+    /// otherwise, even when that list is empty.
+    pub(crate) fn begin_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
+        if !self.active_takeovers.insert(agent.to_owned()) {
+            return Ok(None);
+        }
+        let mut held = Vec::new();
+        for message in self.list_pending_to(agent)? {
+            if message.from.kind == ActorKind::User {
+                continue;
+            }
+            let changed = self
+                .db
+                .execute(
+                    "UPDATE messages SET status = 'held', reason = 'takeover'
+                     WHERE id = ?1 AND status = 'pending'",
+                    params![message.id],
+                )
+                .map_err(RpcError::internal)?;
+            if changed == 1 {
+                held.push(self.get(message.id)?.expect("just updated"));
+            }
+        }
+        Ok(Some(held))
+    }
+
+    /// Ends a Takeover of `agent`: every Message held for the reason `takeover` becomes `pending`
+    /// in id order (B6). `None` when no Takeover was active (a repeated `end` changes nothing);
+    /// `Some` with the newly pending Messages otherwise, even when that list is empty.
+    pub(crate) fn end_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
+        if !self.active_takeovers.remove(agent) {
+            return Ok(None);
+        }
+        let mut pending = Vec::new();
+        for message in self.list_takeover_held_to(agent)? {
+            let changed = self
+                .db
+                .execute(
+                    "UPDATE messages SET status = 'pending', reason = NULL,
+                         rank = (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages)
+                     WHERE id = ?1 AND status = 'held'",
+                    params![message.id],
+                )
+                .map_err(RpcError::internal)?;
+            if changed == 1 {
+                pending.push(self.get(message.id)?.expect("just updated"));
+            }
+        }
+        Ok(Some(pending))
+    }
+
+    /// Drops every `pending` Message to `to` with `reason`, in id order (B9).
+    pub(crate) fn drop_all_pending(
+        &mut self,
+        to: &str,
+        reason: Reason,
+    ) -> Result<Vec<Message>, RpcError> {
+        let mut dropped = Vec::new();
+        for message in self.list_pending_to(to)? {
+            let changed = self
+                .db
+                .execute(
+                    "UPDATE messages SET status = 'dropped', reason = ?2
+                     WHERE id = ?1 AND status = 'pending'",
+                    params![message.id, text_of(reason)],
+                )
+                .map_err(RpcError::internal)?;
+            if changed == 1 {
+                dropped.push(self.get(message.id)?.expect("just updated"));
+            }
+        }
+        Ok(dropped)
     }
 
     pub(crate) fn count_open(&self, to: &str) -> Result<u32, RpcError> {
@@ -245,10 +410,11 @@ mod tests {
 
     #[test]
     fn b8_every_reason_status_and_kind_survives_reopening() {
+        // `takeover` does not round-trip unchanged: B6 says no Takeover survives a restart, so a
+        // Message held for it becomes `pending` on reopen (`b6_a_held_for_takeover_message_becomes_pending_on_reopen`).
         let dir = tempfile::tempdir().unwrap();
         let reasons = [
             (MessageStatus::Held, Reason::AskFirst),
-            (MessageStatus::Held, Reason::Takeover),
             (MessageStatus::Held, Reason::Escalated),
             (MessageStatus::Dropped, Reason::ReceiverGone),
             (MessageStatus::Dropped, Reason::NotAccepted),
@@ -270,6 +436,20 @@ mod tests {
                 (status, Some(reason), MessageKind::Question)
             );
         }
+    }
+
+    #[test]
+    fn b6_a_held_for_takeover_message_becomes_pending_on_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = {
+            let store = open(dir.path());
+            put(&store, MessageStatus::Held, Some(Reason::Takeover))
+        };
+
+        let store = open(dir.path());
+
+        let message = store.get(id).unwrap().unwrap();
+        assert_eq!((message.status, message.reason), (MessageStatus::Pending, None));
     }
 
     #[test]
