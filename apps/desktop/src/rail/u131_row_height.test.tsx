@@ -9,16 +9,22 @@ afterEach(cleanup);
 const minHeightOf = (name: string) => getComputedStyle(rowOf(name)).minHeight;
 
 describe("u131 a Rail row is 28 px high", () => {
-  it("u131_every_kind_of_row_has_a_28px_minimum_height_at_rest", async () => {
+  it("u131_every_kind_and_state_of_row_has_a_28px_minimum_height_at_rest", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
-    await mountRail([group("g"), agent("a", "working", "w"), metaAgent("m", "working", "w"), terminal("t")]);
+    const kinds = ["working", "idle", "done", "blocked", "needs-you", "error"] as const;
+    await mountRail([
+      group("g"),
+      metaAgent("m", "working", "w"),
+      terminal("t"),
+      ...kinds.map((kind) => agent(kind, kind, "w")),
+    ]);
 
-    const heights = ["g", "a", "m", "t"].map(minHeightOf);
+    const heights = ["g", "m", "t", ...kinds].map(minHeightOf);
 
     sheet.remove();
 
-    expect(heights).toEqual(["28px", "28px", "28px", "28px"]);
+    expect(heights).toEqual(Array(9).fill("28px"));
   });
 
   it("u131_hovering_or_selecting_a_row_keeps_it_28px", async () => {
