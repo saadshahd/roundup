@@ -37,7 +37,7 @@ const normalised = (value: string) =>
 
 // Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moves `styles.css`, takes `#1d1d1f`
 // for `--text` with the `u4_` tests that read it, and deletes the entry; until then the App's text colour must not change.
-const KNOWN_DIFFERENCES: Record<string, string> = { "--text": "#1c1c1e" };
+const KNOWN_DIFFERENCES = new Map([["--text", "#1c1c1e"]]);
 
 function valueOf(section: string, token: string): string | undefined {
   return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
@@ -81,7 +81,7 @@ describe("u130 tokens", () => {
     const css = Object.values(import.meta.glob<string>("../tokens.css", { query: "?raw", import: "default", eager: true }))[0] ?? "";
 
     const wrong = [...expectedLight].filter(
-      ([name, value]) => normalised(valueOf(css, name) ?? "") !== normalised(KNOWN_DIFFERENCES[name] ?? value),
+      ([name, value]) => normalised(valueOf(css, name) ?? "") !== normalised(KNOWN_DIFFERENCES.get(name) ?? value),
     );
 
     expect(wrong, "Tokens whose light value is not the table's").toEqual([]);
