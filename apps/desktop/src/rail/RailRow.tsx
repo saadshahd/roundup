@@ -70,6 +70,7 @@ export const RailRowView = (props: {
   /** `1` or `-1` while a drag moves the row into the room it opened, `0` otherwise. */
   shift: number;
   onPointerDown: (press: PointerEvent) => void;
+  onOpenMenu: (press: MouseEvent) => void;
 }) => {
   const [hovered, setHovered] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
@@ -105,6 +106,10 @@ export const RailRowView = (props: {
       tabIndex={props.tabbable ? 0 : -1}
       style={{ "padding-left": `${props.row.depth * 2}ch` }}
       onClick={props.onSelect}
+      onContextMenu={(press) => {
+        press.preventDefault();
+        props.onOpenMenu(press);
+      }}
       onPointerDown={(press) => {
         if (!(press.target instanceof Element) || !press.target.closest("button, input")) props.onPointerDown(press);
       }}
