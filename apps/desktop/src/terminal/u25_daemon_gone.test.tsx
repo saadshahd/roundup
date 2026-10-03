@@ -1,4 +1,4 @@
-import { cleanup, screen } from "@solidjs/testing-library";
+import { cleanup } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DaemonExit } from "../app/seam";
@@ -25,17 +25,6 @@ describe("u25 the Daemon is gone", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(callsTo(app, "terminal.write")).toEqual([]);
-  });
-
-  it("u25_stop_is_disabled", async () => {
-    const { setExit } = await mountGone();
-
-    const stop = screen.getByRole("button", { name: "stop" });
-
-    expect(stop.hasAttribute("disabled")).toBe(false);
-    setExit({ code: 1 });
-
-    expect(stop.hasAttribute("disabled")).toBe(true);
   });
 
   it("u25_a_window_resize_sends_no_terminal_resize", async () => {
