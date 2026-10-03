@@ -1,5 +1,7 @@
 # Pads
 
+Module: `crates/pads`. Ids: every `P` heading in the file.
+
 **P1 create.** Given an empty Project, when an Agent `a` calls `pad.create {name: "notes", text}`, then the Pad's owner is `a`; creating `notes` again fails with `CONFLICT`, and so does `Notes` (names are unique ignoring case, because the macOS file system is case-insensitive and file-backed Pads would otherwise share one file); `pad.changed {name}` is emitted and a `wrote` Touch on `pad:notes` is logged.
 
 **P2 owner rewrites, others append.** Given Pad `notes` owned by `a`, when `a` calls `pad.write`, then the text is replaced. When another Actor `b` calls `pad.write`, then it fails with `FORBIDDEN` and nothing changes. When `b` calls `pad.append`, then the text is added at the end, `pad.changed` is emitted and a `wrote` Touch by `b` is logged.

@@ -1,5 +1,7 @@
 # Todos and Pads over MCP
 
+Module: `crates/rup` (the `rup mcp` subcommand). Ids: M1–M3.
+
 ADR 0007: the Daemon serves MCP to Agents through a stdio shim, so every call is a Touch by the calling Agent. The shim is `rup mcp <agent-id>` in `crates/rup`. Build it on the official Rust MCP SDK (`rmcp`), not a hand-rolled protocol. Tests start the built `rup` (`CARGO_BIN_EXE_rup`) against an in-process Daemon on a temp socket, as `crates/rup/tests/ping.rs` does, and speak MCP to it over stdio. No `claude` is involved.
 
 **M1 tools.** Given `rup mcp <agent-id>` started on stdio with a Daemon answering at `RUPD_SOCKET`, when an MCP client initializes and lists tools, then the server is named `roundup` and offers one tool for each of these methods: `todo.create`, `todo.get`, `todo.list`, `todo.update`, `todo.complete`, `todo.setBlockers`, `pad.create`, `pad.read`, `pad.list`, `pad.write`, `pad.append`, `pad.setOwner`, `pad.delete`. Each tool is named after its method with the dot replaced by `_` (`todo_setBlockers`). Each input schema is derived from the method's params type in `crates/contracts`, and none is written by hand. `todo.list` and `pad.list` take `null` params, so their schema is `{"type": "object"}`, and the shim sends `null` to the Daemon. Three methods are not offered. `todo.delete`: a Todo has no owner to guard its deletion. `pad.export`: it writes outside the Project. `pad.setStorage`: storage is the user's Project setting.
