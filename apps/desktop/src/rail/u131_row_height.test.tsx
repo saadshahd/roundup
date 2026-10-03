@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { agent, group, metaAgent, MINUTE, NOW, terminal } from "../testing/nodes";
+import { withStylesheets } from "../testing/contrast";
 import styles from "./styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
 
@@ -9,6 +10,14 @@ afterEach(cleanup);
 const minHeightOf = (name: string) => getComputedStyle(rowOf(name)).minHeight;
 
 describe("u131 a Rail row is 28 px high", () => {
+  it("u131_the_rail_uses_the_ui_face_for_names_and_actions", async () => {
+    await withStylesheets(async () => {
+      await mountRail([agent("a", "working", "w")]);
+
+      expect(getComputedStyle(rowOf("a").closest(".rail-tree")!).fontFamily).toBe("var(--font-ui)");
+    });
+  });
+
   it("u131_every_kind_and_state_of_row_has_a_28px_minimum_height_at_rest", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
