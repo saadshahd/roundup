@@ -21,10 +21,11 @@ permissions:
 
 concurrency:
   group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.head_sha }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  merge-ready:
+  # Not named merge-ready: a job of that name would also publish a check run with the status's name.
+  compute:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +42,9 @@ jobs:
           pr="${PR_FROM_PR:-${PR_FROM_COMMENT:-$PR_FROM_RUN}}"
           [ -n "$pr" ] || { echo "no pull request for this event"; exit 0; }
           sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+          if gh pr diff "$pr" --name-only | grep -q '^\.github/'; then
+            gh pr merge "$pr" --disable-auto || true
+          fi
           set +e
           out=$(loop/rules.sh merge-ready "$pr" 2>&1)
           code=$?
