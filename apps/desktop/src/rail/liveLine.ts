@@ -6,14 +6,20 @@ import { exitText } from "../ink/exitText";
 
 const UNPROMPTED: readonly Kind[] = ["blocked", "needs-you", "error"];
 
-/** The second line under a row: an Agent's label and age, an exited Terminal's ending, nothing for a running Terminal or a plain Group. */
-export const liveLineOf = (node: RailNode, exit: ExitState | null, now: number): string | null => {
-  if (node.status) return `${node.status.label}  ${elapsed(node.status.since, now)}`;
+/** The Live line's label and, for an Agent or Meta-agent, its elapsed time pinned after it (U7); an exited Terminal's ending has no age. */
+export type LiveLine = { label: string; age: string | null };
 
-  if (node.kind === "terminal" && exit) return exitText(exit);
+/** What the row shows on its Live line, or `null` when it shows none. */
+export const liveLineOf = (node: RailNode, exit: ExitState | null, now: number): LiveLine | null => {
+  if (node.status) return { label: node.status.label, age: elapsed(node.status.since, now) };
+
+  if (node.kind === "terminal" && exit) return { label: exitText(exit), age: null };
 
   return null;
 };
+
+/** The Live line's `title`: the whole label and age, which the row may cut. */
+export const liveTitleOf = (line: LiveLine): string => (line.age !== null ? `${line.label}  ${line.age}` : line.label);
 
 /** Hidden until hover or selection, except when the Agent needs the user's eye. */
 export const isUnprompted = (node: RailNode): boolean => node.status !== null && UNPROMPTED.includes(node.status.kind);
