@@ -4,4 +4,4 @@ export type OutputEvent = { id: string,
 /**
  * Base64 of the bytes the program wrote.
  */
-data: string, };
+data: string, offset: number, };

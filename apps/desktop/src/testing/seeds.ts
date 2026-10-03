@@ -117,6 +117,7 @@ const exitCodeOf = (target: RailNode): number | null => {
 const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: boolean): Controls => {
   const nodes = structuredClone(tree);
   const exits = new Map<string, number | null>();
+  const outputOffsets = new Map<string, number>();
 
   for (const other of nodes) {
     if (other.terminal_id && exitCodeOf(other) !== null) exits.set(other.terminal_id, exitCodeOf(other));
@@ -228,7 +229,12 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
       find(id).status = status;
       send({ name: "agent.status", data: { id, status } });
     },
-    writeOutput: (terminalId, text) => send({ name: "terminal.output", data: { id: terminalId, data: btoa(text) } }),
+    writeOutput: (terminalId, text) => {
+      const data = btoa(text);
+      const offset = outputOffsets.get(terminalId) ?? 0;
+      outputOffsets.set(terminalId, offset + atob(data).length);
+      send({ name: "terminal.output", data: { id: terminalId, offset, data } });
+    },
     failNext: (code, message) => {
       failure = new RpcError(code, message);
     },

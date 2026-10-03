@@ -9,7 +9,7 @@ import { createOutputFeed, MAX_HELD_CHARS } from "./output";
 const output = (id: string, data: string): DaemonEvent => ({
   actor: { kind: "user", id: "you", parent: null },
   name: "terminal.output",
-  data: { id, data },
+  data: { id, offset: 0, data },
 });
 
 const feed = async () => {
@@ -30,9 +30,9 @@ describe("u11 output before the Pane mounts", () => {
     outputFeed.subscribe((event) => heard.push(event));
 
     expect(heard).toEqual([
-      { id: "t1", data: "YQ==" },
-      { id: "t2", data: "Yg==" },
-      { id: "t1", data: "Yw==" },
+      { id: "t1", offset: 0, data: "YQ==" },
+      { id: "t2", offset: 0, data: "Yg==" },
+      { id: "t1", offset: 0, data: "Yw==" },
     ]);
   });
 

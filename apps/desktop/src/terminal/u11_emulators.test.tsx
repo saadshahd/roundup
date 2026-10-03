@@ -54,7 +54,7 @@ describe("u11 one emulator per Terminal", () => {
   it("u11_bad_base64_shows_one_error_line_and_later_output_still_arrives", async () => {
     const { app, emulators } = await mountPane([node("a")], [info("t-a")]);
 
-    app.emit(event({ name: "terminal.output", data: { id: "t-a", data: "***" } }));
+    app.emit(event({ name: "terminal.output", data: { id: "t-a", offset: 0, data: "***" } }));
     app.emit(output("t-a", "after"));
 
     expect([screen.getByText(/^✕ terminal\.output:/).tagName, decoded(emulators.get("t-a")?.written ?? [])]).toEqual([

@@ -4,6 +4,7 @@
 mod common;
 mod control;
 mod in_process;
+mod snapshot;
 mod spawn;
 mod stuck;
 mod title;

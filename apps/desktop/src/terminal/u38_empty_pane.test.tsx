@@ -34,7 +34,7 @@ describe("u38 empty Pane", () => {
   it("u38_a_base64_decode_failure_hides_the_empty_pane_text_with_nothing_selected", async () => {
     const { app } = await mountPane([node("a")], [info("t-a")]);
 
-    app.emit(event({ name: "terminal.output", data: { id: "t-a", data: "***" } }));
+    app.emit(event({ name: "terminal.output", data: { id: "t-a", offset: 0, data: "***" } }));
 
     await screen.findByText(/^✕ terminal\.output:/);
     expect(screen.queryByText("select an agent or a terminal")).toBeNull();

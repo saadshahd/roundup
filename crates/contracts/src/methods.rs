@@ -39,6 +39,11 @@ pub const METHODS: &[Method] = &[
     m("terminal.resize", "terminal_ResizeParams", "null"),
     m("terminal.kill", "terminal_TerminalId", "null"),
     m("terminal.list", "null", "terminal_TerminalInfo[]"),
+    m(
+        "terminal.snapshot",
+        "terminal_TerminalId",
+        "terminal_Snapshot",
+    ),
     m("todo.create", "todo_CreateParams", "todo_Todo"),
     m("todo.get", "todo_TodoId", "todo_Todo"),
     m("todo.list", "null", "todo_Todo[]"),

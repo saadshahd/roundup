@@ -7,6 +7,7 @@ Glossary only. No implementation. Rule 6 of the loop: every identifier, RPC meth
 - **Project** — a folder roundup is opened on; owns its Agents, Terminals, Todos, Pads and Routes.
 - **Agent** — one Claude Code process that roundup started and supervises; has a Status. _Avoid:_ session, bot, worker.
 - **Terminal** — a plain shell process roundup started; no Status beyond running/exited. _Avoid:_ process, console.
+- **Snapshot** — a bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.
 - **Group** — a named, process-less node that holds Agents, Terminals, Todos, Pads, views and Groups; the user places what is in it. _Avoid:_ folder.
 - **Home** — the Group or Meta-agent an item (an Agent, Terminal, Todo, Pad or any later view or tool) sits in; the Project is the root Home. Each item has exactly one Home, and the user can change any item's Home.
 - **Meta-agent** (the user's own term) — a Group promoted so that a live Agent sits at it and receives its children's events. The Agent places the children it makes; the user's own move always wins. Any Group can be promoted. _Avoid:_ parent agent, lead.

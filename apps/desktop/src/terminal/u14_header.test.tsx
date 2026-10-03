@@ -49,7 +49,7 @@ describe("pane empty states and error sizing", () => {
 
     const before = box();
 
-    app.emit(event({ name: "terminal.output", data: { id: "t-a", data: "***" } }));
+    app.emit(event({ name: "terminal.output", data: { id: "t-a", data: "***", offset: 0 } }));
     await screen.findByText(/^✕ terminal\.output:/);
 
     const after = box();
