@@ -59,7 +59,7 @@ export const rowOf = (name: string): HTMLElement => {
   return row;
 };
 
-export const liveLineOf = (name: string): string | null => {
+export const shownLiveLine = (name: string): string | null => {
   const live = rowOf(name).querySelector(".live");
   const label = live?.querySelector(".live-label")?.textContent;
   const age = live?.querySelector(".live-age")?.textContent;
