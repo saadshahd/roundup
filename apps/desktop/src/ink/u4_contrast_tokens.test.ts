@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveToken, tokensOf } from "../testing/contrast";
+import { resolveToken, tokensFrom } from "../testing/contrast";
 
 /** Every rule block (`selector { body }`) in a stylesheet's text, so a check can see which selector owns a declaration. */
 const rulesOf = (css: string): { selector: string; body: string }[] =>
@@ -27,6 +27,7 @@ describe("u4 stylesheet text-colour allowlist", () => {
       "../rail/styles.css",
       "../styles.css",
       "../terminal/styles.css",
+      "../tokens.css",
     ]);
 
     for (const [file, css] of Object.entries(sheets)) {
@@ -50,7 +51,7 @@ describe("u4 stylesheet text-colour allowlist", () => {
 
   it("u4_the_word_hover_colour_is_text", () => {
     const styles = allStylesheets()["../styles.css"]!;
-    const tokens = tokensOf(styles);
+    const tokens = tokensFrom(allStylesheets()["../tokens.css"]!, styles);
     const hoverRule = rulesOf(styles).find((rule) => rule.selector === ".word:hover");
 
     if (!hoverRule) throw new Error("no .word:hover rule in styles.css");
@@ -62,7 +63,7 @@ describe("u4 stylesheet text-colour allowlist", () => {
     expect(resolveToken(colour, tokens)).toBe(resolveToken("var(--text)", tokens));
   });
 
-  it("u4_the_light_inline_override_is_limited_to_the_pad_drawers_export_button", () => {
+  it("u4_no_light_or_lightest_inline_override_remains", () => {
     const INLINE = /var\(--(?:light|lightest)\)/;
 
     const sources = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
@@ -75,6 +76,6 @@ describe("u4 stylesheet text-colour allowlist", () => {
       .filter(([, text]) => INLINE.test(text))
       .map(([path]) => path.slice("../".length));
 
-    expect(matches).toEqual(["pads/PadDrawer.tsx"]);
+    expect(matches).toEqual([]);
   });
 });

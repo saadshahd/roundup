@@ -99,9 +99,11 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   <p class="light">blocks</p>
                   <For each={blockedBy(current(), props.todos.all())}>{(blocked) => <TodoLine todo={blocked} />}</For>
                 </Show>
-                <button type="button" class="word" onClick={() => setOffering(!offering())}>
-                  + blocker
-                </button>
+                <p>
+                  <button type="button" class="word" onClick={() => setOffering(!offering())}>
+                    + blocker
+                  </button>
+                </p>
                 <Show when={offering()}>
                   <For each={offeredAsBlockers(answered() ?? current(), props.todos.all())}>
                     {(other) => (

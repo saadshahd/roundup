@@ -81,6 +81,13 @@ pub const METHODS: &[Method] = &[
     ),
     m("project.setWorktrees", "project_Worktrees", "null"),
     m("project.get", "null", "project_ProjectSettings"),
+    m("message.send", "message_SendParams", "message_Message"),
+    m("message.get", "message_MessageId", "message_Message"),
+    m("message.list", "message_ListParams", "message_Message[]"),
+    m("message.deliver", "message_MessageId", "message_Message"),
+    m("message.drop", "message_MessageId", "message_Message"),
+    m("route.set", "message_SetRouteParams", "message_Route"),
+    m("route.list", "null", "message_Route[]"),
     m("rail.remove", "agent_NodeId", "null"),
 ];
 

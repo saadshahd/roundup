@@ -3,6 +3,7 @@ import { render } from "solid-js/web";
 import { App } from "./App";
 import { createReducedMotion } from "./app/reducedMotion";
 import { createTauriApp } from "./app/tauri";
+import "./tokens.css";
 import "./styles.css";
 
 const root = document.getElementById("root");

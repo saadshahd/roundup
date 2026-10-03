@@ -3,12 +3,11 @@
 import type { Actor } from "./generated/Actor";
 import type { Kind } from "./generated/Kind";
 import type { Status } from "./generated/Status";
+import type { Delivery } from "./generated/message/Delivery";
 
-export type { Actor, Kind, Status };
+export type { Actor, Kind, Status, Delivery };
 
 export type Chip = { label: string; tone: "dim" | "info" };
-
-export type Delivery = "auto" | "ask-first" | "drop";
 
 /** A Hook may add Chips; it can never change Kind. */
 export type HookResults = {

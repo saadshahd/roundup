@@ -28,14 +28,14 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
 
       if (open && !wasOpen) {
         heldFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        host?.querySelector<HTMLElement>(".close")?.focus();
+        host?.querySelector<HTMLElement>(".close")?.focus({ preventScroll: true });
       } else if (wasOpen && !open) {
         const stayedInDrawer = host?.contains(document.activeElement) ?? false;
         const toRefocus = heldFocus;
 
         heldFocus = null;
 
-        if (stayedInDrawer) toRefocus?.focus();
+        if (stayedInDrawer) toRefocus?.focus({ preventScroll: true });
       }
     }),
   );
