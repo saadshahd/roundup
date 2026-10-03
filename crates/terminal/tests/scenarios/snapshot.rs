@@ -58,6 +58,22 @@ async fn u104_snapshot_of_an_unknown_terminal_is_not_found() {
 }
 
 #[tokio::test]
+async fn u104_idle_terminal_starts_with_a_blank_snapshot_then_tracks_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), r#"read line; printf '%s' "$line""#))
+        .await
+        .unwrap();
+    let blank = terminals.snapshot(&spawned.id).unwrap();
+    assert_eq!((blank.cols, blank.rows, blank.after), (80, 24, 0));
+    terminals.write(&spawned.id, b"hello\n").await.unwrap();
+    until_printed(&mut spawned.events, "hello").await;
+    assert!(terminals.snapshot(&spawned.id).unwrap().after > blank.after);
+    until_exit(&mut spawned.events).await;
+}
+
+#[tokio::test]
 async fn u104_snapshot_is_available_over_rpc() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, bus) = open(&dir);
@@ -197,4 +213,87 @@ async fn u104_snapshot_screen_and_after_name_the_same_output_cut() {
     let mut restored = vt100::Parser::new(snapshot.rows, snapshot.cols, 1000);
     restored.process(&STANDARD.decode(snapshot.data).unwrap());
     assert_eq!(restored.screen().contents(), before.screen().contents());
+}
+
+#[tokio::test]
+async fn u104_oversized_window_keeps_titles_and_offsets_but_has_no_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut params = sh(dir.path(), r"printf '\033]0;large\007still-output'");
+    (params.cols, params.rows) = (u16::MAX, u16::MAX);
+    let mut spawned = terminals.spawn(params).await.unwrap();
+    let mut title = None;
+    let mut next = 0;
+    loop {
+        match spawned.events.recv().await.unwrap() {
+            EventData::TerminalTitle(event) => title = Some(event.title),
+            EventData::TerminalOutput(event) => {
+                assert_eq!(event.offset, next);
+                next += STANDARD.decode(event.data).unwrap().len() as u64;
+            }
+            EventData::TerminalExited(_) => break,
+            _ => {}
+        }
+    }
+    assert_eq!(title.as_deref(), Some("large"));
+    assert!(next > 0);
+    assert_eq!(
+        terminals.snapshot(&spawned.id).unwrap_err().code,
+        code::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn u104_oversized_visible_screen_is_conflict_instead_of_internal() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut params = sh(
+        dir.path(),
+        r#"awk 'BEGIN { for (r = 1; r <= 200; r++) for (c = 1; c <= 300; c++) printf "\033[38;2;%d;%d;%dmx", c % 256, r % 256, (r + c) % 256 }'"#,
+    );
+    (params.cols, params.rows) = (300, 200);
+    let mut spawned = terminals.spawn(params).await.unwrap();
+    until_exit(&mut spawned.events).await;
+    assert_eq!(
+        terminals.snapshot(&spawned.id).unwrap_err().code,
+        code::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn u104_shrinking_after_an_oversized_window_cannot_claim_a_complete_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), "printf before; read line"))
+        .await
+        .unwrap();
+    until_printed(&mut spawned.events, "before").await;
+    terminals
+        .resize(&spawned.id, u16::MAX, u16::MAX)
+        .await
+        .unwrap();
+    terminals.resize(&spawned.id, 80, 24).await.unwrap();
+    assert_eq!(
+        terminals.snapshot(&spawned.id).unwrap_err().code,
+        code::CONFLICT
+    );
+    terminals.kill(&spawned.id).await.unwrap();
+}
+
+#[tokio::test]
+async fn u104_resize_that_would_grow_history_past_its_budget_is_conflict() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), "printf before; read line"))
+        .await
+        .unwrap();
+    until_printed(&mut spawned.events, "before").await;
+    terminals.resize(&spawned.id, 1000, 40).await.unwrap();
+    assert_eq!(
+        terminals.snapshot(&spawned.id).unwrap_err().code,
+        code::CONFLICT
+    );
+    terminals.kill(&spawned.id).await.unwrap();
 }
