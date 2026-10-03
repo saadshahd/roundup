@@ -1,0 +1,16 @@
+Center U6 Rail contents within the selection band
+
+Let the flex line inherit the row minimum so Glyphs and names center
+within the band at every depth without moving on selection. Preserve
+28px rows and hit areas; introduce no new look values.
+
+Scenario: U6
+Moves: D2, D6, D10
+Principles: P6
+
+Add a failing-first computed-style regression over all Kinds, Groups,
+Meta-agents, running/exited Terminals, depths 0-2 and selection states.
+Browser proof at 1280x800 and 700x800 measures -6.5px before, 0px after,
+with no movement on selection. Local proof: artifacts/ux/rail-align.
+
+Author-Agent: boxd-rail-align

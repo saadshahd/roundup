@@ -1,0 +1,624 @@
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.21s
+cargo nextest run
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+────────────
+ Nextest run ID 89e783f6-3dd8-47db-8999-803368c5a891 with nextest profile: default
+    Starting 636 tests across 37 binaries
+        PASS [   0.003s] (  1/636) agents name::tests::a9_a_long_name_is_cut_at_32_characters_without_a_trailing_dash
+        PASS [   0.003s] (  2/636) agents name::tests::a9_a_prompt_with_no_words_left_has_no_name
+        PASS [   0.003s] (  3/636) agents name::tests::a9_every_filler_word_is_dropped
+        PASS [   0.003s] (  4/636) agents name::tests::a9_filler_and_punctuation_drop_out_and_three_words_remain
+        PASS [   0.003s] (  5/636) agents name::tests::a9_words_are_unicode_letters_and_digits
+        PASS [   0.004s] (  6/636) agents rail::tests::a16_a_groups_delete_failing_after_a_successful_move_rolls_both_back
+        PASS [   0.004s] (  7/636) agents rail::tests::a6_nothing_nests_under_an_agent_or_a_terminal
+        PASS [   0.004s] (  8/636) agents rail::tests::a6_removing_a_node_closes_the_gap_among_its_siblings
+        PASS [   0.004s] (  9/636) agents rail::tests::a6_rename_needs_the_exact_id
+        PASS [   0.005s] ( 10/636) agents rail::tests::a8_reopening_unlinks_every_terminal_id
+        PASS [   0.003s] ( 11/636) agents tests::a10_the_node_is_named_for_the_shell_and_shell_when_there_is_none
+        PASS [   5.013s] ( 12/636) agents tests::a14_a_failed_rail_write_for_a_held_signal_does_not_poison_the_locks
+        PASS [   0.010s] ( 13/636) agents tests::a14_a_non_signal_observation_for_a_starting_id_is_still_not_found
+        PASS [   1.659s] ( 14/636) agents tests::a14_a_signal_released_once_the_agent_is_registered_never_outruns_the_held_one
+        PASS [   0.005s] ( 15/636) agents tests::a16_a_failed_kill_of_a_terminal_returns_the_error_and_deletes_nothing
+        PASS [   0.005s] ( 16/636) agents tests::a16_a_failed_stop_of_a_meta_agent_leaves_its_children_in_place
+        PASS [   0.004s] ( 17/636) agents tests::a16_a_failed_stop_returns_the_error_and_deletes_nothing
+        PASS [   0.004s] ( 18/636) agents tests::a16_a_failed_stops_done_status_lets_a_second_remove_retry_and_succeed
+        PASS [   0.004s] ( 19/636) agents tests::a16_a_terminal_exit_after_its_id_is_evicted_from_runs_does_not_panic_the_watcher
+        PASS [   0.004s] ( 20/636) agents tests::a2_a_held_star_reads_idle_when_star_hold_has_passed_and_not_before
+        PASS [   0.004s] ( 21/636) agents tests::a2_a_second_star_during_a_hold_keeps_the_first_stars_deadline
+        PASS [   0.004s] ( 22/636) agents tests::a2_an_exit_ends_the_watch_without_waiting_out_a_held_star
+        PASS [   0.004s] ( 23/636) agents tests::kill_or_already_gone_returns_a_failed_kills_error_without_waiting
+        PASS [   0.003s] ( 24/636) agents tests::wait_for_exit_keeps_waiting_past_a_lag
+        PASS [   0.003s] ( 25/636) agents tests::wait_for_exit_keeps_waiting_past_an_ordinary_event
+        PASS [   0.003s] ( 26/636) agents::launch a11_discarding_an_agent_deletes_both_of_its_files
+        PASS [   0.003s] ( 27/636) agents::launch a11_the_daemons_socket_is_in_neither_file
+        PASS [   0.003s] ( 28/636) agents::launch a11_the_mcp_config_declares_one_stdio_server_that_runs_rup_mcp_for_the_agent
+        PASS [   0.003s] ( 29/636) agents::launch a11_the_settings_allow_every_roundup_tool_so_none_raises_a_dialog
+        PASS [   0.003s] ( 30/636) agents::launch a11_the_users_own_mcp_servers_stay_because_the_config_is_not_strict
+        PASS [   0.003s] ( 31/636) agents::launch a13_a_missing_agents_directory_is_created_as_before
+        PASS [   0.003s] ( 32/636) agents::launch a13_a_real_agents_directory_works_as_before
+        PASS [   0.002s] ( 33/636) agents::launch a13_a_symlinked_agents_directory_is_refused
+        PASS [   0.003s] ( 34/636) agents::launch a4_a_config_folder_that_does_not_exist_yet_is_created
+        PASS [   0.003s] ( 35/636) agents::launch a4_a_config_lock_its_holder_left_behind_is_broken_once_stale
+        PASS [   0.002s] ( 36/636) agents::launch a4_a_cwd_that_does_not_exist_is_the_callers_error
+        PASS [   0.003s] ( 37/636) agents::launch a4_a_cwd_that_is_a_file_is_the_callers_error
+        PASS [   0.003s] ( 38/636) agents::launch a4_a_cwd_that_is_not_in_nfc_is_trusted_under_its_nfc_name
+        PASS [   0.003s] ( 39/636) agents::launch a4_a_leftover_at_the_old_fixed_temp_path_does_not_stop_trust
+        PASS [   0.003s] ( 40/636) agents::launch a4_a_missing_config_is_created_with_the_trust
+        PASS [   0.005s] ( 41/636) agents::launch a4_a_relative_project_dir_still_gives_claude_an_absolute_settings_path
+        PASS [   0.002s] ( 42/636) agents::launch a4_a_rup_that_is_not_there_fails_loudly
+        PASS [   0.003s] ( 43/636) agents::launch a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through
+        PASS [   0.003s] ( 44/636) agents::launch a4_a_symlinked_config_is_written_through_and_stays_a_link
+        PASS [   0.003s] ( 45/636) agents::launch a4_a_symlinked_config_whose_target_is_missing_stays_a_link
+        PASS [   0.003s] ( 46/636) agents::launch a4_a_symlinked_cwd_is_trusted_under_its_resolved_path
+        PASS [   0.003s] ( 47/636) agents::launch a4_an_agent_id_that_is_not_a_node_id_is_refused_before_anything_is_written
+        PASS [   0.002s] ( 48/636) agents::launch a4_an_empty_variable_counts_as_unset
+        PASS [   0.003s] ( 49/636) agents::launch a4_an_unreadable_config_fails_loudly_and_is_left_as_it_was
+        PASS [   0.011s] ( 50/636) agents::launch a4_concurrent_spawns_each_get_their_cwd_trusted
+        PASS [   0.003s] ( 51/636) agents::launch a4_discarding_an_id_that_is_not_a_node_id_deletes_nothing
+        PASS [   0.003s] ( 52/636) agents::launch a4_only_a_cwd_inside_the_project_folder_is_trusted
+        PASS [   0.002s] ( 53/636) agents::launch a4_rup_is_the_one_beside_the_running_daemon_unless_the_environment_says_otherwise
+        PASS [   0.003s] ( 54/636) agents::launch a4_the_argv_runs_claude_with_a_per_agent_settings_file
+        PASS [   0.003s] ( 55/636) agents::launch a4_the_binary_and_config_location_come_from_the_environment
+        PASS [   0.003s] ( 56/636) agents::launch a4_the_cwd_is_pre_trusted_and_nothing_else_in_the_config_changes
+        PASS [   0.003s] ( 57/636) agents::launch a4_the_home_folder_is_refused_and_never_trusted
+        PASS [   0.003s] ( 58/636) agents::launch a4_the_settings_hold_exactly_one_signal_command_per_state_event
+        PASS [   0.319s] ( 59/636) agents::launch a4_trust_waits_while_claude_holds_its_config_lock
+        PASS [   0.040s] ( 60/636) agents::scenarios held_signal::a14_a_failed_spawn_discards_the_signals_it_held
+        PASS [   1.060s] ( 61/636) agents::scenarios held_signal::a14_a_held_signal_that_leaves_the_agent_idle_still_types_its_spawn_prompt
+        PASS [   0.041s] ( 62/636) agents::scenarios held_signal::a14_a_held_user_prompt_submit_still_names_the_agent
+        PASS [   0.011s] ( 63/636) agents::scenarios held_signal::a14_a_signal_for_an_id_that_was_never_spawned_is_still_not_found
+        PASS [   0.047s] ( 64/636) agents::scenarios held_signal::a14_past_the_bound_the_oldest_held_signal_is_dropped_and_logged
+        PASS [   0.021s] ( 65/636) agents::scenarios held_signal::a14_signals_held_while_starting_are_applied_in_arrival_order
+        PASS [   0.010s] ( 66/636) agents::scenarios held_signal::child_overflows_the_held_signals
+        PASS [   0.019s] ( 67/636) agents::scenarios naming::a9_a_meta_agent_keeps_its_groups_name
+        PASS [   0.018s] ( 68/636) agents::scenarios naming::a9_a_prompt_with_no_words_left_keeps_the_name_and_still_counts_as_the_first
+        PASS [   0.018s] ( 69/636) agents::scenarios naming::a9_a_rename_before_the_first_prompt_wins
+        PASS [   0.040s] ( 70/636) agents::scenarios naming::a9_a_rename_while_the_agent_is_still_starting_wins_over_the_first_prompt
+        PASS [   0.012s] ( 71/636) agents::scenarios naming::a9_an_agent_is_new_agent_until_its_first_prompt_names_it
+        PASS [   0.011s] ( 72/636) agents::scenarios naming::a9_later_prompts_never_rename_the_agent
+        PASS [   0.011s] ( 73/636) agents::scenarios promote::a7_a_group_being_promoted_reads_working_starting_not_done
+        PASS [   0.015s] ( 74/636) agents::scenarios promote::a7_a_promote_whose_agent_cannot_start_leaves_the_group_plain
+        PASS [   0.011s] ( 75/636) agents::scenarios promote::a7_a_promote_whose_claude_is_missing_leaves_no_settings_file
+        PASS [   0.517s] ( 76/636) agents::scenarios promote::a7_a_stopped_agent_is_done_not_an_error
+        PASS [   0.039s] ( 77/636) agents::scenarios promote::a7_an_agent_that_is_still_starting_reads_working_starting_not_done
+        PASS [   0.031s] ( 78/636) agents::scenarios promote::a7_only_a_plain_group_can_be_promoted
+        PASS [   0.031s] ( 79/636) agents::scenarios promote::a7_promote_makes_a_group_a_meta_agent_with_a_live_agent
+        PASS [   0.018s] ( 80/636) agents::scenarios promote::a7_promote_names_a_node_by_its_exact_id
+        PASS [   0.012s] ( 81/636) agents::scenarios promote::a7_stop_only_applies_to_agents_and_meta_agents
+        PASS [   0.029s] ( 82/636) agents::scenarios promote::a7_stopping_a_meta_agent_an_earlier_daemon_ran_lifts_its_children
+        PASS [   0.031s] ( 83/636) agents::scenarios promote::a7_stopping_a_meta_agent_lifts_its_children_where_it_was_and_they_keep_running
+        PASS [   0.054s] ( 84/636) agents::scenarios promote::a7_stopping_a_meta_agent_that_is_still_starting_is_a_conflict_and_moves_nothing
+        PASS [   0.078s] ( 85/636) agents::scenarios promote::a7_stopping_a_meta_agent_twice_announces_the_move_once
+        PASS [   0.021s] ( 86/636) agents::scenarios promote::a7_stopping_an_agent_an_earlier_daemon_ran_leaves_it_done
+        PASS [   0.045s] ( 87/636) agents::scenarios promote::a7_stopping_an_agent_that_is_still_starting_is_a_conflict
+        PASS [   0.043s] ( 88/636) agents::scenarios promote::a7_stopping_an_agent_whose_program_already_failed_keeps_its_error
+        PASS [   0.039s] ( 89/636) agents::scenarios promote::a7_two_concurrent_promotes_start_one_agent_and_one_loses
+        PASS [   0.029s] ( 90/636) agents::scenarios promote::a8_a_meta_agent_keeps_its_flag_across_reopening_and_comes_back_done
+        PASS [   0.014s] ( 91/636) agents::scenarios rail::a6_a_group_cannot_move_into_its_own_descendant
+        PASS [   0.018s] ( 92/636) agents::scenarios rail::a6_move_reorders_and_keeps_orders_contiguous_from_zero
+        PASS [   0.014s] ( 93/636) agents::scenarios rail::a6_new_groups_are_appended_with_contiguous_order
+        PASS [   0.013s] ( 94/636) agents::scenarios rail::a6_rename_changes_the_name_and_announces_it
+        PASS [   0.010s] ( 95/636) agents::scenarios rail::a6_the_tree_lists_parents_before_their_children
+        PASS [   0.010s] ( 96/636) agents::scenarios rail::a6_unknown_nodes_are_not_found
+        PASS [   0.019s] ( 97/636) agents::scenarios rail::a8_groups_names_parents_and_order_survive_reopening
+        PASS [   0.012s] ( 98/636) agents::scenarios remove::a16_a_delete_failure_after_a_successful_stop_leaves_the_node_with_its_exited_agent
+        PASS [   2.219s] ( 99/636) agents::scenarios remove::a16_a_descendant_holding_the_pty_open_does_not_hang_remove
+        PASS [   0.016s] (100/636) agents::scenarios remove::a16_a_groups_failed_delete_leaves_its_children_under_it
+        PASS [   0.012s] (101/636) agents::scenarios remove::a16_a_plain_groups_children_move_to_its_parent_at_its_place
+        PASS [   0.067s] (102/636) agents::scenarios remove::a16_a_removed_agents_id_no_longer_answers_agent_signal
+        PASS [   0.017s] (103/636) agents::scenarios remove::a16_a_running_agent_is_stopped_and_removed
+        PASS [   0.066s] (104/636) agents::scenarios remove::a16_a_running_terminal_is_killed_and_removed
+        PASS [   0.017s] (105/636) agents::scenarios remove::a16_a_terminal_whose_id_a_reopen_cleared_is_still_removed
+        PASS [   0.011s] (106/636) agents::scenarios remove::a16_remove_emits_rail_changed
+        PASS [   0.028s] (107/636) agents::scenarios remove::a16_removing_a_meta_agent_stops_it_lifts_its_children_then_deletes_it
+        PASS [   0.016s] (108/636) agents::scenarios remove::a16_siblings_after_it_keep_their_order
+        PASS [   0.010s] (109/636) agents::scenarios remove::a16_unknown_id_is_not_found
+        PASS [   0.037s] (110/636) agents::scenarios signal::a3_a_signal_after_exit_is_ignored
+        PASS [   1.057s] (111/636) agents::scenarios signal::a4_the_prompt_and_enter_arrive_as_separate_reads_a_pause_apart
+        PASS [   4.038s] (112/636) agents::scenarios signal::a4_the_prompt_is_typed_at_the_first_idle_and_only_then
+        PASS [   0.017s] (113/636) agents::scenarios signal::a5_a_payload_the_adapter_does_not_recognise_is_ignored
+        PASS [   0.011s] (114/636) agents::scenarios signal::a5_a_signal_for_an_unknown_agent_is_not_found
+        PASS [   0.016s] (115/636) agents::scenarios signal::a5_a_signal_updates_the_status_and_announces_it_once
+        PASS [   0.019s] (116/636) agents::scenarios signal::a5_refused_payloads_are_logged_to_stderr_by_event_name_never_by_content
+        PASS [   0.030s] (117/636) agents::scenarios signal::a5_status_events_arrive_in_the_order_the_status_changed
+        PASS [   0.007s] (118/636) agents::scenarios signal::child_signals_payloads_the_adapter_refuses
+        PASS [   0.040s] (119/636) agents::scenarios spawn::a2_a_star_title_from_the_terminal_ends_working
+        PASS [   0.038s] (120/636) agents::scenarios spawn::a3_a_clean_exit_makes_the_agent_done
+        PASS [   0.038s] (121/636) agents::scenarios spawn::a3_a_non_zero_exit_makes_the_agent_an_error
+        PASS [   0.013s] (122/636) agents::scenarios spawn::a4_a_cwd_outside_the_project_folder_is_refused_and_leaves_nothing
+        PASS [   0.014s] (123/636) agents::scenarios spawn::a4_a_missing_claude_leaves_no_agent_and_no_settings_file
+        PASS [   0.013s] (124/636) agents::scenarios spawn::a4_a_spawn_that_cannot_start_leaves_no_agent_behind
+        PASS [   0.017s] (125/636) agents::scenarios spawn::a4_spawn_nests_under_a_group_and_never_under_an_agent
+        PASS [   0.039s] (126/636) agents::scenarios spawn::a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent
+        PASS [   0.019s] (127/636) agents::scenarios spawn::a8_an_agent_whose_terminal_is_gone_comes_back_done
+        PASS [   0.015s] (128/636) agents::scenarios terminal_node::a10_a_cwd_that_is_not_a_directory_adds_no_node
+        PASS [   0.019s] (129/636) agents::scenarios terminal_node::a10_a_terminal_is_placed_last_under_its_parent
+        PASS [   0.014s] (130/636) agents::scenarios terminal_node::a10_a_terminal_node_runs_the_login_shell_and_is_announced
+        PASS [   0.066s] (131/636) agents::scenarios terminal_node::a10_a_terminal_whose_program_exits_stays_in_the_rail_without_a_status
+        PASS [   0.016s] (132/636) agents::scenarios terminal_node::a10_nothing_nests_under_an_agent_or_a_terminal_and_an_unknown_parent_is_not_found
+        PASS [   0.007s] (133/636) agents::scenarios terminal_node::a12_a_terminal_node_comes_back_without_its_terminal_id
+        PASS [   0.005s] (134/636) agents::scenarios worktrees::g1_empty_check_is_invalid_params
+        PASS [   0.011s] (135/636) agents::scenarios worktrees::g1_off_leaves_spawn_as_a4_says
+        PASS [   0.011s] (136/636) agents::scenarios worktrees::g1_setting_defaults_off_and_survives_restart
+        PASS [   0.010s] (137/636) agents::scenarios worktrees::g1_setting_twice_stores_the_later_value
+        PASS [   0.055s] (138/636) agents::scenarios worktrees::g2_a_dotdot_cwd_is_judged_by_where_it_leads
+        PASS [   0.031s] (139/636) agents::scenarios worktrees::g2_a_failed_promote_emits_no_event
+        PASS [   0.043s] (140/636) agents::scenarios worktrees::g2_a_failure_locating_the_exclude_file_leaves_nothing
+        PASS [   0.035s] (141/636) agents::scenarios worktrees::g2_a_padded_exclude_entry_counts_as_present
+        PASS [   0.045s] (142/636) agents::scenarios worktrees::g2_a_project_opened_through_a_symlink_accepts_its_own_folder
+        PASS [   0.026s] (143/636) agents::scenarios worktrees::g2_a_project_whose_git_is_a_file_gets_the_exclude_line_in_the_real_git_dir
+        PASS [   0.025s] (144/636) agents::scenarios worktrees::g2_a_record_failure_after_provisioning_leaves_no_branch_no_directory
+        PASS [   0.021s] (145/636) agents::scenarios worktrees::g2_a_repository_with_no_info_directory_still_gets_the_exclude_line
+        PASS [   0.021s] (146/636) agents::scenarios worktrees::g2_a_symlink_to_the_project_is_a_cwd_inside_it
+        PASS [   0.021s] (147/636) agents::scenarios worktrees::g2_an_exclude_file_with_no_final_newline_keeps_its_last_line
+        PASS [   0.022s] (148/636) agents::scenarios worktrees::g2_base_is_the_branch_checked_out_not_always_main
+        PASS [   1.195s] (149/636) agents::scenarios worktrees::g2_concurrent_provisions_never_run_two_git_commands_at_once
+        PASS [   0.037s] (150/636) agents::scenarios worktrees::g2_cwd_outside_project_is_invalid_params
+        PASS [   0.060s] (151/636) agents::scenarios worktrees::g2_exclude_failure_undoes_branch_and_worktree
+        PASS [   0.072s] (152/636) agents::scenarios worktrees::g2_exclude_worktrees_is_added_once
+        PASS [   0.043s] (153/636) agents::scenarios worktrees::g2_failed_call_emits_no_event
+        PASS [   0.051s] (154/636) agents::scenarios worktrees::g2_failed_promote_leaves_a_plain_group
+        PASS [   0.053s] (155/636) agents::scenarios worktrees::g2_failed_promote_leaves_children_where_they_were
+        PASS [   0.043s] (156/636) agents::scenarios worktrees::g2_failure_leaves_no_branch_no_directory_no_node
+        PASS [   0.097s] (157/636) agents::scenarios worktrees::g2_not_a_git_project_no_base_and_cwd_not_in_worktree
+        PASS [   0.041s] (158/636) agents::scenarios worktrees::g2_spawn_at_the_project_root_runs_in_the_worktree_root
+        PASS [   0.041s] (159/636) agents::scenarios worktrees::g2_spawn_makes_branch_and_worktree
+        PASS [   0.037s] (160/636) agents::scenarios worktrees::g2_start_failure_after_provisioning_leaves_no_branch_no_directory
+        PASS [   0.033s] (161/636) agents::scenarios worktrees::g2_start_failure_of_promote_leaves_a_plain_group
+        PASS [   0.029s] (162/636) agents::scenarios worktrees::g2_subfolder_cwd_maps_into_the_worktree
+        PASS [   0.017s] (163/636) agents::scenarios worktrees::g2_terminal_gets_no_worktree
+        PASS [   0.033s] (164/636) agents::scenarios worktrees::g2_two_promotes_have_different_cwds
+        PASS [   0.033s] (165/636) agents::scenarios worktrees::g2_two_spawns_have_different_cwds
+        PASS [   0.028s] (166/636) agents::scenarios worktrees::g2_when_git_cannot_remove_a_worktree_its_directory_and_registration_still_go
+        PASS [   0.023s] (167/636) agents::state_events h15_a_replay_with_titles_lets_state_events_drop_nothing
+        PASS [   0.004s] (168/636) agents::status a1_a_failed_tool_is_not_an_agent_error
+        PASS [   0.003s] (169/636) agents::status a1_a_signal_that_repeats_the_status_changes_nothing
+        PASS [   0.003s] (170/636) agents::status a1_an_unrecognised_payload_changes_nothing
+        PASS [   0.003s] (171/636) agents::status a1_permission_request_gives_needs_you_quoting_the_tool
+        PASS [   0.003s] (172/636) agents::status a1_permission_request_quotes_the_question_it_asks
+        PASS [   0.003s] (173/636) agents::status a1_post_tool_use_after_needs_you_gives_working
+        PASS [   0.003s] (174/636) agents::status a1_pre_tool_use_after_a_stop_gives_working
+        PASS [   0.003s] (175/636) agents::status a1_replaying_a_whole_run_yields_the_kinds_the_spike_saw
+        PASS [   0.003s] (176/636) agents::status a1_session_end_gives_done
+        PASS [   0.004s] (177/636) agents::status a1_since_is_the_injected_clock_at_the_change_and_survives_a_relabel
+        PASS [   0.004s] (178/636) agents::status a1_stop_failure_gives_error_labelled_with_the_error_field
+        PASS [   0.004s] (179/636) agents::status a1_stop_failure_without_an_error_field_is_still_an_error
+        PASS [   0.003s] (180/636) agents::status a1_stop_gives_idle
+        PASS [   0.003s] (181/636) agents::status a1_user_prompt_submit_gives_working
+        PASS [   0.003s] (182/636) agents::status a3_a_signal_after_exit_is_ignored
+        PASS [   0.002s] (183/636) agents::status a3_death_by_signal_is_an_error
+        PASS [   0.003s] (184/636) agents::status a3_exit_after_a_clean_session_end_stays_done
+        PASS [   0.003s] (185/636) agents::status a3_exit_zero_is_done
+        PASS [   0.002s] (186/636) agents::status a3_non_zero_exit_is_an_error_naming_the_code
+        PASS [   0.002s] (187/636) agents::status a7_a_stopped_agent_stays_done_when_its_program_dies_by_signal
+        PASS [   0.003s] (188/636) agents::status h9_answered_after_needs_you_gives_working
+        PASS [   0.002s] (189/636) agents::status h9_answered_after_the_agent_has_ended_changes_nothing
+        PASS [   0.003s] (190/636) agents::status h9_answered_clears_a_held_star
+        PASS [   0.002s] (191/636) agents::status h9_dismissed_after_a_stopped_agent_changes_nothing
+        PASS [   0.004s] (192/636) agents::status h9_dismissed_after_needs_you_gives_idle
+        PASS [   0.004s] (193/636) agents::status h9_dismissed_clears_a_held_star
+        PASS [   0.006s] (194/636) agents::title a2_a_denied_dialog_reads_needs_you_until_the_next_prompt
+        PASS [   0.011s] (195/636) agents::title a2_a_dialog_goes_working_to_needs_you_with_no_idle_between
+        PASS [   0.003s] (196/636) agents::title a2_a_permission_request_within_the_hold_goes_straight_to_needs_you
+        PASS [   0.002s] (197/636) agents::title a2_a_spinner_after_the_held_star_cancels_the_hold
+        PASS [   0.002s] (198/636) agents::title a2_a_spinner_before_the_star_does_not_stop_the_hold
+        PASS [   0.002s] (199/636) agents::title a2_a_spinner_title_gives_working
+        PASS [   0.008s] (200/636) agents::title a2_a_star_after_an_esc_interrupt_gives_idle
+        PASS [   0.002s] (201/636) agents::title a2_a_star_never_ends_needs_you_error_or_done_and_a_spinner_never_ends_needs_you
+        PASS [   0.003s] (202/636) agents::title a2_a_title_or_tick_after_exit_is_ignored
+        PASS [   0.003s] (203/636) agents::title a2_a_title_without_a_glyph_changes_nothing
+        PASS [   0.005s] (204/636) agents::title a2_a_yes_answer_reads_needs_you_until_its_post_tool_use
+        PASS [   0.003s] (205/636) agents::title a2_an_ignored_hook_does_not_end_the_hold
+        PASS [   0.003s] (206/636) agents::title a2_an_unanswered_star_after_pre_tool_use_resolves_to_idle_on_the_tick
+        PASS [   0.006s] (207/636) agents::title a2_esc_during_an_auto_allowed_tool_reads_idle_only_after_the_hold
+        PASS [   0.005s] (208/636) agents::title a2_esc_on_a_dialog_changes_nothing
+        PASS [   0.008s] (209/636) agents::title a2_esc_on_an_ask_dialog_changes_nothing
+        PASS [   0.004s] (210/636) agents::title a2_esc_on_an_open_dialog_leaves_needs_you_for_the_rest_of_the_run
+        PASS [   0.003s] (211/636) agents::title a2_post_tool_use_ends_the_hold_so_a_later_star_is_idle_at_once
+        PASS [   0.003s] (212/636) contracts agent::export_bindings_creategroupparams
+        PASS [   0.003s] (213/636) contracts agent::export_bindings_moveparams
+        PASS [   0.003s] (214/636) contracts agent::export_bindings_nodeid
+        PASS [   0.003s] (215/636) contracts agent::export_bindings_nodekind
+        PASS [   0.004s] (216/636) contracts agent::export_bindings_railnode
+        PASS [   0.003s] (217/636) contracts agent::export_bindings_renameparams
+        PASS [   0.003s] (218/636) contracts agent::export_bindings_signalparams
+        PASS [   0.003s] (219/636) contracts agent::export_bindings_spawnparams
+        PASS [   0.003s] (220/636) contracts agent::export_bindings_spawnterminalparams
+        PASS [   0.004s] (221/636) contracts agent::export_bindings_statusevent
+        PASS [   0.003s] (222/636) contracts agent::export_bindings_worktree
+        PASS [   0.003s] (223/636) contracts common::export_bindings_actor
+        PASS [   0.003s] (224/636) contracts common::export_bindings_actorkind
+        PASS [   0.003s] (225/636) contracts common::export_bindings_historyparams
+        PASS [   0.004s] (226/636) contracts common::export_bindings_identifyparams
+        PASS [   0.003s] (227/636) contracts common::export_bindings_kind
+        PASS [   0.003s] (228/636) contracts common::export_bindings_status
+        PASS [   0.005s] (229/636) contracts common::export_bindings_touch
+        PASS [   0.003s] (230/636) contracts common::export_bindings_touchedparams
+        PASS [   0.003s] (231/636) contracts common::export_bindings_verb
+        PASS [   0.003s] (232/636) contracts decision::export_bindings_answer
+        PASS [   0.003s] (233/636) contracts decision::export_bindings_answerparams
+        PASS [   0.003s] (234/636) contracts decision::export_bindings_clearedevent
+        PASS [   0.003s] (235/636) contracts decision::export_bindings_decision
+        PASS [   0.003s] (236/636) contracts decision::export_bindings_outcome
+        PASS [   0.003s] (237/636) contracts decision::export_bindings_permissionoutput
+        PASS [   0.003s] (238/636) contracts decision::export_bindings_permissionparams
+        PASS [   0.002s] (239/636) contracts decision::tests::h2_answer_is_the_word_allow_or_deny_on_the_wire
+        PASS [   0.002s] (240/636) contracts decision::tests::h2_answer_params_reject_a_word_that_is_neither_allow_nor_deny
+        PASS [   0.002s] (241/636) contracts decision::tests::h2_answer_params_round_trip_with_the_proof
+        PASS [   0.003s] (242/636) contracts decision::tests::h2_cleared_event_round_trips_through_json
+        PASS [   0.002s] (243/636) contracts decision::tests::h2_decision_round_trips_through_json
+        PASS [   0.003s] (244/636) contracts decision::tests::h2_decision_wire_shape_has_every_field_h2_names
+        PASS [   0.002s] (245/636) contracts decision::tests::h2_outcome_agent_gone_is_hyphenated_on_the_wire
+        PASS [   0.002s] (246/636) contracts decision::tests::h2_permission_output_is_empty_for_ask_user_question
+        PASS [   0.002s] (247/636) contracts decision::tests::h2_permission_params_round_trip_the_payload_untouched
+        PASS [   0.002s] (248/636) contracts decision::tests::h4_a_missing_proof_deserializes_as_none
+        PASS [   0.012s] (249/636) contracts event::export_bindings_event
+        PASS [   0.011s] (250/636) contracts event::export_bindings_eventdata
+        PASS [   0.003s] (251/636) contracts message::export_bindings_delivery
+        PASS [   0.003s] (252/636) contracts message::export_bindings_listparams
+        PASS [   0.005s] (253/636) contracts message::export_bindings_message
+        PASS [   0.003s] (254/636) contracts message::export_bindings_messageid
+        PASS [   0.003s] (255/636) contracts message::export_bindings_messagekind
+        PASS [   0.003s] (256/636) contracts message::export_bindings_messagestatus
+        PASS [   0.003s] (257/636) contracts message::export_bindings_reason
+        PASS [   0.003s] (258/636) contracts message::export_bindings_route
+        PASS [   0.003s] (259/636) contracts message::export_bindings_sendparams
+        PASS [   0.003s] (260/636) contracts message::export_bindings_setrouteparams
+        PASS [   0.003s] (261/636) contracts message::export_bindings_takeoverchanged
+        PASS [   0.003s] (262/636) contracts message::export_bindings_takeoverparams
+        PASS [   0.002s] (263/636) contracts methods::tests::method_names_are_unique
+        PASS [   0.003s] (264/636) contracts methods::tests::writes_methods_ts
+        PASS [   0.003s] (265/636) contracts pad::export_bindings_appendparams
+        PASS [   0.003s] (266/636) contracts pad::export_bindings_createparams
+        PASS [   0.003s] (267/636) contracts pad::export_bindings_exportparams
+        PASS [   0.004s] (268/636) contracts pad::export_bindings_pad
+        PASS [   0.003s] (269/636) contracts pad::export_bindings_padname
+        PASS [   0.004s] (270/636) contracts pad::export_bindings_setownerparams
+        PASS [   0.004s] (271/636) contracts pad::export_bindings_setstorageparams
+        PASS [   0.004s] (272/636) contracts pad::export_bindings_writeparams
+        PASS [   0.004s] (273/636) contracts project::export_bindings_projectsettings
+        PASS [   0.003s] (274/636) contracts project::export_bindings_worktrees
+        PASS [   0.003s] (275/636) contracts terminal::export_bindings_exitedevent
+        PASS [   0.003s] (276/636) contracts terminal::export_bindings_outputevent
+        PASS [   0.003s] (277/636) contracts terminal::export_bindings_resizeparams
+        PASS [   0.003s] (278/636) contracts terminal::export_bindings_snapshot
+        PASS [   0.003s] (279/636) contracts terminal::export_bindings_spawnparams
+        PASS [   0.003s] (280/636) contracts terminal::export_bindings_terminalid
+        PASS [   0.003s] (281/636) contracts terminal::export_bindings_terminalinfo
+        PASS [   0.003s] (282/636) contracts terminal::export_bindings_titleevent
+        PASS [   0.003s] (283/636) contracts terminal::export_bindings_writeparams
+        PASS [   0.003s] (284/636) contracts todo::export_bindings_createparams
+        PASS [   0.004s] (285/636) contracts todo::export_bindings_setblockersparams
+        PASS [   0.004s] (286/636) contracts todo::export_bindings_todo
+        PASS [   0.003s] (287/636) contracts todo::export_bindings_todoid
+        PASS [   0.003s] (288/636) contracts todo::export_bindings_updateparams
+        PASS [   0.003s] (289/636) contracts todo::tests::m1_create_params_schema_requires_only_the_title
+        PASS [   0.003s] (290/636) desktop config::tests::s5_a_reopen_whose_prefixed_path_stays_under_the_limit_is_accepted
+        PASS [   0.002s] (291/636) desktop config::tests::s5_a_reopen_whose_prefixed_path_would_break_the_limit_is_refused_up_front
+        PASS [   0.315s] (292/636) desktop::app s1_a_daemon_silent_past_the_ready_bound_is_internal
+        PASS [   0.329s] (293/636) desktop::app s1_a_daemon_that_accepts_connections_but_never_answers_ping_is_silent_past_the_bound
+        PASS [   0.026s] (294/636) desktop::app s1_a_daemon_that_exits_is_internal_and_carries_its_stderr
+        PASS [   0.027s] (295/636) desktop::app s1_a_failed_roundup_project_start_exits_non_zero_without_panicking
+        PASS [   0.026s] (296/636) desktop::app s1_a_path_that_is_not_a_directory_is_invalid_params_naming_it
+        PASS [   0.061s] (297/636) desktop::app s1_a_project_path_ending_in_dotdot_is_named_after_the_directory_it_reaches
+        PASS [   0.067s] (298/636) desktop::app s1_a_second_open_project_is_conflict
+        PASS [   0.021s] (299/636) desktop::app s1_a_socket_path_of_103_bytes_is_accepted_and_104_is_rejected
+        PASS [   0.061s] (300/636) desktop::app s1_open_project_starts_rupd_attached_on_the_socket_the_app_chose
+        PASS [   0.069s] (301/636) desktop::app s1_project_is_null_until_one_is_open_and_then_the_open_one
+        PASS [   0.063s] (302/636) desktop::app s1_started_as_roundup_project_opens_that_project
+        PASS [   0.028s] (303/636) desktop::app s1_stderr_that_is_not_utf8_does_not_stop_the_tail
+        PASS [   0.022s] (304/636) desktop::app s1_the_daemon_is_the_env_override_else_the_rupd_beside_the_executable
+        PASS [   0.020s] (305/636) desktop::app s1_the_socket_is_unique_to_the_run_and_under_the_unix_limit
+        PASS [   0.016s] (306/636) desktop::app s1_the_webview_is_granted_dialogs_the_dock_badge_and_hearing_events_and_nothing_else
+        PASS [   0.026s] (307/636) desktop::app s1_the_webview_may_listen_for_daemon_exited_through_the_real_capabilities
+        PASS [   0.059s] (308/636) desktop::app s2_a_call_that_fails_in_the_daemon_fails_with_the_daemons_code_and_message
+        PASS [   0.064s] (309/636) desktop::app s2_a_second_subscribe_replaces_the_first
+        PASS [   0.021s] (310/636) desktop::app s2_before_a_project_is_open_rpc_and_subscribe_fail_at_once_with_conflict
+        PASS [   0.098s] (311/636) desktop::app s2_events_the_daemon_emits_in_one_burst_arrive_on_the_channel_in_order
+        PASS [   0.055s] (312/636) desktop::app s2_rpc_ping_answers_pong
+        PASS [   0.048s] (313/636) desktop::app s2_subscribe_through_ipc_takes_a_channel_argument_and_answers_null
+        PASS [   0.063s] (314/636) desktop::app s3_a_daemon_ended_by_a_signal_has_a_null_code
+        PASS [   0.062s] (315/636) desktop::app s3_after_the_daemon_exits_rpc_fails_with_internal
+        PASS [   0.072s] (316/636) desktop::app s3_when_the_app_exits_the_daemons_stdin_closes
+        PASS [   0.062s] (317/636) desktop::app s3_when_the_app_exits_the_socket_file_it_owned_is_gone
+        PASS [   0.062s] (318/636) desktop::app s3_when_the_daemon_exits_on_its_own_the_webview_gets_daemon_exited_with_its_code
+        PASS [   0.073s] (319/636) desktop::app s4_just_app_refuses_to_start_when_something_already_answers_on_the_dev_port
+        PASS [   0.012s] (320/636) desktop::app s4_the_built_app_embeds_the_directory_vite_builds_into
+        PASS [   0.010s] (321/636) desktop::app s4_the_dev_window_loads_the_dev_server_on_the_port_vite_is_pinned_to
+        PASS [   0.045s] (322/636) desktop::app s5_a_failed_reopen_is_internal
+        PASS [   0.077s] (323/636) desktop::app s5_a_refused_reopen_does_not_burn_a_run_number
+        PASS [   0.057s] (324/636) desktop::app s5_a_reopen_past_the_socket_limit_fails_open_project_with_internal
+        PASS [   0.091s] (325/636) desktop::app s5_a_second_open_project_while_a_reopen_is_still_starting_is_conflict
+        PASS [   0.066s] (326/636) desktop::app s5_after_a_failed_reopen_a_different_path_is_still_conflict
+        PASS [   0.094s] (327/636) desktop::app s5_after_a_failed_reopen_the_same_path_can_be_retried
+        PASS [   0.065s] (328/636) desktop::app s5_after_an_exit_a_different_path_is_conflict
+        PASS [   0.092s] (329/636) desktop::app s5_daemon_exited_fires_again_when_the_reopened_daemon_exits
+        PASS [   0.092s] (330/636) desktop::app s5_reopening_starts_rupd_on_a_socket_path_unique_to_the_new_run
+        PASS [   0.093s] (331/636) desktop::app s5_reopening_with_the_same_path_starts_a_new_working_daemon
+        PASS [   0.093s] (332/636) desktop::app s5_subscribe_after_reopen_receives_the_new_daemons_events
+        PASS [   0.064s] (333/636) desktop::app s5_until_the_reopen_rpc_still_fails_with_internal
+        PASS [   0.087s] (334/636) desktop::app s5_while_the_reopened_daemon_runs_a_second_open_project_is_conflict
+        PASS [   0.006s] (335/636) messages store::tests::b5_a_stored_route_word_no_variant_has_is_an_error
+        PASS [   0.005s] (336/636) messages store::tests::b6_a_held_for_takeover_message_becomes_pending_on_reopen
+        PASS [   0.007s] (337/636) messages store::tests::b6_begin_between_check_and_record_holds_the_message
+        PASS [   0.005s] (338/636) messages store::tests::b8_a_store_written_before_rank_opens_and_takes_a_send
+        PASS [   0.008s] (339/636) messages store::tests::b8_a_stored_word_no_variant_has_is_an_error_not_a_default
+        PASS [   0.008s] (340/636) messages store::tests::b8_every_reason_status_and_kind_survives_reopening
+        PASS [   0.015s] (341/636) messages tests::b10_a_message_to_the_user_is_delivered_at_once_and_never_fills_their_slots
+        PASS [   0.009s] (342/636) messages tests::b11_a_forbidden_get_leaves_no_touch
+        PASS [   0.009s] (343/636) messages tests::b11_an_extension_sharing_a_receivers_id_cannot_read_or_list_its_messages
+        PASS [   0.009s] (344/636) messages tests::b11_drop_touches_wrote_by_the_user
+        PASS [   0.009s] (345/636) messages tests::b11_list_for_an_agent_never_matches_an_extension_sharing_its_id
+        PASS [   0.010s] (346/636) messages tests::b11_list_for_an_agent_returns_only_messages_it_sent_or_received
+        PASS [   0.009s] (347/636) messages tests::b11_list_status_filters_by_status
+        PASS [   0.009s] (348/636) messages tests::b11_list_to_filters_by_receiver
+        PASS [   0.009s] (349/636) messages tests::b11_provenance_touched_lists_a_message_under_each_actor_that_touched_it
+        PASS [   0.009s] (350/636) messages tests::b11_reading_an_agent_never_matches_an_extension_sharing_its_id
+        PASS [   0.009s] (351/636) messages tests::b11_reading_is_by_actor_the_user_may_read_any_an_agent_only_its_own
+        PASS [   0.008s] (352/636) messages tests::b11_send_deliver_and_drop_touch_wrote_get_touches_read_list_touches_nothing
+        PASS [   0.006s] (353/636) messages tests::b1_a_body_of_exactly_8192_bytes_is_accepted
+        PASS [   0.008s] (354/636) messages tests::b1_a_message_to_the_user_is_accepted
+        PASS [   0.008s] (355/636) messages tests::b1_a_meta_agent_a_promoted_group_can_receive
+        PASS [   0.018s] (356/636) messages tests::b1_a_receiver_at_the_bound_of_32_is_conflict
+        PASS [   0.012s] (357/636) messages tests::b1_a_receiver_that_is_done_or_error_is_conflict
+        PASS [   0.021s] (358/636) messages tests::b1_a_rejected_call_at_the_bound_changes_nothing
+        PASS [   0.009s] (359/636) messages tests::b1_a_rejected_call_changes_nothing
+        PASS [   0.008s] (360/636) messages tests::b1_a_reply_to_that_names_no_message_is_invalid_params
+        PASS [   0.007s] (361/636) messages tests::b1_a_to_that_is_a_terminal_a_group_or_the_sender_is_invalid_params
+        PASS [   0.008s] (362/636) messages tests::b1_a_to_that_names_no_actor_is_not_found
+        PASS [   0.397s] (363/636) messages tests::b1_concurrent_sends_at_the_bound_never_both_succeed
+        PASS [   0.013s] (364/636) messages tests::b1_dropped_messages_do_not_count_toward_the_bound_of_32
+        PASS [   0.007s] (365/636) messages tests::b1_empty_or_oversized_body_is_invalid_params
+        PASS [   0.012s] (366/636) messages tests::b1_held_messages_count_toward_the_bound_of_32
+        PASS [   0.007s] (367/636) messages tests::b1_kind_other_than_note_or_question_is_invalid_params
+        PASS [   0.008s] (368/636) messages tests::b1_only_an_agent_or_the_user_is_its_own_receiver
+        PASS [   0.007s] (369/636) messages tests::b1_reply_to_round_trips_on_a_successful_send
+        PASS [   0.008s] (370/636) messages tests::b1_send_assigns_sequential_ids_from_is_the_caller_and_touches_wrote
+        PASS [   0.018s] (371/636) messages tests::b1_the_bound_of_32_is_per_receiver_not_shared
+        PASS [   0.008s] (372/636) messages tests::b3_an_ask_first_route_holds_the_message_with_reason_ask_first
+        PASS [   0.131s] (373/636) messages tests::b3_concurrent_deliver_and_drop_of_one_held_message_never_both_succeed
+        PASS [   0.007s] (374/636) messages tests::b3_deliver_and_drop_are_the_users_calls_only
+        PASS [   0.006s] (375/636) messages tests::b3_deliver_clears_the_held_reason
+        PASS [   0.006s] (376/636) messages tests::b3_deliver_of_a_held_message_emits_no_event_until_it_is_typed
+        PASS [   0.006s] (377/636) messages tests::b3_deliver_or_drop_on_a_message_that_is_not_held_is_conflict
+        PASS [   0.007s] (378/636) messages tests::b3_deliver_or_drop_on_an_unknown_id_is_not_found
+        PASS [   0.006s] (379/636) messages tests::b3_drop_clears_the_held_reason
+        PASS [   0.006s] (380/636) messages tests::b3_drop_moves_a_held_message_to_dropped_and_emits_message_dropped
+        PASS [   0.005s] (381/636) messages tests::b4_a_drop_route_drops_the_message_without_an_error
+        PASS [   0.005s] (382/636) messages tests::b5_a_route_applies_only_to_its_own_sender_not_every_sender_to_the_receiver
+        PASS [   0.005s] (383/636) messages tests::b5_a_route_change_does_not_affect_an_already_held_message
+        PASS [   0.005s] (384/636) messages tests::b5_a_route_change_does_not_affect_an_already_pending_or_held_message
+        PASS [   0.005s] (385/636) messages tests::b5_a_route_to_the_user_or_from_itself_is_invalid_params
+        PASS [   0.005s] (386/636) messages tests::b5_changing_an_existing_route_applies_to_messages_sent_after_it
+        PASS [   0.005s] (387/636) messages tests::b5_route_set_is_the_users_call_and_route_list_returns_it
+        PASS [   0.005s] (388/636) messages tests::b5_the_default_route_is_auto
+        PASS [   0.007s] (389/636) messages tests::b8_routes_messages_and_statuses_survive_reopening_and_the_id_sequence_continues
+        PASS [   0.006s] (390/636) messages tests::b_held_tests::b10_a_message_to_the_user_is_delivered_at_once_with_no_status_event
+        PASS [   0.011s] (391/636) messages tests::b_held_tests::b1_held_for_takeover_messages_count_toward_the_bound_of_32
+        PASS [   0.017s] (392/636) messages tests::b_held_tests::b2_a_messages_opened_before_any_runtime_still_types_on_idle
+        PASS [   0.168s] (393/636) messages tests::b_held_tests::b2_a_rail_that_cannot_answer_leaves_the_message_pending_for_the_next_idle
+        PASS [   0.174s] (394/636) messages tests::b_held_tests::b2_a_refused_delivery_leaves_the_message_pending_and_emits_nothing
+        PASS [   0.025s] (395/636) messages tests::b_held_tests::b2_a_reopened_store_on_a_runtime_types_on_an_idle_before_any_call
+        PASS [   0.023s] (396/636) messages tests::b_held_tests::b2_a_reopened_store_opened_before_any_runtime_types_on_an_idle_before_the_first_call
+        PASS [   0.022s] (397/636) messages tests::b_held_tests::b2_a_sender_no_longer_on_the_rail_is_named_by_its_id
+        PASS [   0.022s] (398/636) messages tests::b_held_tests::b2_an_idle_records_delivered_and_emits_message_delivered
+        PASS [   0.031s] (399/636) messages tests::b_held_tests::b2_typed_text_is_from_name_kind_body
+        PASS [   0.020s] (400/636) messages tests::b_held_tests::b2_typed_text_names_an_agent_by_its_rail_name
+        PASS [   0.184s] (401/636) messages tests::b_held_tests::b6_a_busy_refusal_during_a_takeover_holds_the_message_for_it
+        PASS [   0.172s] (402/636) messages tests::b_held_tests::b6_a_busy_refusal_of_a_users_message_during_a_takeover_leaves_it_pending
+        PASS [   0.324s] (403/636) messages tests::b_held_tests::b6_a_message_recorded_delivered_before_begin_stays_delivered
+        PASS [   0.010s] (404/636) messages tests::b_held_tests::b6_a_meta_agent_can_be_taken_over
+        PASS [   0.011s] (405/636) messages tests::b_held_tests::b6_a_new_daemon_has_no_takeover_and_its_holds_are_pending
+        PASS [   0.021s] (406/636) messages tests::b_held_tests::b6_a_takeover_ends_by_itself_when_the_agent_exits_and_its_holds_are_then_dropped
+        PASS [   0.007s] (407/636) messages tests::b_held_tests::b6_an_id_that_names_no_agent_is_not_found_and_an_ended_agent_is_a_conflict
+        PASS [   0.020s] (408/636) messages tests::b_held_tests::b6_deliver_on_a_takeover_hold_releases_it_though_the_takeover_goes_on
+        PASS [   0.012s] (409/636) messages tests::b_held_tests::b6_drop_of_a_takeover_held_message
+        PASS [   0.010s] (410/636) messages tests::b_held_tests::b6_during_a_takeover_a_message_from_anyone_but_the_user_is_held_for_it
+        PASS [   0.009s] (411/636) messages tests::b_held_tests::b6_each_change_emits_once_and_a_repeat_changes_nothing
+        PASS [   0.012s] (412/636) messages tests::b_held_tests::b6_only_the_user_begins_and_ends_a_takeover
+        PASS [   0.009s] (413/636) messages tests::b_held_tests::b6_pending_messages_are_held_when_a_takeover_begins
+        PASS [   0.020s] (414/636) messages tests::b_held_tests::b6_the_end_releases_takeover_holds_in_id_order_and_keeps_ask_first_held
+        PASS [   0.005s] (415/636) messages tests::b_held_tests::b6_the_user_a_terminal_and_a_group_cannot_be_taken_over
+        PASS [   0.018s] (416/636) messages tests::b_held_tests::b7_a_held_message_never_blocks_a_later_one
+        PASS [   0.032s] (417/636) messages tests::b_held_tests::b7_a_hold_released_on_reopen_goes_behind_the_pending_messages
+        PASS [   0.034s] (418/636) messages tests::b_held_tests::b7_a_message_sent_after_a_release_goes_behind_it
+        PASS [   0.157s] (419/636) messages tests::b_held_tests::b7_exactly_one_message_is_typed_per_idle
+        PASS [   0.466s] (420/636) messages tests::b_held_tests::b7_messages_are_typed_in_the_order_they_became_deliverable
+        PASS [   0.035s] (421/636) messages tests::b_held_tests::b7_messages_released_by_an_end_go_behind_those_already_pending
+        PASS [   0.025s] (422/636) messages tests::b_held_tests::b9_a_done_lost_to_lag_still_drops_pending
+        PASS [   0.165s] (423/636) messages tests::b_held_tests::b9_a_lag_drops_nothing_for_a_live_agent
+        PASS [   0.177s] (424/636) messages tests::b_held_tests::b9_a_lag_while_the_rail_cannot_answer_still_drops_pending_once_it_can
+        PASS [   0.164s] (425/636) messages tests::b_held_tests::b9_a_later_send_or_a_deliver_to_an_ended_agent_is_a_conflict_and_changes_nothing
+        PASS [   0.044s] (426/636) messages tests::b_held_tests::b9_an_agent_that_ends_drops_its_pending_messages_in_id_order
+        PASS [   0.007s] (427/636) pads name::tests::p8_accepts_plain_names
+        PASS [   0.008s] (428/636) pads store::tests::updates_to_a_pad_deleted_through_another_connection_report_no_change
+        PASS [   0.006s] (429/636) pads tests::an_update_that_changed_no_row_is_not_found
+        PASS [   0.007s] (430/636) pads::pads a_database_from_an_older_version_fails_to_open_loudly
+        PASS [   0.004s] (431/636) pads::pads p1_create_makes_the_caller_owner_and_logs_a_write
+        PASS [   0.004s] (432/636) pads::pads p1_every_method_resolves_other_spellings_to_the_same_pad
+        PASS [   0.004s] (433/636) pads::pads p1_names_are_unique_ignoring_case
+        PASS [   0.004s] (434/636) pads::pads p1_names_that_fold_or_normalize_together_conflict
+        PASS [   0.004s] (435/636) pads::pads p2_owner_rewrites_and_others_only_append
+        PASS [   0.004s] (436/636) pads::pads p3_list_is_ordered_and_read_is_logged
+        PASS [   0.004s] (437/636) pads::pads p4_owner_may_hand_over_its_own_pad
+        PASS [   0.004s] (438/636) pads::pads p4_user_flips_ownership_and_owner_may_hand_over
+        PASS [   0.004s] (439/636) pads::pads p5_a_case_clash_in_file_mode_leaves_the_first_pad_and_its_file
+        PASS [   0.004s] (440/636) pads::pads p5_a_failed_file_write_changes_nothing_and_emits_nothing
+        PASS [   0.005s] (441/636) pads::pads p5_a_failed_flip_back_applies_nothing_and_can_be_retried
+        PASS [   0.006s] (442/636) pads::pads p5_a_flip_back_that_fails_part_way_imports_nothing
+        PASS [   0.005s] (443/636) pads::pads p5_a_name_the_file_system_refuses_is_invalid_params
+        PASS [   0.006s] (444/636) pads::pads p5_a_pair_that_once_collided_shares_one_file_and_survives_the_flip
+        PASS [   0.006s] (445/636) pads::pads p5_a_write_is_atomic_so_hard_links_keep_the_old_text
+        PASS [   0.006s] (446/636) pads::pads p5_a_write_that_loses_to_a_delete_leaves_no_file
+        PASS [   0.007s] (447/636) pads::pads p5_files_mirror_pads_and_edits_import_when_flipped_back
+        PASS [   0.006s] (448/636) pads::pads p5_flip_back_reports_only_the_edited_pad
+        PASS [   0.005s] (449/636) pads::pads p6_a_relative_export_path_is_invalid_params
+        PASS [   0.006s] (450/636) pads::pads p6_export_writes_one_file_and_never_creates_directories
+        PASS [   0.006s] (451/636) pads::pads p7_every_pad_keeps_its_own_owner_and_text_after_reopening
+        PASS [   0.007s] (452/636) pads::pads p7_pads_survive_reopening_the_directory
+        PASS [   0.006s] (453/636) pads::pads p8_a_stored_pad_that_escapes_the_directory_fails_flip_back
+        PASS [   0.006s] (454/636) pads::pads p8_a_stored_pad_with_a_bad_name_fails_the_flip_as_invalid_params
+        PASS [   0.007s] (455/636) pads::pads p8_bad_names_are_invalid_params_for_every_method
+        PASS [   0.008s] (456/636) pads::pads p8_flip_back_validates_before_reading_any_file
+        PASS [   0.009s] (457/636) pads::pads p8_flip_validates_every_name_before_any_file_operation
+        PASS [   0.008s] (458/636) pads::pads p9_a_failed_file_removal_deletes_nothing
+        PASS [   0.005s] (459/636) pads::pads p9_delete_removes_the_file_when_file_backed
+        PASS [   0.004s] (460/636) pads::pads p9_delete_succeeds_when_the_file_was_removed_on_disk
+        PASS [   0.004s] (461/636) pads::pads p9_owner_or_user_deletes_and_others_are_forbidden
+        PASS [   0.003s] (462/636) perf::budget r1_a_value_nine_percent_over_its_baseline_passes_and_ten_percent_is_the_edge
+        PASS [   0.003s] (463/636) perf::budget r2_a_value_eleven_percent_over_its_baseline_fails
+        PASS [   0.002s] (464/636) perf::budget r3_a_value_over_the_limit_fails_whatever_the_baseline
+        PASS [   0.003s] (465/636) perf::budget r4_the_noise_allowance_covers_a_metric_near_the_clock_resolution
+        PASS [   0.003s] (466/636) perf::budget r5_the_median_ignores_one_outlier_and_averages_the_middle_pair
+        PASS [   0.002s] (467/636) perf::budget r6_a_platform_without_a_baseline_is_held_to_the_limit_only
+        PASS [   0.003s] (468/636) perf::budget r7_a_budget_for_a_metric_that_was_not_measured_is_an_error
+        PASS [   0.002s] (469/636) perf::budget r8_committed_max_load_per_cpu_pins_the_thresholds_and_exempts_memory_only
+        PASS [   0.003s] (470/636) perf::budget r8_every_committed_baseline_gates_within_fifteen_percent_and_the_rest_have_a_limit
+        PASS [   0.002s] (471/636) perf::budget r8_the_committed_baselines_are_the_recorded_values
+        PASS [   0.003s] (472/636) perf::budget r8_the_committed_limits_are_rule_sevens_budgets
+        PASS [   0.003s] (473/636) perf::budget r9_a_value_at_a_committed_limit_passes_and_the_next_one_fails
+        PASS [   0.003s] (474/636) perf::budget r9_the_regression_ceiling_is_inclusive_and_exact_at_the_float_edge
+        PASS [   0.004s] (475/636) perf::cli r10_a_missing_budgets_file_exits_2_naming_it
+        PASS [   0.004s] (476/636) perf::cli r10_a_missing_rupd_exits_2_naming_it
+        PASS [   0.004s] (477/636) perf::hook_loop h15_a_failing_rup_signal_fails_the_metric
+        PASS [   0.005s] (478/636) perf::hook_loop h15_calls_that_exit_0_report_their_wall_time
+        PASS [   0.008s] (479/636) perf::hook_loop h15_hook_calls_runs_exactly_the_calls_asked_for_cycling_the_payloads
+        PASS [   0.007s] (480/636) perf::keystroke_guard r12_only_the_value_1_allows_it
+        PASS [   0.004s] (481/636) perf::keystroke_guard r12_with_the_variable_it_says_what_it_opens_and_then_goes_on_to_the_app
+        PASS [   0.004s] (482/636) perf::keystroke_guard r12_without_the_variable_it_refuses_before_touching_the_app
+        PASS [   0.003s] (483/636) perf::r13 conclude_writes_perf_json_before_propagating_a_budget_check_error
+        PASS [   0.003s] (484/636) perf::r13 r13_a_limit_miss_is_shown_together_with_the_skip_reason
+        PASS [   0.003s] (485/636) perf::r13 r13_a_limit_still_fails_while_its_regression_test_is_skipped
+        PASS [   0.002s] (486/636) perf::r13 r13_a_threshold_for_another_os_does_not_skip_this_os
+        PASS [   0.002s] (487/636) perf::r13 r13_an_unbudgeted_metric_does_not_stop_the_rest_from_being_judged
+        PASS [   0.002s] (488/636) perf::r13 r13_at_the_threshold_the_regression_test_still_compares
+        PASS [   0.003s] (489/636) perf::r13 r13_exits_0_when_every_metric_was_skipped_and_nothing_exceeded_its_limit
+        PASS [   0.002s] (490/636) perf::r13 r13_load_per_cpu_is_the_median_of_the_runs_divided_by_cpu_count
+        PASS [   0.002s] (491/636) perf::r13 r13_memory_is_compared_whatever_the_load
+        PASS [   0.003s] (492/636) perf::r13 r13_skipped_above_the_threshold_says_not_compared_with_the_load_and_max
+        PASS [   0.004s] (493/636) perf::r13 r13_the_cli_exits_2_naming_missing_load_figures_when_no_runs_happened
+        PASS [   0.003s] (494/636) perf::r13 r13_the_skip_summary_counts_every_skipped_metric
+        PASS [   0.003s] (495/636) perf::r13 r13_the_skip_summary_reports_the_median_load_per_cpu_over_multiple_runs
+        PASS [   0.003s] (496/636) perf::r13 r13_the_skipped_key_in_perf_json_holds_the_skipped_metrics
+        PASS [   0.003s] (497/636) perf::r13 r13_the_skipped_key_is_present_and_empty_when_nothing_was_skipped
+        PASS [   0.003s] (498/636) perf::r13 r13_the_summary_line_is_last_when_nothing_was_skipped
+        PASS [   0.003s] (499/636) perf::webview r11_a_failure_the_webview_reported_is_refused_with_its_message
+        PASS [   0.003s] (500/636) perf::webview r11_a_full_rate_run_with_few_dropped_keys_is_accepted
+        PASS [   0.003s] (501/636) perf::webview r11_a_throttled_window_is_refused_naming_the_frame_time
+        PASS [   0.003s] (502/636) perf::webview r11_more_than_five_percent_dropped_keys_is_refused
+        PASS [   0.002s] (503/636) perf::webview r11_the_frame_time_limit_is_25_ms_inclusive
+        PASS [   0.002s] (504/636) perf::webview r11_the_perf_line_is_found_once_complete_among_echoed_keys
+        PASS [   0.003s] (505/636) provenance tests::history_lists_touches_of_one_item_oldest_first
+        PASS [   0.003s] (506/636) provenance tests::touched_lists_everything_one_actor_did
+        PASS [   0.003s] (507/636) rpc client::tests::a_write_failure_removes_the_reservation_instead_of_leaking_it
+        PASS [   0.002s] (508/636) rpc client::tests::c1_a_reservation_made_after_close_is_refused_instead_of_racing_the_clear
+        PASS [   0.003s] (509/636) rpc client::tests::c1_a_reservation_made_before_close_is_woken_instead_of_left_pending
+        PASS [   0.003s] (510/636) rpc::client c1_a_connection_that_drops_after_the_request_is_written_is_unknown_outcome
+        PASS [   0.003s] (511/636) rpc::client c1_a_request_after_the_connection_is_known_closed_does_not_hang_even_if_the_write_would_land
+        PASS [   0.003s] (512/636) rpc::client c1_a_request_made_after_the_connection_is_known_closed_fails_at_once_and_says_not_sent
+        PASS [   0.003s] (513/636) rpc::client c1_a_request_that_cannot_be_written_at_all_fails_with_internal_and_says_not_sent
+        PASS [   0.003s] (514/636) rpc::client c1_every_other_pending_call_fails_the_same_way_and_none_hangs
+        PASS [   0.003s] (515/636) rpc::client c1_every_other_pending_call_gets_the_same_message_too
+        PASS [   0.137s] (516/636) rup::e2e a16_removing_an_agent_leaves_its_pads_and_todos_untouched
+        PASS [   0.143s] (517/636) rup::e2e d2_status_follows_the_hooks_in_order
+        PASS [   0.183s] (518/636) rup::e2e d2_the_first_prompt_names_the_agent
+        PASS [   0.173s] (519/636) rup::e2e d3_provenance_names_the_agent_that_created_the_todo
+        PASS [   0.172s] (520/636) rup::e2e d3_the_todo_the_agent_created_is_listed
+        PASS [   0.330s] (521/636) rup::e2e d4_a_miss_names_the_not_idle_agents_their_last_status_and_the_rail_tree
+        PASS [   0.441s] (522/636) rup::e2e d4_a_miss_report_omits_agents_already_idle
+        PASS [   0.124s] (523/636) rup::e2e d4_a_miss_tells_a_closed_connection_from_a_slow_daemon
+        PASS [   0.437s] (524/636) rup::e2e d4_an_agent_not_in_ids_does_not_count_toward_idle
+        PASS [   0.327s] (525/636) rup::e2e d4_an_event_not_seen_on_the_stream_is_told_from_a_slow_daemon
+        PASS [   0.281s] (526/636) rup::e2e d4_ten_idle_agents_cost_the_daemon_less_than_150_mb
+        PASS [   0.147s] (527/636) rup::e2e d4_wait_returns_once_every_watched_agent_is_idle_not_at_the_deadline
+        PASS [   0.070s] (528/636) rup::e2e g1_the_worktrees_setting_is_set_and_read_through_the_daemon
+        PASS [   0.123s] (529/636) rup::e2e h15_a_signal_reaches_a_subscribed_client_as_a_status_event
+        PASS [   0.570s] (530/636) rup::e2e h15_every_hook_call_of_a_hundred_tool_use_loop_is_answered_and_the_final_stop_leaves_the_agent_idle
+        PASS [   0.167s] (531/636) rup::e2e t8_creator_survives_removing_the_agent_that_made_the_todo
+        PASS [   0.039s] (532/636) rup::environment a15_agent_spawn_gives_the_program_a_clean_environment
+        PASS [   0.036s] (533/636) rup::environment a15_terminal_spawn_gives_the_program_a_clean_environment
+        PASS [   0.036s] (534/636) rup::environment a15_terminal_spawn_removes_a_marker_passed_in_its_own_env_param
+        PASS [   0.008s] (535/636) rup::environment common::serve_for_the_parent
+        PASS [   0.026s] (536/636) rup::mcp m1_input_schemas_are_the_contract_schemas
+        PASS [   0.024s] (537/636) rup::mcp m1_list_tools_send_null_params_to_the_daemon
+        PASS [   0.024s] (538/636) rup::mcp m1_offers_one_tool_per_method_and_no_others
+        PASS [   0.018s] (539/636) rup::mcp m1_the_server_is_named_roundup
+        PASS [   0.020s] (540/636) rup::mcp m2_a_created_todo_is_a_touch_by_the_calling_agent
+        PASS [   0.024s] (541/636) rup::mcp m2_a_daemon_error_is_a_tool_error_carrying_code_and_message
+        PASS [   0.024s] (542/636) rup::mcp m2_the_server_keeps_serving_after_a_daemon_error
+        PASS [  10.013s] (543/636) rup::mcp m3_a_call_the_daemon_never_answers_exits_1_saying_it_may_have_been_applied
+        PASS [  10.013s] (544/636) rup::mcp m3_a_daemon_that_never_answers_exits_nonzero_with_one_line_naming_the_socket
+        PASS [   0.013s] (545/636) rup::mcp m3_no_daemon_exits_nonzero_with_one_line_naming_the_socket
+        PASS [   0.029s] (546/636) rup::mcp m3_stdout_carries_only_protocol_messages_up_to_the_exit
+        PASS [   0.025s] (547/636) rup::mcp m3_the_call_after_the_daemon_goes_away_makes_the_shim_exit_nonzero
+        PASS [   0.014s] (548/636) rup::mcp m4_the_empty_list_a_cursor_gets_carries_a_numeric_ttl_ms_and_cache_scope
+        PASS [   0.014s] (549/636) rup::mcp m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope
+        PASS [   0.018s] (550/636) rup::ping ping_round_trips_through_the_daemon
+        PASS [   0.053s] (551/636) rup::signal a4_signal_for_an_unknown_agent_fails_loudly
+        PASS [   0.052s] (552/636) rup::signal a4_signal_rejects_a_payload_that_is_not_json
+        PASS [   0.058s] (553/636) rup::signal a4_signal_signals_the_agent_as_that_agent
+        PASS [   0.028s] (554/636) rup::signal a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arrived
+        PASS [   1.014s] (555/636) rup::signal a4_signal_to_a_daemon_that_never_answers_exits_1_in_time
+        PASS [   0.028s] (556/636) rup::signal a4_signal_with_no_daemon_exits_1_with_a_message
+        PASS [   0.048s] (557/636) rup::signal a4_signal_with_the_wrong_number_of_arguments_exits_1_not_2
+        PASS [   0.007s] (558/636) rup::signal common::serve_for_the_parent
+        PASS [   1.013s] (559/636) rup::signal h15_a_lost_signal_exits_1_with_exactly_one_stderr_line
+        PASS [   1.012s] (560/636) rup::signal h15_rup_signal_never_runs_more_than_one_os_thread
+        PASS [   0.012s] (561/636) rupd tests::d1_stopping_programs_that_ended_by_themselves_is_not_a_failure
+        PASS [   0.011s] (562/636) rupd tests::garbage_is_a_parse_error
+        PASS [   0.010s] (563/636) rupd tests::module_methods_reach_their_module_with_the_callers_actor
+        PASS [   0.010s] (564/636) rupd tests::ping_answers_pong
+        PASS [   0.011s] (565/636) rupd tests::subscribers_receive_events_pushed_on_the_same_connection
+        PASS [   0.011s] (566/636) rupd tests::the_messages_module_is_reachable_through_the_daemon
+        PASS [   0.011s] (567/636) rupd tests::unknown_method_is_an_error
+        PASS [   0.606s] (568/636) rupd::d1_attached d1_attached_daemon_exits_cleanly_when_programs_end_by_themselves_during_shutdown
+        PASS [   0.250s] (569/636) rupd::d1_attached d1_attached_daemon_exits_when_stdin_closes_and_its_programs_are_gone
+        PASS [   0.037s] (570/636) rupd::d1_attached d1_attached_daemon_exits_when_stdin_is_already_closed
+        PASS [   0.519s] (571/636) rupd::d1_attached d1_without_attached_a_closed_stdin_changes_nothing
+        PASS [   0.064s] (572/636) terminal::scenarios control::x2_input_is_echoed_back_by_cat
+        PASS [   0.019s] (573/636) terminal::scenarios control::x2_input_that_is_not_base64_is_the_callers_error
+        PASS [   0.013s] (574/636) terminal::scenarios control::x5_a_zero_sized_window_is_the_callers_error
+        PASS [   0.010s] (575/636) terminal::scenarios control::x5_resize_changes_what_the_program_sees
+        PASS [   0.007s] (576/636) terminal::scenarios control::x6_an_unknown_terminal_is_not_found
+        PASS [   0.214s] (577/636) terminal::scenarios control::x6_kill_stops_a_program_that_ignores_hangup
+        PASS [   0.061s] (578/636) terminal::scenarios control::x6_kill_stops_the_program_and_keeps_it_listed
+        PASS [   0.014s] (579/636) terminal::scenarios in_process::x8_a_late_subscriber_sees_output_in_order
+        PASS [   5.567s] (580/636) terminal::scenarios in_process::x8_a_slow_subscriber_never_blocks_the_reader
+        PASS [   0.007s] (581/636) terminal::scenarios in_process::x8_resize_is_usable_without_a_socket
+        PASS [   0.006s] (582/636) terminal::scenarios in_process::x8_subscribing_to_an_exited_terminal_is_not_found
+        PASS [   0.005s] (583/636) terminal::scenarios in_process::x8_subscribing_to_an_unknown_terminal_is_not_found
+        PASS [   0.006s] (584/636) terminal::scenarios snapshot::u104_idle_terminal_starts_with_a_blank_snapshot_then_tracks_output
+        PASS [   0.006s] (585/636) terminal::scenarios snapshot::u104_output_offsets_are_contiguous_and_snapshot_after_matches_output
+        PASS [   0.211s] (586/636) terminal::scenarios snapshot::u104_oversized_visible_screen_is_conflict_instead_of_internal
+        PASS [   0.005s] (587/636) terminal::scenarios snapshot::u104_oversized_window_keeps_titles_and_offsets_but_has_no_snapshot
+        PASS [   0.056s] (588/636) terminal::scenarios snapshot::u104_resize_changes_the_snapshot_size_without_changing_its_output_offset
+        PASS [   0.061s] (589/636) terminal::scenarios snapshot::u104_resize_that_would_grow_history_past_its_budget_is_conflict
+        PASS [   0.061s] (590/636) terminal::scenarios snapshot::u104_shrinking_after_an_oversized_window_cannot_claim_a_complete_screen
+        FAIL [   0.016s] (591/636) terminal::scenarios snapshot::u104_snapshot_cuts_old_history_before_the_visible_screen_at_one_megabyte
+  stdout ───
+
+    running 1 test
+    test snapshot::u104_snapshot_cuts_old_history_before_the_visible_screen_at_one_megabyte ... FAILED
+
+    failures:
+
+    failures:
+        snapshot::u104_snapshot_cuts_old_history_before_the_visible_screen_at_one_megabyte
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 43 filtered out; finished in 0.01s
+
+  stderr ───
+
+    thread 'snapshot::u104_snapshot_cuts_old_history_before_the_visible_screen_at_one_megabyte' (181884) panicked at crates/terminal/tests/scenarios/common.rs:51:39:
+    events stay open: Lagged(3)
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+  Cancelling due to test failure: 
+────────────
+     Summary [  62.995s] 591/636 tests run: 590 passed, 1 failed, 0 skipped
+        FAIL [   0.016s] (591/636) terminal::scenarios snapshot::u104_snapshot_cuts_old_history_before_the_visible_screen_at_one_megabyte
+warning: 45/636 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed
+error: recipe `check` failed on line 5 with exit code 100

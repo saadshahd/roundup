@@ -1,0 +1,16 @@
+(async () => {
+  const result = [];
+  const center = (element) => { const box = element.getBoundingClientRect(); return box.y + box.height / 2; };
+  for (const row of document.querySelectorAll('.rail-row')) {
+    const name = row.querySelector('.name');
+    const before = name.getBoundingClientRect().y - row.getBoundingClientRect().y;
+    row.click();
+    await new Promise(requestAnimationFrame);
+    const box = row.getBoundingClientRect();
+    result.push({id: row.dataset.id, depth: row.getAttribute('aria-level'), height: box.height,
+      nameOffset: center(name) - center(row), glyphOffset: center(row.querySelector('.glyph')) - center(row),
+      selectionShift: name.getBoundingClientRect().y - box.y - before});
+  }
+  document.querySelector('[data-id="tokens"]').click();
+  return {viewport: [innerWidth, innerHeight], rows: result};
+})()

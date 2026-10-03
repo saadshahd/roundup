@@ -1,0 +1,54 @@
+
+> desktop@ test /home/boxd/roundup/apps/desktop
+> vitest run src/rail/u6_alignment.test.tsx
+
+
+ RUN  v5.0.3 /home/boxd/roundup/apps/desktop
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ ❯ src/rail/u6_alignment.test.tsx (3 tests | 3 failed) 325ms
+   × u6_row_contents_stay_centered_in_the_selection_band_at_depth_0 255ms
+   × u6_row_contents_stay_centered_in_the_selection_band_at_depth_1 33ms
+   × u6_row_contents_stay_centered_in_the_selection_band_at_depth_2 36ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/rail/u6_alignment.test.tsx > u6_row_contents_stay_centered_in_the_selection_band_at_depth_0
+ FAIL  src/rail/u6_alignment.test.tsx > u6_row_contents_stay_centered_in_the_selection_band_at_depth_1
+ FAIL  src/rail/u6_alignment.test.tsx > u6_row_contents_stay_centered_in_the_selection_band_at_depth_2
+AssertionError: group rest: expected { height: 28, centerOffset: 14, …(3) } to deeply equal { height: 28, centerOffset: +0, …(3) }
+
+- Expected
++ Received
+
+  {
+    "alignment": "center",
+-   "centerOffset": 0,
++   "centerOffset": 14,
+    "display": "flex",
+    "height": 28,
+    "margin": "0px",
+  }
+
+ ❯ src/rail/u6_alignment.test.tsx:43:85
+     41|
+     42|         expect({ height: bandHeight, centerOffset: (bandHeight - lineH…
+     43|           display: line.display, margin: line.marginTop }, `${node.nam…
+       |                                                                                     ^
+     44|           height: 28, centerOffset: 0, alignment: "center", display: "…
+     45|         });
+ ❯ withStylesheets src/testing/contrast.ts:165:12
+ ❯ src/rail/u6_alignment.test.tsx:10:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+   Start at  23:08:14
+   Duration  2.04s (transform 41%, environment 27%, tests 17%, import 14%, setup 1%)
+
+/home/boxd/roundup/apps/desktop:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  desktop@ test: `vitest run src/rail/u6_alignment.test.tsx`
+Exit status 1
