@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, pad, todo};
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, CallToolResult, PaginatedRequestParams, ProtocolVersion};
+use rmcp::model::{
+    CacheScope, CallToolRequestParams, CallToolResult, PaginatedRequestParams, ProtocolVersion,
+};
 use rmcp::service::{RoleClient, RunningService};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -467,7 +469,7 @@ async fn raw_tools_list(socket: &Path, cursor: Option<&str>) -> Value {
 }
 
 #[tokio::test]
-async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms() {
+async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("fake.sock");
     let _requests = fake_daemon(&socket, &["daemon.identify"]);
@@ -476,10 +478,11 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms() {
 
     assert_eq!(result["tools"].as_array().unwrap().len(), 13);
     assert!(result["ttlMs"].is_u64(), "{result}");
+    assert_eq!(result["cacheScope"], "public", "{result}");
 }
 
 #[tokio::test]
-async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms() {
+async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("fake.sock");
     let _requests = fake_daemon(&socket, &["daemon.identify"]);
@@ -488,10 +491,11 @@ async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms() {
 
     assert_eq!(result["tools"].as_array().unwrap().len(), 0);
     assert!(result["ttlMs"].is_u64(), "{result}");
+    assert_eq!(result["cacheScope"], "public", "{result}");
 }
 
 #[tokio::test]
-async fn m4_a_second_page_carries_a_numeric_ttl_ms() {
+async fn m4_a_second_page_carries_a_numeric_ttl_ms_and_cache_scope() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("fake.sock");
     let _requests = fake_daemon(&socket, &["daemon.identify"]);
@@ -508,6 +512,12 @@ async fn m4_a_second_page_carries_a_numeric_ttl_ms() {
 
     assert!(page.tools.is_empty());
     assert!(page.ttl_ms.is_some_and(|ms| ms > 0), "{:?}", page.ttl_ms);
+    assert_eq!(
+        page.cache_scope,
+        Some(CacheScope::Public),
+        "{:?}",
+        page.cache_scope
+    );
 }
 
 #[tokio::test]

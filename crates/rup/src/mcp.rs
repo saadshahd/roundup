@@ -21,10 +21,11 @@ use tokio::sync::mpsc;
 /// A Todo or Pad call is a few SQLite statements; past this the Daemon is wedged, and a hung tool call would hang the Agent's turn.
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// How long a client may treat a `tools/list` reply as fresh (SEP-2549; required numeric by protocol
-/// version 2026-07-28, which the interactive Claude Code 2.1.288 enforces even against an older server).
-/// The tool set is fixed for the whole life of this process, so an hour avoids needless refetching
-/// without claiming the tools are fresh forever across a future `rup` upgrade that restarts the shim.
+/// How long a client may treat a `tools/list` reply as fresh (SEP-2549; `ttlMs` and `cacheScope`
+/// are both required by protocol version 2026-07-28, which the interactive Claude Code 2.1.288
+/// checks against even though this server negotiates the older 2025-11-25). The tool set is fixed
+/// for the whole life of this process, so an hour avoids needless refetching; a restart ends the
+/// stdio connection anyway, so there is no later moment at which a cached value could go stale.
 const TOOLS_TTL_MS: u64 = 3_600_000;
 
 struct Offered {
