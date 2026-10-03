@@ -12,7 +12,6 @@
 .rail-row {
   padding-right: 8px;
   cursor: default;
-  position: relative;
   scroll-margin-bottom: var(--rail-actions-height);
 }
 
@@ -41,11 +40,12 @@
   text-overflow: ellipsis;
 }
 
-/* Name keeps priority: Live only grows into what the name's ellipsis leaves, so a row stays one line (U46). */
+/* The gap before Live is cancelled and the 2ch spacing sits in the text, so a Live line given no width takes none of the name's (U46). */
 .rail-row .live {
   flex: 1 1 0;
   min-width: 0;
-  padding-left: 2ch;
+  margin-left: -8px;
+  text-indent: 2ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

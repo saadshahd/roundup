@@ -1,8 +1,8 @@
 import { cleanup, fireEvent } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, metaAgent } from "../testing/nodes";
+import { agent, metaAgent, terminal } from "../testing/nodes";
 import styles from "./styles.css?inline";
-import { mountRail, rowOf } from "./railFixture";
+import { exitedTerminal, mountRail, rowOf } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -53,5 +53,39 @@ describe("u46 hovering or selecting never moves a row", () => {
     sheet.remove();
 
     expect([linesAfter, live?.closest(".line") != null]).toEqual([1, true]);
+  });
+
+  it("u46_an_exited_terminals_live_text_joins_the_first_line_and_keeps_its_title", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    await mountRail([terminal("dev")], [exitedTerminal("dev", 137)]);
+    fireEvent.mouseEnter(rowOf("dev"));
+
+    const live = rowOf("dev").querySelector(".live");
+    const paragraphs = rowOf("dev").querySelectorAll("p").length;
+
+    sheet.remove();
+
+    expect([paragraphs, live?.closest(".line") != null, live?.getAttribute("title") === live?.textContent]).toEqual([1, true, true]);
+  });
+
+  it("u46_the_live_line_takes_no_width_from_the_name_and_is_cut_with_an_ellipsis", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    await mountRail([agent("docs", "working", "writing docs/auth.md")]);
+    fireEvent.mouseEnter(rowOf("docs"));
+
+    const live = getComputedStyle(rowOf("docs").querySelector(".live")!);
+
+    sheet.remove();
+
+    expect([live.minWidth, live.paddingLeft, live.marginLeft, live.textIndent, live.textOverflow, live.overflow]).toEqual([
+      "0px",
+      "0",
+      "-8px",
+      "16px",
+      "ellipsis",
+      "hidden",
+    ]);
   });
 });
