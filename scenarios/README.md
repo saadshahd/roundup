@@ -22,6 +22,8 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
 | `ui-surfaces.md` | `apps/desktop` (the webview); the window half is S7 in `app.md` | U80–U85 |
 | `ui-persist.md` | `apps/desktop` (the webview) | U100 |
+| `ui-drawer.md` | `apps/desktop` (the webview) | U111 |
+| `ui-reload.md` | `apps/desktop` (the webview); the Daemon half, `terminal.snapshot`, is `crates/terminal` | U103–U104 |
 | `ui-attention.md` | `apps/desktop` (the webview); begins when the Door scenarios land | U105–U110 |
 | `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
@@ -31,6 +33,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | every `F` heading in the file |
 | `rpc.md` | `crates/rpc` | C1 |
 | `worktrees.md` | `crates/agents` (`src/worktree.rs`); end-to-end tests in `crates/rup/tests` | G1–G7 |
+| `proofs.md` | `proofs/` and the pure `step` of `crates/messages` | V1–V7 |
 | `workspace.md` | root files | W1 |
 | `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | every `R` and `K` heading in the file |
 
