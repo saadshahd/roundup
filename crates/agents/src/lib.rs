@@ -11,6 +11,7 @@ use contracts::agent::{
     CreateGroupParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
     SpawnParams, SpawnTerminalParams, StatusEvent,
 };
+use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
@@ -23,6 +24,7 @@ use tokio::time::{Instant, sleep_until};
 pub mod claude_code;
 mod name;
 mod rail;
+pub mod worktree;
 
 use claude_code::{ClaudeCode, Launcher};
 
@@ -477,13 +479,20 @@ pub struct Agents {
     shared: Arc<Shared>,
     dir: PathBuf,
     launcher: Launcher,
+    git: worktree::Git,
 }
 
 impl Agents {
     /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    /// Claude Code is `ROUNDUP_CLAUDE_BIN` (default `claude`).
+    /// Claude Code is `ROUNDUP_CLAUDE_BIN` (default `claude`); `git` is whatever `PATH` finds.
     pub fn open(dir: &Path, bus: Bus, terminals: Arc<Terminals>) -> Result<Self, OpenError> {
-        Self::open_with(dir, bus, terminals, Launcher::from_env()?)
+        Self::open_with(
+            dir,
+            bus,
+            terminals,
+            Launcher::from_env()?,
+            worktree::Git::from_env(),
+        )
     }
 
     pub fn open_with(
@@ -491,6 +500,7 @@ impl Agents {
         bus: Bus,
         terminals: Arc<Terminals>,
         launcher: Launcher,
+        git: worktree::Git,
     ) -> Result<Self, OpenError> {
         Ok(Self {
             shared: Arc::new(Shared {
@@ -504,13 +514,19 @@ impl Agents {
             }),
             dir: dir.to_owned(),
             launcher,
+            git,
         })
+    }
+
+    /// The Project folder: `.roundup/`'s parent, where its git repository (if any) lives.
+    fn project_dir(&self) -> &Path {
+        self.dir.parent().unwrap_or(&self.dir)
     }
 
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
     async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
         let cwd = Path::new(&params.cwd);
-        let node = {
+        let id = {
             let mut rail = self.shared.rail();
             let node = rail.insert(
                 NodeKind::Agent,
@@ -519,18 +535,19 @@ impl Agents {
                 None,
             )?;
             self.shared.mark_starting(&node.id);
-            node
+            node.id
         };
-        let terminal_id = match self.run_agent(&node.id, cwd, params.prompt).await {
+        let terminal_id = match self.run_agent(&id, cwd, params.prompt).await {
             Ok(terminal_id) => terminal_id,
             Err(err) => {
                 let mut rail = self.shared.rail();
-                self.shared.runs().remove(&node.id);
-                report_undo("remove the Agent from the Rail", rail.remove(&node.id));
+                self.shared.runs().remove(&id);
+                report_undo("remove the Agent from the Rail", rail.remove(&id));
                 return Err(err);
             }
         };
         ctx.emit(EventData::RailChanged);
+        let node = self.shared.rail().node(&id)?;
         Ok(self.shared.present(RailNode {
             terminal_id: Some(terminal_id),
             ..node
@@ -576,8 +593,8 @@ impl Agents {
             rail.reserve_meta(id)?;
             self.shared.mark_starting(id);
         }
-        let project = self.dir.parent().unwrap_or(&self.dir);
-        if let Err(err) = self.run_agent(id, project, None).await {
+        let project = self.project_dir().to_owned();
+        if let Err(err) = self.run_agent(id, &project, None).await {
             let mut rail = self.shared.rail();
             self.shared.runs().remove(id);
             report_undo("give the Group back its plain state", rail.release_meta(id));
@@ -587,22 +604,95 @@ impl Agents {
         Ok(self.shared.present(self.shared.rail().node(id)?))
     }
 
+    /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
+    /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
+    /// here leaves no branch, no worktree directory and no Worktree recorded on the node.
+    async fn provision_worktree(
+        &self,
+        id: &str,
+        cwd: &Path,
+    ) -> Result<Option<(PathBuf, worktree::Worktree)>, RpcError> {
+        if !self.shared.rail().get_worktrees()?.on {
+            return Ok(None);
+        }
+        let project = self.project_dir().to_owned();
+        let (real_project, real_cwd) = real_paths(&project, cwd)?;
+        self.shared.rail().mark_worktree_provisioning(id)?;
+        let (git, provisioning_id) = (self.git.clone(), id.to_owned());
+        let made =
+            match tokio::task::spawn_blocking(move || git.provision(&project, &provisioning_id))
+                .await
+                .map_err(RpcError::internal)?
+            {
+                Ok(made) => made,
+                Err(err) => {
+                    report_undo(
+                        "clear the Agent's worktree",
+                        self.shared.rail().clear_worktree(id),
+                    );
+                    return Err(err);
+                }
+            };
+        let mapped = match worktree::map_cwd(&real_project, &real_cwd, &made.path) {
+            Some(mapped) if mapped.is_dir() => mapped,
+            _ => {
+                self.discard_worktree(id, made).await;
+                return Err(RpcError::new(
+                    code::INVALID_PARAMS,
+                    format!(
+                        "cwd_not_in_worktree: {} is not in the fresh worktree",
+                        cwd.display()
+                    ),
+                ));
+            }
+        };
+        let recorded = contracts::agent::Worktree {
+            path: made.path.to_string_lossy().into_owned(),
+            branch: made.branch.clone(),
+            base: made.base.clone(),
+        };
+        let recorded_ok = self.shared.rail().set_worktree(id, &recorded);
+        if let Err(err) = recorded_ok {
+            self.discard_worktree(id, made).await;
+            return Err(err);
+        }
+        Ok(Some((mapped, made)))
+    }
+
+    /// Undo a Worktree `provision_worktree` made and clear the node's record of it: used when a
+    /// later step (the cwd check, or starting the Agent itself) fails.
+    async fn discard_worktree(&self, id: &str, worktree: worktree::Worktree) {
+        let (git, project) = (self.git.clone(), self.project_dir().to_owned());
+        let _ = tokio::task::spawn_blocking(move || git.discard(&project, &worktree)).await;
+        report_undo(
+            "clear the Agent's worktree",
+            self.shared.rail().clear_worktree(id),
+        );
+    }
+
     /// Start Claude Code for node `id`, marked as starting, in a Terminal recorded in the Rail,
-    /// then register and watch it; returns the Terminal's id. A failure leaves no settings file
-    /// and no Terminal, and the caller unmarks `id`.
+    /// then register and watch it; returns the Terminal's id. A failure leaves no settings file,
+    /// no Terminal and no Worktree, and the caller unmarks `id`.
     async fn run_agent(
         &self,
         id: &str,
         cwd: &Path,
         prompt: Option<String>,
     ) -> Result<String, RpcError> {
-        let spawned = match self.start(id, cwd).await {
+        let provisioned = self.provision_worktree(id, cwd).await?;
+        let effective_cwd = provisioned
+            .as_ref()
+            .map_or_else(|| cwd.to_owned(), |(cwd, _)| cwd.clone());
+        let spawned = match self.start(id, &effective_cwd).await {
             Ok(spawned) => spawned,
             Err(err) => {
                 report_undo(
                     "delete the Agent's settings file",
                     Launcher::discard(&self.dir, id),
                 );
+                if let Some((_, worktree)) = provisioned {
+                    self.discard_worktree(id, worktree).await;
+                }
                 return Err(err);
             }
         };
@@ -692,6 +782,26 @@ fn shell_name(shell: Option<&OsStr>) -> String {
         )
 }
 
+/// `project` and `cwd` with symlinks and `..` resolved, the way A4's trust check reads them, so a
+/// `cwd` is judged by where it is and not by how it is written. Checked before `git` runs.
+fn real_paths(project: &Path, cwd: &Path) -> Result<(PathBuf, PathBuf), RpcError> {
+    let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
+    let real_cwd = cwd
+        .canonicalize()
+        .map_err(|err| invalid(format!("cwd {} is unusable: {err}", cwd.display())))?;
+    let real_project = project
+        .canonicalize()
+        .map_err(|err| RpcError::internal(format!("{}: {err}", project.display())))?;
+    if !real_cwd.starts_with(&real_project) {
+        return Err(invalid(format!(
+            "cwd {} is outside the project folder {}",
+            real_cwd.display(),
+            real_project.display()
+        )));
+    }
+    Ok((real_project, real_cwd))
+}
+
 /// Milliseconds since the Unix epoch.
 fn now_ms() -> i64 {
     let since_epoch = SystemTime::now()
@@ -703,7 +813,7 @@ fn now_ms() -> i64 {
 #[async_trait]
 impl Module for Agents {
     fn namespaces(&self) -> &'static [&'static str] {
-        &["agent", "rail"]
+        &["agent", "rail", "project"]
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
@@ -755,6 +865,21 @@ impl Module for Agents {
                 reply(&shared.present(node))
             }
             "rail.spawnTerminal" => reply(&self.spawn_terminal(ctx, params(value)?).await?),
+            "project.setWorktrees" => {
+                let Worktrees { on, check } = params(value)?;
+                if check.as_deref() == Some("") {
+                    return Err(RpcError::new(
+                        code::INVALID_PARAMS,
+                        "check must not be empty",
+                    ));
+                }
+                shared.rail().set_worktrees(&Worktrees { on, check })?;
+                reply(&())
+            }
+            "project.get" => {
+                let worktrees = shared.rail().get_worktrees()?;
+                reply(&ProjectSettings { worktrees })
+            }
             "rail.move" => {
                 let MoveParams { id, parent, index } = params(value)?;
                 shared.rail().move_node(&id, parent.as_deref(), index)?;

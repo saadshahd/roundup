@@ -7,3 +7,4 @@ mod remove;
 mod signal;
 mod spawn;
 mod terminal_node;
+mod worktrees;

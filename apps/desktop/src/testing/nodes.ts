@@ -23,6 +23,7 @@ export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   status: { kind: "working", label: "starting", since: 0 },
   meta: false,
   terminal_id: `t-${id}`,
+  worktree: null,
   ...over,
 });
 

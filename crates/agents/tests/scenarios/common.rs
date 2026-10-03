@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use agents::Agents;
 use agents::claude_code::Launcher;
+use agents::worktree::Git;
 use contracts::agent::RailNode;
 use contracts::{Actor, Event, EventData, Status};
 use provenance::Touches;
@@ -33,14 +34,43 @@ pub fn fake_claude(dir: &Path, body: &str) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// Agents over a fresh Terminals, launching `bin` and keeping Claude's config inside `dir`.
+/// Agents over a fresh Terminals, launching `bin` and keeping Claude's config inside `dir`, with
+/// the real `git` on `PATH`.
 pub fn open_in(dir: &Path, bus: &Bus, bin: &str) -> (Agents, Arc<Terminals>) {
+    open_in_with_git(dir, bus, bin, Git::from_env())
+}
+
+pub fn open_in_with_git(dir: &Path, bus: &Bus, bin: &str, git: Git) -> (Agents, Arc<Terminals>) {
     let terminals = Arc::new(Terminals::open(dir, bus.clone()).unwrap());
     let rup = dir.join("rup");
     std::fs::write(&rup, "").unwrap();
     let launcher = Launcher::new(bin, dir.join("claude.json"), rup, None);
-    let agents = Agents::open_with(dir, bus.clone(), Arc::clone(&terminals), launcher).unwrap();
+    let agents =
+        Agents::open_with(dir, bus.clone(), Arc::clone(&terminals), launcher, git).unwrap();
     (agents, terminals)
+}
+
+/// `git init` with one commit on `main`, for worktree tests: a real repository a Project can
+/// provision a Worktree from.
+pub fn init_repo(path: &Path) {
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .current_dir(path)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "git {args:?} failed in {}",
+            path.display()
+        );
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["config", "user.email", "roundup@example.com"]);
+    git(&["config", "user.name", "roundup"]);
+    std::fs::write(path.join("README.md"), "hi\n").unwrap();
+    git(&["add", "README.md"]);
+    git(&["commit", "-q", "-m", "init"]);
 }
 
 impl Fixture {
@@ -53,6 +83,27 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         let bin = fake_claude(dir.path(), script);
         Self::over(dir, Bus::new(), &bin)
+    }
+
+    /// Like `running`, but `dir` is a real git repository (the Project folder) with `.roundup/`
+    /// as its own subfolder, the way production lays it out; `running` collapses the two, which
+    /// is fine for tests that never run `git`.
+    pub fn in_git_project(script: &str, git: Git) -> Self {
+        let project = tempfile::tempdir().unwrap();
+        init_repo(project.path());
+        let roundup = project.path().join(".roundup");
+        std::fs::create_dir_all(&roundup).unwrap();
+        let bin = fake_claude(project.path(), script);
+        let bus = Bus::new();
+        let events = bus.subscribe();
+        let (agents, terminals) = open_in_with_git(&roundup, &bus, &bin, git);
+        Self {
+            dir: project,
+            bus,
+            events,
+            agents,
+            terminals,
+        }
     }
 
     fn over(dir: tempfile::TempDir, bus: Bus, bin: &str) -> Self {
