@@ -387,6 +387,7 @@ expect_exit 4 'L33 gh timeout is bounded' env BOXD_GH_TIMEOUT=1 loop/rules.sh ba
 
 gate_repo
 expect_output block 'L44 source is block' gate class 12
+expect_exit 0 'L46 CI trailers accept a block approval' gate ci-trailers 12
 expect_exit 0 'L46 empty approval head with exact checks passes' gate merge-ready 12
 expect_output "ready $(git rev-parse HEAD)" 'L46 prints the pinned head' gate merge-ready 12
 gate_set '.checks=[{"check_runs":[]}]'
@@ -415,6 +416,7 @@ git reset -q --hard main
 printf 'Notes\n' >docs/notes.md
 commit docs 'Author-Agent: builder'
 expect_output post 'L44 regular docs are post' gate class 12
+expect_exit 0 'L46 CI trailers accept authored post prose without approval' gate ci-trailers 12
 expect_exit 0 'L46 post needs no approval' gate merge-ready 12
 
 gate_repo
@@ -463,7 +465,7 @@ gate_rejects 4 builder
 expect_output 0 'L45 author verdicts do not count' gate rounds 12
 gate_rejects 4
 gate_set '.comments[][] .body |= sub("[0-9a-f]{40}"; "0000000000000000000000000000000000000000")'
-expect_output 0 'L45 stale verdicts do not count' gate rounds 12
+expect_exit 1 'L45 independent verdicts on rewritten history still count' gate rounds 12
 
 gate_repo
 reviewed_content=$(git rev-parse HEAD^)
@@ -474,6 +476,17 @@ commit followup 'Author-Agent: builder'
 git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
 gate_set --arg sha "$reviewed_content" '.comments=[[range(0;3) | {id: .,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\n"+$sha+"\nReviewed-by-Agent: reviewer")}]]'
 expect_exit 1 'L45 earlier content rejects remain in the round cap' gate rounds 12
+
+gate_repo
+old_approval=$(git rev-parse HEAD)
+git checkout -q main
+printf 'main update\n' >docs/main.md
+commit main-update
+git update-ref refs/remotes/origin/main HEAD
+git checkout -q work
+git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
+gate_set --arg sha "$old_approval" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nReviewed-head: "+$sha+"\nReviewed-by-Agent: reviewer")}]]'
+expect_exit 1 'L46 reject on carried approval still blocks' gate merge-ready 12
 
 gate_repo
 for state in queued in_progress completed; do

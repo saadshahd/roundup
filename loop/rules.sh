@@ -352,9 +352,13 @@ def comments(authors, head, base, records):
     architects = set(re.findall(r'`([^`]+)`', line))
     require(architects, 'missing Three architects in trusted docs/squads.md')
     events = []
-    commits = {record[0] for record in records}
     approval = next((record for record in reversed(records) if record[3]), None)
     reviewed_head = approval[1][0] if approval else head
+    current_heads = {reviewed_head}
+    if approval:
+        current_heads.update(record[0] for record in records[records.index(approval):])
+    else:
+        current_heads.add(head)
     for item in data:
         require(re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', item['created_at']), 'invalid comment time')
         datetime.fromisoformat(item['created_at'].replace('Z', '+00:00'))
@@ -363,9 +367,10 @@ def comments(authors, head, base, records):
         verdict = re.match(r'VERDICT: (approve|reject)\b', body)
         ids = re.findall(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if verdict and len(ids) == 1 and ids[0] not in authors:
-            named = {commit for commit in commits if re.search(r'(?<![0-9a-f])'+commit+r'(?![0-9a-f])', body)}
-            if len(named) == 1:
-                events.append((verdict[1], bool(named & {reviewed_head, head})))
+            explicit = re.findall(r'^Reviewed-head: ([0-9a-f]{40})\s*$', body, re.M)
+            named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
+            if len(set(named)) == 1:
+                events.append((verdict[1], named[0] in current_heads))
         pick = re.match(r'ARCHITECT: (split|amend|retire)\b', body)
         ids = re.findall(r'^Architect: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if pick and len(ids) == 1 and ids[0] in architects - authors:
@@ -532,12 +537,16 @@ try:
     head, base = sha(pr['head']['sha']), sha(pr['base']['sha'])
     fetch(head)
     fetch(base)
-    if command in ('class', 'proof', 'merge-ready'):
+    if command in ('class', 'proof', 'merge-ready', 'ci-trailers'):
         files, paths = changed(base, head)
     if command == 'class':
         print(lane_of(files, paths, base, head))
     elif command == 'proof':
         proof(pr, paths, head)
+    elif command == 'ci-trailers':
+        authors, records = history(base, head)
+        base_gate(pr)
+        trailer_gate(records, authors, lane_of(files, paths, base, head), head)
     else:
         authors, records = history(base, head)
         events = comments(authors, head, base, records)
@@ -574,7 +583,7 @@ PY
 }
 
 case "${1:-}" in
-  base | class | rounds | merge-ready | proof)
+  base | class | rounds | merge-ready | proof | ci-trailers)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   size) size ;;
