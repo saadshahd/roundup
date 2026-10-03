@@ -2037,6 +2037,7 @@ dependencies = [
  "provenance",
  "rpc",
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

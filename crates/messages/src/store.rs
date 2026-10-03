@@ -6,6 +6,9 @@ use contracts::Actor;
 use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Reason, Route};
 use rpc::RpcError;
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 pub(crate) struct Store {
     db: Connection,
@@ -56,11 +59,11 @@ impl Store {
                 params![
                     actor_json(from),
                     to,
-                    kind_str(kind),
+                    text_of(kind),
                     body,
                     reply_to,
-                    status_str(status),
-                    reason.map(reason_str),
+                    text_of(status),
+                    reason.map(text_of),
                     at
                 ],
             )
@@ -105,7 +108,7 @@ impl Store {
             .db
             .execute(
                 "UPDATE messages SET status = ?2, reason = ?3 WHERE id = ?1 AND status = 'held'",
-                params![id, status_str(status), reason.map(reason_str)],
+                params![id, text_of(status), reason.map(text_of)],
             )
             .map_err(RpcError::internal)?;
         Ok(changed == 1)
@@ -131,7 +134,7 @@ impl Store {
             .execute(
                 "INSERT INTO routes (from_id, to_id, delivery) VALUES (?1, ?2, ?3)
                  ON CONFLICT(from_id, to_id) DO UPDATE SET delivery = excluded.delivery",
-                params![from, to, delivery_str(delivery)],
+                params![from, to, text_of(delivery)],
             )
             .map_err(RpcError::internal)?;
         Ok(())
@@ -142,11 +145,10 @@ impl Store {
             .query_row(
                 "SELECT delivery FROM routes WHERE from_id = ?1 AND to_id = ?2",
                 params![from, to],
-                |row| row.get::<_, String>(0),
+                |row| from_text(0, &row.get::<_, String>(0)?),
             )
             .optional()
             .map_err(RpcError::internal)
-            .map(|value| value.map(|value| parse_delivery(&value)))
     }
 
     pub(crate) fn list_routes(&self) -> Result<Vec<Route>, RpcError> {
@@ -157,7 +159,7 @@ impl Store {
                     Ok(Route {
                         from: row.get(0)?,
                         to: row.get(1)?,
-                        delivery: parse_delivery(&row.get::<_, String>(2)?),
+                        delivery: from_text(2, &row.get::<_, String>(2)?)?,
                     })
                 })?
                 .collect()
@@ -174,14 +176,35 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
             rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(err))
         })?,
         to: row.get(2)?,
-        kind: parse_kind(&row.get::<_, String>(3)?),
+        kind: from_text(3, &row.get::<_, String>(3)?)?,
         body: row.get(4)?,
         reply_to: row.get(5)?,
-        status: parse_status(&row.get::<_, String>(6)?),
+        status: from_text(6, &row.get::<_, String>(6)?)?,
         reason: row
             .get::<_, Option<String>>(7)?
-            .map(|text| parse_reason(&text)),
+            .map(|text| from_text(7, &text))
+            .transpose()?,
         at: row.get(8)?,
+    })
+}
+
+/// The word a contract enum has on the wire: the one spelling stored, so a new variant needs no
+/// second table.
+fn text_of(value: impl Serialize) -> String {
+    match serde_json::to_value(value) {
+        Ok(Value::String(text)) => text,
+        other => unreachable!("a contract enum is a string on the wire: {other:?}"),
+    }
+}
+
+/// The inverse of [`text_of`]; a stored word no variant has is an error, never a default.
+fn from_text<T: DeserializeOwned>(column: usize, text: &str) -> rusqlite::Result<T> {
+    serde_json::from_value(Value::String(text.to_owned())).map_err(|err| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            Box::new(err),
+        )
     })
 }
 
@@ -189,70 +212,98 @@ fn actor_json(actor: &Actor) -> String {
     serde_json::to_string(actor).expect("an Actor is always serializable")
 }
 
-fn kind_str(kind: MessageKind) -> &'static str {
-    match kind {
-        MessageKind::Note => "note",
-        MessageKind::Question => "question",
-    }
-}
+#[cfg(test)]
+mod tests {
+    use contracts::{Actor, ActorKind};
 
-fn parse_kind(text: &str) -> MessageKind {
-    match text {
-        "question" => MessageKind::Question,
-        _ => MessageKind::Note,
-    }
-}
+    use super::*;
 
-fn status_str(status: MessageStatus) -> &'static str {
-    match status {
-        MessageStatus::Pending => "pending",
-        MessageStatus::Held => "held",
-        MessageStatus::Delivered => "delivered",
-        MessageStatus::Dropped => "dropped",
+    fn open(dir: &Path) -> Store {
+        Store::open(&dir.join("messages.db")).unwrap()
     }
-}
 
-fn parse_status(text: &str) -> MessageStatus {
-    match text {
-        "held" => MessageStatus::Held,
-        "delivered" => MessageStatus::Delivered,
-        "dropped" => MessageStatus::Dropped,
-        _ => MessageStatus::Pending,
+    fn put(store: &Store, status: MessageStatus, reason: Option<Reason>) -> u32 {
+        let from = Actor {
+            kind: ActorKind::Agent,
+            id: "a".into(),
+            parent: None,
+        };
+        store
+            .insert(
+                &from,
+                "b",
+                MessageKind::Question,
+                "hi",
+                None,
+                status,
+                reason,
+                1,
+            )
+            .unwrap()
+            .id
     }
-}
 
-fn reason_str(reason: Reason) -> &'static str {
-    match reason {
-        Reason::AskFirst => "ask-first",
-        Reason::Takeover => "takeover",
-        Reason::Escalated => "escalated",
-        Reason::ReceiverGone => "receiver gone",
-        Reason::NotAccepted => "not accepted",
+    #[test]
+    fn b8_every_reason_status_and_kind_survives_reopening() {
+        let dir = tempfile::tempdir().unwrap();
+        let reasons = [
+            (MessageStatus::Held, Reason::AskFirst),
+            (MessageStatus::Held, Reason::Takeover),
+            (MessageStatus::Held, Reason::Escalated),
+            (MessageStatus::Dropped, Reason::ReceiverGone),
+            (MessageStatus::Dropped, Reason::NotAccepted),
+        ];
+        let ids: Vec<u32> = {
+            let store = open(dir.path());
+            reasons
+                .iter()
+                .map(|(status, reason)| put(&store, *status, Some(*reason)))
+                .collect()
+        };
+
+        let store = open(dir.path());
+
+        for (id, (status, reason)) in ids.into_iter().zip(reasons) {
+            let message = store.get(id).unwrap().unwrap();
+            assert_eq!(
+                (message.status, message.reason, message.kind),
+                (status, Some(reason), MessageKind::Question)
+            );
+        }
     }
-}
 
-fn parse_reason(text: &str) -> Reason {
-    match text {
-        "takeover" => Reason::Takeover,
-        "escalated" => Reason::Escalated,
-        "receiver gone" => Reason::ReceiverGone,
-        "not accepted" => Reason::NotAccepted,
-        _ => Reason::AskFirst,
+    #[test]
+    fn b8_a_stored_word_no_variant_has_is_an_error_not_a_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(dir.path());
+        let id = put(&store, MessageStatus::Held, Some(Reason::AskFirst));
+        for column in ["reason", "status", "kind"] {
+            store
+                .db
+                .execute(
+                    &format!("UPDATE messages SET {column} = 'bogus' WHERE id = ?1"),
+                    params![id],
+                )
+                .unwrap();
+
+            assert!(store.get(id).is_err(), "{column}");
+            store.db.execute("UPDATE messages SET reason = 'ask-first', status = 'held', kind = 'note' WHERE id = ?1", params![id]).unwrap();
+        }
     }
-}
 
-fn delivery_str(delivery: Delivery) -> &'static str {
-    match delivery {
-        Delivery::Auto => "auto",
-        Delivery::AskFirst => "ask-first",
-        Delivery::Drop => "drop",
-    }
-}
+    #[test]
+    fn b5_a_stored_route_word_no_variant_has_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(dir.path());
+        store
+            .db
+            .execute(
+                "INSERT INTO routes (from_id, to_id, delivery) VALUES ('a', 'b', 'bogus')",
+                [],
+            )
+            .unwrap();
 
-fn parse_delivery(text: &str) -> Delivery {
-    match text {
-        "ask-first" => Delivery::AskFirst,
-        "drop" => Delivery::Drop,
-        _ => Delivery::Auto,
+        assert!(store.get_route("a", "b").is_err());
+        assert!(store.list_routes().is_err());
     }
 }
