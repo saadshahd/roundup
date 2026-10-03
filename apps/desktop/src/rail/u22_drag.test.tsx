@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../app/seam";
 import type { DaemonExit } from "../app/seam";
-import { dragFrom, pointerAt, release, stubLayout } from "./dragFixture";
+import { dragFrom, pointerAt, release, stubLayout, stubVariableLayout } from "./dragFixture";
 import { mountRail, railCallsTo, rowNames, rowOf } from "./railFixture";
 import { agent, event, group, MINUTE, NOW } from "../testing/nodes";
 
@@ -238,6 +238,34 @@ describe("u22 drag", () => {
     dragFrom("b", pointerAt(1, 0));
 
     expect([before === null, rowOf("b").querySelector(".live")]).toEqual([false, null]);
+  });
+
+  it("u22_the_lifted_row_follows_the_pointer_even_as_rows_above_it_collapse", async () => {
+    vi.restoreAllMocks();
+    stubVariableLayout();
+
+    await mountRail([
+      agent("boom", "error", "broken", { order: 0 }),
+      agent("needy", "needs-you", "pick one", { order: 1 }),
+      agent("d", "idle", "i", { order: 2 }),
+      agent("below", "idle", "i", { order: 3 }),
+    ]);
+
+    const liftOf = (): number =>
+      Number.parseFloat(document.querySelector<HTMLElement>(".rail-tree")?.style.getPropertyValue("--lift") ?? "0px");
+
+    const topOf = (name: string): number => rowOf(name).getBoundingClientRect().top + liftOf();
+
+    const grabOffset = 5;
+    const pressY = rowOf("d").getBoundingClientRect().top + grabOffset;
+
+    fireEvent.pointerDown(rowOf("d"), { button: 0, clientX: 0, clientY: pressY });
+
+    for (const pointerY of [90, 150, 60]) {
+      fireEvent.pointerMove(window, { clientX: 0, clientY: pointerY });
+
+      expect(topOf("d")).toBeCloseTo(pointerY - grabOffset, 0);
+    }
   });
 
   it("u22_the_drop_line_sits_at_the_edge_of_the_room_the_shifted_rows_opened", async () => {

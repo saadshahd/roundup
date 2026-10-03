@@ -4,6 +4,9 @@ import { rowOf } from "./railFixture";
 
 const ROW_HEIGHT = 20;
 
+/** The extra height a row's Live line adds (F8: hiding it at drag start must not move the dragged row off the pointer). */
+const LIVE_HEIGHT = 16;
+
 /** One indent step (2ch) in pixels. */
 const STEP = 20;
 
@@ -19,6 +22,26 @@ export const stubLayout = () =>
     }
 
     if (this.classList.contains("rail-tree")) return rect(0, 0, 200, 400);
+
+    return rect(0, 0, STEP, ROW_HEIGHT);
+  });
+
+/**
+ * Like `stubLayout`, but a row showing its Live line (`.live`) is `LIVE_HEIGHT` taller, read fresh from the DOM on
+ * every call: a row's height can shrink mid-drag once U7's Live line hides (F8), and later rows' tops must follow.
+ */
+export const stubVariableLayout = () =>
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.getAttribute("role") === "treeitem") {
+      const rows = screen.getAllByRole("treeitem");
+      const index = rows.indexOf(this);
+      const heightOf = (row: HTMLElement) => ROW_HEIGHT + (row.querySelector(".live") ? LIVE_HEIGHT : 0);
+      const top = rows.slice(0, index).reduce((sum, row) => sum + heightOf(row), 0);
+
+      return rect(0, top, 200, heightOf(this));
+    }
+
+    if (this.classList.contains("rail-tree")) return rect(0, 0, 200, 2000);
 
     return rect(0, 0, STEP, ROW_HEIGHT);
   });
