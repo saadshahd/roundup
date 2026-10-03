@@ -647,7 +647,7 @@ expect_exit 1 'L53 missing before fails' gate proof 12
 gate_visible
 gate_set '.tree={truncated:false,tree:[]}'
 expect_exit 1 'L53 absent linked file fails' gate proof 12
-gate_set '.tree.tree[0].size=6291456'
+gate_set '.tree={truncated:false,tree:[{path:"proof/before.png",type:"blob",mode:"100644",size:6291456},{path:"proof/after.png",type:"blob",mode:"100644",size:1024}]}'
 expect_exit 1 'L53 six MiB file fails' gate proof 12
 gate_visible
 gate_set '.body += "\nShows: /Users/private"'
@@ -689,7 +689,7 @@ gate_set '.tree={truncated:true,tree:[]}'
 expect_exit 1 'L53 truncated proof tree fails' gate proof 12
 
 gate_visible
-gate_set '.tree={truncated:false,tree:[range(5)|{path:("proof/"+tostring+".png"),type:"blob",mode:"100644",size:5242880}]}'
+gate_set '.tree={truncated:false,tree:([{path:"proof/before.png",type:"blob",mode:"100644",size:5242880},{path:"proof/after.png",type:"blob",mode:"100644",size:5242880}] + [range(3)|{path:("proof/extra-"+tostring+".png"),type:"blob",mode:"100644",size:5242880}])}'
 expect_exit 1 'L53 branch exceeding twenty MiB fails' gate proof 12
 
 gate_repo
