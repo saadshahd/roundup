@@ -18,7 +18,7 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
-| U41 | rename returns focus to the row (Moves: none) | `apps/desktop/src/rail/RailRow.tsx`, `Rail.tsx`; does not edit `u41_rename_focus.test.tsx` | `u41_rename_focus.test.tsx` passes (3 red on main); `u9_`, `u140_` keep green | now |
+| U41 | rename returns focus to the row (Moves: none) | `apps/desktop/src/rail/RailRow.tsx`, `Rail.tsx`; starts from branch `architect/u41-rename-tdd` and does not edit `u41_rename_focus.test.tsx` | `u41_rename_focus.test.tsx` passes (3 red on main); `u9_`, `u140_` keep green | now |
 | U44, U46, U47, U49 | rail polish: rows under the pinned bar, hover jitter, `⌘T` selects the Terminal, Live line title (Moves: D1, D6) | `apps/desktop/src/rail/**` (one PR, so the four do not collide) | `u6_`–`u10_`, `u9_` tests, `u30_`, `u32_`, `u22_` | after U31 and U33 merge |
 | U56 | right-click menu: stop, remove (Moves: D1, D6, D7, D8) | `apps/desktop/src/rail/menu/**`, one line each in `Rail.tsx`, `RailRow.tsx`, `src/rail/keys.ts` (created by U31) | `u9_`, `u31_`, `u33_` tests | after A16, U31, U33 and the rail polish PR (U44, U46, U47, U49); stacking allowed |
 | U57 | no pane header (Moves: D1) | `apps/desktop/src/terminal/**` | `u14_with_nothing_selected_the_pane_is_empty`; replaces the other `u14_` header tests; the U4 computed-colour test drops the pane header | after U56 merges (or in its PR) |
