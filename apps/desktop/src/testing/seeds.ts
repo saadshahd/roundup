@@ -212,6 +212,7 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
 
     return { cols: 100, rows: 30, after: at, data: toBase64(bytes) };
   };
+
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.kill"] = (terminalId) => {
     exit(terminalId.id);

@@ -208,6 +208,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
       if (!writing) void flush();
     });
+
     const holder: Holder = {
       emulator, atBottom, returnToBottom, pending: [], pendingChars: 0,
       after: null, restoring: false, complete: false, lostOutput: false, shownSize: null,

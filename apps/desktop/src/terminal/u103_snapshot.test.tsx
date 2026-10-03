@@ -29,8 +29,10 @@ type Recorder = Emulator & { log: string[]; shown: boolean; fits: number };
 /** Records, in order, `size <cols>x<rows>` and each written text. */
 const recordingEmulators = () => {
   const made = new Map<string, Recorder>();
+
   const factory: EmulatorFactory = (id) => {
     const log: string[] = [];
+
     const emulator: Recorder = {
       log,
       shown: false,

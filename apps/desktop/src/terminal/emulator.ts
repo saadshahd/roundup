@@ -77,7 +77,10 @@ export type EchoProbe = {
 };
 
 /** The real emulators (xterm.js). WebGL is tried until the webview first refuses it, then every later Terminal goes straight to the DOM renderer. */
-export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
+export const createXtermEmulators = (
+  probe?: EchoProbe,
+  createWebgl: () => RendererAddon = () => new WebglAddon(),
+): EmulatorFactory => {
   let webglDenied = false;
 
   return () => {
@@ -125,7 +128,7 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
           opened = true;
 
           if (!webglDenied) webglDenied = !attachRenderer(terminal, () => {
-            loadedWebgl = new WebglAddon();
+            loadedWebgl = createWebgl();
 
             return loadedWebgl;
           }, console.warn);
