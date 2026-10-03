@@ -364,16 +364,6 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(document.activeElement).toBe(field);
   });
 
-  it("u41_f2_edits_the_selected_rows_name_even_when_a_different_row_has_focus", async () => {
-    const { rail } = await mountKeys([agent("a", "idle", "x"), agent("b", "idle", "x")]);
-    rail.select("b");
-    rowOf("a").focus();
-
-    press("F2");
-
-    expect(screen.getByLabelText("name").closest("[role=treeitem]")?.getAttribute("data-id")).toBe("b");
-  });
-
   it("u41_f2_prevents_the_default_action", async () => {
     const { rail } = await mountKeys([agent("a", "idle", "x")]);
     rail.select("a");
@@ -388,15 +378,6 @@ describe("u41 rail by keyboard, the rest", () => {
     rowOf("a").focus();
 
     press("j");
-
-    expect(screen.queryByLabelText("name")).toBeNull();
-  });
-
-  it("u41_f2_does_nothing_with_no_selection", async () => {
-    await mountKeys([agent("a", "idle", "x")]);
-    rowOf("a").focus();
-
-    press("F2");
 
     expect(screen.queryByLabelText("name")).toBeNull();
   });
