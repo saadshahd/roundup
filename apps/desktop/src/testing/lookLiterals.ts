@@ -13,7 +13,7 @@ const FONT_SIZE_PROPERTY = /^font(?:-size)?$/;
 const COLOUR_FUNCTION = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix|color)\(/i;
 
 // Shorthands whose colour is one word among others (`2px solid red`).
-const COLOUR_SHORTHAND = /^(?:border(?:-(?:top|right|bottom|left))?|outline|text-shadow|text-decoration|column-rule|background-image)$/;
+const COLOUR_SHORTHAND = /^(?:border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?|outline|text-shadow|text-decoration|column-rule|background-image)$/;
 
 const NOT_A_COLOUR = new Set(["solid", "dashed", "dotted", "double", "none", "hidden", "inset", "outset", "groove", "ridge", "underline", "overline", "line-through", "wavy", "auto", "to", "top", "right", "bottom", "left", "center", "circle", "ellipse", "at", "inherit", "initial", "unset", "transparent", "currentcolor"]);
 
@@ -53,7 +53,7 @@ const isLiteral = (property: string, value: string): boolean => {
 };
 
 // `[;}]` or the end ends a declaration, so the last one in a rule needs no `;`. A custom property is a definition, so it is flagged only when it holds a colour function or a time.
-const DECLARATION = /(?:^|[\s;{])(-{0,2}[a-z][\w-]*)\s*:\s*([^;}]+)(?=[;}]|$)/gi;
+const DECLARATION = /(?:^|[\s;{])(-{0,2}[a-z][\w-]*)\s*:\s*([^;{}]+)(?=[;}]|$)/gi;
 
 /** Every look-property declaration in `css` that is not a `var(--…)` read, as `"property: value"`. */
 export function lookLiterals(css: string): string[] {
@@ -64,8 +64,8 @@ export function lookLiterals(css: string): string[] {
   );
 }
 
-// A value is one quoted string, or everything to the end of the line or the next comma, so a ternary or a template literal stays whole.
-const INLINE_PAIR = /"?([a-zA-Z][\w-]*)"?\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[^,\n]+)/g;
+// A value ends at a comma or newline outside a string, except before a line starting with `?` or `:`, so a ternary or a template literal stays whole.
+const INLINE_PAIR = /"?([a-zA-Z][\w-]*)"?\s*:\s*((?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\n\s*(?=[?:])|[^,\n"'`])+)/g;
 
 /**
  * The look pairs of every `style={{ … }}` object and exported `JSX.CSSProperties` object in `source`, written as CSS

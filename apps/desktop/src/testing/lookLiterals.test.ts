@@ -116,6 +116,24 @@ describe("u130 the look-literal scanner", () => {
     expect(flagged('color: hot ? "var(--grey)" : "var(--text)"')).toHaveLength(1);
   });
 
+  it("u130_inline_scan_reads_a_ternary_over_several_lines_and_a_comma_inside_a_template", () => {
+    const flagged = (pair: string) => lookLiterals(inlineStyleCss(`<i style={{ ${pair} }} />`));
+
+    expect(flagged('transition: r()\n    ? "none"\n    : `transform 200ms ease`')).toHaveLength(1);
+    expect(flagged('transition: r() ? "none" : `transform var(--d) ${E}, opacity 150ms ${E}`')).toHaveLength(1);
+    expect(flagged('transition: "opacity var(--d) ease, transform 200ms ease"')).toHaveLength(1);
+  });
+
+  it("u130_a_rule_whose_selector_has_a_pseudo_class_still_has_its_first_declaration_read", () => {
+    expect(lookLiterals("a:hover {\n  color: red;\n}")).toEqual(["color: red"]);
+    expect(lookLiterals("p:first-child {\n  border-radius: 6px;\n}")).toEqual(["border-radius: 6px"]);
+  });
+
+  it("u130_logical_border_shorthands_are_scanned_for_a_colour", () => {
+    expect(lookLiterals("border-inline-start: 1px solid red;\nborder-block: 1px solid black;")).toHaveLength(2);
+    expect(lookLiterals("border-inline-start: 1px solid var(--hairline);")).toEqual([]);
+  });
+
   it("u130_inline_scan_flags_named_and_hsl_colours_and_em_sizes", () => {
     const flagged = (pair: string) => lookLiterals(inlineStyleCss(`<i style={{ ${pair} }} />`));
 
