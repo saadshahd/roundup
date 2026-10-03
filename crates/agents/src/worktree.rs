@@ -87,7 +87,16 @@ impl Git {
             self.undo_branch(project, &branch);
             return Err(failed(err));
         }
-        if let Err(err) = exclude_worktrees(project) {
+        // `git rev-parse --git-path` resolves to the real `.git` dir even when `project/.git`
+        // is a file pointing elsewhere (a submodule, or a Project that is itself a worktree).
+        let exclude = match self.run(project, &["rev-parse", "--git-path", "info/exclude"]) {
+            Ok(relative) => project.join(relative),
+            Err(err) => {
+                self.undo(project, &path, &branch);
+                return Err(failed(err));
+            }
+        };
+        if let Err(err) = exclude_worktrees(&exclude) {
             self.undo(project, &path, &branch);
             return Err(failed(err.to_string()));
         }
@@ -141,14 +150,13 @@ fn failed(detail: impl std::fmt::Display) -> RpcError {
     RpcError::internal(format!("worktree_failed: {detail}"))
 }
 
-/// Add `.roundup/` to `project`'s `.git/info/exclude`, once: it is local, so the user's tracked
-/// files and `git status` do not change.
-fn exclude_worktrees(project: &Path) -> std::io::Result<()> {
-    let exclude = project.join(".git").join("info").join("exclude");
+/// Add `.roundup/` to `exclude` (the repository's `info/exclude`), once: it is local, so the
+/// user's tracked files and `git status` do not change.
+fn exclude_worktrees(exclude: &Path) -> std::io::Result<()> {
     if let Some(parent) = exclude.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let existing = std::fs::read_to_string(&exclude).unwrap_or_default();
+    let existing = std::fs::read_to_string(exclude).unwrap_or_default();
     if existing.lines().any(|line| line.trim() == ".roundup/") {
         return Ok(());
     }
@@ -157,7 +165,7 @@ fn exclude_worktrees(project: &Path) -> std::io::Result<()> {
         text.push('\n');
     }
     text.push_str(".roundup/\n");
-    std::fs::write(&exclude, text)
+    std::fs::write(exclude, text)
 }
 
 /// `cwd` mapped into `worktree_path`, the same subpath it was of `project`; `None` when `cwd` is

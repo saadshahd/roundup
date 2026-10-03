@@ -590,24 +590,37 @@ impl Agents {
                     return Err(err);
                 }
             };
-        let mapped = worktree::map_cwd(self.project_dir(), cwd, &made.path);
-        if mapped.as_deref().is_some_and(|mapped| !mapped.is_dir()) {
-            self.discard_worktree(id, made).await;
-            return Err(RpcError::new(
-                code::INVALID_PARAMS,
-                format!(
-                    "cwd_not_in_worktree: {} is not in the fresh worktree",
-                    cwd.display()
-                ),
-            ));
-        }
+        let mapped = match worktree::map_cwd(self.project_dir(), cwd, &made.path) {
+            Some(mapped) if mapped.is_dir() => mapped,
+            Some(_) => {
+                self.discard_worktree(id, made).await;
+                return Err(RpcError::new(
+                    code::INVALID_PARAMS,
+                    format!(
+                        "cwd_not_in_worktree: {} is not in the fresh worktree",
+                        cwd.display()
+                    ),
+                ));
+            }
+            None => {
+                self.discard_worktree(id, made).await;
+                return Err(RpcError::new(
+                    code::INVALID_PARAMS,
+                    format!(
+                        "cwd {} is outside the project folder {}",
+                        cwd.display(),
+                        self.project_dir().display()
+                    ),
+                ));
+            }
+        };
         let recorded = contracts::agent::Worktree {
             path: made.path.to_string_lossy().into_owned(),
             branch: made.branch.clone(),
             base: made.base.clone(),
         };
         self.shared.rail().set_worktree(id, &recorded)?;
-        Ok(Some((mapped.unwrap_or_else(|| made.path.clone()), made)))
+        Ok(Some((mapped, made)))
     }
 
     /// Undo a Worktree `provision_worktree` made and clear the node's record of it: used when a

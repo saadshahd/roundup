@@ -144,12 +144,22 @@ async fn g1_off_leaves_spawn_as_a4_says() {
 async fn g2_spawn_makes_branch_and_worktree() {
     let f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
+    let commit = git_output(f.dir.path(), &["rev-parse", "HEAD"])
+        .trim()
+        .to_owned();
 
     let node = f.spawn(None, None).await.unwrap();
 
     let worktree = node.worktree.clone().expect("a Worktree");
     assert_eq!(worktree.branch, format!("roundup/agent-{}", node.id));
     assert_eq!(worktree.base, "main");
+    assert_eq!(
+        git_output(f.dir.path(), &["rev-parse", &worktree.branch])
+            .trim()
+            .to_owned(),
+        commit,
+        "the branch starts at the Project's current commit"
+    );
     let path = PathBuf::from(&worktree.path);
     assert_eq!(
         path,
@@ -167,6 +177,91 @@ async fn g2_spawn_makes_branch_and_worktree() {
         git_output(f.dir.path(), &["worktree", "list"]).contains(path.to_string_lossy().as_ref())
     );
     assert_eq!(f.tree().await[0].worktree, Some(worktree));
+}
+
+#[tokio::test]
+async fn g2_base_is_the_branch_checked_out_not_always_main() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    git_output(f.dir.path(), &["checkout", "-q", "-b", "feature"]);
+    set_worktrees(&f, true, None).await;
+
+    let node = f.spawn(None, None).await.unwrap();
+
+    assert_eq!(node.worktree.unwrap().base, "feature");
+}
+
+#[tokio::test]
+async fn g2_exclude_worktrees_is_added_once() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let exclude = f.dir.path().join(".git/info/exclude");
+    let count = |text: &str| {
+        text.lines()
+            .filter(|line| line.trim() == ".roundup/")
+            .count()
+    };
+
+    f.spawn(None, None).await.unwrap();
+    assert_eq!(count(&std::fs::read_to_string(&exclude).unwrap()), 1);
+
+    f.spawn(None, None).await.unwrap();
+    assert_eq!(count(&std::fs::read_to_string(&exclude).unwrap()), 1);
+}
+
+#[tokio::test]
+async fn g2_cwd_outside_project_is_invalid_params() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let outside = tempfile::tempdir().unwrap();
+    let before = git_state(f.dir.path());
+
+    let err = spawn_in(&f, outside.path(), None).await.unwrap_err();
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert!(
+        err.message.contains("outside the project folder"),
+        "{}",
+        err.message
+    );
+    assert!(f.tree().await.is_empty());
+    assert_eq!(git_state(f.dir.path()), before);
+}
+
+#[tokio::test]
+async fn g2_start_failure_after_provisioning_leaves_no_branch_no_directory() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let before = git_state(f.dir.path());
+    std::fs::remove_file(f.dir.path().join(".roundup/rup")).unwrap();
+
+    let err = f.spawn(None, None).await.unwrap_err();
+
+    assert_eq!(err.code, code::INTERNAL);
+    assert!(f.tree().await.is_empty());
+    assert_eq!(git_state(f.dir.path()), before);
+}
+
+#[tokio::test]
+async fn g2_exclude_failure_undoes_branch_and_worktree() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let exclude = f.dir.path().join(".git/info/exclude");
+    // Read-only, not missing or a directory: `git worktree add` itself reads `info/exclude`
+    // (and fails if it can't be read as a file), so only a write failure isolates the step
+    // this test targets.
+    std::fs::set_permissions(&exclude, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let before = git_state(f.dir.path());
+
+    let err = f.spawn(None, None).await.unwrap_err();
+
+    assert_eq!(err.code, code::INTERNAL);
+    assert!(
+        err.message.starts_with("worktree_failed: "),
+        "{}",
+        err.message
+    );
+    assert!(f.tree().await.is_empty());
+    assert_eq!(git_state(f.dir.path()), before);
 }
 
 #[tokio::test]
@@ -245,14 +340,23 @@ async fn g2_failure_leaves_no_branch_no_directory_no_node() {
     let err = f.spawn(None, None).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
-    assert!(
-        err.message.starts_with("worktree_failed: "),
-        "{}",
-        err.message
-    );
+    // The wrapper's `git worktree add` prints exactly "fake failure" on stderr (`failing_git`);
+    // an equality check, not just the prefix, catches a message that drops git's own text.
+    assert_eq!(err.message, "worktree_failed: fake failure");
     assert!(f.tree().await.is_empty());
     assert_eq!(git_state(f.dir.path()), before);
     assert!(!f.dir.path().join(".roundup/worktrees").exists());
+}
+
+#[tokio::test]
+async fn g2_failed_call_emits_no_event() {
+    let wrapper = tempfile::tempdir().unwrap();
+    let mut f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
+    set_worktrees(&f, true, None).await;
+
+    f.spawn(None, None).await.unwrap_err();
+
+    assert_eq!(f.changed(), 0);
 }
 
 #[tokio::test]
@@ -275,12 +379,51 @@ async fn g2_failed_promote_leaves_a_plain_group() {
 }
 
 #[tokio::test]
+async fn g2_failed_promote_leaves_children_where_they_were() {
+    let wrapper = tempfile::tempdir().unwrap();
+    let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
+    set_worktrees(&f, true, None).await;
+    let group = f.group("team", None).await;
+    let child = f.group("child", Some(&group)).await;
+    let before = git_state(f.dir.path());
+
+    let err = promote(&f, &group).await.unwrap_err();
+
+    assert_eq!(err.code, code::INTERNAL);
+    let tree = f.tree().await;
+    let group_node = tree.iter().find(|node| node.id == group).unwrap();
+    assert_eq!(group_node.kind, NodeKind::Group);
+    assert!(!group_node.meta);
+    let child_node = tree.iter().find(|node| node.id == child).unwrap();
+    assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    assert_eq!(git_state(f.dir.path()), before);
+}
+
+#[tokio::test]
 async fn g2_not_a_git_project_no_base_and_cwd_not_in_worktree() {
     // not_a_git_project: no `.git` at all.
     {
         let f = Fixture::in_git_project("sleep 30", Git::from_env());
         set_worktrees(&f, true, None).await;
         std::fs::remove_dir_all(f.dir.path().join(".git")).unwrap();
+
+        let err = f.spawn(None, None).await.unwrap_err();
+
+        assert_eq!(err.code, code::INVALID_PARAMS);
+        assert!(
+            err.message.starts_with("not_a_git_project: "),
+            "{}",
+            err.message
+        );
+        assert!(f.tree().await.is_empty());
+    }
+
+    // not_a_git_project: a git repository with no commit.
+    {
+        let f = Fixture::in_git_project("sleep 30", Git::from_env());
+        set_worktrees(&f, true, None).await;
+        std::fs::remove_dir_all(f.dir.path().join(".git")).unwrap();
+        git_output(f.dir.path(), &["init", "-q", "-b", "main"]);
 
         let err = f.spawn(None, None).await.unwrap_err();
 
