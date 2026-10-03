@@ -10,6 +10,10 @@ export type Size = { cols: number; rows: number };
 /** One Terminal's screen. It exists before it is shown: bytes written to it wait for the first `show`. */
 export type Emulator = {
   write(bytes: Uint8Array): void;
+  /** Restores the Daemon's screen at its recorded size before later output is written. */
+  setSize(size: Size): void;
+  /** Clears the last complete screen before a replacement snapshot is written. */
+  reset(): void;
   /** Keystrokes and pastes, as the bytes the program expects, in the order they were typed. */
   onInput(listener: (bytes: Uint8Array) => void): void;
   /** Moves the emulator into `host` (opening it the first time), gives it focus, and returns its fitted size. */
@@ -96,6 +100,8 @@ export const createXtermEmulators = (probe?: EchoProbe): EmulatorFactory => {
 
     return {
       write: (bytes) => terminal.write(bytes, probe && (() => probe.written(bytes))),
+      setSize: ({ cols, rows }) => terminal.resize(cols, rows),
+      reset: () => terminal.write("\x1bc"),
       onInput: (listener) => {
         terminal.onData((text) => listener(encoder.encode(text)));
         terminal.onBinary((text) => listener(Uint8Array.from(text, (char) => char.charCodeAt(0))));

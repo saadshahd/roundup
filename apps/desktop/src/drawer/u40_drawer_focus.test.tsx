@@ -24,6 +24,8 @@ const mountPaneWithDrawer = async () => {
 
   const emulator: Emulator = {
     write: () => {},
+    setSize: () => {},
+    reset: () => {},
     onInput: (listener) => field.addEventListener("input", () => listener(new TextEncoder().encode(field.value))),
     show: (host) => {
       host.replaceChildren(field);

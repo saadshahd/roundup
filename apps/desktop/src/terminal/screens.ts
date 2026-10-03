@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
+import type { OutputEvent } from "@contracts/terminal/OutputEvent";
 import type { ConnectedProject } from "../state/connectedProject";
 import { fromBase64, toBase64 } from "./base64";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
@@ -25,12 +26,96 @@ export type Screens = {
   dispose(): void;
 };
 
-type Holder = { emulator: Emulator; atBottom: Accessor<boolean>; returnToBottom: () => void };
+type Holder = {
+  emulator: Emulator;
+  atBottom: Accessor<boolean>;
+  returnToBottom: () => void;
+  pending: OutputEvent[];
+  after: number | null;
+  restoring: boolean;
+  complete: boolean;
+};
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
   const holders = new Map<string, Holder>();
   const [failure, setFailure] = createSignal<string | null>(null);
+  let disposed = false;
+
+  const drain = (id: string, holder: Holder): void => {
+    if (holder.restoring || holder.after === null || disposed) return;
+
+    while (holder.pending.length > 0) {
+      const chunk = holder.pending[0];
+
+      if (!chunk) return;
+
+      try {
+        const bytes = fromBase64(chunk.data);
+        const end = chunk.offset + bytes.length;
+
+        if (end <= holder.after) {
+          holder.pending.shift();
+
+          continue;
+        }
+
+        if (chunk.offset > holder.after) {
+          void restore(id, holder);
+
+          return;
+        }
+
+        holder.emulator.write(bytes.subarray(holder.after - chunk.offset));
+        holder.after = end;
+        holder.pending.shift();
+      } catch (thrown) {
+        if (!(thrown instanceof Error)) throw thrown;
+
+        holder.pending.shift();
+        setFailure(`terminal.output: ${thrown.message}`);
+      }
+    }
+  };
+
+  const restore = async (id: string, holder: Holder): Promise<void> => {
+    if (holder.restoring || disposed) return;
+
+    holder.restoring = true;
+
+    try {
+      const snapshot = await app.rpc("terminal.snapshot", { id });
+
+      if (disposed) return;
+
+      const bytes = fromBase64(snapshot.data);
+
+      if (holder.complete) holder.emulator.reset();
+
+      holder.emulator.setSize({ cols: snapshot.cols, rows: snapshot.rows });
+      holder.emulator.write(bytes);
+      holder.after = snapshot.after;
+      holder.complete = true;
+      setFailure(null);
+    } catch (thrown) {
+      if (!(thrown instanceof Error)) throw thrown;
+
+      if (disposed) return;
+
+      setFailure(`terminal.snapshot: ${thrown.message}`);
+
+      if (!holder.complete) holder.after = holder.pending[0]?.offset ?? 0;
+
+      holder.restoring = false;
+
+      if (!holder.complete) drain(id, holder);
+
+      return;
+    }
+
+    holder.restoring = false;
+    drain(id, holder);
+  };
 
   const exited = (id: string): boolean => {
     const node = rail.nodes.find((candidate) => candidate.terminal_id === id);
@@ -90,9 +175,12 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
       if (!writing) void flush();
     });
-    const holder: Holder = { emulator, atBottom, returnToBottom };
+    const holder: Holder = {
+      emulator, atBottom, returnToBottom, pending: [], after: null, restoring: false, complete: false,
+    };
 
     holders.set(id, holder);
+    void restore(id, holder);
 
     return holder;
   };
@@ -100,10 +188,11 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   const emulatorFor = (id: string): Emulator => holderFor(id).emulator;
 
   const stopListening = output.subscribe((chunk) => {
-    // A throw escapes into the Tauri Channel callback, which then never advances its message index, so every later
-    // Daemon Event is held forever; during the feed's replay it would also abort the Pane's mount.
     try {
-      emulatorFor(chunk.id).write(fromBase64(chunk.data));
+      const holder = holderFor(chunk.id);
+
+      holder.pending.push(chunk);
+      drain(chunk.id, holder);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
@@ -127,6 +216,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     returnToBottom: (id) => holderFor(id).returnToBottom(),
     failure,
     dispose: () => {
+      disposed = true;
       stopListening();
 
       for (const holder of holders.values()) holder.emulator.dispose();

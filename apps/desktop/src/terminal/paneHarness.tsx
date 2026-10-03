@@ -45,8 +45,10 @@ export const fakeEmulators = () => {
       disposed: false,
       scrollsToBottom: 0,
       write: (bytes) => {
-        emulator.written.push(bytes);
+        if (bytes.length > 0) emulator.written.push(bytes);
       },
+      setSize: (size) => { emulator.size = size; },
+      reset: () => { emulator.written = []; },
       onInput: (next) => {
         inputListener = next;
       },
@@ -95,11 +97,16 @@ export const fakeEmulators = () => {
   return { factory, made };
 };
 
-export const output = (id: string, text: string, offset = 0): DaemonEvent => ({
-  actor: USER,
-  name: "terminal.output",
-  data: { id, offset, data: toBase64(new TextEncoder().encode(text)) },
-});
+let offsets = new Map<string, number>();
+
+export const output = (id: string, text: string, offset?: number): DaemonEvent => {
+  const bytes = new TextEncoder().encode(text);
+  const start = offset ?? offsets.get(id) ?? 0;
+
+  offsets.set(id, start + bytes.length);
+
+  return { actor: USER, name: "terminal.output", data: { id, offset: start, data: toBase64(bytes) } };
+};
 
 type Mounted = {
   app: FakeApp;
@@ -115,12 +122,14 @@ export const connectFakeProject = async (
   now = 0,
   daemonExit: Accessor<DaemonExit | null> = () => null,
 ): Promise<{ app: FakeApp; connected: ConnectedProject }> => {
+  offsets = new Map();
   const app = createFakeApp();
 
   app.handlers["rail.tree"] = () => tree;
   app.handlers["terminal.list"] = () => terminals;
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.resize"] = () => null;
+  app.handlers["terminal.snapshot"] = () => ({ cols: 100, rows: 30, after: 0, data: "" });
 
   const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now, daemonExit);
 
