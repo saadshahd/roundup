@@ -1,4 +1,4 @@
-import { cleanup } from "@solidjs/testing-library";
+import { cleanup, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { event, info, node, terminal } from "../testing/nodes";
 import { callsTo, mountPane, output } from "./paneHarness";
@@ -34,7 +34,7 @@ describe("u57 no pane header", () => {
 
     expect(container.querySelector(".pane")?.textContent).toBe("t-a");
     expect(emulators.get("t-a")).toBe(shown);
-    expect(shown?.written.map((bytes) => new TextDecoder().decode(bytes))).toEqual(["last output"]);
+    await waitFor(() => expect(shown?.written.map((bytes) => new TextDecoder().decode(bytes))).toEqual(["last output"]));
     expect(shown?.host).toBe(container.querySelector(".pane-screen"));
     expect(shown?.disposed).toBe(false);
   });
