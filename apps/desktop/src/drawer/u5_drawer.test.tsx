@@ -43,14 +43,14 @@ describe("u5 Drawer and last touch", () => {
     expect(panel.style.transform).toBe("translateX(100%)");
   });
 
-  it("u5_an_open_drawer_slides_in_from_the_right_in_180_ms_ease_out", () => {
+  it("u5_an_open_drawer_slides_in_from_the_right_over_the_drawer_duration_token_ease_out", () => {
     const { drawer, panel } = drawerSetup();
 
     drawer.open(() => <p>detail</p>);
 
     expect([panel.style.transform, panel.style.transition]).toEqual([
       "translateX(0)",
-      "transform 180ms ease-out",
+      "transform var(--duration-drawer) ease-out",
     ]);
   });
 
