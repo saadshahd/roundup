@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,10 @@ const SETTLE: Duration = Duration::from_millis(500);
 const WARMUP: usize = 100;
 const TERMINALS: usize = 10;
 const TREE_SIZES: [usize; 2] = [10, 40];
+
+/// H15's tool-use loop: 100 tool uses, each running `rup signal` for `PreToolUse` and again for
+/// `PostToolUse`, since `STATE_EVENTS` keeps both.
+const HOOK_LOOP_CALLS: usize = 200;
 
 /// Metrics of one Daemon, by name.
 pub type Sample = BTreeMap<String, f64>;
@@ -137,8 +142,85 @@ async fn first_ping(socket: &Path, child: &mut Child) -> io::Result<()> {
     }
 }
 
+/// H15: run the built `rup signal` `calls` times, one after another (Claude Code answers one hook at
+/// a time, spike finding 8), and return the wall time. A call that exits non-zero fails the metric:
+/// a `rup signal` that always fails would otherwise report a fast, passing loop.
+pub async fn hook_calls(
+    rup: &Path,
+    socket: &Path,
+    id: &str,
+    payloads: &[&Path],
+    calls: usize,
+) -> io::Result<Duration> {
+    let started = Instant::now();
+
+    for call in 0..calls {
+        let payload = payloads[call % payloads.len()];
+        let status = Command::new(rup)
+            .args(["signal", id])
+            .env("RUPD_SOCKET", socket)
+            .stdin(std::fs::File::open(payload)?)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|err| io::Error::other(format!("{}: {err}", rup.display())))?;
+
+        if !status.success() {
+            return Err(io::Error::other(format!("rup signal exited {status}")));
+        }
+    }
+
+    Ok(started.elapsed())
+}
+
+/// H15: the cost of a 100-tool-use loop's hook processes against a fresh Daemon, as the wall time
+/// of `HOOK_LOOP_CALLS` `rup signal` runs. A Daemon and Agent of its own, so this metric shares no
+/// state with `one_run`'s.
+async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
+    let dir = tempfile::tempdir()?;
+    let socket = dir.path().join("rupd.sock");
+    let claude = dir.path().join("fake-claude.sh");
+    std::fs::write(&claude, "#!/bin/sh\nsleep 300\n")?;
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755))?;
+    let pre = dir.path().join("pre-tool-use.json");
+    std::fs::write(&pre, r#"{"hook_event_name":"PreToolUse"}"#)?;
+    let post = dir.path().join("post-tool-use.json");
+    std::fs::write(&post, r#"{"hook_event_name":"PostToolUse"}"#)?;
+
+    let mut child = Command::new(rupd)
+        .arg(dir.path())
+        .env("RUPD_SOCKET", &socket)
+        .env("CLAUDE_CONFIG_DIR", dir.path().join("claude-config"))
+        .env("ROUNDUP_RUP_BIN", rup)
+        .env("ROUNDUP_CLAUDE_BIN", &claude)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|err| io::Error::other(format!("{}: {err}", rupd.display())))?;
+
+    first_ping(&socket, &mut child).await?;
+
+    let client = Client::connect(&socket).await?;
+    let agent = ask(
+        &client,
+        "agent.spawn",
+        json!({ "cwd": dir.path().to_string_lossy(), "prompt": null, "parent": null }),
+    )
+    .await?;
+    let id = agent["id"]
+        .as_str()
+        .ok_or_else(|| io::Error::other("agent.spawn returned no id"))?;
+
+    let elapsed = hook_calls(rup, &socket, id, &[&pre, &post], HOOK_LOOP_CALLS).await;
+    ask(&client, "rail.remove", json!({ "id": id })).await?;
+
+    Ok(ms(elapsed?))
+}
+
 /// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Groups on the Rail.
-pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
+pub async fn one_run(rupd: &Path, rup: &Path, calls: usize) -> io::Result<Sample> {
     let dir = tempfile::tempdir()?;
     let socket = dir.path().join("rupd.sock");
     let cwd = dir.path().to_string_lossy().into_owned();
@@ -248,6 +330,8 @@ pub async fn one_run(rupd: &Path, calls: usize) -> io::Result<Sample> {
             0.95,
         ),
     );
+
+    sample.insert("hook_loop_ms".into(), hook_loop_ms(rupd, rup).await?);
 
     Ok(sample)
 }

@@ -1,5 +1,7 @@
 # UI: the visual system (U130 to U137)
 
+Module: `apps/desktop` (the webview). Ids: U130–U137.
+
 Webview only. No App command, no Daemon method and nothing under `contracts/` changes. `docs/design-system.md` holds the Tokens, the six rules and the checks D1 to D10; each scenario below is the test that proves some of them, and its test name starts with its id. Every check runs on every visible element, in light and in dark, and fails when it cannot measure. `docs/motion.md` is unchanged.
 
 These scenarios narrow U4 (ink): its Glyph tones for `working`, `idle` and `done`, its hex values and its `--light` and `--lightest` colours are replaced by `docs/design-system.md`. Its contrast ratios stay, as D5. Any `u4_`, `u5_` or `u20_` test that asserts a replaced colour is changed in the PR that replaces it, and the PR names each such test.

@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
 
-pub use launch::Launcher;
+pub use launch::{Launcher, STATE_EVENTS};
 
 /// Env vars Claude Code sets when the program running it is itself inside a Claude Code run
 /// (A15). The Daemon can inherit these from its own environment; every program it starts must
@@ -160,7 +160,11 @@ impl AgentAdapter for ClaudeCode {
                 self.star_held_since = None;
                 self.settle(Kind::Done, "stopped".into())
             }
-            Observation::Signal(_) | Observation::Title(_) | Observation::Tick
+            Observation::Signal(_)
+            | Observation::Title(_)
+            | Observation::Tick
+            | Observation::Answered
+            | Observation::Dismissed
                 if self.ending != Ending::Running =>
             {
                 None
@@ -168,6 +172,14 @@ impl AgentAdapter for ClaudeCode {
             Observation::Tick => self.tick(),
             Observation::Signal(payload) => self.signal(&payload),
             Observation::Title(title) => self.retitle(&title),
+            Observation::Answered => {
+                self.star_held_since = None;
+                self.settle(Kind::Working, "working".into())
+            }
+            Observation::Dismissed => {
+                self.star_held_since = None;
+                self.settle(Kind::Idle, "idle".into())
+            }
         }
     }
 }

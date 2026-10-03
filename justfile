@@ -59,7 +59,7 @@ app-release project:
 
 # Rule 7 as a command: measures a fresh Daemon (median of 11 runs), writes target/perf.json, fails on a miss against crates/perf/budgets.json.
 perf *args:
-    cargo build --release -p rupd -p perf
+    cargo build --release -p rupd -p rup -p perf
     ./target/release/perf {{args}}
 
 # Keystroke-to-render p95 in the real App's WKWebView (macOS only; scenarios/perf.md K1-K3, R11). Builds the App with the probe into target/perf-app and opens its window, kept above every other window and Space, for about 40 s per run, and refuses unless ROUNDUP_ALLOW_WINDOW=1.
