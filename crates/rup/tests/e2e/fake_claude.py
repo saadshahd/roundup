@@ -15,7 +15,7 @@ file. What it does comes from the environment, so one script serves every scenar
                            same way Claude Code itself never runs a command for an unregistered
                            event
   FAKE_CLAUDE_LOOP_REPORT  a file path: after the loop, written with a JSON list of the event
-                           names whose hook command actually ran, in order, before a final Stop
+                           names whose hook command actually ran, in order, between a UserPromptSubmit and a final Stop
 
 It then sleeps until the Daemon stops it.
 """
@@ -49,6 +49,8 @@ def play_loop():
     settings = json.load(open(flag("--settings")))
     count = int(os.environ["FAKE_CLAUDE_LOOP"])
     ran = []
+    start = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    subprocess.run(start, shell=True, input=json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "loop"}), text=True, check=True)
     for _ in range(count):
         for event in ("PreToolUse", "PostToolUse"):
             hooks = settings["hooks"].get(event)

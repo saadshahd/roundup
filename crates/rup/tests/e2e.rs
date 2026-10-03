@@ -430,13 +430,13 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
 }
 
 /// H15: a loop of 100 tool uses, with the real `rup` hook command registered in the settings file
-/// `agent.spawn` writes, trying the hook for `PreToolUse` and `PostToolUse` around each use, then a
-/// final `Stop`. The fake `claude` skips an event with no entry in the settings, exactly as Claude
-/// Code itself would, and fails the loop if any hook command exits non-zero, so a finished loop
-/// means every `rup signal` answered. That proves only that the RPC call answered: a Daemon whose
-/// `agent.signal` handler dropped every Signal would still make `rup signal` exit 0. The Agent
-/// starts `working`, so only a Daemon that folded the final `Stop` leaves `rail.tree`, read straight
-/// from the Daemon's own Runs, at `idle`.
+/// `agent.spawn` writes, opened by a `UserPromptSubmit`, trying the hook for `PreToolUse` and
+/// `PostToolUse` around each use, then a final `Stop`. The fake `claude` skips an event with no
+/// entry in the settings, exactly as Claude Code itself would, and fails the loop if any hook
+/// command exits non-zero, so a finished loop means every `rup signal` answered. That proves only
+/// that the RPC call answered: a Daemon whose `agent.signal` handler dropped every Signal would
+/// still make `rup signal` exit 0, so a subscribed client must also see the Kind go `working` and
+/// then `idle`, and `rail.tree`, read straight from the Daemon's own Runs, must say `idle`.
 #[tokio::test]
 async fn h15_every_hook_call_of_a_hundred_tool_use_loop_is_answered_and_the_final_stop_leaves_the_agent_idle()
  {
@@ -446,7 +446,7 @@ async fn h15_every_hook_call_of_a_hundred_tool_use_loop_is_answered_and_the_fina
         ("FAKE_CLAUDE_LOOP", "100"),
         ("FAKE_CLAUDE_LOOP_REPORT", &report_path),
     ]);
-    let client = project.client().await;
+    let mut client = project.subscribed().await;
     let agent = project.spawn_agent(&client).await;
 
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -466,6 +466,15 @@ async fn h15_every_hook_call_of_a_hundred_tool_use_loop_is_answered_and_the_fina
             .all(|pair| pair == ["PreToolUse", "PostToolUse"]),
         "{ran:?}"
     );
+
+    let mut seen_working = false;
+    loop {
+        match next_kind(&mut client).await {
+            Kind::Working => seen_working = true,
+            Kind::Idle if seen_working => break,
+            _ => {}
+        }
+    }
 
     let tree = rail_tree(&client).await;
     let node = tree.iter().find(|node| node.id == agent.id).unwrap();
