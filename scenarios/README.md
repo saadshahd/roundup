@@ -22,6 +22,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `ui.md` | `apps/desktop` (the webview) | every `U` heading in the file; ids are reserved in `.work/queue.md` |
 | `ui-surfaces.md` | `apps/desktop` (the webview); the window half is S7 in `app.md` | U80–U85 |
 | `ui-persist.md` | `apps/desktop` (the webview) | U100 |
+| `ui-shelf.md` | `apps/desktop` (the webview) | U112 |
 | `ui-attention.md` | `apps/desktop` (the webview); begins when the Door scenarios land | U105–U110 |
 | `ui-visual.md` | `apps/desktop` (the webview) | U130–U137 |
 | `ui-daily.md` | `apps/desktop` (the webview) | U101, U102 |
