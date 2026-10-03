@@ -11,6 +11,7 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 | spawn with a prompt (`⇧⌘N`) | U33 | `apps/desktop/src/rail/spawn*`, `Rail.tsx`, `u32_` and `u33_` tests | `u33_` tests pass; the U32 case "cmd and shift" keeps `⇧⌘T` doing nothing | boxd-agents |
 | empty states | U38 | one small file per region in `src/rail`, `src/todos`, `src/pads`, `src/terminal` (`src/rail` shares `Rail.tsx` with U33: merges after it) | U2's tests; narrows U14's test | boxd-agents |
 | the Drawer takes and gives back focus | U40 | `apps/desktop/src/drawer/**` | `u27_focus_already_in_another_field_is_left_alone`, the `u28_` tests | boxd-agents |
+| formatted Pad editing (Moves: D2, D5, D6, D7) | U67 | `apps/desktop/src/pads/**`, desktop package and lockfile | `u67_`, U20/U36/U66; 1280 by 800 browser proof | codex-pad-editor-ux |
 
 ## Waiting
 
