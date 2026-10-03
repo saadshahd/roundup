@@ -19,7 +19,7 @@ No scenario, no work. Before roundup can hold its own Todos, the queue is a mark
 
 ## Roles
 
-One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Architect run Opus.
+One prompt file per role in `.agents/`. Builders and Reviewers can run Codex or Claude Code; the role's checks are the same for either tool.
 
 | Role | Does | Never |
 |---|---|---|
@@ -44,6 +44,10 @@ One prompt file per role in `.agents/`. Builders run Sonnet; Reviewer and Archit
 | 6 | Merge | Driver | laptop | `loop/rules.sh merge-ready <pr>` exits 0 (L46: the base is `main`, required checks passed, fewer than 3 rejects or an Architect pick, and the lane's trailer condition). Until it exists on `main`, the Driver runs `base <pr>` and `trailers` by hand and a PR is block lane unless the by-path post lane of `AGENTS.md` rule 1 applies |
 | 7 | UX observers: screenshots, `checks.json` per step, `loop/rules.sh delta` against `origin/main` (L42), critic report; the Checks that are `vitest` tests gate in step 4, the rest of this step gates nothing | QA, Design critic | macOS for baselines; boxd VM for web-UI-only runs | files in `artifacts/ux/`, critic Todos (`docs/design-system.md`, "Baseline protocol") |
 | 8 | Red main, or an unfixed post-merge defect | Triage | laptop | `gh run list` shows failure, or `loop/rules.sh revert-due` prints a PR (L48); revert, never fix forward |
+
+## Before review
+
+Before handing a head to an independent Reviewer, the Driver checks the Builder's `## Proof` against that exact head and the PR's `kind:`, `area:` and `lane:` labels. For a visible PR, the Builder measures D2 spacing and type, D5 contrast and D6 hit areas in the browser at the named viewport, then captures before and after images; a stale proof branch is refreshed before review. The Builder drives failure states on the densest named seed and measures whether messages remain visible beside pinned controls. For a bounded Daemon feature, the Builder tests the largest accepted input and runs its memory gate. The Driver also compares scenario claims with existing behavior and records any separate missing behavior in the queue. These checks come from the D5 and D6 reject on #262, D2 and stale proof reject on #264, maximum-window and memory reject on #265, the hidden error and Meta-agent folding conflict on #268, and the missing labels found on #265. A missing result or label is an open pre-review task, so it is resolved before a Reviewer spends a round on it.
 
 ## Driving the App in a browser
 
@@ -84,7 +88,7 @@ Required status checks and branch protection are GitHub settings on `main`, outs
 
 ## Driver
 
-Something has to start each step. Today that is a Claude Code session on the laptop running the steps with the Agent tool, `loop/boxd.sh` and `gh`. There is no unattended driver. The planned one is a dedicated Claude Code session in the `loop` skill's dynamic mode, started by the user, that reads `.work/queue.md` and runs steps 1 to 8. Until it exists, "the loop closes without the user" is not true; only the human gates below are unattended-ready.
+Something has to start each step. Today that is a Codex or Claude Code session on the laptop running the steps with subagents, `loop/boxd.sh` and `gh`. There is no unattended driver. The planned one is a dedicated coding-agent session that reads `.work/queue.md` and runs steps 1 to 8. Until it exists, "the loop closes without the user" is not true; only the human gates below are unattended-ready.
 
 Stop conditions, checked by the Driver before each step: CI red on `main` for more than 30 minutes; `loop/out/PAUSED` exists (a rate or usage limit was hit); a contract change without an architect's approval; the same perf budget breached twice.
 

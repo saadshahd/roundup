@@ -10,7 +10,7 @@ export type Screens = {
   /** The Terminal's emulator, created on first call; `terminal.output` arriving first creates it, so a pane shown later is not blank. */
   emulatorFor(id: string): Emulator;
   /** Opens a Terminal's emulator in the pane and records the fitted size for later snapshot recovery. */
-  show(id: string, host: HTMLElement): Size;
+  show(id: string, host: HTMLElement, focus?: boolean): Size;
   /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited, or a Daemon that has, takes no resize. */
   resize(id: string, size: Size): void;
   /**
@@ -221,9 +221,9 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
   const emulatorFor = (id: string): Emulator => holderFor(id).emulator;
 
-  const show = (id: string, host: HTMLElement): Size => {
+  const show = (id: string, host: HTMLElement, focus?: boolean): Size => {
     const holder = holderFor(id);
-    const size = holder.emulator.show(host);
+    const size = holder.emulator.show(host, focus);
 
     holder.shownSize = size;
 

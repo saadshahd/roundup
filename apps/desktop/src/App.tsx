@@ -8,6 +8,7 @@ import { ErrorLine, failureLine } from "./ink/ErrorLine";
 import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { AttentionChip } from "./rail/AttentionChip";
+import { railStorage } from "./rail/persist/storage";
 import { Rail } from "./rail/Rail";
 import { Keys } from "./keys/Keys";
 import { createNow } from "./state/clock";
@@ -30,7 +31,7 @@ const OpenProject = (props: {
   createEmulator?: EmulatorFactory | undefined;
 }) => {
   const [connected] = createResource(() =>
-    connectProject(props.app, props.project, props.reducedMotion, props.now, () => props.daemonExit),
+    connectProject(props.app, props.project, props.reducedMotion, props.now, () => props.daemonExit, railStorage(props.project.path)),
   );
 
   return (

@@ -8,6 +8,7 @@ import type { DrawerState } from "../drawer/drawer";
 import { createOutputFeed } from "./output";
 import type { OutputFeed } from "./output";
 import { createRailState } from "./rail";
+import type { RailStorage } from "../rail/persist/storage";
 import type { RailState } from "./rail";
 
 /** Everything a region of an open Project reads: the Project and its live connection to the Daemon. */
@@ -32,10 +33,11 @@ export const connectProject = async (
   reducedMotion: Accessor<boolean>,
   now: Accessor<number>,
   daemonExit: Accessor<DaemonExit | null> = () => null,
+  storage?: RailStorage,
 ): Promise<ConnectedProject> => {
   const events = await connectEvents(app);
   const output = createOutputFeed(events);
-  const rail = createRailState(app, events);
+  const rail = createRailState(app, events, storage);
 
   await rail.settled();
 

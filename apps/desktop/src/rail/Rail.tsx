@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { glyphOf } from "../ink/glyph";
 import { useConnectedProject } from "../state/connectedProject";
@@ -7,7 +7,7 @@ import { createRailDrag } from "./drag";
 import { adjacentId } from "./keys";
 import { RailMenu } from "./menu/RailMenu";
 import { createRailMenu } from "./menu/model";
-import { ancestorsOf, layoutRail } from "./layout";
+import { layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
 import { SpawnPromptField } from "./SpawnPromptField";
@@ -19,7 +19,7 @@ const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
 export const Rail = () => {
   const { app, project, rail, now, reducedMotion, daemonExit } = useConnectedProject();
 
-  const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+  const collapsed = rail.collapsed;
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());
   const [failure, setFailure] = createSignal<string | null>(null);
   const menu = createRailMenu(app, rail, setFailure);
@@ -146,7 +146,10 @@ export const Rail = () => {
   });
 
   onMount(() => {
-    const clear = () => setFailure(null);
+    const clear = () => {
+      setFailure(null);
+      rail.clearStorageFailure();
+    };
 
     const chord = (press: KeyboardEvent) => {
       if (!press.metaKey || press.ctrlKey || press.altKey) return;
@@ -186,14 +189,11 @@ export const Rail = () => {
     });
   });
 
-  /** A selection made elsewhere (the header's jump) may sit under a collapsed Group; its row is revealed and scrolled to. */
+  /** Restoring must not scroll before the window has placed focus (U100). */
   createEffect(
     on(rail.selected, (id) => {
-      if (id === null) return;
+      if (id === null || rail.restored()) return;
 
-      const above = new Set(untrack(() => ancestorsOf(rail.nodes, id)));
-
-      setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
       queueMicrotask(() => rowElement(id)?.scrollIntoView({ block: "nearest" }));
     }),
   );
@@ -259,7 +259,7 @@ export const Rail = () => {
                           tabbable={tabbableId() === view().node.id}
                           now={now}
                           onSelect={() => rail.select(view().node.id)}
-                          onToggle={() => setCollapsed((open) => toggled(open, view().node.id))}
+                          onToggle={() => rail.toggleCollapsed(view().node.id)}
                           onRename={(name) =>
                             void attempt(() => app.rpc("rail.rename", { id: view().node.id, name }))
                           }
@@ -304,7 +304,7 @@ export const Rail = () => {
           />
         )}
       </Show>
-      <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <Show when={failure() ?? rail.storageFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <RailMenu menu={menu} />
       <div class="rail-actions">
         <button

@@ -1,8 +1,10 @@
-import { createSignal } from "solid-js";
+import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
+import { ancestorsOf, isPlainGroup } from "../rail/layout";
+import type { RailStorage } from "../rail/persist/storage";
 import type { Events } from "../app/events";
 import type { AppSeam } from "../app/seam";
 
@@ -15,6 +17,11 @@ export type RailState = {
   /** `null` while the node's program runs, and for a plain Group (one with no program). */
   exitOf(node: RailNode): ExitState | null;
   selected(): string | null;
+  restored(): boolean;
+  collapsed(): ReadonlySet<string>;
+  toggleCollapsed(id: string): void;
+  storageFailure(): string | null;
+  clearStorageFailure(): void;
   select(id: string | null): void;
   nameOf(actor: Actor): string;
   /** The message of the last failed fetch, until a later fetch succeeds. */
@@ -25,7 +32,7 @@ export type RailState = {
   settled(): Promise<void>;
 };
 
-export const createRailState = (app: AppSeam, events: Events): RailState => {
+export const createRailState = (app: AppSeam, events: Events, storage?: RailStorage): RailState => {
   const [model, setModel] = createStore<{ tree: RailNode[]; exited: Record<string, number | null> }>({
     tree: [],
     exited: {},
@@ -34,16 +41,51 @@ export const createRailState = (app: AppSeam, events: Events): RailState => {
   const [selected, setSelected] = createSignal<string | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
 
+  const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+  const [restored, setRestored] = createSignal(false);
+  const [storageFailure, setStorageFailure] = createSignal<string | null>(null);
+  let firstTree = true;
+
+  const save = () => setStorageFailure(storage?.write({ selected: selected(), collapsed: [...collapsed()] }) ?? null);
+
+  const reveal = (id: string | null) => {
+    if (id === null) return;
+
+    const above = new Set(ancestorsOf(model.tree, id));
+
+    setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
+  };
+
   let pending = 0;
   let queued: DaemonEvent[] = [];
   let latest: Promise<void> = Promise.resolve();
 
   const fetchTree = async () => {
-    setModel("tree", reconcile(await app.rpc("rail.tree", null), { key: "id" }));
+    const tree = await app.rpc("rail.tree", null);
 
-    const id = selected();
+    batch(() => {
+      setModel("tree", reconcile(tree, { key: "id" }));
 
-    if (id !== null && !model.tree.some((node) => node.id === id)) setSelected(null);
+      if (firstTree) {
+        firstTree = false;
+        const saved = storage?.read();
+
+        if (saved) {
+          setSelected(tree.some((node) => node.id === saved.selected) ? saved.selected : null);
+          setCollapsed(new Set(saved.collapsed.filter((id) => tree.some((node) => node.id === id && isPlainGroup(node)))));
+          reveal(selected());
+          setRestored(selected() !== null);
+          save();
+        }
+      } else {
+        const id = selected();
+
+        if (id !== null && !tree.some((node) => node.id === id)) {
+          setSelected(null);
+          save();
+        }
+      }
+    });
   };
 
   const fetchTerminals = async () => {
@@ -112,8 +154,21 @@ export const createRailState = (app: AppSeam, events: Events): RailState => {
       await latest;
     },
     selected,
+    restored,
+    collapsed,
+    storageFailure,
+    clearStorageFailure: () => setStorageFailure(null),
+    toggleCollapsed: (id) => {
+      setCollapsed((closed) => new Set(closed.has(id) ? [...closed].filter((each) => each !== id) : [...closed, id]));
+      save();
+    },
     select: (id) => {
-      setSelected(id !== null && model.tree.some((node) => node.id === id) ? id : null);
+      batch(() => {
+        setRestored(false);
+        setSelected(id !== null && model.tree.some((node) => node.id === id) ? id : null);
+        reveal(selected());
+        save();
+      });
     },
     nameOf: (actor) =>
       actor.kind === "user"
