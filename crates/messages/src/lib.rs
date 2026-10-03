@@ -19,9 +19,7 @@ use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use store::Store;
 
-/// B1's bound on a body's length.
 const MAX_BODY_BYTES: usize = 8192;
-/// B1's bound on `pending` or `held` Messages a single receiver may hold at once.
 const OPEN_BOUND: u32 = 32;
 
 pub struct Messages {
@@ -133,8 +131,7 @@ impl Messages {
             messages.retain(|message| message.status == status);
         }
         if ctx.actor.kind != ActorKind::User {
-            messages
-                .retain(|message| message.from.id == ctx.actor.id || message.to == ctx.actor.id);
+            messages.retain(|message| is_sender(message, &ctx.actor) || message.to == ctx.actor.id);
         }
         reply(&messages)
     }
@@ -257,7 +254,7 @@ fn require_user(ctx: &Ctx, action: &str) -> Result<(), RpcError> {
 /// B11: the user may read any Message; anyone else only one they sent or received.
 fn require_readable(ctx: &Ctx, message: &Message) -> Result<(), RpcError> {
     if ctx.actor.kind == ActorKind::User
-        || message.from.id == ctx.actor.id
+        || is_sender(message, &ctx.actor)
         || message.to == ctx.actor.id
     {
         return Ok(());
@@ -266,6 +263,12 @@ fn require_readable(ctx: &Ctx, message: &Message) -> Result<(), RpcError> {
         "{} may not read message {}",
         ctx.actor.id, message.id
     )))
+}
+
+/// Whether `actor` sent `message`: by kind and id together, never id alone, since an Agent and
+/// an Extension draw their ids from different namespaces and could share one.
+fn is_sender(message: &Message, actor: &Actor) -> bool {
+    message.from.kind == actor.kind && message.from.id == actor.id
 }
 
 fn item(id: u32) -> String {
@@ -1281,6 +1284,44 @@ mod tests {
         assert_eq!(sent["status"], "dropped");
     }
 
+    #[tokio::test]
+    async fn b5_a_route_applies_only_to_its_own_sender_not_every_sender_to_the_receiver() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(
+            dir.path(),
+            vec![agent_node("b", Kind::Idle), agent_node("c", Kind::Idle)],
+        );
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "drop"}),
+        )
+        .await
+        .unwrap();
+
+        let from_a = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        let from_c = h
+            .call_as(
+                agent("c"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(from_a["status"], "dropped", "a's Route to b is drop");
+        assert_eq!(
+            from_c["status"], "pending",
+            "c has no Route to b, so the default auto applies, not a's drop Route"
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn b1_concurrent_sends_at_the_bound_never_both_succeed() {
         for _ in 0..40 {
@@ -1678,6 +1719,66 @@ mod tests {
             .collect();
 
         assert_eq!(ids, [json!(1)]);
+    }
+
+    #[tokio::test]
+    async fn b11_list_for_an_agent_never_matches_an_extension_sharing_its_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("y", Kind::Idle)]);
+        let ext_x = Actor {
+            kind: ActorKind::Ext,
+            id: "x".into(),
+            parent: None,
+        };
+        h.call_as(
+            ext_x,
+            "message.send",
+            json!({"to": "y", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+
+        let listed_by_agent_x = h
+            .call_as(agent("x"), "message.list", json!({}))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            listed_by_agent_x.as_array().unwrap().len(),
+            0,
+            "Agent x must not see the Extension x's Message just because the id strings match"
+        );
+    }
+
+    #[tokio::test]
+    async fn b11_reading_an_agent_never_matches_an_extension_sharing_its_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("y", Kind::Idle)]);
+        let ext_x = Actor {
+            kind: ActorKind::Ext,
+            id: "x".into(),
+            parent: None,
+        };
+        let sent = h
+            .call_as(
+                ext_x,
+                "message.send",
+                json!({"to": "y", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        let id = sent["id"].as_u64().unwrap() as u32;
+
+        let err = h
+            .call_as(agent("x"), "message.get", json!({"id": id}))
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            err.code,
+            code::FORBIDDEN,
+            "Agent x may not read a Message the Extension x sent, just because the id strings match"
+        );
     }
 
     #[tokio::test]
