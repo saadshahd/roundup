@@ -41,7 +41,8 @@ p {
   grid-template-columns: clamp(252px, 20%, 320px) minmax(690px, 1fr) clamp(160px, 14%, 280px);
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: clip;
 }
 
 @media (max-width: 1101px) {
