@@ -115,12 +115,12 @@ describe("u38 empty Todos", () => {
       </ConnectedProjectContext.Provider>
     ));
 
-    expect((await screen.findByText(/boom/)).textContent).toBe("✕ boom");
+    expect((await screen.findByText(/boom/)).textContent).toBe("boom");
 
     app.emit(event({ name: "todo.created", data: todo(1) }));
     await waitFor(() => expect(calls).toBe(2));
 
-    expect(screen.getByText("✕ boom")).toBeTruthy();
+    expect(screen.getByText("boom")).toBeTruthy();
     expect(screen.queryByText("no todos yet")).toBeNull();
 
     retry.resolve([]);
@@ -144,7 +144,7 @@ describe("u38 empty Todos", () => {
       </ConnectedProjectContext.Provider>
     ));
 
-    expect((await screen.findByText(/daemon says no/)).textContent).toBe("✕ daemon says no");
+    expect((await screen.findByText(/daemon says no/)).textContent).toBe("daemon says no");
     expect(screen.queryByText("no todos yet")).toBeNull();
   });
 });

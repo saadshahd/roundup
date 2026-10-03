@@ -9,7 +9,7 @@ const drawer = () => screen.getByRole("complementary", { name: "drawer" });
 const openDrawer = async () => {
   await mountTodos([todo(5, { title: "session store", body: "Move the cache." })]);
   fireEvent.click(await screen.findByRole("button", { name: /#5 / }));
-  await within(drawer()).findByText("+ blocker");
+  await within(drawer()).findByText("blocker");
 };
 
 describe("u139 a Todo's title and body edit by keyboard", () => {

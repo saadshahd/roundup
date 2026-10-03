@@ -1,9 +1,8 @@
-import { glyphOf } from "./glyph";
+import { Icon } from "./Icon";
 
-/** The one line of Ink a failed call leaves on screen: `✕ <message>`. */
 export const ErrorLine = (props: { message: string }) => (
-  <p class="ink" data-tone={glyphOf("error").tone}>
-    {glyphOf("error").mark} {props.message}
+  <p class="ink" data-tone="red" role="alert" title={props.message}>
+    <Icon name="x" />{props.message.split(/\r\n|[\r\n]/, 1)[0]}
   </p>
 );
 

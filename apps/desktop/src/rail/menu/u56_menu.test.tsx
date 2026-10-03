@@ -194,7 +194,7 @@ describe("u56 remove from the Rail", () => {
     fireEvent.click(item("remove"));
 
     await waitFor(() => expect(rail.nodes).toEqual([]));
-    expect(screen.queryByText("✕ gone")).toBeNull();
+    expect(screen.queryByText("gone")).toBeNull();
   });
 
   it("u56_other_remove_error_uses_the_rail_failure_line", async () => {
@@ -204,6 +204,6 @@ describe("u56 remove from the Rail", () => {
 
     fireEvent.click(item("remove"));
 
-    expect(await screen.findByText("✕ cannot remove")).toBeTruthy();
+    expect(await screen.findByText("cannot remove")).toBeTruthy();
   });
 });

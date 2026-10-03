@@ -97,7 +97,7 @@ describe("u40 the Drawer takes and gives back focus", () => {
 
     connected.drawer.open(() => <input aria-label="field" />);
     await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await vi.waitFor(() => expect(document.activeElement).toBe(field));
   });
@@ -108,7 +108,7 @@ describe("u40 the Drawer takes and gives back focus", () => {
 
     connected.drawer.open(() => <input aria-label="field" />);
     await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await vi.waitFor(() => expect(document.activeElement).toBe(railRowOf("a")));
   });
@@ -124,7 +124,7 @@ describe("u40 the Drawer takes and gives back focus", () => {
 
     connected.drawer.open(() => <input aria-label="field" />);
     await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await vi.waitFor(() => expect(document.activeElement).toBe(button));
   });
@@ -153,7 +153,7 @@ describe("u40 the Drawer takes and gives back focus", () => {
     connected.drawer.open(() => <input aria-label="second" />);
     await Promise.resolve();
     expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true);
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await vi.waitFor(() => expect(document.activeElement).toBe(railRowOf("a")));
   });
@@ -169,7 +169,7 @@ describe("u40 the Drawer takes and gives back focus", () => {
     app.emit(event({ name: "rail.changed" }));
     await connected.rail.settled();
 
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await Promise.resolve();
     expect(drawer.contains(document.activeElement)).toBe(true);

@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { Kind } from "@contracts/Kind";
 import { glyphOf, hasInk } from "../ink/glyph";
+import { Icon } from "../ink/Icon";
 import { KindGlyph } from "../ink/KindGlyph";
 import type { ExitState } from "../state/rail";
 import { isPlainGroup } from "./layout";
@@ -10,21 +11,21 @@ import type { NodeRow } from "./layout";
 import { isUnprompted, liveLineOf, liveTitleOf } from "./liveLine";
 
 /** A Kind's mark, or a bare mark for a plain Group, which has no Kind. */
-type Mark = { kind: Kind } | { bare: string };
+type Mark = { kind: Kind } | { bare: "right" | "down" };
 
 /** A Terminal has no Kind, so it borrows the marks of `working` and `done`. */
 const markOfRow = (row: NodeRow, exit: ExitState | null): Mark => {
-  if (row.collapsed) return row.collapsed.kind ? { kind: row.collapsed.kind } : { bare: "▸" };
+  if (row.collapsed) return row.collapsed.kind ? { kind: row.collapsed.kind } : { bare: "right" };
 
   if (row.node.status) return { kind: row.node.status.kind };
 
   if (row.node.kind === "terminal") return { kind: exit ? "done" : "working" };
 
-  return { bare: "▾" };
+  return { bare: "down" };
 };
 
 const MarkView = (props: { mark: Mark }) => (
-  <Show when={"kind" in props.mark ? props.mark.kind : null} fallback={<span class="glyph" data-tone="light">{"bare" in props.mark ? props.mark.bare : ""}</span>}>
+  <Show when={"kind" in props.mark ? props.mark.kind : null} fallback={<span class="glyph" data-tone="grey"><Icon name={"bare" in props.mark ? props.mark.bare : "down"} /></span>}>
     {(kind) => <KindGlyph kind={kind()} />}
   </Show>
 );

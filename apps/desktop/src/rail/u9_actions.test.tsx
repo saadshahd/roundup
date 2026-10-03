@@ -20,7 +20,7 @@ describe("u9 actions", () => {
     const mounted = await mountRail([group("g")]);
     answerWith(mounted, "agent.spawn");
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
   });
@@ -30,7 +30,7 @@ describe("u9 actions", () => {
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("g");
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
   });
@@ -40,7 +40,7 @@ describe("u9 actions", () => {
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("lead");
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
 
     await waitFor(() =>
       expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "lead" }]),
@@ -55,7 +55,7 @@ describe("u9 actions", () => {
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("a");
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
   });
@@ -70,7 +70,7 @@ describe("u9 actions", () => {
       return SPAWNED;
     };
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
 
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
   });
@@ -79,7 +79,7 @@ describe("u9 actions", () => {
     const mounted = await mountRail([group("g")]);
     answerWith(mounted, "agent.spawn");
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toHaveLength(1));
 
     expect([rowNames(), mounted.rail.selected()]).toEqual([["g"], null]);
@@ -97,7 +97,7 @@ describe("u9 actions", () => {
 
     mounted.rail.select("g");
 
-    fireEvent.click(screen.getByText("+ terminal"));
+    fireEvent.click(screen.getByText("terminal"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
@@ -113,7 +113,7 @@ describe("u9 actions", () => {
       return SPAWNED;
     };
 
-    fireEvent.click(screen.getByText("+ terminal"));
+    fireEvent.click(screen.getByText("terminal"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]));
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
@@ -124,7 +124,7 @@ describe("u9 actions", () => {
     answerWith(mounted, "rail.createGroup");
     mounted.rail.select("g");
 
-    fireEvent.click(screen.getByText("+ group"));
+    fireEvent.click(screen.getByText("group"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.createGroup")).toEqual([{ name: "group", parent: "g" }]));
   });
@@ -188,11 +188,11 @@ describe("u9 actions", () => {
       throw new RpcError(-32000, "no claude on PATH");
     };
 
-    fireEvent.click(screen.getByText("+ agent"));
-    const shown = await screen.findByText("✕ no claude on PATH");
+    fireEvent.click(screen.getByText("agent"));
+    const shown = await screen.findByText("no claude on PATH");
     fireEvent.click(rowOf("g"));
 
-    expect([shown.className, screen.queryByText("✕ no claude on PATH")]).toEqual(["ink", null]);
+    expect([shown.className, screen.queryByText("no claude on PATH")]).toEqual(["ink", null]);
   });
 
   it("u9_the_failure_line_sits_above_the_actions", async () => {
@@ -201,10 +201,10 @@ describe("u9 actions", () => {
       throw new RpcError(-32000, "boom");
     };
 
-    fireEvent.click(screen.getByText("+ group"));
-    const line = await screen.findByText("✕ boom");
+    fireEvent.click(screen.getByText("group"));
+    const line = await screen.findByText("boom");
 
-    expect(line.compareDocumentPosition(screen.getByText("+ agent")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(screen.getByText("agent")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("u9_the_failure_line_clears_on_a_click_on_the_fold_triangle", async () => {
@@ -213,12 +213,12 @@ describe("u9 actions", () => {
       throw new RpcError(-32000, "boom");
     };
 
-    fireEvent.click(screen.getByText("+ group"));
-    await screen.findByText("✕ boom");
+    fireEvent.click(screen.getByText("group"));
+    await screen.findByText("boom");
 
     fireEvent.click(glyphOf("g"));
 
-    expect(screen.queryByText("✕ boom")).toBeNull();
+    expect(screen.queryByText("boom")).toBeNull();
   });
 
   it("u9_the_failure_line_clears_on_a_click_on_promote", async () => {
@@ -229,13 +229,13 @@ describe("u9 actions", () => {
 
     mounted.app.handlers["rail.promote"] = () => metaAgent("g", "idle", "i");
 
-    fireEvent.click(screen.getByText("+ group"));
-    await screen.findByText("✕ boom");
+    fireEvent.click(screen.getByText("group"));
+    await screen.findByText("boom");
     fireEvent.mouseEnter(rowOf("g"));
 
     fireEvent.click(screen.getByText("promote"));
 
-    expect(screen.queryByText("✕ boom")).toBeNull();
+    expect(screen.queryByText("boom")).toBeNull();
   });
 
   it("u9_the_failure_line_clears_on_a_click_outside_the_rail", async () => {
@@ -244,12 +244,12 @@ describe("u9 actions", () => {
       throw new RpcError(-32000, "boom");
     };
 
-    fireEvent.click(screen.getByText("+ group"));
-    await screen.findByText("✕ boom");
+    fireEvent.click(screen.getByText("group"));
+    await screen.findByText("boom");
 
     fireEvent.click(document.body);
 
-    expect(screen.queryByText("✕ boom")).toBeNull();
+    expect(screen.queryByText("boom")).toBeNull();
   });
 
   it("u9_promote_is_not_shown_on_a_meta_agent", async () => {
@@ -276,7 +276,7 @@ describe("u9 actions", () => {
     let finish: (node: RailNode) => void = () => {};
 
     mounted.app.handlers["agent.spawn"] = () => new Promise<RailNode>((done) => (finish = done));
-    const button = screen.getByText("+ agent");
+    const button = screen.getByText("agent");
 
     fireEvent.click(button);
     fireEvent.click(button);
@@ -291,11 +291,11 @@ describe("u9 actions", () => {
     let finish: (node: RailNode) => void = () => {};
 
     mounted.app.handlers["rail.spawnTerminal"] = () => new Promise<RailNode>((done) => (finish = done));
-    const terminalButton = screen.getByText("+ terminal");
+    const terminalButton = screen.getByText("terminal");
 
     fireEvent.click(terminalButton);
 
-    expect([terminalButton, screen.getByText("+ group")].map((button) => button.hasAttribute("disabled"))).toEqual([
+    expect([terminalButton, screen.getByText("group")].map((button) => button.hasAttribute("disabled"))).toEqual([
       true,
       true,
     ]);

@@ -1,3 +1,4 @@
+import { KindGlyph } from "../ink/KindGlyph";
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { CrepeBuilder } from "@milkdown/crepe/builder";
 import { linkTooltip } from "@milkdown/crepe/feature/link-tooltip";
@@ -146,7 +147,7 @@ export default function PadRichEditor(props: {
   return (
     <div class="pad-editor pad-rich-editor" onFocusOut={(event) => props.onBlur(event.relatedTarget)}>
       <Show when={failure()}>
-        {(message) => <p role="alert" class="pad-editor-failure">✕ {message()}</p>}
+        {(message) => <p role="alert" class="pad-editor-failure"><KindGlyph kind="error" decorative /> {message()}</p>}
       </Show>
       <div ref={(element) => (host = element)} />
     </div>

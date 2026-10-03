@@ -59,7 +59,7 @@ describe("u131 a Rail row is 28 px high", () => {
       agent("busy", "working", "w"),
     ]);
 
-    const fold = getComputedStyle(screen.getByText("✓ 1 done").parentElement!);
+    const fold = getComputedStyle(screen.getByText("1 done").parentElement!);
 
     sheet.remove();
 

@@ -118,7 +118,7 @@ describe("u31 rail keyboard", () => {
 
   it("u31_a_collapsed_groups_children_are_skipped", async () => {
     await mountRail([group("g"), agent("hidden", "idle", "x", { parent: "g" }), agent("after", "idle", "x")]);
-    fireEvent.click(screen.getByText("▾"));
+    fireEvent.click(screen.getByRole("button", { name: "collapse" }));
     rowOf("g").focus();
 
     press("ArrowDown");

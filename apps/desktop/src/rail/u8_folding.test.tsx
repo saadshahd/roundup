@@ -18,7 +18,7 @@ describe("u8 folding", () => {
       agent("busy", "working", "w", { order: 2 }),
     ]);
 
-    expect([rowNames(), screen.getByText("✓ 2 done").textContent]).toEqual([["busy"], "✓ 2 done"]);
+    expect([rowNames(), screen.getByText("2 done").textContent?.trim()]).toEqual([["busy"], "2 done"]);
   });
 
   it("u8_an_agent_done_for_under_10_minutes_stays_in_its_row", async () => {
@@ -32,15 +32,15 @@ describe("u8 folding", () => {
 
     setNow(NOW + 2 * MINUTE);
 
-    expect(screen.getByText("✓ 1 done")).toBeDefined();
+    expect(screen.getByText("1 done")).toBeDefined();
   });
 
   it("u8_clicking_the_done_line_unfolds_its_agents", async () => {
     await mountRail([doneFor("old-1", 20, { order: 0 }), agent("busy", "working", "w", { order: 1 })]);
 
-    fireEvent.click(screen.getByText("✓ 1 done"));
+    fireEvent.click(screen.getByText("1 done"));
 
-    expect([rowNames(), screen.queryByText("✓ 1 done")]).toEqual([["busy", "old-1"], null]);
+    expect([rowNames(), screen.queryByText("1 done")]).toEqual([["busy", "old-1"], null]);
   });
 
   it("u8_each_parent_folds_its_own_done_agents_at_its_own_depth", async () => {
@@ -50,7 +50,7 @@ describe("u8 folding", () => {
       doneFor("outer", 30, { order: 1 }),
     ]);
 
-    expect(screen.getAllByText("✓ 1 done").map((line) => line.parentElement?.style.paddingLeft)).toEqual(["2ch", "0ch"]);
+    expect(screen.getAllByText("1 done").map((line) => line.parentElement?.style.paddingLeft)).toEqual(["2ch", "0ch"]);
   });
 
   it("u8_a_meta_agent_never_folds_even_when_done", async () => {
@@ -68,9 +68,9 @@ describe("u8 folding", () => {
 
     fireEvent.click(glyphOf("migrate"));
 
-    expect([rowNames(), glyphOf("migrate").textContent, glyphOf("migrate").className]).toEqual([
+    expect([rowNames(), glyphOf("migrate").getAttribute("aria-label"), glyphOf("migrate").className]).toEqual([
       ["migrate"],
-      "●",
+      "needs-you",
       "glyph ink",
     ]);
   });
@@ -93,19 +93,19 @@ describe("u8 folding", () => {
 
     fireEvent.click(glyphOf("migrate"));
 
-    expect([rowNames(), glyphOf("migrate").textContent]).toEqual([["migrate", "a"], "▾"]);
+    expect([rowNames(), glyphOf("migrate").querySelector("svg")?.classList.contains("lucide-chevron-down")]).toEqual([["migrate", "a"], true]);
   });
 
   it.each<[Kind, string]>([
-    ["error", "✕"],
-    ["blocked", "⏸"],
-    ["done", "✓"],
+    ["error", "error"],
+    ["blocked", "blocked"],
+    ["done", "done"],
   ])("u8_a_collapsed_group_with_a_%s_agent_below_shows_%s", async (kind, mark) => {
     await mountRail([group("g"), agent("a", kind, "l", { parent: "g" })]);
 
     fireEvent.click(glyphOf("g"));
 
-    expect(glyphOf("g").textContent).toBe(mark);
+    expect(glyphOf("g").getAttribute("aria-label")).toBe(mark);
   });
 
   it("u8_collapsing_a_group_does_not_select_it", async () => {
@@ -138,7 +138,7 @@ describe("u8 folding", () => {
 
     fireEvent.click(glyphOf("outer"));
 
-    expect([glyphOf("outer").textContent, glyphOf("outer").className]).toEqual(["●", "glyph ink"]);
+    expect([glyphOf("outer").getAttribute("aria-label"), glyphOf("outer").className]).toEqual(["needs-you", "glyph ink"]);
   });
 
   it("u8_a_collapsed_group_with_no_agent_below_shows_a_right_triangle", async () => {
@@ -146,6 +146,6 @@ describe("u8 folding", () => {
 
     fireEvent.click(glyphOf("g"));
 
-    expect(glyphOf("g").textContent).toBe("▸");
+    expect(glyphOf("g").querySelector("svg.lucide-chevron-right")).not.toBeNull();
   });
 });

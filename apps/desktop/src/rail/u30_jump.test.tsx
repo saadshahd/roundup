@@ -137,7 +137,7 @@ describe("u30 jump", () => {
 
   it("u30_a_collapsed_group_expands_to_show_the_row", async () => {
     await mountRail([group("g"), since("a", "needs-you", 1, { parent: "g" })]);
-    fireEvent.click(screen.getByText("▾"));
+    fireEvent.click(screen.getByRole("button", { name: "collapse" }));
 
     jump();
 

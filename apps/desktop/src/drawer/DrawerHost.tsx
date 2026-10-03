@@ -1,5 +1,6 @@
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { Icon } from "../ink/Icon";
 import { DRAWER_EASING } from "./drawer";
 import type { DrawerContent, DrawerState } from "./drawer";
 
@@ -68,8 +69,8 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
         if (!isOpen()) setMounted(null);
       }}
     >
-      <button type="button" class="word close" onClick={() => props.drawer.close()}>
-        close
+      <button type="button" class="word close" aria-label="close" onClick={() => props.drawer.close()}>
+        <Icon name="x" />
       </button>
       <Show when={mounted()} keyed>
         {(content) => content()}

@@ -1,3 +1,4 @@
+import { OwnerMark } from "../ink/OwnerMark";
 import { createEffect, createSignal, lazy, on, onCleanup, Show, Suspense } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Actor } from "@contracts/Actor";
@@ -7,7 +8,7 @@ import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
 import { cutName, markedLine, wholeWord } from "./nameLine";
-import { ownerMark } from "./owner";
+
 import type { PadEditorHandle } from "./PadEditor";
 import "./styles.css";
 
@@ -196,7 +197,7 @@ const PadBody = (props: {
   return (
     <div class="pad-body">
       <p style={markedLine}>
-        <span style={wholeWord}>{ownerMark(pad().owner)}</span>{" "}
+        <span style={wholeWord}><OwnerMark owner={pad().owner} decorative /></span>{" "}
         <span title={name} style={cutName}>
           {name}
         </span>{" "}

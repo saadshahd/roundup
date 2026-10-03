@@ -132,10 +132,10 @@ it("u100_write_failure_shows_one_ink_line_and_keeps_working", async () => {
   await loaded();
   click("agent-1");
   collapse("backend");
-  expect(screen.getAllByText("✕ storage full")).toHaveLength(1);
-  const failure = screen.getByText("✕ storage full");
+  expect(screen.getAllByText("storage full")).toHaveLength(1);
+  const failure = screen.getByText("storage full");
   expect(failure.classList.contains("ink")).toBe(true);
-  expect(failure.compareDocumentPosition(screen.getByText("+ agent")) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  expect(failure.compareDocumentPosition(screen.getByText("agent")) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   expect(row("backend")?.getAttribute("aria-expanded")).toBe("false");
   click("agent-2");
   expect(row("agent-2")?.getAttribute("aria-selected")).toBe("true");
@@ -182,7 +182,7 @@ it("u100_reopening_after_daemon_exit_restores_the_last_layout", async () => {
   collapse("backend");
   click("agent-2");
   first.app.exitDaemon({ code: 1 });
-  await screen.findByText("✕ daemon exited 1");
+  await screen.findByText("daemon exited 1");
   first.unmount();
   mount();
   await loaded();
@@ -208,7 +208,7 @@ it("u100_later_selection_reveals_ancestors_and_saves_each_change", async () => {
 it("u100_done_lines_are_not_restored", async () => {
   const first = mount("agents-10");
   await loaded();
-  fireEvent.click(screen.getByText("✓ 1 done"));
+  fireEvent.click(screen.getByText("1 done"));
   expect(row("agent-6")).not.toBeNull();
   click("agent-2");
   expect(read()).toEqual({ selected: "agent-2", collapsed: [] });
@@ -216,7 +216,7 @@ it("u100_done_lines_are_not_restored", async () => {
   mount("agents-10");
   await loaded();
   expect(row("agent-6")).toBeNull();
-  expect(screen.getByText("✓ 1 done")).toBeDefined();
+  expect(screen.getByText("1 done")).toBeDefined();
 });
 
 it("u100_meta_agent_selection_survives_reopening", async () => {
@@ -240,7 +240,7 @@ it("u100_failed_first_tree_keeps_storage_until_a_successful_tree", async () => {
   const { app } = mount("tree-40", "/u100", pending.promise);
   await waitFor(() => expect(app.calls.some((call) => call.method === "rail.tree")).toBe(true));
   pending.reject(new Error("tree unavailable"));
-  await screen.findByText("✕ tree unavailable");
+  await screen.findByText("tree unavailable");
   expect(get).not.toHaveBeenCalled();
   expect(document.querySelector('[aria-selected="true"]')).toBeNull();
   app.handlers["rail.tree"] = () => tree;
@@ -255,9 +255,9 @@ it("u100_storage_failure_clears_on_the_next_click_and_can_be_reported_again", as
   mount();
   await loaded();
   click("agent-2");
-  expect(screen.getByText("✕ storage full")).toBeDefined();
+  expect(screen.getByText("storage full")).toBeDefined();
   fireEvent.click(screen.getByRole("tree"));
-  expect(screen.queryByText("✕ storage full")).toBeNull();
+  expect(screen.queryByText("storage full")).toBeNull();
   collapse("backend");
-  expect(screen.getAllByText("✕ storage full")).toHaveLength(1);
+  expect(screen.getAllByText("storage full")).toHaveLength(1);
 });
