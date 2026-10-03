@@ -5,6 +5,8 @@ import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { createRailDrag } from "./drag";
 import { adjacentId } from "./keys";
+import { RailMenu } from "./menu/RailMenu";
+import { createRailMenu } from "./menu/model";
 import { ancestorsOf, layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
@@ -20,6 +22,7 @@ export const Rail = () => {
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());
   const [failure, setFailure] = createSignal<string | null>(null);
+  const menu = createRailMenu(app, rail, setFailure);
   /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
   const [wanted, setWanted] = createSignal<string | null>(null);
   /** Gates `⌘N` in the chord handler and the `+ agent` click below, so an open field is never dropped mid-type (U33). */
@@ -70,6 +73,19 @@ export const Rail = () => {
     const focusedId = press.target instanceof HTMLElement ? press.target.dataset.id : undefined;
 
     if (focusedId === undefined) return;
+
+    if (press.key === "ContextMenu" || (press.key === "F10" && press.shiftKey)) {
+      press.preventDefault();
+      const row = rowElement(focusedId);
+      const node = rail.nodes.find((candidate) => candidate.id === focusedId);
+
+      if (row && node) {
+        const box = row.getBoundingClientRect();
+        menu.open(node, rail.exitOf(node), box.left, box.bottom);
+      }
+
+      return;
+    }
 
     if (press.key === "ArrowDown" || press.key === "ArrowUp") {
       press.preventDefault();
@@ -252,6 +268,7 @@ export const Rail = () => {
                           lifted={drag.state()?.lifted.has(view().node.id) ?? false}
                           shift={drag.state()?.shifts.get(view().node.id) ?? 0}
                           onPointerDown={(press) => drag.start(view().node.id, press)}
+                          onOpenMenu={(press) => menu.open(view().node, rail.exitOf(view().node), press.clientX, press.clientY)}
                         />
                       )}
                     </Show>
@@ -288,6 +305,7 @@ export const Rail = () => {
         )}
       </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <RailMenu menu={menu} />
       <div class="rail-actions">
         <button
           class="word"

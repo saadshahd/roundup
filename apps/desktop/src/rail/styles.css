@@ -145,3 +145,42 @@
 .rail-tree [role="tree"][aria-disabled="true"] {
   filter: grayscale(1);
 }
+
+.rail-menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  max-width: 252px;
+  padding: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-row);
+}
+
+.rail-menu button {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-row);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-menu button:hover {
+  background: var(--hover);
+}
+
+.rail-menu button:active {
+  background: var(--selected);
+}
+
+.rail-menu-question {
+  padding: var(--space-2);
+}
