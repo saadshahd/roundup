@@ -468,6 +468,53 @@ async fn raw_tools_list(socket: &Path, cursor: Option<&str>) -> Value {
     }
 }
 
+/// The `tools/list` result schema the interactive Claude Code 2.1.288 validates a reply against,
+/// read from its own (minified) source: `ttlMs` a non-negative integer, `cacheScope` the enum
+/// `public`/`private`, `tools` an array, `nextCursor` an optional string. Extracted with:
+///
+///   strings -n 4 ~/.local/share/claude/versions/2.1.288 \
+///     | grep -o '"tools/list":Re({[^}]*}[^)]*)'
+///
+/// which prints (`claude --version` there is `2.1.288 (Claude Code)`):
+///
+///   "tools/list":Re({ttlMs:k().int().min(0),cacheScope:j(["public","private"]),tools:C(Ge),nextCursor:s.optional()})
+///
+/// (`k()` is a bound `z.number()`, `j([...])` is `z.enum([...])`, `C()` is `z.array()`, `s` is a
+/// bound `z.string()`.) The same command against `~/.local/share/claude/versions/2.1.283`
+/// (`claude --version` there is `2.1.283 (Claude Code)`, the headless build M4 says accepts the
+/// older reply) extracts a byte-identical schema, so the two builds differ in what they tolerate,
+/// not in what they validate against. If a later `claude` drops `ttlMs`/`cacheScope`, widens
+/// `cacheScope`'s enum or adds a new required field, this stops matching reality and `/mcp`
+/// reconnecting against the real client (M4's laptop check) would fail even though every test
+/// here stayed green.
+fn assert_matches_tools_list_schema(reply: &Value) {
+    let ttl_ms = reply
+        .get("ttlMs")
+        .unwrap_or_else(|| panic!("no ttlMs: {reply}"));
+    assert!(
+        ttl_ms.is_u64(),
+        "ttlMs must be an integer >= 0 (zod `k().int().min(0)`): {reply}"
+    );
+    let cache_scope = reply
+        .get("cacheScope")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("no string cacheScope: {reply}"));
+    assert!(
+        matches!(cache_scope, "public" | "private"),
+        "cacheScope must be \"public\" or \"private\" (zod `j([\"public\",\"private\"])`): {reply}"
+    );
+    assert!(
+        reply.get("tools").is_some_and(Value::is_array),
+        "no tools array: {reply}"
+    );
+    if let Some(next_cursor) = reply.get("nextCursor") {
+        assert!(
+            next_cursor.is_string(),
+            "nextCursor must be a string when present: {reply}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let dir = tempfile::tempdir().unwrap();
@@ -476,8 +523,8 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
 
     let result = raw_tools_list(&socket, None).await;
 
-    assert_eq!(result["tools"].as_array().unwrap().len(), 13);
-    assert!(result["ttlMs"].is_u64(), "{result}");
+    assert_matches_tools_list_schema(&result);
+    assert_eq!(result["tools"].as_array().unwrap().len(), M1_METHODS.len());
     assert_eq!(result["cacheScope"], "public", "{result}");
 }
 
@@ -489,8 +536,8 @@ async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
 
     let result = raw_tools_list(&socket, Some("past-the-end")).await;
 
+    assert_matches_tools_list_schema(&result);
     assert_eq!(result["tools"].as_array().unwrap().len(), 0);
-    assert!(result["ttlMs"].is_u64(), "{result}");
     assert_eq!(result["cacheScope"], "public", "{result}");
 }
 
@@ -510,6 +557,7 @@ async fn m4_a_second_page_carries_a_numeric_ttl_ms_and_cache_scope() {
         .await
         .unwrap();
 
+    assert_matches_tools_list_schema(&serde_json::to_value(&page).unwrap());
     assert!(page.tools.is_empty());
     assert!(page.ttl_ms.is_some_and(|ms| ms > 0), "{:?}", page.ttl_ms);
     assert_eq!(
