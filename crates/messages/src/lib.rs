@@ -501,16 +501,16 @@ async fn rail_nodes(inner: &Inner) -> Result<Vec<RailNode>, RpcError> {
 
 /// B2's `<sender's name>`: the Rail name for an Agent, since a Rail node can be renamed; the
 /// Actor's id for the user (`you`), the Daemon and an Extension.
-async fn sender_name(inner: &Inner, from: &Actor) -> String {
+async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
     if from.kind != ActorKind::Agent {
-        return from.id.clone();
+        return Ok(from.id.clone());
     }
-    let nodes = rail_nodes(inner).await.expect("rail.tree");
+    let nodes = rail_nodes(inner).await?;
 
-    nodes
+    Ok(nodes
         .into_iter()
         .find(|node| node.id == from.id)
-        .map_or_else(|| from.id.clone(), |node| node.name)
+        .map_or_else(|| from.id.clone(), |node| node.name))
 }
 
 /// B2, B7: types the oldest pending Message to `agent`, if any; the next `idle` picks up the
@@ -518,19 +518,31 @@ async fn sender_name(inner: &Inner, from: &Actor) -> String {
 /// conditional write before typing starts (B8), so a Takeover beginning while the prompt is being
 /// typed cannot hold a Message already in flight; a refusal reverts that record.
 async fn on_idle(inner: &Arc<Inner>, agent: &str) {
-    let message = {
-        let store = inner.store.lock().unwrap();
-        let Some(found) = store.next_pending(agent).expect("message store") else {
-            return;
-        };
-        let Some(delivered) = store.mark_delivered(found.id).expect("message store") else {
-            return;
-        };
-        delivered
+    let found = inner
+        .store
+        .lock()
+        .unwrap()
+        .next_pending(agent)
+        .expect("message store");
+    let Some(found) = found else {
+        return;
+    };
+    // The name is read before the record: a Rail that cannot answer leaves the Message `pending`
+    // for the next `idle`, where a read after the record would strand it `delivered` and untyped.
+    let Ok(from) = sender_name(inner, &found.from).await else {
+        return;
+    };
+    let recorded = inner
+        .store
+        .lock()
+        .unwrap()
+        .mark_delivered(found.id)
+        .expect("message store");
+    let Some(message) = recorded else {
+        return;
     };
     let text = format!(
-        "[from {}, {}] {}",
-        sender_name(inner, &message.from).await,
+        "[from {from}, {}] {}",
         kind_label(message.kind),
         message.body
     );
@@ -610,11 +622,16 @@ mod tests {
 
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,
     /// without a real Agent, Terminal or Launcher.
-    struct FakeRail(StdMutex<Vec<RailNode>>);
+    struct FakeRail(StdMutex<Vec<RailNode>>, std::sync::atomic::AtomicBool);
 
     impl FakeRail {
         fn new(nodes: Vec<RailNode>) -> Arc<Self> {
-            Arc::new(Self(StdMutex::new(nodes)))
+            Arc::new(Self(StdMutex::new(nodes), false.into()))
+        }
+
+        /// While `true`, `rail.tree` answers with an error.
+        fn fail(&self, failing: bool) {
+            self.1.store(failing, std::sync::atomic::Ordering::SeqCst);
         }
     }
 
@@ -626,6 +643,9 @@ mod tests {
 
         async fn call(&self, _ctx: &Ctx, method: &str, _params: Value) -> Result<Value, RpcError> {
             match method {
+                "rail.tree" if self.1.load(std::sync::atomic::Ordering::SeqCst) => {
+                    Err(RpcError::internal("rail.tree is down"))
+                }
                 "rail.tree" => Ok(serde_json::to_value(&*self.0.lock().unwrap()).unwrap()),
                 _ => Err(RpcError::method_not_found(method)),
             }

@@ -1018,3 +1018,21 @@ async fn b6_a_busy_refusal_of_a_users_message_during_a_takeover_leaves_it_pendin
     assert_eq!(h.states().await[&1], pending());
     assert!(!h.names().contains(&"message.held".to_owned()));
 }
+
+#[tokio::test]
+async fn b2_a_rail_that_cannot_answer_leaves_the_message_pending_for_the_next_idle() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+
+    h.rail.fail(true);
+    h.becomes("b", Kind::Idle);
+    h.settle().await;
+    assert_eq!(h.get(1).await["status"], "pending");
+    assert!(h.calls.lock().unwrap().is_empty());
+
+    h.rail.fail(false);
+    h.becomes("b", Kind::Working);
+    h.becomes("b", Kind::Idle);
+    h.until(1, "delivered").await;
+    assert_eq!(h.typed(1).await.len(), 1);
+}
