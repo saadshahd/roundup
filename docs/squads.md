@@ -35,4 +35,4 @@ Rules 1, 2, 3, 5, 6 and 7 of `AGENTS.md`: a reviewer's id differs from the autho
 
 ## Moving the queue
 
-`.work/queue.md` keeps the swarm protocol and the id table. Each squad's rows move to `.work/queue/<squad>.md` in one PR after the open queue PRs have merged, so no row is edited in two places meanwhile. Until that PR merges, rows stay where they are.
+`.work/queue.md` keeps the swarm protocol and the id table. Each squad's rows are in `.work/queue/<squad>.md`, and rows no squad owns (contracts, spikes, rows that cross squads) are in `.work/queue/architects.md`.
