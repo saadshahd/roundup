@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
+import { Schema } from "@milkdown/kit/prose/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { openShelf, padOf } from "./padsFixture";
+import { sourceForDocument } from "./sourceForDocument";
 import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -36,6 +38,17 @@ describe("u67 formatted Pad editing", () => {
 
     expect(app.calls.filter((call) => call.method === "pad.write")).toHaveLength(0);
     expect((await screen.findByLabelText("Pad body")).querySelector("h1")?.textContent).toBe("Heading");
+  });
+
+  it("u67_edit_then_undo_preserves_the_original_source_bytes", () => {
+    const source = "*emphasis*  \n\n# Heading\n\n";
+    const schema = new Schema({ nodes: { doc: { content: "text*" }, text: {} } });
+    const original = schema.node("doc", null, [schema.text("emphasis Heading")]);
+    const edited = schema.node("doc", null, [schema.text("Xemphasis Heading")]);
+    const serialized = "*emphasis*\n\n# Heading\n";
+
+    expect(sourceForDocument(source, original, edited, () => serialized)).toBe(serialized);
+    expect(sourceForDocument(source, original, original, () => serialized)).toBe(source);
   });
 
   it("u67_untrusted_source_has_no_active_html_or_unsafe_link", async () => {

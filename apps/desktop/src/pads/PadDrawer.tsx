@@ -140,7 +140,7 @@ const PadBody = (props: {
     });
 
   const leaveField = async (typed: string) => {
-    if (!editing()) return;
+    if (!editing() && typed === origin()) return;
 
     if (conflictActor()) return;
 
@@ -172,6 +172,13 @@ const PadBody = (props: {
     void leaveField(currentDraft());
     editor = undefined;
     setMode("read");
+  };
+
+  const showDraft = (next: "edit" | "source" | "preview") => {
+    switchingView = true;
+    setShown(currentDraft());
+    editor = undefined;
+    setMode(next);
   };
 
   const keepMine = () =>
@@ -216,33 +223,17 @@ const PadBody = (props: {
             <button type="button" onClick={() => setMode("edit")}>edit</button>
           </Show>
           <Show when={mode() === "edit"}>
-            <button type="button" onClick={() => {
-              switchingView = true;
-              editor = undefined;
-              setMode("source");
-            }}>source</button>
+            <button type="button" onClick={() => showDraft("source")}>source</button>
             <button
               type="button"
-              onClick={() => {
-                switchingView = true;
-                editor = undefined;
-                setMode("preview");
-              }}
+              onClick={() => showDraft("preview")}
             >
               Preview
             </button>
           </Show>
           <Show when={mode() === "source"}>
-            <button type="button" onClick={() => {
-              switchingView = true;
-              editor = undefined;
-              setMode("edit");
-            }}>formatted</button>
-            <button type="button" onClick={() => {
-              switchingView = true;
-              editor = undefined;
-              setMode("preview");
-            }}>Preview</button>
+            <button type="button" onClick={() => showDraft("edit")}>formatted</button>
+            <button type="button" onClick={() => showDraft("preview")}>Preview</button>
           </Show>
           <Show when={mode() === "preview"}>
             <button type="button" onClick={() => setMode("edit")}>edit</button>

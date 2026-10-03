@@ -5,8 +5,10 @@ import { listItem } from "@milkdown/crepe/feature/list-item";
 import { placeholder } from "@milkdown/crepe/feature/placeholder";
 import { toolbar } from "@milkdown/crepe/feature/toolbar";
 import { topBar } from "@milkdown/crepe/feature/top-bar";
+import { editorViewCtx } from "@milkdown/kit/core";
 import { replaceAll } from "@milkdown/kit/utils";
 import type { PadEditorHandle } from "./PadEditor";
+import { sourceForDocument } from "./sourceForDocument";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
 
@@ -33,7 +35,6 @@ export default function PadRichEditor(props: {
   let host: HTMLDivElement | undefined;
   let crepe: CrepeBuilder | undefined;
   let original = props.text;
-  let dirty = false;
   let applying = false;
   let closed = false;
   let topBarLabels: string[] = [];
@@ -76,7 +77,6 @@ export default function PadRichEditor(props: {
       listener.markdownUpdated((_ctx, markdown) => {
         if (applying || closed) return;
 
-        dirty = true;
         props.onText(markdown);
       });
     });
@@ -105,12 +105,16 @@ export default function PadRichEditor(props: {
       field.setAttribute("aria-label", "Editor");
       field.setAttribute("aria-multiline", "true");
 
+      const document = () => crepe!.editor.action((ctx) => ctx.get(editorViewCtx).state.doc);
+      let originalDocument = document();
+      const getText = () => sourceForDocument(original, originalDocument, document(), () => crepe!.getMarkdown());
+
       props.onReady({
-        getText: () => (dirty ? crepe!.getMarkdown() : original),
+        getText,
         setText: (text) => {
-          if (text === (dirty ? crepe!.getMarkdown() : original)) {
+          if (text === getText()) {
             original = text;
-            dirty = false;
+            originalDocument = document();
 
             return;
           }
@@ -120,7 +124,7 @@ export default function PadRichEditor(props: {
           try {
             crepe!.editor.action(replaceAll(text));
             original = text;
-            dirty = false;
+            originalDocument = document();
           } finally {
             applying = false;
           }
