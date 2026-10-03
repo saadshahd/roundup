@@ -11,8 +11,6 @@ export type DrawerState = {
   close(): void;
 };
 
-export const DRAWER_SLIDE_MS = 180;
-
 export const DRAWER_EASING = "ease-out";
 
 export const createDrawer = (): DrawerState => {

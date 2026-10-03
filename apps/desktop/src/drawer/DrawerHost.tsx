@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
-import { DRAWER_EASING, DRAWER_SLIDE_MS } from "./drawer";
+import { DRAWER_EASING } from "./drawer";
 import type { DrawerContent, DrawerState } from "./drawer";
 
 /**
@@ -62,7 +62,7 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
         right: "0",
         bottom: "0",
         transform: isOpen() ? "translateX(0)" : "translateX(100%)",
-        transition: props.reducedMotion() ? "none" : `transform ${DRAWER_SLIDE_MS}ms ${DRAWER_EASING}`,
+        transition: props.reducedMotion() ? "none" : `transform var(--duration-drawer) ${DRAWER_EASING}`,
       }}
       onTransitionEnd={() => {
         if (!isOpen()) setMounted(null);
