@@ -105,7 +105,7 @@ geometry='(() => {
   if (closedDrawerVisible) overflow.push("closed Drawer remains on-screen");
   if (open) {
     const r = box(drawer);
-    if (r.width <= 0 || r.height <= 0 || r.right > innerWidth + 1 || r.left < -1 || r.width > innerWidth + 1) overflow.push("Drawer outside viewport");
+    if (r.width <= 0 || r.height <= 0 || r.right > innerWidth + 1 || r.left < -1 || r.bottom > innerHeight + 1 || r.top < -1) overflow.push("Drawer outside viewport");
   }
   return {
     blank: !rail || !centre || !shelf || !document.body.innerText.trim(),
@@ -126,20 +126,24 @@ measure() {
   jq -e '.overflow | type == "array"' <<< "$metrics" >/dev/null || fail "agent-browser returned no overflow boxes for $label"
   jq -e --argjson width "$width" --argjson height "$height" '.viewport == {width:$width,height:$height}' <<< "$metrics" >/dev/null || fail "viewport was not ${width}×${height} for $label"
   if [[ $(jq -r '.blank' <<< "$metrics") == true ]]; then fail "blank page at ${width}×${height}"; fi
-  if ! jq -e '[.boxes.rail,.boxes.centre,.boxes.shelf] | all(.width > 0 and .height > 0)' <<< "$metrics" >/dev/null; then
-    record_finding "$label at ${width}×${height}: Rail, centre or Shelf has no visible area"
+  if ! jq -e --argjson width "$width" --argjson height "$height" '[.boxes.rail,.boxes.centre,.boxes.shelf] | all(.width > 0 and .height > 0 and .left < $width and .right > 0 and .top < $height and .bottom > 0)' <<< "$metrics" >/dev/null; then
+    record_finding "$label at ${width}×${height}: Rail, centre or Shelf is outside the viewport"
   fi
   actual=$(jq -r '.drawer != null' <<< "$metrics")
   if [[ $actual != "$open" ]]; then fail "Drawer state missing for $label at ${width}×${height}"; fi
-  centre_width=$(jq -r '.boxes.centre.width // 0' <<< "$metrics")
+  centre_box=$(jq -c '.boxes.centre' <<< "$metrics")
   if [[ $open == false ]]; then
-    baseline_centre_width=$centre_width
-  elif ! awk -v a="$centre_width" -v b="$baseline_centre_width" 'BEGIN { d=a-b; if (d<0) d=-d; exit !(d<=1) }'; then
-    record_finding "$label at ${width}×${height}: Drawer resized centre from $baseline_centre_width to $centre_width"
+    baseline_centre_box=$centre_box
+  elif ! centre_unchanged "$metrics"; then
+    record_finding "$label at ${width}×${height}: Drawer moved or resized centre"
   fi
   while IFS= read -r defect; do
     [[ -z $defect ]] || record_finding "$label at ${width}×${height}: $defect"
   done < <(jq -r '.overflow[]' <<< "$metrics")
+}
+
+centre_unchanged() {
+  jq -e --argjson base "$baseline_centre_box" 'def near($a;$b): (($a-$b)|abs) <= 1; .boxes.centre as $now | near($now.left;$base.left) and near($now.top;$base.top) and near($now.width;$base.width) and near($now.height;$base.height)' <<< "$1" >/dev/null
 }
 
 verify_closed() {
@@ -147,6 +151,9 @@ verify_closed() {
   metrics=$(browser --json eval "$geometry" | jq -e '.data.result') || fail "agent-browser geometry failed after closing $label at ${width}×${height}"
   if [[ $(jq -r '.closedDrawerVisible' <<< "$metrics") != false ]]; then
     record_finding "$label at ${width}×${height}: closed Drawer remains on-screen"
+  fi
+  if ! centre_unchanged "$metrics"; then
+    record_finding "$label at ${width}×${height}: centre did not return after Drawer closed"
   fi
 }
 

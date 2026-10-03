@@ -24,9 +24,15 @@ case " $* " in
       centre_width=$((width - 252))
       if [[ ${QA_SWEEP_HIDDEN_CENTRE:-0} == 1 ]]; then centre_width=0; fi
       if [[ ${QA_SWEEP_RESIZED_CENTRE:-0} == 1 && $drawer != null ]]; then centre_width=$((centre_width - 100)); fi
+      centre_left=120 centre_top=0 centre_height=$height
+      if [[ ${QA_SWEEP_OFFSCREEN_CENTRE:-0} == 1 ]]; then centre_left=$((width + 10)); fi
+      if [[ ${QA_SWEEP_MOVED_CENTRE:-0} == 1 && $drawer != null ]]; then centre_left=130; fi
+      if [[ ${QA_SWEEP_SHORT_CENTRE:-0} == 1 && $drawer != null ]]; then centre_height=$((height - 100)); fi
+      if [[ ${QA_SWEEP_UNRESTORED_CENTRE:-0} == 1 && $(cat "$QA_SWEEP_DRAWER" 2>/dev/null || true) == closed ]]; then centre_left=130; fi
+      centre_right=$((centre_left + centre_width))
       closed_visible=false
       if [[ ${QA_SWEEP_CLOSED_VISIBLE:-0} == 1 && $(cat "$QA_SWEEP_DRAWER" 2>/dev/null || true) == closed ]]; then closed_visible=true; fi
-      printf '{"success":true,"data":{"result":{"blank":false,"viewport":{"width":%s,"height":%s},"boxes":{"rail":{"width":120,"height":%s},"centre":{"width":%s,"height":%s},"shelf":{"width":132,"height":%s}},"overflow":%s,"drawer":%s,"closedDrawerVisible":%s}}}\n' "$width" "$height" "$height" "$centre_width" "$height" "$height" "$overflow" "$drawer" "$closed_visible"
+      printf '{"success":true,"data":{"result":{"blank":false,"viewport":{"width":%s,"height":%s},"boxes":{"rail":{"left":0,"right":120,"top":0,"bottom":%s,"width":120,"height":%s},"centre":{"left":%s,"right":%s,"top":%s,"bottom":%s,"width":%s,"height":%s},"shelf":{"left":%s,"right":%s,"top":0,"bottom":%s,"width":132,"height":%s}},"overflow":%s,"drawer":%s,"closedDrawerVisible":%s}}}\n' "$width" "$height" "$height" "$height" "$centre_left" "$centre_right" "$centre_top" "$centre_height" "$centre_width" "$centre_height" "$((width - 132))" "$width" "$height" "$height" "$overflow" "$drawer" "$closed_visible"
     fi
     ;;
   *" click "*"row-head"*) printf open > "$QA_SWEEP_DRAWER" ;;
@@ -82,7 +88,7 @@ if [[ -e "$root/loop/qa-sweep.sh" ]]; then
   jq -e '.findings | any(.text | contains("Drawer state missing"))' "$record" >/dev/null
   printf 'l52_missing_drawer_fails_with_a_record_passed\n'
 
-  for defect in HIDDEN_CENTRE RESIZED_CENTRE CLOSED_VISIBLE; do
+  for defect in HIDDEN_CENTRE OFFSCREEN_CENTRE RESIZED_CENTRE MOVED_CENTRE SHORT_CENTRE UNRESTORED_CENTRE CLOSED_VISIBLE; do
     rm -rf "$QA_SWEEP_OUT"
     printf closed > "$QA_SWEEP_DRAWER"
     if env "QA_SWEEP_$defect=1" "$root/loop/qa-sweep.sh"; then
