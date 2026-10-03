@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use contracts::{Actor, ActorKind};
 use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Reason, Route};
+use contracts::{Actor, ActorKind};
 use rpc::RpcError;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
@@ -55,7 +55,9 @@ impl Store {
     fn release_stale_takeovers(&mut self) -> rusqlite::Result<()> {
         let ids: Vec<u32> = self
             .db
-            .prepare("SELECT id FROM messages WHERE status = 'held' AND reason = 'takeover' ORDER BY id")?
+            .prepare(
+                "SELECT id FROM messages WHERE status = 'held' AND reason = 'takeover' ORDER BY id",
+            )?
             .query_map([], |row| row.get(0))?
             .collect::<rusqlite::Result<_>>()?;
         for id in ids {
@@ -449,7 +451,10 @@ mod tests {
         let store = open(dir.path());
 
         let message = store.get(id).unwrap().unwrap();
-        assert_eq!((message.status, message.reason), (MessageStatus::Pending, None));
+        assert_eq!(
+            (message.status, message.reason),
+            (MessageStatus::Pending, None)
+        );
     }
 
     #[test]

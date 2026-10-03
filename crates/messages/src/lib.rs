@@ -48,6 +48,10 @@ struct Inner {
     agents: Arc<dyn Module>,
     bus: Bus,
     deliver: Deliver,
+    /// Starts the listener at most once: immediately when `open` already runs on a Tokio
+    /// runtime, lazily on the first call otherwise (a caller that builds a `Messages` before
+    /// its own runtime exists).
+    listener_started: std::sync::Once,
 }
 
 pub struct Messages {
@@ -69,8 +73,11 @@ impl Messages {
             agents,
             bus,
             deliver,
+            listener_started: std::sync::Once::new(),
         });
-        spawn_status_listener(Arc::clone(&inner));
+        if tokio::runtime::Handle::try_current().is_ok() {
+            start_listener(&inner);
+        }
         Ok(Self { inner })
     }
 
@@ -392,6 +399,7 @@ impl Module for Messages {
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
+        start_listener(&self.inner);
         match method {
             "message.send" => self.send(ctx, params(value)?).await,
             "message.get" => self.get(ctx, params(value)?),
@@ -405,6 +413,14 @@ impl Module for Messages {
             _ => Err(RpcError::method_not_found(method)),
         }
     }
+}
+
+/// Starts the status listener at most once for this `Inner` (its `Once`), and only when a Tokio
+/// runtime is there to run it on.
+fn start_listener(inner: &Arc<Inner>) {
+    inner.listener_started.call_once(|| {
+        spawn_status_listener(Arc::clone(inner));
+    });
 }
 
 /// Reads `agent.status` off `inner`'s bus for as long as `inner` has a subscriber: an `idle`
@@ -453,7 +469,9 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str) {
         return;
     }
     if let Ok(Some(delivered)) = inner.store.lock().unwrap().mark_delivered(message.id) {
-        inner.bus.emit(Actor::daemon(), EventData::MessageDelivered(delivered));
+        inner
+            .bus
+            .emit(Actor::daemon(), EventData::MessageDelivered(delivered));
     }
 }
 
