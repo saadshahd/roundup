@@ -30,8 +30,11 @@
 .rail-row .line {
   display: flex;
   align-items: center;
-  gap: 8px;
   white-space: pre;
+}
+
+.rail-row .line > * + * {
+  margin-left: 8px;
 }
 
 .rail-row .name {
@@ -41,11 +44,11 @@
   text-overflow: ellipsis;
 }
 
-/* The gap before Live is cancelled and the 2ch spacing sits in the text, so a Live line given no width takes none of the name's (U46). */
-.rail-row .live {
+/* Live has no margin and the 2ch spacing sits in its text, so a Live line given no width takes none of the name's (U46). */
+.rail-row .line > .live {
   flex: 1 1 0;
   min-width: 0;
-  margin-left: -8px;
+  margin-left: 0;
   text-indent: 2ch;
   overflow: hidden;
   text-overflow: ellipsis;
