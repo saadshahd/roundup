@@ -73,6 +73,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U60 | an Agent's Todos under it |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
+  | V1–V7 | formal proofs of the Messages laws (`scenarios/proofs.md`); V4's pure `step` is the `V4` row of `.work/queue/architects.md`, M8 and M9 are its `V4b` row, both held by architect-b |
   | A13 | symlinked agents directory |
   | A14 | hold an early Signal until the Agent is registered |
   | A15 | clean environment for every program the Daemon starts |
