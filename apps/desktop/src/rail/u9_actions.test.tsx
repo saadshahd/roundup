@@ -86,22 +86,37 @@ describe("u9 actions", () => {
   });
 
   it("u9_plus_terminal_spawns_a_terminal_under_the_selected_group", async () => {
-    const mounted = await mountRail([group("g")]);
-    answerWith(mounted, "rail.spawnTerminal");
+    const tree: RailNode[] = [group("g")];
+    const mounted = await mountRail(tree);
+    mounted.app.handlers["rail.spawnTerminal"] = () => {
+      tree.push(SPAWNED);
+      mounted.app.emit(event({ name: "rail.changed" }));
+
+      return SPAWNED;
+    };
+
     mounted.rail.select("g");
 
     fireEvent.click(screen.getByText("+ terminal"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
+    await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
   });
 
   it("u9_plus_terminal_spawns_at_the_top_level_with_no_selection", async () => {
-    const mounted = await mountRail([group("g")]);
-    answerWith(mounted, "rail.spawnTerminal");
+    const tree: RailNode[] = [group("g")];
+    const mounted = await mountRail(tree);
+    mounted.app.handlers["rail.spawnTerminal"] = () => {
+      tree.push(SPAWNED);
+      mounted.app.emit(event({ name: "rail.changed" }));
+
+      return SPAWNED;
+    };
 
     fireEvent.click(screen.getByText("+ terminal"));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]));
+    await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
   });
 
   it("u9_plus_group_creates_a_group_named_group_under_the_selected_group", async () => {
