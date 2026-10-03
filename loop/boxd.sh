@@ -23,12 +23,18 @@ MAX_VMS=${BOXD_MAX_VMS:-12}
 # The agent and the check each get up to AGENT_TIMEOUT / 1800 s; VM_TTL must outlast both plus the reboot wait (at most 60 attempts of 5 s plus 1 s, 360 s), upload and the patch step.
 AGENT_TIMEOUT=${BOXD_AGENT_TIMEOUT:-1800}
 VM_TTL=4200
+# GNU timeout bounds the agent run by wall clock; stock macOS has none (coreutils installs it as gtimeout). BOXD_TIMEOUT_CMD overrides.
+TIMEOUT_CMD=${BOXD_TIMEOUT_CMD:-$(command -v timeout || command -v gtimeout || true)}
+need_timeout() {
+  command -v "${TIMEOUT_CMD:-}" >/dev/null 2>&1 || { echo "boxd.sh: needs GNU timeout or gtimeout (brew install coreutils); found '${TIMEOUT_CMD:-}'" >&2; exit 2; }
+}
 SLOT_WAIT=${BOXD_SLOT_WAIT:-0}
 REBOOT_ATTEMPTS=${BOXD_REBOOT_ATTEMPTS:-60}
 EVENTS=$OUT/events.log
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)-$$
 PROVISION_RETRY_WITHIN=${BOXD_RETRY_WITHIN:-30}
 VM=
+PARTIAL_TMP=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
 lock_held=0
@@ -41,6 +47,7 @@ STRAY_NODE_MODULES=/node_modules
 cleanup() {
   local rc=$?
   if [ "$lock_held" -eq 1 ]; then rmdir "$LOCK" || true; fi
+  [ -z "$PARTIAL_TMP" ] || rm -f "$PARTIAL_TMP"
   if [ -n "$VM" ]; then
     boxd machine remove "$VM" -y >/dev/null </dev/null || echo "boxd.sh: LEAKED VM $VM; remove it by hand" >&2
   fi
@@ -104,9 +111,10 @@ pause() {
   exit "$EX_PAUSED"
 }
 
-# The JSON has no quota field, so a limit shows up only as an error status or message.
+# The JSON has no quota field, so a limit shows up only as an error status or message; the caller passes only the
+# stream's last (result) event, so a phrase quoted anywhere else, or in a successful result, never pauses.
 guard_limits() {
-  jq -e '.api_error_status == 429 or ((.result // "") | test("usage limit|rate limit"; "i"))' "$1" >/dev/null || return 0
+  jq -e '.api_error_status == 429 or (.is_error == true and ((.result // "") | test("usage limit|rate limit"; "i")))' <<<"$1" >/dev/null || return 0
   pause "limit hit"
 }
 
@@ -256,19 +264,34 @@ provision() {
   done
 }
 
-# Run claude on the VM with /tmp/prompt.md; JSON lands in <result>. Exits unless the run succeeded.
+# Run claude on the VM with /tmp/prompt.md; each event it produces lands in <stream> as it happens (L21). The
+# verdict, the cost line and L4's pause come only from the stream's last event, which must be a result event.
+# Exits 1 for every outcome (no output, `agent failed` when the final result is an error, a wall-clock timeout) except one that produced events but ended with no final result event, which returns 2
+# so the caller can save what the run got done before deciding its own exit code.
 run_agent() {
-  local model=$1 result=$2
+  local model=$1 stream=$2 rc=0 last
   # A feature-sized task outlasts 570 s (measured: V7 Todo triage hit it and returned nothing), so wait as long as the check may.
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
   # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
-  boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
-    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format json --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$result" 2>"${result%.json}.err" || true
-  cat "${result%.json}.err" >&2
-  ! grep -q DeadlineExceeded "${result%.json}.err" || record_event agent deadline-exceeded
-  [ -s "$result" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
-  guard_limits "$result"
-  jq -e '.is_error == false' "$result" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result "$result")" >&2; exit 1; }
+  # boxd's own --timeout is a no-output deadline: a run that keeps streaming events never trips it. `timeout` puts
+  # the command in its own process group and signals that whole group, so a streaming agent still ends at
+  # BOXD_AGENT_TIMEOUT; its exit code 124 is how the branch below tells a wall-clock cutoff from a plain early exit.
+  "$TIMEOUT_CMD" "$AGENT_TIMEOUT" boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
+    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format stream-json --verbose --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$stream" 2>"${stream%.jsonl}.err" || rc=$?
+  cat "${stream%.jsonl}.err" >&2
+  ! grep -q DeadlineExceeded "${stream%.jsonl}.err" || record_event agent deadline-exceeded
+  [ -s "$stream" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
+  last=$(tail -n 1 "$stream")
+  if ! jq -e '.type == "result"' <<<"$last" >/dev/null 2>&1; then
+    if [ "$rc" -eq 124 ]; then
+      echo "boxd.sh: agent timed out after ${AGENT_TIMEOUT} s: $stream" >&2
+    else
+      echo "boxd.sh: agent ended without a result: $stream" >&2
+    fi
+    return 2
+  fi
+  guard_limits "$last"
+  jq -e '.is_error == false' <<<"$last" >/dev/null || { echo "boxd.sh: agent failed: $(jq -r .result <<<"$last")" >&2; exit 1; }
 }
 
 # The check both `build` and `check` observe.
@@ -279,30 +302,53 @@ run_check() {
 review() {
   local name=$1 prompt=$2 ref=${3:-HEAD}
   validate_args "$name" "$prompt"
-  local result="$OUT/runs/$name-$RUN_ID.json" verdict="$OUT/verdicts/$name.md" base
+  local stream="$OUT/runs/$name-$RUN_ID.jsonl" verdict="$OUT/verdicts/$name.md" base agent_rc=0 last
   base="$(git merge-base --end-of-options origin/main "$ref")" || { echo "boxd.sh: no merge-base of origin/main and $ref; git fetch origin" >&2; exit 1; }
   require_claude
+  # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
+  # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
+  # this function exits right after, so an earlier run's stale verdict can only be cleared here.
+  rm -f "$verdict"
   provision "$name" "$base" "$ref" "$prompt"
-  run_agent "${BOXD_MODEL:-opus}" "$result"
-  jq -r .result "$result" >"$verdict"
-  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
+  run_agent "${BOXD_MODEL:-opus}" "$stream" || agent_rc=$?
+  [ "$agent_rc" -ne 2 ] || exit 1
+  last=$(tail -n 1 "$stream")
+  jq -r .result <<<"$last" >"$verdict"
+  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
 }
 
 build() {
   local name=$1 prompt=$2
   validate_args "$name" "$prompt"
-  local result="$OUT/runs/$name-$RUN_ID.json" patch="$OUT/patches/$name.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log"
+  local stream="$OUT/runs/$name-$RUN_ID.jsonl" patch="$OUT/patches/$name.patch" partial="$OUT/patches/$name.partial.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log" agent_rc=0 check_rc=0 last
   require_claude
+  # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
+  # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
+  # this function exits after saving the partial patch below, so an earlier run's stale patch can only be cleared here.
+  rm -f "$patch" "$partial"
   provision "$name" HEAD HEAD "$prompt"
-  run_agent "${BOXD_MODEL:-sonnet}" "$result"
+  run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
+  if [ "$agent_rc" -eq 2 ]; then
+    # Diffed against `base`, not HEAD, so a commit the agent already made lands in the partial too; written to a
+    # temp file and renamed only on success, so a failed extraction never leaves a stale empty .partial.patch.
+    PARTIAL_TMP=$partial.tmp
+    if boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached base' </dev/null >"$partial.tmp"; then
+      mv "$partial.tmp" "$partial"
+      PARTIAL_TMP=
+    else
+      rm -f "$partial.tmp"
+      echo "boxd.sh: could not read the diff so far from $VM; no $partial saved" >&2
+    fi
+    exit 1
+  fi
   # The observer is our own check, not the Builder's claim that it passed.
-  local rc=0
-  run_check >"$checklog" 2>&1 || rc=$?
+  run_check >"$checklog" 2>&1 || check_rc=$?
   tail -n 15 "$checklog" >&2
   ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
-  [ "$rc" -eq 0 ] || exit "$rc"
+  [ "$check_rc" -eq 0 ] || exit "$check_rc"
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
-  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' "$result"
+  last=$(tail -n 1 "$stream")
+  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
 }
 
 # A PR number or a branch name becomes a fetch refspec; anything else is refused before it reaches git.
@@ -422,11 +468,11 @@ kill_vms() {
 
 case "${1:-}" in
   bake) bake ;;
-  build) build "${2:?name}" "${3:?prompt-file}" ;;
+  build) need_timeout; build "${2:?name}" "${3:?prompt-file}" ;;
   check) check "${2:?pr-number-or-branch}" ;;
-  swarm) shift; swarm "$@" ;;
+  swarm) need_timeout; shift; swarm "$@" ;;
   status) status ;;
   kill) kill_vms "${2:?name or all}" ;;
-  review) review "${2:?name}" "${3:?prompt-file}" "${4:-HEAD}" ;;
+  review) need_timeout; review "${2:?name}" "${3:?prompt-file}" "${4:-HEAD}" ;;
   *) sed -n '2,14p' "$0" >&2; exit 2 ;;
 esac
