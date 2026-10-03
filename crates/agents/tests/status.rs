@@ -244,3 +244,66 @@ fn a7_a_stopped_agent_stays_done_when_its_program_dies_by_signal() {
     );
     assert_eq!(adapter.observe(Observation::Exit { code: None }), None);
 }
+
+#[test]
+fn h9_answered_after_needs_you_gives_working() {
+    let (mut adapter, _) = adapter();
+    signal(&mut adapter, event(RUN1, "PermissionRequest"));
+    let status = adapter.observe(Observation::Answered).unwrap();
+    assert_eq!(
+        (status.kind, status.label.as_str()),
+        (Kind::Working, "working")
+    );
+}
+
+#[test]
+fn h9_dismissed_after_needs_you_gives_idle() {
+    let (mut adapter, _) = adapter();
+    signal(&mut adapter, event(RUN1, "PermissionRequest"));
+    let status = adapter.observe(Observation::Dismissed).unwrap();
+    assert_eq!((status.kind, status.label.as_str()), (Kind::Idle, "idle"));
+}
+
+#[test]
+fn h9_answered_clears_a_held_star() {
+    let (mut adapter, _) = adapter();
+    signal(&mut adapter, event(RUN1, "UserPromptSubmit"));
+    signal(&mut adapter, event(RUN1, "PreToolUse"));
+    adapter.observe(Observation::Title("✳ Reading".into()));
+    assert!(adapter.tick_at().is_some(), "the star should be held");
+
+    adapter.observe(Observation::Answered);
+
+    assert_eq!(adapter.tick_at(), None);
+}
+
+#[test]
+fn h9_dismissed_clears_a_held_star() {
+    let (mut adapter, _) = adapter();
+    signal(&mut adapter, event(RUN1, "UserPromptSubmit"));
+    signal(&mut adapter, event(RUN1, "PreToolUse"));
+    adapter.observe(Observation::Title("✳ Reading".into()));
+    assert!(adapter.tick_at().is_some(), "the star should be held");
+
+    adapter.observe(Observation::Dismissed);
+
+    assert_eq!(adapter.tick_at(), None);
+}
+
+#[test]
+fn h9_answered_after_the_agent_has_ended_changes_nothing() {
+    let (mut adapter, _) = adapter();
+    adapter.observe(Observation::Exit { code: Some(1) });
+
+    assert_eq!(adapter.observe(Observation::Answered), None);
+    assert_eq!(adapter.status().unwrap().kind, Kind::Error);
+}
+
+#[test]
+fn h9_dismissed_after_a_stopped_agent_changes_nothing() {
+    let (mut adapter, _) = adapter();
+    adapter.observe(Observation::Stopped);
+
+    assert_eq!(adapter.observe(Observation::Dismissed), None);
+    assert_eq!(adapter.status().unwrap().kind, Kind::Done);
+}

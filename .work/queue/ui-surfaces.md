@@ -9,6 +9,7 @@ Scenario text is on main and nothing it needs is unmerged. Every row owns a dire
 | Id | Item | Owns | Keeps green |
 |---|---|---|---|
 | U41 | Rail by keyboard, the rest (Moves: none) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests |
+| U112 | a Shelf row never moves on hover or focus (QA finding F7; Moves: none) | `apps/desktop/src/todos/**`, the Shelf rules of `apps/desktop/src/styles.css` | U35's tests |
 
 ## Waiting
 
