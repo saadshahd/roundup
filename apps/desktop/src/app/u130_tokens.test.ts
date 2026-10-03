@@ -7,10 +7,10 @@ const [table = ""] = Object.values(
 // The Tokens of the "Starting values" table, read from it so a Token added there fails here until tokens.css defines it.
 const TOKENS = table
   .split("\n")
-  .filter((row) => row.startsWith("| `--x"))
+  .filter((row) => row.startsWith("| `--"))
   .flatMap((row) => row.split("|")[1]?.match(/--[\w-]+/g) ?? []);
 
-const rows = table.split("\n").filter((row) => row.startsWith("| `--x"));
+const rows = table.split("\n").filter((row) => row.startsWith("| `--"));
 
 // Token -> light value, from the table's Light column and the prose lines under it (type and space steps).
 const expectedLight = new Map<string, string>();
