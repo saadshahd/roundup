@@ -53,7 +53,7 @@ export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => 
   "todo.get": ({ id }) => ({ ...find(store.todos, (todo) => todo.id === id, `todo ${id}`) }),
   "todo.create": ({ title, body, blockers }) => {
     const id = Math.max(0, ...store.todos.map((todo) => todo.id)) + 1;
-    const created: Todo = { id, title, body: body ?? "", done: false, blockers: blockers ?? [], blocked: false, created_at: Date.now() };
+    const created: Todo = { id, title, body: body ?? "", done: false, blockers: blockers ?? [], blocked: false, created_at: Date.now(), creator: USER };
     store.todos = withBlocked([...store.todos, created]);
     const stored = find(store.todos, (todo) => todo.id === id, `todo ${id}`);
     announce({ name: "todo.created", data: stored });
