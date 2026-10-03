@@ -16,7 +16,7 @@ U104 merged in #265; U103 merged in #266.
 
 ## A20 / U68 handoff
 
-Specified in `scenarios/agents.md` and `scenarios/ui-rail.md`; P1, P2, P4, P6 exist in `PRINCIPLES.md`. This is a block-lane spec, not an implementation approval. An independent committee architect must approve the Agent definition, A20 method/field and cross-squad U56 narrowing before implementation. Driver also updates the allocated ranges in `docs/squads.md` (A20 and U68 are now used); that file is outside this spec Builder's ownership.
+Specified in `scenarios/agents.md` and `scenarios/ui-rail.md`; P1, P2, P4, P6 exist in `PRINCIPLES.md`. This is a block-lane spec, not an implementation approval. An independent committee architect must approve the Agent definition, A20 method/field and cross-squad U56 narrowing before implementation. Both ids are already allocated to their squads in `docs/squads.md`.
 
 | Ids | Builder ownership | Observer before completion | Start / merge order |
 |---|---|---|---|
