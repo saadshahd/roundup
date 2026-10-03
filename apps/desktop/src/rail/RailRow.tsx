@@ -7,7 +7,7 @@ import { KindGlyph } from "../ink/KindGlyph";
 import type { ExitState } from "../state/rail";
 import { isPlainGroup } from "./layout";
 import type { NodeRow } from "./layout";
-import { isUnprompted, liveLineOf } from "./liveLine";
+import { isUnprompted, liveLineOf, liveTitleOf } from "./liveLine";
 
 /** A Kind's mark, or a bare mark for a plain Group, which has no Kind. */
 type Mark = { kind: Kind } | { bare: string };
@@ -150,9 +150,13 @@ export const RailRowView = (props: {
           />
         </Show>
         <Show when={showsLiveLine() ? liveLine() : null}>
-          {(text) => (
-            <span class="live light" title={text()}>
-              {text()}
+          {(line) => (
+            <span class="live light" title={liveTitleOf(line())}>
+              <span class="live-label">{line().label}</span>
+              <Show when={line().age !== null}>
+                {" "}
+                <span class="live-age">{line().age}</span>
+              </Show>
             </span>
           )}
         </Show>

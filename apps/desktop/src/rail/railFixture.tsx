@@ -11,6 +11,7 @@ import { DrawerHost } from "../drawer/DrawerHost";
 import { Pane } from "../terminal/Pane";
 import type { EmulatorFactory } from "../terminal/emulator";
 import { AttentionChip } from "./AttentionChip";
+import { liveTitleOf } from "./liveLine";
 import { Rail } from "./Rail";
 
 export const exitedTerminal = (id: string, exit_code: number | null): TerminalInfo =>
@@ -58,7 +59,13 @@ export const rowOf = (name: string): HTMLElement => {
   return row;
 };
 
-export const liveLineOf = (name: string): string | null => rowOf(name).querySelector(".live")?.textContent ?? null;
+export const shownLiveLine = (name: string): string | null => {
+  const live = rowOf(name).querySelector(".live");
+  const label = live?.querySelector(".live-label")?.textContent;
+  const age = live?.querySelector(".live-age")?.textContent;
+
+  return label != null && age != null ? liveTitleOf({ label, age }) : (live?.textContent ?? null);
+};
 
 export const glyphOf = (name: string): HTMLElement => {
   const glyph = rowOf(name).querySelector<HTMLElement>(".glyph");
