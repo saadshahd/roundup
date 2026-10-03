@@ -45,11 +45,33 @@
   height: 100%;
 }
 
-.pane-latest {
+.pane .pane-latest {
   position: absolute;
   bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--space-5);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+}
+
+.pane .pane-latest:hover {
+  background: var(--sunken);
+}
+
+.pane .pane-latest:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pane .pane-latest:active {
+  background: var(--grey);
+  color: var(--ground);
+  transition: 0s;
 }
 
 .pane-empty {
