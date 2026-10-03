@@ -68,13 +68,19 @@ def failed_names(runs, required):
     return {name for name, (_, conclusion) in latest.items() if conclusion in RED}
 
 
-def verdicts(comments, authors, head):
+def mentioned_heads(body):
+    explicit = re.findall(r'^(?:Reviewed[- ]head|Head(?: reviewed)?): ([0-9a-f]{40})[ \t]*$', body, re.M)
+    return set(explicit) if explicit else set(SHA.findall(body))
+
+
+def verdicts(comments, authors, reviewable_heads):
     valid = []
     for comment in comments:
         body = comment['body']
         first = body.splitlines()[0] if body else ''
         reviewer = REVIEWER.search(body)
-        if first in ('VERDICT: approve', 'VERDICT: reject') and head in SHA.findall(body) and reviewer and reviewer.group(1) not in authors:
+        named = mentioned_heads(body)
+        if first in ('VERDICT: approve', 'VERDICT: reject') and len(named) == 1 and named <= reviewable_heads and reviewer and reviewer.group(1) not in authors:
             valid.append(first)
     return valid
 
@@ -112,7 +118,11 @@ try:
         runs = check_runs(call('gh', 'api', f'repos/{repo}/commits/{pr["head"]["sha"]}/check-runs', '--paginate', '--slurp'))
         author_ids = [author for commit in commits for author in AUTHOR.findall(commit['commit']['message'])]
         known_heads = {pr['head']['sha']} | {commit['sha'] for commit in commits if 'sha' in commit}
-        pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], known_heads, failed_names(runs, required)))
+        reviewable_heads = {pr['head']['sha']}
+        approval = next((commit for commit in commits if commit.get('sha') == pr['head']['sha'] and REVIEWER.search(commit['commit']['message'])), None)
+        if approval and len(approval.get('parents', [])) == 1:
+            reviewable_heads.add(approval['parents'][0]['sha'])
+        pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], known_heads, reviewable_heads, failed_names(runs, required)))
     machines = call('boxd', 'machine', 'list', '--json')
     vm_count = sum(machine['name'].startswith('ru-') for machine in machines)
     verdict_files = [(path.read_text(), dt.datetime.fromtimestamp(path.stat().st_mtime, UTC))
@@ -120,12 +130,12 @@ try:
     desired = {}
     if failed_names(main_runs, required):
         record('a', 'main', 'Triage')
-    if pr_data and any(all(name in failed for _, _, _, _, _, failed in pr_data) for name in required):
+    if pr_data and any(all(name in failed for _, _, _, _, _, _, failed in pr_data) for name in required):
         record('a', 'all-prs', 'Triage')
-    for pr, comments, authors, author_id, known_heads, _ in pr_data:
+    for pr, comments, authors, author_id, known_heads, reviewable_heads, _ in pr_data:
         number = pr['number']
         head = pr['head']['sha']
-        valid = verdicts(comments, authors, head)
+        valid = verdicts(comments, authors, reviewable_heads)
         if valid and valid[-1] == 'VERDICT: approve' and now - when(pr['created_at']) >= dt.timedelta(minutes=20):
             record('b', number, 'Merger')
         all_rejects = 0
@@ -134,8 +144,7 @@ try:
             first = body.splitlines()[0] if body else ''
             if first == 'VERDICT: reject':
                 reviewer = REVIEWER.search(body)
-                named_heads = set(SHA.findall(body))
-                if reviewer and reviewer.group(1) not in authors and len(named_heads) == 1 and named_heads <= known_heads:
+                if reviewer and reviewer.group(1) not in authors and mentioned_heads(body) & known_heads:
                     all_rejects += 1
         if all_rejects >= 3:
             record('c', number, 'Architect', author_id)

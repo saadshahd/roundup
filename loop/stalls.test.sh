@@ -102,6 +102,24 @@ printf '%s\n' "[[{\"sha\":\"$other_sha\",\"commit\":{\"message\":\"work\\n\\nAut
 expect prior_pr_head_rejects_still_count 1
 [ -f "$dir/loop/out/stalls/c-1" ] || { echo 'FAIL: l28_prior head rejects not counted'; failures=$((failures+1)); }
 fixture
+printf '%s\n' "[[{\"body\":\"VERDICT: reject\\nHead: $head_sha\\nDiff-base: $other_sha\\nReviewed-by-Agent: r-1\"},{\"body\":\"VERDICT: reject\\nHead: $head_sha\\nDiff-base: $other_sha\\nReviewed-by-Agent: r-2\"},{\"body\":\"VERDICT: reject\\nHead: $head_sha\\nDiff-base: $other_sha\\nReviewed-by-Agent: r-3\"}]]" >"$dir/data/comments-1.json"
+expect rejects_with_diff_base_still_count 1
+[ -f "$dir/loop/out/stalls/c-1" ] || { echo 'FAIL: l28_diff-base rejected verdicts lost'; failures=$((failures+1)); }
+fixture
+printf '%s\n' '[]' >"$dir/data/machines.json"
+python3 - "$dir/data/pulls.json" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('11:50:00','11:39:00'))
+PY
+printf '%s\n' "[[{\"sha\":\"$other_sha\",\"commit\":{\"message\":\"work\\n\\nAuthor-Agent: builder-1\"}},{\"sha\":\"$head_sha\",\"parents\":[{\"sha\":\"$other_sha\"}],\"commit\":{\"message\":\"approve\\n\\nReviewed-by-Agent: reviewer-1\"}}]]" >"$dir/data/commits-1.json"
+printf '%s\n' "[[{\"body\":\"VERDICT: approve\\nHead reviewed: $other_sha\\nReviewed-by-Agent: reviewer-1\\nDiff-base: cccccccccccccccccccccccccccccccccccccccc\"}]]" >"$dir/data/comments-1.json"
+expect approval_commit_parent_is_reviewed_head 1
+[ -f "$dir/loop/out/stalls/b-1" ] && [ ! -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_approval commit reported wrong stall'; failures=$((failures+1)); }
+printf '%s\n' '[{"name":"ru-a"},{"name":"ru-b"},{"name":"ru-c"},{"name":"ru-d"},{"name":"ru-e"},{"name":"ru-f"},{"name":"ru-g"},{"name":"ru-h"}]' >"$dir/data/machines.json"
+printf '%s\n' "[[{\"body\":\"VERDICT: approve\\nHead reviewed: cccccccccccccccccccccccccccccccccccccccc\\nComparison: $head_sha\\nReviewed-by-Agent: reviewer-1\"}]]" >"$dir/data/comments-1.json"
+expect reviewed_head_marker_ignores_comparison 0
+[ ! -f "$dir/loop/out/stalls/b-1" ] || { echo 'FAIL: l28_comparison SHA counted as reviewed'; failures=$((failures+1)); }
+fixture
 printf '%s\n' '[]' >"$dir/data/machines.json"
 printf '%s\n' '[[{"body":"VERDICT: approve\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: builder-1"}]]' >"$dir/data/comments-1.json"
 expect self_verdict_does_not_hide_vm_stall 1
