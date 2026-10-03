@@ -90,7 +90,7 @@ browser set media light reduced-motion >/dev/null || fail "agent-browser could n
 browser wait --fn 'document.querySelector("[aria-label=rail]") && document.querySelector("[aria-label=todos]") && document.querySelector("[aria-label=pads]")' >/dev/null || fail "harness did not render Rail and Shelf"
 
 geometry='(() => {
-  const box = element => { const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height}; };
+  const box = element => { const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height,visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})}; };
   const rail = document.querySelector("[aria-label=rail]");
   const centre = document.querySelector("[aria-label=centre]");
   const shelf = document.querySelector("[aria-label=shelf]");
@@ -126,8 +126,8 @@ measure() {
   jq -e '.overflow | type == "array"' <<< "$metrics" >/dev/null || fail "agent-browser returned no overflow boxes for $label"
   jq -e --argjson width "$width" --argjson height "$height" '.viewport == {width:$width,height:$height}' <<< "$metrics" >/dev/null || fail "viewport was not ${width}×${height} for $label"
   if [[ $(jq -r '.blank' <<< "$metrics") == true ]]; then fail "blank page at ${width}×${height}"; fi
-  if ! jq -e --argjson width "$width" --argjson height "$height" '[.boxes.rail,.boxes.centre,.boxes.shelf] | all(.width > 0 and .height > 0 and .left < $width and .right > 0 and .top < $height and .bottom > 0)' <<< "$metrics" >/dev/null; then
-    record_finding "$label at ${width}×${height}: Rail, centre or Shelf is outside the viewport"
+  if ! jq -e --argjson width "$width" --argjson height "$height" '[.boxes.rail,.boxes.centre,.boxes.shelf] | all(.visible == true and .width > 0 and .height > 0 and .left < $width and .right > 0 and .top < $height and .bottom > 0)' <<< "$metrics" >/dev/null; then
+    record_finding "$label at ${width}×${height}: Rail, centre or Shelf is hidden or outside the viewport"
   fi
   actual=$(jq -r '.drawer != null' <<< "$metrics")
   if [[ $actual != "$open" ]]; then fail "Drawer state missing for $label at ${width}×${height}"; fi
