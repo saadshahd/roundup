@@ -7,6 +7,7 @@ import { RpcError } from "../app/seam";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { createFakeApp } from "../testing/fakeApp";
 import type { FakeApp } from "../testing/fakeApp";
+import { EditorView } from "@codemirror/view";
 import { padHandlers } from "../testing/stores";
 import type { PadStore } from "../testing/stores";
 import {
@@ -18,6 +19,8 @@ import { Pads } from "./Pads";
 export const AGENT: Actor = { kind: "agent", id: "agent-7f3", parent: null };
 
 const AGENT_NAME = "auth-refactor";
+
+let currentPads: PadStore;
 
 export const padOf = (name: string, owner: Actor, text = ""): Pad => ({
   name,
@@ -53,6 +56,7 @@ export const deferred = <T,>(): Deferred<T> => {
 export const openShelf = async (pads: Pad[]) => {
   const history: Touch[] = [];
   const state: PadStore = { pads, history };
+  currentPads = state;
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => [
     {
@@ -91,10 +95,40 @@ export const openShelf = async (pads: Pad[]) => {
   };
 };
 
+export const enterEditor = async () => {
+  fireEvent.click(screen.getByRole("button", { name: "edit" }));
+  const field = await screen.findByRole<HTMLElement>("textbox", { name: "Editor" });
+  const view = EditorView.findFromDOM(field);
+
+  if (!view) throw new Error("Pad Editor has no CodeMirror view");
+
+  Object.defineProperties(field, {
+    value: {
+      configurable: true,
+      get: () => view.state.doc.toString(),
+      set: (text: string) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
+    },
+    readOnly: { configurable: true, get: () => false },
+  });
+
+  // SAFETY: the content element has textarea-shaped accessors installed above; input writes still dispatch real CodeMirror transactions.
+  return field as HTMLTextAreaElement;
+};
+
 export const openPad = async (name: string) => {
   fireEvent.click(await screen.findByText(name));
+  const reader = await screen.findByLabelText<HTMLElement>("Pad body");
+  const edit = screen.queryByRole("button", { name: "edit" });
 
-  return screen.findByLabelText<HTMLTextAreaElement>("text");
+  if (edit) return enterEditor();
+
+  Object.defineProperties(reader, {
+    value: { configurable: true, get: () => currentPads.pads.find((pad) => pad.name === name)?.text ?? "" },
+    readOnly: { configurable: true, get: () => true },
+  });
+
+  // SAFETY: this reader has the value and readOnly accessors installed above; no test writes through its textarea shape.
+  return reader as HTMLTextAreaElement;
 };
 
 /** `pad.list` is refetched on every `pad.changed`, so a test waits for that count to pass `atLeast` rather than for a specific call index. */

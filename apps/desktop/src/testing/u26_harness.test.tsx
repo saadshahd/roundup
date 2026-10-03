@@ -73,7 +73,7 @@ describe("u26 the harness seeds", () => {
     fireEvent.input(append, { target: { value: "appended line" } });
     fireEvent.keyDown(append, { key: "Enter" });
 
-    await waitFor(() => expect(screen.getByDisplayValue(/appended line$/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText("Pad body").textContent).toContain("appended line"));
   });
 
   it("u26_set_status_moves_the_row_to_the_new_label", async () => {
