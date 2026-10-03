@@ -7,6 +7,7 @@ import type { Todo } from "@contracts/todo/Todo";
 import { RpcError } from "../app/seam";
 import type { Project } from "../app/seam";
 import { createFakeApp } from "./fakeApp";
+import { toBase64 } from "../terminal/base64";
 import type { FakeApp } from "./fakeApp";
 import { agent, group, MINUTE, metaAgent, terminal, USER } from "./nodes";
 import { padHandlers, todoHandlers } from "./stores";
@@ -118,6 +119,7 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   const nodes = structuredClone(tree);
   const exits = new Map<string, number | null>();
   const outputOffsets = new Map<string, number>();
+  const outputBytes = new Map<string, Uint8Array[]>();
 
   for (const other of nodes) {
     if (other.terminal_id && exitCodeOf(other) !== null) exits.set(other.terminal_id, exitCodeOf(other));
@@ -196,6 +198,21 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   };
 
   app.handlers["terminal.resize"] = () => null;
+  app.handlers["terminal.snapshot"] = ({ id }) => {
+    if (!nodes.some((node) => node.terminal_id === id)) throw new RpcError(NOT_FOUND, `not found: terminal ${id}`);
+
+    const chunks = outputBytes.get(id) ?? [];
+    const bytes = new Uint8Array(outputOffsets.get(id) ?? 0);
+    let at = 0;
+
+    for (const chunk of chunks) {
+      bytes.set(chunk, at);
+      at += chunk.length;
+    }
+
+    return { cols: 100, rows: 30, after: at, data: toBase64(bytes) };
+  };
+
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.kill"] = (terminalId) => {
     exit(terminalId.id);
@@ -230,9 +247,11 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
       send({ name: "agent.status", data: { id, status } });
     },
     writeOutput: (terminalId, text) => {
-      const data = btoa(text);
+      const bytes = new TextEncoder().encode(text);
+      const data = toBase64(bytes);
       const offset = outputOffsets.get(terminalId) ?? 0;
-      outputOffsets.set(terminalId, offset + atob(data).length);
+      outputOffsets.set(terminalId, offset + bytes.length);
+      outputBytes.set(terminalId, [...(outputBytes.get(terminalId) ?? []), bytes]);
       send({ name: "terminal.output", data: { id: terminalId, offset, data } });
     },
     failNext: (code, message) => {

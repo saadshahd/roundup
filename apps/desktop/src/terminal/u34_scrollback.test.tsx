@@ -106,10 +106,10 @@ describe("u34 output regardless of selection (U11)", () => {
     app.emit(output("t-b", "elsewhere"));
     app.emit(output("t-a", "two"));
 
-    expect([decoded(emulators.get("t-a")?.written ?? []), decoded(emulators.get("t-b")?.written ?? [])]).toEqual([
+    await vi.waitFor(() => expect([decoded(emulators.get("t-a")?.written ?? []), decoded(emulators.get("t-b")?.written ?? [])]).toEqual([
       ["one", "two"],
       ["elsewhere"],
-    ]);
+    ]));
   });
 });
 
