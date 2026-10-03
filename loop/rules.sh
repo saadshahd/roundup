@@ -196,7 +196,8 @@ keep = (set(first) - (set(base) - set(main))) | (set(main) - set(base))
 for line, count in result.items():
     if line not in keep:
         sys.exit(f'carry: {merge}: rule b: {path} holds a line neither side may keep: {line!r}')
-    if count > max(first[line], main[line]):
+    cap = 1 if not base[line] and first[line] and main[line] else max(first[line], main[line])
+    if count > cap:
         sys.exit(f'carry: {merge}: rule b: {path} repeats a line: {line!r}')
 for line in keep - set(result):
     sys.exit(f'carry: {merge}: rule b: {path} lost a line a side keeps: {line!r}')
@@ -381,11 +382,12 @@ def comments(authors, head, base, records):
     events = []
     approval = next((record for record in reversed(records) if record[3]), None)
     reviewed_head = approval[1][0] if approval else head
-    current_heads = {reviewed_head}
+    ordered_heads = [reviewed_head]
     if approval:
-        current_heads.update(record[0] for record in records[records.index(approval):])
+        ordered_heads.extend(record[0] for record in records[records.index(approval):])
     else:
-        current_heads.add(head)
+        ordered_heads.append(head)
+    current_heads = set(ordered_heads)
     for item in data:
         require(re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', item['created_at']), 'invalid comment time')
         datetime.fromisoformat(item['created_at'].replace('Z', '+00:00'))
@@ -398,6 +400,9 @@ def comments(authors, head, base, records):
             named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
             if len(set(named)) == 1:
                 events.append((verdict[1], named[0] if named[0] in current_heads else None))
+            elif named and verdict[1] == 'reject':
+                target = next((candidate for candidate in reversed(ordered_heads) if candidate in named), None)
+                events.append(('reject', target))
         pick = re.match(r'ARCHITECT: (split|amend|retire)\b', body)
         ids = re.findall(r'^Architect: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if pick and len(ids) == 1 and ids[0] in architects - authors:

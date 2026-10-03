@@ -256,6 +256,17 @@ merge_main; queue_with '| L1 | one |
 ' >.work/queue.md; finish_merge
 carry_code 0 "L54 carry: a row both sides added appears once and carries"
 
+carry_repo; printf '| L9 | both |\n| L9 | both |\n' >>.work/queue.md; git add -A; git commit -qm "duplicate shared row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+main_commit .work/queue.md "$(queue_with '| L1 | one |
+| L2 | two |
+| L9 | both |
+')"; merge_main; queue_with '| L1 | one |
+| L2 | two |
+| L9 | both |
+| L9 | both |
+' >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a row both sides added cannot remain duplicated (rule b)" "rule b"
+
 carry_repo; git checkout -q -b offmain main; echo x >off.txt; git add -A; git commit -qm off -m "Author-Agent: t"; git checkout -q pr
 git merge -q --no-ff offmain -m "Merge offmain" -m "Author-Agent: t" >/dev/null
 carry_code 1 "L54 carry: a merge whose second parent is off main exits 1" "not a merge of main"
@@ -514,6 +525,14 @@ reviewed=$(git rev-parse HEAD)
 earlier=$(git rev-parse HEAD^)
 gate_set --arg reviewed "$reviewed" --arg earlier "$earlier" '.comments=[[range(1;4) | {id: .,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nHead: "+$reviewed+"\nEarlier: "+$earlier+"\nReviewed-by-Agent: reviewer")}]]'
 expect_exit 1 'L45 explicit Head counts despite explanatory earlier SHA' gate rounds 12
+
+gate_repo
+reviewed=$(git rev-parse HEAD)
+earlier=$(git rev-parse HEAD^)
+gate_set --arg reviewed "$reviewed" --arg earlier "$earlier" '.comments=[[range(1;4) | {id: .,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nReviewed "+$reviewed+"; compared with "+$earlier+"\nReviewed-by-Agent: reviewer")}]]'
+expect_exit 1 'L45 unlabelled multi-SHA rejects count toward the round cap' gate rounds 12
+gate_set --arg reviewed "$reviewed" --arg earlier "$earlier" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nReviewed "+$reviewed+"; compared with "+$earlier+"\nReviewed-by-Agent: reviewer")}]]'
+expect_exit 1 'L46 unlabelled multi-SHA reject naming the current head blocks' gate merge-ready 12
 
 gate_repo
 reviewed_content=$(git rev-parse HEAD^)
