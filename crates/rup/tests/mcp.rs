@@ -5,9 +5,7 @@ use std::time::Duration;
 
 use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, pad, todo};
 use rmcp::ServiceExt;
-use rmcp::model::{
-    CacheScope, CallToolRequestParams, CallToolResult, PaginatedRequestParams, ProtocolVersion,
-};
+use rmcp::model::{CallToolRequestParams, CallToolResult, ProtocolVersion};
 use rmcp::service::{RoleClient, RunningService};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -530,7 +528,7 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
 }
 
 #[tokio::test]
-async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
+async fn m4_the_empty_list_a_cursor_gets_carries_a_numeric_ttl_ms_and_cache_scope() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("fake.sock");
     let _requests = fake_daemon(&socket, &["daemon.identify"]);
@@ -540,33 +538,6 @@ async fn m4_an_empty_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     assert_matches_tools_list_schema(&result);
     assert_eq!(result["tools"].as_array().unwrap().len(), 0);
     assert_eq!(result["cacheScope"], "public", "{result}");
-}
-
-#[tokio::test]
-async fn m4_a_second_page_carries_a_numeric_ttl_ms_and_cache_scope() {
-    let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("fake.sock");
-    let _requests = fake_daemon(&socket, &["daemon.identify"]);
-    let shim = spawn_shim(&socket, "a1").await;
-
-    let page = shim
-        .client
-        .list_tools(Some(
-            PaginatedRequestParams::default()
-                .with_cursor(Some("any-cursor-a-client-might-send-back".into())),
-        ))
-        .await
-        .unwrap();
-
-    assert_matches_tools_list_schema(&serde_json::to_value(&page).unwrap());
-    assert!(page.tools.is_empty());
-    assert!(page.ttl_ms.is_some_and(|ms| ms > 0), "{:?}", page.ttl_ms);
-    assert_eq!(
-        page.cache_scope,
-        Some(CacheScope::Public),
-        "{:?}",
-        page.cache_scope
-    );
 }
 
 #[tokio::test]
