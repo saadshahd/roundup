@@ -253,7 +253,7 @@ export const Rail = () => {
                     </Show>
                     <Show when={fold()}>
                       {(view) => (
-                        <div style={{ "padding-left": `${view().depth * 2}ch` }}>
+                        <div class="rail-fold" style={{ "padding-left": `${view().depth * 2}ch` }}>
                           <button
                             class="word"
                             onClick={() => setUnfolded((open) => toggled(open, view().parent))}
