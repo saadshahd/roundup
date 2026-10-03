@@ -482,11 +482,12 @@ async fn raw_tools_list(socket: &Path, cursor: Option<&str>) -> Value {
 /// (`k()` is a bound `z.number()`, `j([...])` is `z.enum([...])`, `C()` is `z.array()`, `s` is a
 /// bound `z.string()`.) The same command against `~/.local/share/claude/versions/2.1.283`
 /// (`claude --version` there is `2.1.283 (Claude Code)`, the headless build M4 says accepts the
-/// older reply) extracts a byte-identical schema, so the two builds differ in what they tolerate,
-/// not in what they validate against. If a later `claude` drops `ttlMs`/`cacheScope`, widens
-/// `cacheScope`'s enum or adds a new required field, this stops matching reality and `/mcp`
-/// reconnecting against the real client (M4's laptop check) would fail even though every test
-/// here stayed green.
+/// older reply) extracts the same schema under other minified names (`cacheScope:G([...])`,
+/// `tools:A(Ge)`), so the two builds differ in what they tolerate, not in what they validate
+/// against. A later `claude` that adds a new required field, narrows `cacheScope`'s enum so it
+/// excludes `public`, or tightens `ttlMs` (a minimum above 0 or a maximum) makes this reply
+/// invalid: `/mcp` reconnecting against the real client (M4's laptop check) would fail while every
+/// test here stayed green, so re-extract the schema and update the copy when `claude` is upgraded.
 fn assert_matches_tools_list_schema(reply: &Value) {
     let ttl_ms = reply
         .get("ttlMs")
