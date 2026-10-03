@@ -34,7 +34,7 @@ For an item (`todo:<id>` or `pad:<name>`), the Drawer calls `provenance.history 
 
 ## Rail (U6 to U10, U32, U33, U31)
 
-**U6 rows.** Given a Rail tree, then each node is one row, indented 2 per depth under its parent, in `order`. An Agent or a Meta-agent shows its Status Glyph. A plain Group shows `▾`. A Terminal shows `○` while it runs and `✓` once it has exited. The selected row has a faint band. Rows never reorder when a Status changes. Clicking a row selects it.
+**U6 rows.** Given a Rail tree, then each node is one row, indented 2 per depth under its parent, in `order`. An Agent or a Meta-agent shows its Status Glyph. A plain Group shows `▾`. A Terminal shows `○` while it runs and `✓` once it has exited. The selected row has a faint band. The Glyph and name are vertically centered in the row and its selection band, with no movement on selection. Rows never reorder when a Status changes. Clicking a row selects it. QA compares the Rail before and after at 1280 by 800 and 700 by 800.
 
 **U7 live line.** Given an Agent or Meta-agent row, then its Live line is the Status label, then its elapsed time pinned at the row's right edge (`asks: keep v1 routes?  4m`), so a narrow row cuts the label and keeps the age. An exited Terminal's ending (U7's wording below) is one element in the same place and has no age. A running Terminal has no Live line. An exited Terminal's Live line depends on how it ended:
 - `exited <code>` when the code is known;
