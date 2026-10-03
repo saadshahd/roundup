@@ -36,4 +36,17 @@ describe("u7 the Live line reads as words", () => {
 
     expect(result).toEqual(["flex", "8px", "16px", "0"]);
   });
+
+  it("u7_the_live_line_clips_and_the_age_keeps_its_width", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    await mountRail([agent("gateway", "error", "tests failed", { status: { kind: "error", label: "tests failed", since: NOW - MINUTE } })]);
+
+    const style = (selector: string) => getComputedStyle(rowOf("gateway").querySelector(selector)!);
+    const result = [style(".live").overflow, style(".live-age").flexGrow, style(".live-age").flexShrink];
+
+    sheet.remove();
+
+    expect(result).toEqual(["hidden", "0", "0"]);
+  });
 });
