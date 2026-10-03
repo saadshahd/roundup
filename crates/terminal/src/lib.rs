@@ -68,10 +68,40 @@ struct Entry {
 }
 
 struct ScreenState {
-    parser: Option<vt100::Parser<Titles>>,
+    parser: ScreenParser,
     after: u64,
     snapshot_available: bool,
     scrollback_rows: usize,
+    cols: u16,
+    rows: u16,
+}
+
+enum ScreenParser {
+    Pending,
+    Active(Box<vt100::Parser<Titles>>),
+    Failed,
+}
+
+impl ScreenState {
+    fn ensure_parser(&mut self) -> Option<&mut vt100::Parser<Titles>> {
+        if matches!(&self.parser, ScreenParser::Pending) {
+            let (rows, cols, scrollback) = if self.snapshot_available {
+                (self.rows, self.cols, self.scrollback_rows)
+            } else {
+                (TITLE_ROWS, TITLE_COLS, 0)
+            };
+            self.parser = ScreenParser::Active(Box::new(vt100::Parser::new_with_callbacks(
+                rows,
+                cols,
+                scrollback,
+                Titles::default(),
+            )));
+        }
+        match &mut self.parser {
+            ScreenParser::Active(parser) => Some(parser),
+            ScreenParser::Pending | ScreenParser::Failed => None,
+        }
+    }
 }
 
 /// State shared with each Terminal's reader thread.
@@ -174,25 +204,18 @@ impl Terminals {
         let writer = pair.master.take_writer().map_err(RpcError::internal)?;
         let number = self.next.fetch_add(1, Ordering::Relaxed);
         let snapshot_available = snapshot_size_supported(params.cols, params.rows);
-        let (parser_rows, parser_cols, scrollback) = if snapshot_available {
-            (
-                params.rows,
-                params.cols,
-                SNAPSHOT_SCROLLBACK.min(SNAPSHOT_MAX_HISTORY_CELLS / usize::from(params.cols)),
-            )
+        let scrollback = if snapshot_available {
+            SNAPSHOT_SCROLLBACK.min(SNAPSHOT_MAX_HISTORY_CELLS / usize::from(params.cols))
         } else {
-            (TITLE_ROWS, TITLE_COLS, 0)
+            0
         };
         let screen = Arc::new(Mutex::new(ScreenState {
-            parser: Some(vt100::Parser::new_with_callbacks(
-                parser_rows,
-                parser_cols,
-                scrollback,
-                Titles::default(),
-            )),
+            parser: ScreenParser::Pending,
             after: 0,
             snapshot_available,
             scrollback_rows: scrollback,
+            cols: params.cols,
+            rows: params.rows,
         }));
         let (arrival, child_arrives) = mpsc::channel();
         let shared = Arc::clone(&self.shared);
@@ -277,12 +300,20 @@ impl Terminals {
         let mut state = screen.lock().expect("terminal screen lock");
         let master = handle.master.lock().expect("terminal master lock");
         master.resize(size).map_err(RpcError::internal)?;
+        state.cols = cols;
+        state.rows = rows;
         if state.snapshot_available
             && snapshot_size_supported(cols, rows)
-            && state.scrollback_rows * usize::from(cols) <= SNAPSHOT_MAX_HISTORY_CELLS
+            && (matches!(&state.parser, ScreenParser::Pending)
+                || state.scrollback_rows * usize::from(cols) <= SNAPSHOT_MAX_HISTORY_CELLS)
         {
-            if let Some(parser) = state.parser.as_mut() {
-                parser.screen_mut().set_size(rows, cols);
+            match &mut state.parser {
+                ScreenParser::Pending => {
+                    state.scrollback_rows =
+                        SNAPSHOT_SCROLLBACK.min(SNAPSHOT_MAX_HISTORY_CELLS / usize::from(cols));
+                }
+                ScreenParser::Active(parser) => parser.screen_mut().set_size(rows, cols),
+                ScreenParser::Failed => {}
             }
         } else {
             // A size beyond the capture budget loses screen history; a later shrink cannot restore it.
@@ -294,22 +325,22 @@ impl Terminals {
     /// Return the Terminal's last screen and the output offset represented by it, from one cut.
     pub fn snapshot(&self, id: &str) -> Result<Snapshot, RpcError> {
         let screen = self.screen(id)?;
-        let state = screen.lock().expect("terminal screen lock");
+        let mut state = screen.lock().expect("terminal screen lock");
         if !state.snapshot_available {
             return Err(RpcError::conflict(format!(
                 "terminal {id} screen is too large to snapshot"
             )));
         }
+        let after = state.after;
         let parser = state
-            .parser
-            .as_ref()
+            .ensure_parser()
             .ok_or_else(|| RpcError::internal("terminal screen parser stopped"))?;
         let (rows, cols) = parser.screen().size();
         let data = formatted_snapshot(parser.screen())?;
         Ok(Snapshot {
             cols,
             rows,
-            after: state.after,
+            after,
             data: STANDARD.encode(data),
         })
     }
@@ -438,7 +469,7 @@ fn pump(
         let (offset, titles) = {
             let mut state = screen.lock().expect("terminal screen lock");
             let offset = state.after;
-            let parsed = state.parser.as_mut().map(|parser| {
+            let parsed = state.ensure_parser().map(|parser| {
                 catch_unwind(AssertUnwindSafe(|| {
                     parser.process(&chunk[..read]);
                     std::mem::take(&mut parser.callbacks_mut().0)
@@ -449,7 +480,7 @@ fn pump(
                 Some(Ok(titles)) => (offset, titles),
                 Some(Err(_)) => {
                     eprintln!("terminal {number}: screen parser panicked; snapshots are off");
-                    state.parser = None;
+                    state.parser = ScreenParser::Failed;
                     (offset, Vec::new())
                 }
                 None => (offset, Vec::new()),

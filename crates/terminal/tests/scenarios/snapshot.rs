@@ -58,6 +58,22 @@ async fn u104_snapshot_of_an_unknown_terminal_is_not_found() {
 }
 
 #[tokio::test]
+async fn u104_idle_terminal_starts_with_a_blank_snapshot_then_tracks_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let (terminals, _) = open(&dir);
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), r#"read line; printf '%s' "$line""#))
+        .await
+        .unwrap();
+    let blank = terminals.snapshot(&spawned.id).unwrap();
+    assert_eq!((blank.cols, blank.rows, blank.after), (80, 24, 0));
+    terminals.write(&spawned.id, b"hello\n").await.unwrap();
+    until_printed(&mut spawned.events, "hello").await;
+    assert!(terminals.snapshot(&spawned.id).unwrap().after > blank.after);
+    until_exit(&mut spawned.events).await;
+}
+
+#[tokio::test]
 async fn u104_snapshot_is_available_over_rpc() {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, bus) = open(&dir);
