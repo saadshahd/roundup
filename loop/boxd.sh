@@ -262,19 +262,21 @@ provision() {
 # Exits for every outcome except one that produced events but ended with no final result event, which returns 2
 # so the caller can save what the run got done before deciding its own exit code.
 run_agent() {
-  local model=$1 stream=$2 started=$SECONDS elapsed last
+  local model=$1 stream=$2 rc=0 last
   # A feature-sized task outlasts 570 s (measured: V7 Todo triage hit it and returned nothing), so wait as long as the check may.
   # claude exits non-zero on an API error; keep going so the limit guard can see it.
   # Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, claude waits ~90 s on blocked hosts after it has already answered.
-  boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
-    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format stream-json --verbose --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$stream" 2>"${stream%.jsonl}.err" || true
-  elapsed=$((SECONDS - started))
+  # boxd's own --timeout is a no-output deadline: a run that keeps streaming events never trips it. `timeout` puts
+  # the command in its own process group and signals that whole group, so a streaming agent still ends at
+  # BOXD_AGENT_TIMEOUT; its exit code 124 is how the branch below tells a wall-clock cutoff from a plain early exit.
+  timeout "$AGENT_TIMEOUT" boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
+    "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format stream-json --verbose --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$stream" 2>"${stream%.jsonl}.err" || rc=$?
   cat "${stream%.jsonl}.err" >&2
   ! grep -q DeadlineExceeded "${stream%.jsonl}.err" || record_event agent deadline-exceeded
   [ -s "$stream" ] || { record_event agent no-output; echo "boxd.sh: agent produced no output" >&2; exit 1; }
   last=$(tail -n 1 "$stream")
   if ! jq -e '.type == "result"' <<<"$last" >/dev/null 2>&1; then
-    if [ "$elapsed" -ge "$AGENT_TIMEOUT" ]; then
+    if [ "$rc" -eq 124 ]; then
       echo "boxd.sh: agent timed out after ${AGENT_TIMEOUT} s: $stream" >&2
     else
       echo "boxd.sh: agent ended without a result: $stream" >&2
@@ -320,7 +322,14 @@ build() {
   provision "$name" HEAD HEAD "$prompt"
   run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
   if [ "$agent_rc" -eq 2 ]; then
-    boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached' </dev/null >"$partial" || true
+    # Diffed against `base`, not HEAD, so a commit the agent already made lands in the partial too; written to a
+    # temp file and renamed only on success, so a failed extraction never leaves a stale empty .partial.patch.
+    if boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached base' </dev/null >"$partial.tmp"; then
+      mv "$partial.tmp" "$partial"
+    else
+      rm -f "$partial.tmp"
+      echo "boxd.sh: could not read the diff so far from $VM; no $partial saved" >&2
+    fi
     exit 1
   fi
   # The observer is our own check, not the Builder's claim that it passed.

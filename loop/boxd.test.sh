@@ -62,8 +62,16 @@ case "$1 $2" in
           events-forever)
             echo $$ >"$STUB_DIR/exec-$3.pid"
             timeout "$timeout_s" bash -c 'i=0; while :; do i=$((i + 1)); echo "{\"type\":\"progress\",\"n\":$i}"; sleep 1; done' ;;
+          events-forever-ignoring-boxd-timeout)
+            # Unlike events-forever, this never stops itself: it stands in for a real boxd whose --timeout is a
+            # no-output deadline that a steady stream of events never trips, so only our own wall-clock cutoff ends it.
+            echo $$ >"$STUB_DIR/exec-$3.pid"
+            i=0; while :; do i=$((i + 1)); echo "{\"type\":\"progress\",\"n\":$i}"; sleep 1; done ;;
           events-then-exit)
             echo '{"type":"progress","n":1}' ;;
+          progress-then-result)
+            echo '{"type":"progress","n":1}'
+            jq -cn --arg r "final answer" '{type:"result",is_error:false,result:$r,num_turns:7,duration_ms:5000,total_cost_usd:1.23}' ;;
           limit-then-more)
             echo '{"type":"result","is_error":true,"api_error_status":429,"result":"x"}'
             echo '{"type":"system","subtype":"turn_end"}' ;;
@@ -98,6 +106,7 @@ case "$1 $2" in
         else
           case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
         fi ;;
+      *"git diff --cached base"*) echo "partial-diff-against-base" ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -692,6 +701,25 @@ expect_true "L21 a timed-out build skips the check" bash -c '! grep -q "just che
 expect_true "L21 a timed-out build saves the diff so far as a partial patch" test -e loop/out/patches/t.partial.patch
 expect_true "L21 a timed-out build writes no final patch" bash -c '! test -e loop/out/patches/t.patch'
 expect_true "L21 no PAUSED from a timed-out run" bash -c '! test -e loop/out/PAUSED'
+expect_true "L21 the partial patch diffs against base, so a commit the Builder already made is in it" grep -qF partial-diff-against-base loop/out/patches/t.partial.patch
+
+# boxd's own --timeout is a no-output deadline: a stub that keeps streaming, and never stops itself, stands in for
+# a real boxd that would otherwise run forever. The outer `timeout 15` only bounds this test against a regression;
+# the assertion is that the run ends at BOXD_AGENT_TIMEOUT=3, not at 15.
+new_repo; got=0; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever-ignoring-boxd-timeout timeout 15 loop/boxd.sh build t prompt.md >out 2>err || got=$?
+if [ "$got" -eq 1 ]; then echo "ok:   L21 a wall-clock cutoff ends a run boxd's own --timeout never would"; else echo "FAIL: L21 a wall-clock cutoff ends a run boxd's own --timeout never would (wanted exit 1, got $got)"; failures=$((failures + 1)); fi
+expect_true "L21 that cutoff reports a timeout, naming the seconds" grep -qE 'agent timed out after 3 s: loop/out/runs/t-.*\.jsonl' err
+expect_true "L21 that cutoff still saves the diff so far as a partial patch" test -e loop/out/patches/t.partial.patch
+
+new_repo; got=0; STUB_MODE=progress-then-result loop/boxd.sh review r prompt.md >out 2>err || got=$?
+expect_true "L21 a review with an earlier non-result event still exits 0" test "$got" -eq 0
+expect_true "L21 the verdict is the last event's result, not an earlier event" test "$(cat loop/out/verdicts/r.md)" = "final answer"
+# shellcheck disable=SC2016 # the $1.23 is the literal cost line boxd.sh prints, not a shell variable
+expect_true "L21 the review cost line reports the last event's turns, duration and cost" grep -qF '7 turns, 5s, $1.23 notional' out
+
+new_repo; STUB_MODE=progress-then-result loop/boxd.sh build t prompt.md >out 2>err
+# shellcheck disable=SC2016 # the $1.23 is the literal cost line boxd.sh prints, not a shell variable
+expect_true "L21 the build cost line reports the last event's turns, duration and cost" grep -qF '7 turns, 5s, $1.23 notional' out
 
 new_repo; STUB_MODE=events-then-exit expect_code 1 "L21 an agent that ends with no result event exits 1"
 expect_true "L21 the no-result message names the stream" grep -qE 'agent ended without a result: loop/out/runs/t-.*\.jsonl' err
