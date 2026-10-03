@@ -39,6 +39,7 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 
 | Id | Item | Owns | Keeps green | Waits on |
 |---|---|---|---|---|
+| V1, V2, V3 | axe-core in `window.__axe()`, the per-frame sampler and the Drawer laws (V2 is U111's real-window check), `loop/rules.sh laws` (prompt `.work/prompts/v-verify.md`) (Moves: none) | `apps/desktop/src/testing/**`, `apps/desktop/harness.html`, `apps/desktop/package.json`, `loop/rules.sh`, `loop/rules.test.sh` | `u26_` and `u137_` tests, the `loop/rules.sh` tests | U137 merged (it owns `testing/`), and the L44–L49 row's `loop/rules.sh` PR merged (one writer of `loop/rules.sh`) |
 | L44–L49 | merge policy: `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` in `loop/rules.sh`, stall kind f in `loop/stalls.sh`, the `Scenarios:` check in `loop/boxd.sh build`, the new `loop/rules.sh` steps in `.github/workflows/loop.yml` | `loop/rules.sh`, `loop/rules.test.sh`, `loop/stalls.sh`, `loop/boxd.sh` (shared with L22 and L40: merges after them), `loop/boxd.test.sh`, `.github/workflows/loop.yml` | `loop/rules.test.sh`, `loop/boxd.test.sh` | L28 and L33 implemented (stall kinds, `base`), the U130 and L41 row merged first (it owns the same files) (the user opened the post lane on 2026-10-02) |
 | L50 | split the queue's rows into `.work/queue/<squad>.md`, put a `Module:` line in each scenario file, delete the README table, add `loop/rules.sh queue`, and name `.work/queue/*.md` as a `post` path in L44 and AGENTS.md rule 1 | `.work/**`, `docs/squads.md` (the "Moving the queue" section only), `scenarios/*.md` (first lines only), `scenarios/README.md`, `loop/rules.sh`, `loop/rules.test.sh`, `loop/stalls.sh` is not touched | `loop/rules.test.sh` | the L50 text merged, and no docs PR in the merge lane when it runs (the Driver announces it) |
 | L51 | stall kind g in `loop/stalls.sh` (a rejected PR with no push for 60 minutes) | `loop/stalls.sh`, `loop/stalls.test.sh` (or the file L28's tests live in) | `l51_` tests | after the L44–L49 row's `loop/stalls.sh` PR merges (kind f; one writer of `loop/stalls.sh` at a time) |
@@ -137,6 +138,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U38 | empty states |
   | U39 | retired: superseded by #93's build-time probe (`just perf-keystroke`, K1 to K3, R11); #90 closed. Rule 7's keystroke-to-render number is #93's real-window p95 in WKWebView, one probe and one pairing rule (the first render after the emulator parsed the typed character itself); no second in-app hook that pairs a keystroke with any later output, because it can end early on unrelated output and so bounds nothing. The Daemon-side cheap bound already exists as `just perf`'s write-to-output limit (R8) |
   | U40 | the Drawer's focus |
+  | V1–V3 | UI verification: axe-core on the harness page, per-frame Drawer laws, the laws sheet; architect-c |
   | U41 | Rail by keyboard, the rest |
   | U42 | dropped: a false positive (a stuck key in the test driver), never an app defect |
   | U43 | dropped: not a bug (the automated double-click hit the Live line, not the name) |
