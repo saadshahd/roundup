@@ -49,8 +49,16 @@ finish() {
   trap - EXIT
   if (( opened )); then agent-browser --session "$browser_name" close >/dev/null 2>&1 || true; fi
   if [[ -n $server_pid ]]; then
-    kill "$server_pid" 2>/dev/null || true
+    kill -TERM -- "-$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
+    for _ in {1..10}; do
+      if ! curl -fsS --max-time 1 "$url" >/dev/null 2>&1; then break; fi
+      sleep 0.1
+    done
+    if curl -fsS --max-time 1 "$url" >/dev/null 2>&1; then
+      record_finding "harness listener survived cleanup on port $port"
+      code=1
+    fi
   fi
   record="$out/sweep-$(date -u +%Y%m%dT%H%M%SZ)-$$.json"
   jq -n \
@@ -69,7 +77,7 @@ if [[ -z ${QA_SWEEP_URL:-} ]]; then
   if curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then
     fail "port $port already answers before just harness starts"
   fi
-  just harness tree-40 "$port" > "$work/harness.log" 2>&1 &
+  python3 -c 'import os, sys; os.setsid(); os.execvp("just", ["just", "harness", "tree-40", sys.argv[1]])' "$port" > "$work/harness.log" 2>&1 &
   server_pid=$!
   ready=0
   for _ in {1..40}; do
@@ -90,7 +98,8 @@ browser set media light reduced-motion >/dev/null || fail "agent-browser could n
 browser wait --fn 'document.querySelector("[aria-label=rail]") && document.querySelector("[aria-label=todos]") && document.querySelector("[aria-label=pads]")' >/dev/null || fail "harness did not render Rail and Shelf"
 
 geometry='(() => {
-  const box = element => { const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height,visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})}; };
+  const unclipped = element => { for (let node = element; node; node = node.parentElement) if (getComputedStyle(node).clipPath !== "none") return false; return true; };
+  const box = element => { const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height,visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) && unclipped(element)}; };
   const rail = document.querySelector("[aria-label=rail]");
   const centre = document.querySelector("[aria-label=centre]");
   const shelf = document.querySelector("[aria-label=shelf]");

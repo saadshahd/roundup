@@ -2,8 +2,9 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+real_browser=$(command -v agent-browser || true)
 scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
+trap 'if [[ -s $scratch/harness-child.pid ]]; then kill "$(cat "$scratch/harness-child.pid")" 2>/dev/null || true; fi; rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/bin"
 
 cat > "$scratch/bin/agent-browser" <<'BROWSER'
@@ -118,6 +119,51 @@ if [[ -e "$root/loop/qa-sweep.sh" ]]; then
   fi
   grep -Eq 'checkout is not origin/main|alternate URL is for test mode only' "$scratch/override.log"
   printf 'l52_test_override_cannot_label_a_production_sweep_passed\n'
+
+  mkdir -p "$scratch/server-bin" "$scratch/server-root"
+  printf 'harness\n' > "$scratch/server-root/harness.html"
+  cat > "$scratch/server-bin/just" <<'JUST'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $1 == harness && $2 == tree-40 ]]
+cd "$QA_SWEEP_SERVER_ROOT"
+python3 -m http.server "$3" --bind 127.0.0.1 &
+printf '%s\n' "$!" > "$QA_SWEEP_SERVER_CHILD"
+wait
+JUST
+  chmod +x "$scratch/server-bin/just"
+  export QA_SWEEP_SERVER_ROOT="$scratch/server-root" QA_SWEEP_SERVER_CHILD="$scratch/harness-child.pid"
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+  for run in 1 2; do
+    PATH="$scratch/server-bin:$PATH" env -u QA_SWEEP_URL QA_SWEEP_PORT="$port" "$root/loop/qa-sweep.sh" > "$scratch/repeat-$run.log"
+    if curl -fsS --max-time 2 "http://127.0.0.1:$port/harness.html?seed=tree-40" >/dev/null 2>&1; then
+      echo "harness listener survived sweep $run" >&2
+      exit 1
+    fi
+  done
+  printf 'l52_consecutive_sweeps_release_harness_passed\n'
+
+  if [[ ${QA_SWEEP_LIVE:-0} == 1 ]]; then
+    [[ -n $real_browser ]] || { echo 'agent-browser is required for live clipping test' >&2; exit 1; }
+    rm -rf "$QA_SWEEP_OUT"
+    mkdir -p "$scratch/live-bin"
+    cat > "$scratch/live-bin/agent-browser" <<'LIVE_BROWSER'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ " $* " == *" screenshot "* ]]; then
+  "$QA_SWEEP_REAL_BROWSER" "${@:1:2}" eval 'document.querySelector("[aria-label=centre]").style.clipPath = "inset(50%)"' >/dev/null
+fi
+exec "$QA_SWEEP_REAL_BROWSER" "$@"
+LIVE_BROWSER
+    chmod +x "$scratch/live-bin/agent-browser"
+    if PATH="$scratch/live-bin:${PATH#*:}" QA_SWEEP_REAL_BROWSER="$real_browser" QA_SWEEP_PORT="$port" env -u QA_SWEEP_URL "$root/loop/qa-sweep.sh" > "$scratch/clipped.log"; then
+      echo 'clipped centre returned green' >&2
+      exit 1
+    fi
+    record=$(find "$QA_SWEEP_OUT" -name 'sweep-*.json' -print | sort | tail -1)
+    jq -e '.findings | any(.text | contains("hidden"))' "$record" >/dev/null
+    printf 'l52_clipped_centre_fails_with_a_record_passed\n'
+  fi
 else
   echo 'l52_sweep_missing' >&2
   exit 1
