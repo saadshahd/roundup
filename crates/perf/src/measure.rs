@@ -16,9 +16,9 @@ const WARMUP: usize = 100;
 const TERMINALS: usize = 10;
 const TREE_SIZES: [usize; 2] = [10, 40];
 
-/// H15's tool-use loop: `rup signal` once per tool use (`PostToolUse`; `PreToolUse` has no hook
-/// once `STATE_EVENTS` drops it, so Claude Code never runs it).
-const HOOK_LOOP_CALLS: usize = 100;
+/// H15's tool-use loop: 100 tool uses, each running `rup signal` for `PreToolUse` and again for
+/// `PostToolUse`, since `STATE_EVENTS` keeps both.
+const HOOK_LOOP_CALLS: usize = 200;
 
 /// Metrics of one Daemon, by name.
 pub type Sample = BTreeMap<String, f64>;
@@ -142,9 +142,39 @@ async fn first_ping(socket: &Path, child: &mut Child) -> io::Result<()> {
     }
 }
 
+/// H15: run the built `rup signal` `calls` times, one after another (Claude Code answers one hook at
+/// a time, spike finding 8), and return the wall time. A call that exits non-zero fails the metric:
+/// a `rup signal` that always fails would otherwise report a fast, passing loop.
+pub async fn hook_calls(
+    rup: &Path,
+    socket: &Path,
+    id: &str,
+    payload: &Path,
+    calls: usize,
+) -> io::Result<Duration> {
+    let started = Instant::now();
+
+    for _ in 0..calls {
+        let status = Command::new(rup)
+            .args(["signal", id])
+            .env("RUPD_SOCKET", socket)
+            .stdin(std::fs::File::open(payload)?)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|err| io::Error::other(format!("{}: {err}", rup.display())))?;
+
+        if !status.success() {
+            return Err(io::Error::other(format!("rup signal exited {status}")));
+        }
+    }
+
+    Ok(started.elapsed())
+}
+
 /// H15: the cost of a 100-tool-use loop's hook processes against a fresh Daemon, as the wall time
-/// of running the built `rup signal` once per tool use (no concurrent hooks: Claude Code answers
-/// one hook at a time, spike finding 8). A Daemon and Agent of its own, so this metric shares no
+/// of `HOOK_LOOP_CALLS` `rup signal` runs. A Daemon and Agent of its own, so this metric shares no
 /// state with `one_run`'s.
 async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
     let dir = tempfile::tempdir()?;
@@ -180,25 +210,9 @@ async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
         .as_str()
         .ok_or_else(|| io::Error::other("agent.spawn returned no id"))?;
 
-    let started = Instant::now();
+    let elapsed = hook_calls(rup, &socket, id, &payload, HOOK_LOOP_CALLS).await?;
 
-    for _ in 0..HOOK_LOOP_CALLS {
-        let status = Command::new(rup)
-            .args(["signal", id])
-            .env("RUPD_SOCKET", &socket)
-            .stdin(std::fs::File::open(&payload)?)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|err| io::Error::other(format!("{}: {err}", rup.display())))?;
-
-        if !status.success() {
-            return Err(io::Error::other(format!("rup signal exited {status}")));
-        }
-    }
-
-    Ok(ms(started.elapsed()))
+    Ok(ms(elapsed))
 }
 
 /// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Groups on the Rail.

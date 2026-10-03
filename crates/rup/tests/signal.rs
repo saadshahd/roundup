@@ -188,9 +188,27 @@ fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arriv
     assert!(stderr.contains("may or may not have arrived"), "{stderr}");
 }
 
+/// The OS threads of a live process: `/proc/<pid>/task` on Linux, one `ps -M` row per thread on
+/// macOS (the header row is not one). 0 when the process is already gone.
+fn os_threads(pid: u32) -> usize {
+    if cfg!(target_os = "linux") {
+        return std::fs::read_dir(format!("/proc/{pid}/task")).map_or(0, Iterator::count);
+    }
+
+    let out = Command::new("ps")
+        .args(["-M", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .count()
+        .saturating_sub(1)
+}
+
 /// H15: `rup signal` runs its `tokio::main` on a current-thread runtime (`crates/rup/src/main.rs`)
 /// so a hook process never costs the OS more than one thread to schedule. Caught straight from
-/// `/proc`, while the process is alive and blocked on a Daemon that never answers, so a mutant
+/// the OS's thread list, while the process is alive and blocked on a Daemon that never answers, so a mutant
 /// that swaps in the default multi-threaded runtime (which starts a worker thread per core) fails
 /// this even though it still exits 1 in time.
 #[test]
@@ -228,9 +246,7 @@ fn h15_rup_signal_never_runs_more_than_one_os_thread() {
     let deadline = Instant::now() + HOOK_TIMEOUT / 2;
     let mut max_tasks = 0;
     while Instant::now() < deadline {
-        if let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/task")) {
-            max_tasks = max_tasks.max(entries.count());
-        }
+        max_tasks = max_tasks.max(os_threads(pid));
         if child.try_wait().unwrap().is_some() {
             break;
         }

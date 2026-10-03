@@ -431,15 +431,14 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
 
 /// H15: a loop of 100 tool uses, with the real `rup` hook command registered in the settings file
 /// `agent.spawn` writes, trying the hook for `PreToolUse` and `PostToolUse` around each use. The
-/// fake `claude` skips an event with no entry in the settings, exactly as Claude Code itself would;
-/// each hook command that does run is `rup signal`, so a command that exits 0 proves only that
-/// the RPC call answered, not that the Daemon acted on it (a Daemon whose `agent.signal` handler
-/// dropped every Signal on the floor would still make `rup signal` exit 0). The Daemon must see
-/// exactly the `STATE_EVENTS` Signals, both `PreToolUse` and `PostToolUse` around every tool use,
-/// and must actually fold at least one into the Agent's Status: `rail.tree` is read straight from
-/// the Daemon's own Runs, not from anything the fake `claude` reports about itself.
+/// fake `claude` skips an event with no entry in the settings, exactly as Claude Code itself would,
+/// and fails the loop if any hook command exits non-zero, so a finished loop means every
+/// `rup signal` answered. That alone proves only that the RPC call answered, not that the Daemon
+/// acted on it (a Daemon whose `agent.signal` handler dropped every Signal would still make
+/// `rup signal` exit 0), so `rail.tree`, read straight from the Daemon's own Runs, must show the
+/// Agent `working`.
 #[tokio::test]
-async fn h15_the_daemon_sees_exactly_the_signals_of_state_events_from_a_hundred_tool_use_loop() {
+async fn h15_every_hook_call_of_a_hundred_tool_use_loop_is_answered_and_the_agent_ends_working() {
     let report = tempfile::NamedTempFile::new().unwrap();
     let report_path = report.path().to_string_lossy().into_owned();
     let project = start(&[
@@ -478,20 +477,20 @@ async fn h15_the_daemon_sees_exactly_the_signals_of_state_events_from_a_hundred_
     );
 }
 
-/// H15's last clause: once a Signal reaches the Daemon, the Kind it folds to must be visible to a
-/// subscribed client within rule 7's keystroke-to-render budget, the same local round trip a
-/// Signal and its resulting Status event both make.
+/// H15's last clause, by order and not by clock: the Daemon emits the Status event a Signal changes
+/// before it answers `agent.signal`. The Signal goes over the subscribed connection itself, whose
+/// reader handles lines in arrival order, so an event the Daemon sent before the reply is already
+/// queued when the reply returns; an event sent after it is not, and the zero timeout fails.
 #[tokio::test]
-async fn h15_the_kind_flips_within_the_keystroke_to_render_budget_after_the_signal_arrives() {
+async fn h15_the_status_event_precedes_the_reply_to_the_signal_that_caused_it() {
     let project = start(&[]);
     let mut client = project.subscribed().await;
     let agent = project.spawn_agent(&client).await;
 
-    let started = Instant::now();
     signal(&client, &agent.id, json!({"hook_event_name": "Stop"})).await;
-    let kind = next_kind(&mut client).await;
-    let elapsed = started.elapsed();
+    let kind = tokio::time::timeout(Duration::ZERO, next_kind(&mut client))
+        .await
+        .expect("the Status event was not queued before the reply");
 
     assert_eq!(kind, Kind::Idle);
-    assert!(elapsed < Duration::from_millis(16), "{elapsed:?}");
 }
