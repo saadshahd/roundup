@@ -165,7 +165,7 @@ def send(r: Route, fu: Bool, g: Bool, s: World) -> World:
     case False{}:
       send_live(r, fu, s)
 
-# B6: a Takeover begins; pending Messages from others wait for it to end, the user's stay pending.
+# B6 as amended in #222 (a dependency: merge #222 first): a Takeover begins; pending Messages from others wait for it to end, the user's stay pending.
 def takeover_begin(s: World) -> World:
   match s:
     case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
@@ -239,7 +239,7 @@ def drop_pick(a: Bool, b: Bool, +id: Nat, s: World) -> World:
     case False{}:
       drop_tk(b, id, s)
 
-# B3, B6: the user can drop a Message held for ask-first or for a Takeover; the Takeover goes on.
+# B3, B6 as amended in #222 (a dependency: merge #222 first): the user can drop a Message held for ask-first or for a Takeover; the Takeover goes on.
 def user_drop(+id: Nat, s: World) -> World:
   match s:
     case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
