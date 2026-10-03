@@ -15,8 +15,10 @@ const TREE: RailNode[] = [
 
 /** U22: within this many pixels of the Rail's top or bottom edge a drag scrolls the Rail. */
 const EDGE_PX = 32;
+
 /** U22: pixels scrolled per animation frame while the pointer is in that zone. */
 const STEP_PX = 12;
+
 const FRAME_MS = 16;
 
 beforeEach(() => {
