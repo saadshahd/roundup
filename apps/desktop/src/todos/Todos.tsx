@@ -102,7 +102,9 @@ export const Todos = () => {
   let plusButton: HTMLButtonElement | undefined;
 
   // U138: a completed Todo leaves the open list only once its `todo.updated` Event has refetched it, so the row to focus
-  // is held here until this list no longer carries `id`, then it is given to that target, else to the `+` button.
+  // is held here until this list no longer carries `id`, then it is given to that target, else to the `+` button — but
+  // only while focus is still unclaimed (null or the page body), so a request that outlives the user moving focus
+  // elsewhere (typing in U16's field, Tab into the pane) never yanks it back.
   const [awaitingFocus, setAwaitingFocus] = createSignal<{ id: number; target: number | null }[]>([]);
 
   createEffect(() => {
@@ -115,9 +117,11 @@ export const Todos = () => {
       waiting.filter((request) => {
         if (openIds.has(request.id)) return true;
 
-        const target = request.target !== null ? rows.get(request.target) : undefined;
+        if (document.activeElement === null || document.activeElement === document.body) {
+          const target = request.target !== null ? rows.get(request.target) : undefined;
 
-        (target ?? plusButton)?.focus();
+          (target ?? plusButton)?.focus();
+        }
 
         return false;
       }),
