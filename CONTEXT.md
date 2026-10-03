@@ -5,7 +5,7 @@ Glossary only. No implementation. Rule 6 of the loop: every identifier, RPC meth
 ## Terms
 
 - **Project** — a folder roundup is opened on; owns its Agents, Terminals, Todos, Pads and Routes.
-- **Agent** — one Claude Code process that roundup started and supervises; has a Status. _Avoid:_ session, bot, worker.
+- **Agent** — one supervised identity on the Rail, with a Status; roundup starts it and may resume it after exit, keeping its conversation and attaching a new Terminal. At most one of its Terminals runs at a time. _Avoid:_ session, bot, worker.
 - **Terminal** — a plain shell process roundup started; no Status beyond running/exited. _Avoid:_ process, console.
 - **Snapshot** — a bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.
 - **Group** — a named, process-less node that holds Agents, Terminals, Todos, Pads, views and Groups; the user places what is in it. _Avoid:_ folder.
