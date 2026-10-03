@@ -1,5 +1,5 @@
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use contracts::Event;
@@ -31,7 +31,9 @@ struct Open {
     client: Arc<Client>,
     /// Closing it is how the Daemon learns the App is gone (D1).
     _stdin: ChildStdin,
-    _socket: OwnedSocket,
+    /// This run's socket path (S5): `subscribe` reconnects here, not through `Config`, since a
+    /// reopen's Daemon runs on its own path.
+    socket: OwnedSocket,
     /// One at a time: a reloaded webview subscribes again and must not receive every Event twice.
     subscription: Option<JoinHandle<()>>,
 }
@@ -46,7 +48,8 @@ impl Drop for Open {
 
 enum Phase {
     Closed,
-    Opening,
+    /// The Project reopened, if any (S5): what to fall back to if the Daemon fails to start.
+    Opening(Option<Project>),
     Open(Open),
     Exited(Project),
 }
@@ -55,6 +58,10 @@ enum Phase {
 pub struct AppState {
     config: Config,
     phase: Mutex<Phase>,
+    /// Counts successful Daemon starts so each gets its own socket path (S5): a reopen must never
+    /// land on the exited run's path, and a failed attempt leaves this unchanged so a retry still
+    /// gets the same chance under the socket limit.
+    runs: Mutex<u64>,
 }
 
 impl AppState {
@@ -62,6 +69,7 @@ impl AppState {
         Self {
             config,
             phase: Mutex::new(Phase::Closed),
+            runs: Mutex::new(0),
         }
     }
 
@@ -69,7 +77,7 @@ impl AppState {
         match &*self.phase() {
             Phase::Open(open) => Some(open.project.clone()),
             Phase::Exited(project) => Some(project.clone()),
-            Phase::Closed | Phase::Opening => None,
+            Phase::Closed | Phase::Opening(_) => None,
         }
     }
 
@@ -78,11 +86,11 @@ impl AppState {
         app: &AppHandle<R>,
         path: &Path,
     ) -> Result<Project, RpcError> {
-        self.begin_opening()?;
-        match self.start_daemon(app, path).await {
+        let run = self.begin_opening(path)?;
+        match self.start_daemon(app, path, run).await {
             Ok(project) => Ok(project),
             Err(err) => {
-                *self.phase() = Phase::Closed;
+                self.fail_opening();
                 Err(err)
             }
         }
@@ -95,10 +103,8 @@ impl AppState {
 
     /// Sends every Daemon Event to `channel`, in the Daemon's order, until the Daemon or the webview goes away.
     pub async fn subscribe(&self, channel: Channel<Event>) -> Result<(), RpcError> {
-        self.client()?;
-        let mut events = Client::connect(&self.config.socket)
-            .await
-            .map_err(RpcError::internal)?;
+        let socket = self.socket()?;
+        let mut events = Client::connect(&socket).await.map_err(RpcError::internal)?;
         self.bounded(
             "events.subscribe",
             events.request("events.subscribe", Value::Null),
@@ -118,7 +124,7 @@ impl AppState {
                 }
                 Ok(())
             }
-            Phase::Closed | Phase::Opening | Phase::Exited(_) => {
+            Phase::Closed | Phase::Opening(_) | Phase::Exited(_) => {
                 pump.abort();
                 Err(RpcError::internal("the Daemon went away while subscribing"))
             }
@@ -136,23 +142,57 @@ impl AppState {
             .expect("the phase lock is never held across a panic")
     }
 
-    fn begin_opening(&self) -> Result<(), RpcError> {
+    /// A Project whose Daemon exited may reopen on the same path (S5); any other path, or any
+    /// path while a Daemon runs or is starting, is `CONFLICT` because the App holds one Project.
+    /// Returns the run number this open would use if it succeeds (S5); a failed attempt must not
+    /// consume it, or a retry's `{run}-` prefix would only grow and could outrun the socket limit
+    /// for no reason tied to the retry itself.
+    fn begin_opening(&self, path: &Path) -> Result<u64, RpcError> {
         let mut phase = self.phase();
-        match *phase {
+        match &*phase {
             Phase::Closed => {
-                *phase = Phase::Opening;
-                Ok(())
+                *phase = Phase::Opening(None);
             }
-            Phase::Opening | Phase::Open(_) | Phase::Exited(_) => {
-                Err(RpcError::conflict("a Project is already open"))
+            Phase::Exited(project) if project.path == path.display().to_string() => {
+                let project = project.clone();
+                *phase = Phase::Opening(Some(project));
+            }
+            Phase::Opening(_) | Phase::Open(_) | Phase::Exited(_) => {
+                return Err(RpcError::conflict("a Project is already open"));
             }
         }
+        drop(phase);
+        Ok(*self
+            .runs
+            .lock()
+            .expect("the runs lock is never held across a panic"))
+    }
+
+    /// Commits the run number a successful open used, so the next one gets a fresh socket path (S5).
+    fn commit_run(&self, run: u64) {
+        let mut runs = self
+            .runs
+            .lock()
+            .expect("the runs lock is never held across a panic");
+        *runs = run + 1;
+    }
+
+    /// Reverts a failed open: back to `Closed` for a first open, back to `Exited` with the same
+    /// Project for a failed reopen, so the App still holds that one Project (S5) and is ready to
+    /// try again.
+    fn fail_opening(&self) {
+        let mut phase = self.phase();
+        let Phase::Opening(reopened) = &mut *phase else {
+            return;
+        };
+        *phase = reopened.take().map_or(Phase::Closed, Phase::Exited);
     }
 
     async fn start_daemon<R: Runtime>(
         &self,
         app: &AppHandle<R>,
         path: &Path,
+        run: u64,
     ) -> Result<Project, RpcError> {
         if !path.is_absolute() || !path.is_dir() {
             return Err(RpcError::new(
@@ -164,14 +204,19 @@ impl AppState {
             name: named_after(path),
             path: path.display().to_string(),
         };
-        let started = daemon::start(&self.config, path).await?;
+        let socket = self
+            .config
+            .socket_for_run(run)
+            .map_err(RpcError::internal)?;
+        let started = daemon::start(&self.config, path, &socket).await?;
         *self.phase() = Phase::Open(Open {
             project: project.clone(),
             client: Arc::new(started.client),
             _stdin: started.stdin,
-            _socket: started.socket,
+            socket: started.socket,
             subscription: None,
         });
+        self.commit_run(run);
         let app = app.clone();
         daemon::watch_exit(started.child, move |code| {
             if app.state::<AppState>().mark_exited()
@@ -194,10 +239,20 @@ impl AppState {
     }
 
     fn client(&self) -> Result<Arc<Client>, RpcError> {
+        self.open_ref(|open| Arc::clone(&open.client))
+    }
+
+    fn socket(&self) -> Result<PathBuf, RpcError> {
+        self.open_ref(|open| open.socket.path().to_path_buf())
+    }
+
+    /// The guard every read of the open Daemon's state shares: `INTERNAL` once it has exited,
+    /// `CONFLICT` before any Project is open or while one is still opening.
+    fn open_ref<T>(&self, read: impl FnOnce(&Open) -> T) -> Result<T, RpcError> {
         match &*self.phase() {
-            Phase::Open(open) => Ok(Arc::clone(&open.client)),
+            Phase::Open(open) => Ok(read(open)),
             Phase::Exited(_) => Err(RpcError::internal("the Daemon has exited")),
-            Phase::Closed | Phase::Opening => Err(RpcError::conflict("no Project is open")),
+            Phase::Closed | Phase::Opening(_) => Err(RpcError::conflict("no Project is open")),
         }
     }
 
