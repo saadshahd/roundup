@@ -30,6 +30,10 @@ use tokio::sync::broadcast;
 const EVENT_BACKLOG: usize = 1024;
 const SNAPSHOT_SCROLLBACK: usize = 1000;
 const SNAPSHOT_MAX_BYTES: usize = 1_048_576;
+const SNAPSHOT_MAX_CELLS: u32 = 65_536;
+const SNAPSHOT_MAX_HISTORY_CELLS: usize = 262_144;
+const TITLE_ROWS: u16 = 24;
+const TITLE_COLS: u16 = 80;
 /// How often the reader thread checks whether a program that closed its PTY has ended.
 const REAP_POLL: Duration = Duration::from_millis(5);
 const READ_CHUNK: usize = 8192;
@@ -66,6 +70,8 @@ struct Entry {
 struct ScreenState {
     parser: Option<vt100::Parser<Titles>>,
     after: u64,
+    snapshot_available: bool,
+    scrollback_rows: usize,
 }
 
 /// State shared with each Terminal's reader thread.
@@ -167,14 +173,26 @@ impl Terminals {
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
         let writer = pair.master.take_writer().map_err(RpcError::internal)?;
         let number = self.next.fetch_add(1, Ordering::Relaxed);
-        let screen = Arc::new(Mutex::new(ScreenState {
-            parser: Some(vt100::Parser::new_with_callbacks(
+        let snapshot_available = snapshot_size_supported(params.cols, params.rows);
+        let (parser_rows, parser_cols, scrollback) = if snapshot_available {
+            (
                 params.rows,
                 params.cols,
-                SNAPSHOT_SCROLLBACK,
+                SNAPSHOT_SCROLLBACK.min(SNAPSHOT_MAX_HISTORY_CELLS / usize::from(params.cols)),
+            )
+        } else {
+            (TITLE_ROWS, TITLE_COLS, 0)
+        };
+        let screen = Arc::new(Mutex::new(ScreenState {
+            parser: Some(vt100::Parser::new_with_callbacks(
+                parser_rows,
+                parser_cols,
+                scrollback,
                 Titles::default(),
             )),
             after: 0,
+            snapshot_available,
+            scrollback_rows: scrollback,
         }));
         let (arrival, child_arrives) = mpsc::channel();
         let shared = Arc::clone(&self.shared);
@@ -259,8 +277,16 @@ impl Terminals {
         let mut state = screen.lock().expect("terminal screen lock");
         let master = handle.master.lock().expect("terminal master lock");
         master.resize(size).map_err(RpcError::internal)?;
-        if let Some(parser) = state.parser.as_mut() {
-            parser.screen_mut().set_size(rows, cols);
+        if state.snapshot_available
+            && snapshot_size_supported(cols, rows)
+            && state.scrollback_rows * usize::from(cols) <= SNAPSHOT_MAX_HISTORY_CELLS
+        {
+            if let Some(parser) = state.parser.as_mut() {
+                parser.screen_mut().set_size(rows, cols);
+            }
+        } else {
+            // A size beyond the capture budget loses screen history; a later shrink cannot restore it.
+            state.snapshot_available = false;
         }
         Ok(())
     }
@@ -269,6 +295,11 @@ impl Terminals {
     pub fn snapshot(&self, id: &str) -> Result<Snapshot, RpcError> {
         let screen = self.screen(id)?;
         let state = screen.lock().expect("terminal screen lock");
+        if !state.snapshot_available {
+            return Err(RpcError::conflict(format!(
+                "terminal {id} screen is too large to snapshot"
+            )));
+        }
         let parser = state
             .parser
             .as_ref()
@@ -457,7 +488,9 @@ fn formatted_snapshot(screen: &vt100::Screen) -> Result<Vec<u8>, RpcError> {
         &[]
     };
     if prefix.len() + visible.len() > SNAPSHOT_MAX_BYTES {
-        return Err(RpcError::internal("terminal screen exceeds snapshot limit"));
+        return Err(RpcError::conflict(
+            "terminal visible screen exceeds snapshot limit",
+        ));
     }
 
     let mut history = Vec::new();
@@ -485,6 +518,10 @@ fn formatted_snapshot(screen: &vt100::Screen) -> Result<Vec<u8>, RpcError> {
     }
     data.extend_from_slice(&visible);
     Ok(data)
+}
+
+fn snapshot_size_supported(cols: u16, rows: u16) -> bool {
+    u32::from(cols) * u32::from(rows) <= SNAPSHOT_MAX_CELLS
 }
 
 /// What the OS would refuse at exec time, caught here so it is the caller's error with a short message.
