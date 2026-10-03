@@ -20,7 +20,9 @@ pub struct Decision {
     pub answerable: bool,
 }
 
-/// Called by `rup permission`; waits until the Decision it opens is answered or cleared.
+/// Called by `rup permission`; waits until the Decision it opens is answered or cleared, except
+/// when the Decision is not `answerable` (H2's `AskUserQuestion`), which returns at once with an
+/// empty [`PermissionOutput`].
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "decision/")]
 pub struct PermissionParams {
