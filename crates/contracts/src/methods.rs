@@ -58,6 +58,13 @@ pub const METHODS: &[Method] = &[
     m("agent.spawn", "agent_SpawnParams", "agent_RailNode"),
     m("agent.stop", "agent_NodeId", "null"),
     m("agent.signal", "agent_SignalParams", "null"),
+    m(
+        "agent.permission",
+        "decision_PermissionParams",
+        "decision_PermissionOutput",
+    ),
+    m("decision.list", "null", "decision_Decision[]"),
+    m("decision.answer", "decision_AnswerParams", "null"),
     m("rail.tree", "null", "agent_RailNode[]"),
     m(
         "rail.createGroup",
