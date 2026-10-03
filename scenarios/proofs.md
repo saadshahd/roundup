@@ -11,7 +11,7 @@ What is known and what is not. Known: bise's own Bend proofs cover safety laws a
 **V3 the laws, written by a human.** `proofs/messages/LAWS.bend` states these laws over `model.bend`'s state and `step`, and Builders never edit it; changing it is an Architect's PR approved by a different Architect (rule 4's spirit), and a law may only become stronger.
 - `m1_final_and_at_most_once`: over any sequence of `send`, `idle`, `restart` and `takeover` events, a Message is typed at most once.
 - `m2_held_leaves_only_by_its_owner`: a Message held for `ask-first` leaves `held` only by the user's `deliver` or `drop`; one held `escalated` only by the user's reply.
-- `m3_takeover_isolates`: while a Takeover of `a` holds, nothing typed to `a` came from an Actor but the user, except a Message the user delivered by hand (B6: the user's call wins).
+- `m3_takeover_isolates`: while a Takeover of `a` holds, nothing typed to `a` came from an Actor but the user, except a Message the user delivered by hand (B6: the user's call wins) and the one prompt whose `delivered` was recorded before `takeover.begin` (B6, as amended in #222). The model types and records in one step, so it has no such prompt; the Rust `inv_` test for M3 exempts it.
 - `m5_terminal_states_are_absorbing`: `delivered` and `dropped` never change, and Message ids are unique and rise by one.
 - `m6_no_silent_loss`: every Message is `delivered`, `dropped` with a reason, or still `pending` or `held`.
 - `m7_receiver_gone`: after a Kind of `done` or `error` no `pending` Message to that Agent remains, and a later send is `CONFLICT`.

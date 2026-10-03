@@ -20,6 +20,7 @@ law m2_held_leaves_only_by_its_owner:
   {S.implies(Bool.not(S.is_user_call(e)), S.all_in(S.held_af(S.world(evs)), S.held_af(M.step(e, S.world(evs))))) == True{} : Bool}
 
 # M3: nothing typed during a Takeover came from an Actor but the user, unless the user delivered it by hand (B6: the user's call wins).
+# The model records and types in one step, so the one prompt B6 lets through just after takeover.begin does not arise in it.
 law m3_takeover_isolates:
   for evs: +List<M.Ev>
   {S.all_in(S.tk_typed(S.world(evs)), List.append(&2, Nat, S.users(S.world(evs)), S.released(S.world(evs)))) == True{} : Bool}
