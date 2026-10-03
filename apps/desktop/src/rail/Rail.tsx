@@ -142,6 +142,8 @@ export const Rail = () => {
 
         press.preventDefault();
 
+        if (press.repeat) return;
+
         if (canSpawn()) setComposing(true);
 
         return;
@@ -152,6 +154,8 @@ export const Rail = () => {
       if (!spawn) return;
 
       press.preventDefault();
+
+      if (press.repeat) return;
 
       if (key === "n" && composing()) return;
 

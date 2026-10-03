@@ -119,6 +119,8 @@ const PadBody = (props: {
   const append = (text: string) =>
     act(async () => {
       adopt(await connected.app.rpc("pad.append", { name, text }));
+
+      if (textField) textField.scrollTop = textField.scrollHeight;
     });
 
   const exportToFile = () =>
