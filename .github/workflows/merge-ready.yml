@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
   statuses: write
-  pull-requests: read
+  pull-requests: write
   checks: read
 
 concurrency:
@@ -42,8 +42,14 @@ jobs:
           pr="${PR_FROM_PR:-${PR_FROM_COMMENT:-$PR_FROM_RUN}}"
           [ -n "$pr" ] || { echo "no pull request for this event"; exit 0; }
           sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
-          if gh pr diff "$pr" --name-only | grep -q '^\.github/'; then
-            gh pr merge "$pr" --disable-auto || true
+          fail() {
+            gh api "repos/$REPO/statuses/$sha" -f state=failure -f context=merge-ready -f description="$1"
+            echo "$1" >&2
+            exit 1
+          }
+          paths=$(gh pr diff "$pr" --name-only) || fail "merge-ready: cannot read the PR diff"
+          if printf '%s\n' "$paths" | grep -q '^\.github/'; then
+            gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a .github/ PR"
           fi
           set +e
           out=$(loop/rules.sh merge-ready "$pr" 2>&1)
