@@ -140,6 +140,13 @@ expect self_verdict_does_not_hide_vm_stall 1
 printf '%s\n' '[[{"body":"VERDICT: approve\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: reviewer-1\nReviewed-by-Agent: builder-1"}]]' >"$dir/data/comments-1.json"
 expect two_reviewers_do_not_make_an_independent_verdict 1
 [ -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_two reviewer lines hid e'; failures=$((failures+1)); }
+printf '%s\n' '[[{"commit":{"message":"work\n\nAuthor-Agent: Build.Agent_1   "}}]]' >"$dir/data/commits-1.json"
+printf '%s\n' '[[{"body":"VERDICT: approve\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Build.Agent_1"}]]' >"$dir/data/comments-1.json"
+expect trailing_space_author_blocks_self_review 1
+[ -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_trailing-space author hid e'; failures=$((failures+1)); }
+printf '%s\n' '[[{"commit":{"message":"work\n\nauthor-agent: Build.Agent_1"}}]]' >"$dir/data/commits-1.json"
+expect case_variant_author_blocks_self_review 1
+[ -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_case-variant author hid e'; failures=$((failures+1)); }
 fixture
 printf '%s\n' '[[{"commit":{"message":"work\n\nAuthor-Agent: Build.Agent_1"}}]]' >"$dir/data/commits-1.json"
 printf '%s\n' '[[{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.One_1"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.Two_2"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.Three_3"}]]' >"$dir/data/comments-1.json"

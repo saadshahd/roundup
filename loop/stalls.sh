@@ -20,7 +20,6 @@ ROOT = pathlib.Path('loop/out')
 STALLS = ROOT / 'stalls'
 VERDICTS = ROOT / 'verdicts'
 SHA = re.compile(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])')
-AUTHOR = re.compile(r'^Author-Agent: ([A-Za-z0-9_.-]+)$', re.M)
 REVIEWER = re.compile(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)[ \t]*$', re.M)
 RED = {'failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale'}
 
@@ -86,6 +85,25 @@ def reviewer_id(body):
     return ids[0] if len(ids) == 1 else None
 
 
+def commit_agent_ids(message):
+    try:
+        parsed = subprocess.run(['git', 'interpret-trailers', '--parse'], input=message,
+                                capture_output=True, text=True, timeout=20, check=True).stdout
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:
+        print(f'stalls: git failed: {error}', file=sys.stderr)
+        raise SystemExit(4) from error
+    ids = {'Author-Agent': [], 'Reviewed-by-Agent': []}
+    for line in parsed.splitlines():
+        key, _, value = line.partition(':')
+        key = next((name for name in ids if name.casefold() == key.casefold()), None)
+        if key:
+            agent = value.strip()
+            if not re.fullmatch(r'[A-Za-z0-9_.-]+', agent):
+                raise ValueError(f'invalid {key} trailer')
+            ids[key].append(agent)
+    return ids
+
+
 def verdicts(comments, authors, reviewable_heads):
     valid = []
     for comment in comments:
@@ -128,15 +146,16 @@ try:
         comments = pages(call('gh', 'api', f'repos/{repo}/issues/{number}/comments?per_page=100', '--paginate', '--slurp'))
         commits = pages(call('gh', 'api', f'repos/{repo}/pulls/{number}/commits?per_page=100', '--paginate', '--slurp'))
         runs = check_runs(call('gh', 'api', f'repos/{repo}/commits/{pr["head"]["sha"]}/check-runs', '--paginate', '--slurp'))
-        author_ids = [author for commit in commits for author in AUTHOR.findall(commit['commit']['message'])]
+        commit_ids = [(commit, commit_agent_ids(commit['commit']['message'])) for commit in commits]
+        author_ids = [author for _, ids in commit_ids for author in ids['Author-Agent']]
         known_heads = {pr['head']['sha']} | {commit['sha'] for commit in commits if 'sha' in commit}
         reviewable_heads = {pr['head']['sha']}
         commits_by_sha = {commit['sha']: commit for commit in commits if 'sha' in commit}
         approval = commits_by_sha.get(pr['head']['sha'])
         if approval:
-            message = approval['commit']['message']
+            approval_ids = next(ids for commit, ids in commit_ids if commit is approval)
             parents = approval.get('parents', [])
-            if reviewer_id(message) and not AUTHOR.search(message) and len(parents) == 1:
+            if len(approval_ids['Reviewed-by-Agent']) == 1 and not approval_ids['Author-Agent'] and len(parents) == 1:
                 parent = commits_by_sha.get(parents[0]['sha'])
                 if parent and approval['commit']['tree']['sha'] == parent['commit']['tree']['sha']:
                     reviewable_heads.add(parents[0]['sha'])
