@@ -759,6 +759,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn b1_the_bound_of_32_is_per_receiver_not_shared() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(
+            dir.path(),
+            vec![agent_node("b", Kind::Idle), agent_node("c", Kind::Idle)],
+        );
+        for _ in 0..32 {
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        }
+
+        let to_c = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "c", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(to_c["status"], "pending");
+    }
+
+    #[tokio::test]
+    async fn b1_a_rejected_call_at_the_bound_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        for _ in 0..32 {
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        }
+        h.events();
+
+        let err = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code, code::CONFLICT);
+        assert_eq!(
+            h.events(),
+            Vec::<String>::new(),
+            "the bound check must run before the insert, so a rejected call emits no event"
+        );
+        let phantom = h.call("message.get", json!({"id": 33})).await.unwrap_err();
+        assert_eq!(
+            phantom.code,
+            code::NOT_FOUND,
+            "no row was ever inserted for the rejected call"
+        );
+    }
+
+    #[tokio::test]
     async fn b1_a_message_to_the_user_is_accepted() {
         let dir = tempfile::tempdir().unwrap();
         let h = Harness::new(dir.path(), vec![]);
