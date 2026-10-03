@@ -19,3 +19,4 @@ jobs:
       - run: loop/rules.sh vocab
       - run: loop/rules.test.sh
       - run: loop/boxd.test.sh
+      - run: loop/stalls.test.sh
