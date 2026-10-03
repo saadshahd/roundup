@@ -35,6 +35,7 @@ type Holder = {
   after: number | null;
   restoring: boolean;
   complete: boolean;
+  snapshotFailed: boolean;
   lostOutput: boolean;
   shownSize: Size | null;
 };
@@ -137,12 +138,14 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       holder.emulator.write(bytes, () => requestAnimationFrame(() => reflow(id, holder)));
       holder.after = snapshot.after;
       holder.complete = true;
+      holder.snapshotFailed = false;
       setFailure(id, null);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
       if (disposed) return;
 
+      holder.snapshotFailed = true;
       setFailure(id, `terminal.snapshot: ${thrown.message}`);
 
       if (!holder.complete) holder.after = holder.pending[0]?.offset ?? 0;
@@ -173,7 +176,8 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   const attempt = async (id: string, call: Promise<unknown>): Promise<void> => {
     try {
       await call;
-      setFailure(id, null);
+
+      if (!holders.get(id)?.snapshotFailed) setFailure(id, null);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
@@ -225,7 +229,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
     const holder: Holder = {
       emulator, atBottom, returnToBottom, pending: [], pendingChars: 0,
-      after: null, restoring: false, complete: false, lostOutput: false, shownSize: null,
+      after: null, restoring: false, complete: false, snapshotFailed: false, lostOutput: false, shownSize: null,
     };
 
     holders.set(id, holder);

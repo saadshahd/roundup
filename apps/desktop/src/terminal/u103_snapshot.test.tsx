@@ -4,6 +4,7 @@ import * as xtermModule from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import { ConnectedProjectContext } from "../state/connectedProject";
+import type { FakeApp } from "../testing/fakeApp";
 import { event, info, node, agent } from "../testing/nodes";
 import { connectFakeProject } from "./paneHarness";
 import { Pane } from "./Pane";
@@ -70,7 +71,11 @@ const recordingEmulators = () => {
 };
 
 /** A Pane over a Daemon whose `terminal.snapshot` answers are controlled by the test, one per call. */
-const mount = async (tree = [node("a")], terminals = [info("t-a")]) => {
+const mount = async (
+  tree = [node("a")],
+  terminals = [info("t-a")],
+  configure?: (app: FakeApp) => void,
+) => {
   const { app, connected } = await connectFakeProject(tree, terminals);
   const { factory, made } = recordingEmulators();
   const pending: ((reply: Reply) => void)[] = [];
@@ -79,6 +84,7 @@ const mount = async (tree = [node("a")], terminals = [info("t-a")]) => {
     new Promise<Snapshot>((resolve, reject) =>
       pending.push((reply) => (reply instanceof Error ? reject(reply) : resolve(reply))),
     );
+  configure?.(app);
 
   render(() => (
     <ConnectedProjectContext.Provider value={connected}>
@@ -263,6 +269,24 @@ describe("u103 a reloaded pane shows the screen", () => {
     expect(log()).toEqual([]);
     app.emit(chunk("t-a", "live", 0));
     expect(log()).toEqual(["live"]);
+  });
+
+  it("u103_a_late_resize_success_cannot_clear_a_failed_snapshot_line", async () => {
+    const resize = Promise.withResolvers<null>();
+
+    const { pending, snapshots, log } = await mount(undefined, undefined, (app) => {
+      app.handlers["terminal.resize"] = () => resize.promise;
+    });
+
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+    pending[0]?.(new Error("snapshot failed"));
+    await screen.findByText("✕ terminal.snapshot: snapshot failed");
+    resize.resolve(null);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.getByText("✕ terminal.snapshot: snapshot failed")).toBeTruthy();
+    expect(log()).toEqual([]);
   });
 
   it("u103_output_held_during_a_failed_initial_snapshot_continues_as_live_output", async () => {
