@@ -97,7 +97,8 @@ export const openShelf = async (pads: Pad[]) => {
 
 export const enterEditor = async () => {
   fireEvent.click(screen.getByRole("button", { name: "edit" }));
-  const field = await screen.findByRole<HTMLElement>("textbox", { name: "Editor" });
+  fireEvent.click(await screen.findByRole("button", { name: "source" }));
+  const field = await screen.findByRole<HTMLElement>("textbox", { name: "Editor" }, { timeout: 5000 });
   const view = EditorView.findFromDOM(field);
 
   if (!view) throw new Error("Pad Editor has no CodeMirror view");
