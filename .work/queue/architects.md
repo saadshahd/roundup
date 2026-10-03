@@ -14,11 +14,16 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 U104 merged in #265; U103 merged in #266.
 
-## To specify
+## A20 / U68 handoff
 
-| Ids | User need | Scenario work | Observer before dispatch |
+Specified in `scenarios/agents.md` and `scenarios/ui-rail.md`; P1, P2, P4, P6 exist in `PRINCIPLES.md`. This is a block-lane spec, not an implementation approval. An independent committee architect must approve the Agent definition, A20 method/field and cross-squad U56 narrowing before implementation. Both ids are already allocated to their squads in `docs/squads.md`.
+
+| Ids | Builder ownership | Observer before completion | Start / merge order |
 |---|---|---|---|
-| A20, U68 | Continue an exited Agent from its Rail menu while preserving its conversation; a plain Terminal needs a separate restart rule | daemon and ui-rail scenario writers decide whether a continued run keeps the Rail node or opens a new one, amend `CONTEXT.md`'s one-process Agent definition if needed, then specify vendor conversation id capture and persistence, Worktree reuse, new Terminal attachment, unsupported older Agents, and the U56 menu narrowing; contract needs independent architect approval | local `claude --help` confirms `--resume [value]` takes a conversation id; red `a20_` and `u68_` tests must precede implementation, with a real CLI smoke and browser proof |
+| A20 | Backend Builder: `crates/agents/src/**`, `crates/agents/tests/**`, `crates/contracts/**`, regenerated `contracts/generated/**`, `crates/rup/tests/**`; only required method routing in `crates/rupd/src/**` / `crates/rup/src/**`; all existing RailNode literals, including desktop fixtures and `src/testing/seeds.ts`, for the additive field and fake method | failing then passing `a20_` cases named in A20; real `rupd` e2e; authenticated exact-id CLI smoke, including reopen; existing A-series and U103/U104 tests; `just check` | after spec/committee approval; publish contract and fixture slice first, with every existing caller updated in the same backend PR; backend owns that shared slice exclusively |
+| U68 | UI Builder: `apps/desktop/src/rail/menu/**`, needed wiring in `Rail.tsx` / `RailRow.tsx`, `apps/desktop/src/terminal/**`, new `u68_` test-local fixtures only; no generated contracts or shared fixture edits (Moves: D5, D6, D7) | failing then passing `u68_` fake-App cases; U56 and U103/U104 regression cases; independent QA 1280×800 before/after browser proof and real App/Daemon continuation/reload proof | after spec/committee approval, can start independently with menu and test-local fake cases against A20's written shape; consume backend's contract slice without editing it; rebase and merge after A20 |
+
+The backend Reviewer observes persistence, launch failure and RPC behavior; the UI Reviewer observes the diff, narrowed menu tests and proof. Both are independent of their Builder. QA connects the two against one built head; a fake menu response is not proof of conversation continuation. No Builder is assigned by this spec patch. Plain Terminal restart remains unspecified and is not part of either row. Runner supplies checks; CLI help is recorded in A20, and successful authenticated continuation remains a Builder/QA observer.
 
 ## Waiting
 
