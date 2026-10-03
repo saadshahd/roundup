@@ -37,7 +37,7 @@ const normalised = (value: string) =>
   value.startsWith("#") ? value.toLowerCase() : value.toLowerCase().replace(/\s+/g, "").replace(/\d*\.?\d+/g, (number) => String(Number(number)));
 
 // Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moved `--text` to the table's
-// `#1d1d1f` and deleted its entry; a later slice may add one for `--selected`, which the table's value fails D5 on.
+// `#1d1d1f` and deleted its entry; a later slice may add one.
 const KNOWN_DIFFERENCES = new Map<string, string>();
 
 function valueOf(section: string, token: string): string | undefined {
