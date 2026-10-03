@@ -106,7 +106,7 @@ case "$1 $2" in
         else
           case "${STUB_MODE:-}" in check-fails) exit 7 ;; check-deadline) echo 'exec error: status: DeadlineExceeded, message: "no output from the command for 30m: wedged"' >&2; exit 1 ;; token-output) echo "log gho_abcdefghijklmnopqrstuvwxyz0123 end" ;; esac
         fi ;;
-      *"git diff --cached base"*) echo "partial-diff-against-base" ;;
+      *"git diff --cached base"*) echo "partial-diff-against-base"; [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1 ;;
       *format-patch*) echo "patch" ;;
     esac ;;
 esac
@@ -725,6 +725,13 @@ new_repo; STUB_MODE=events-then-exit expect_code 1 "L21 an agent that ends with 
 expect_true "L21 the no-result message names the stream" grep -qE 'agent ended without a result: loop/out/runs/t-.*\.jsonl' err
 expect_true "L21 a result-less build skips the check" bash -c '! grep -q "just check" log'
 expect_true "L21 a result-less build saves the diff so far as a partial patch" test -e loop/out/patches/t.partial.patch
+
+# The diff is read into a temp file and renamed only on success: a diff that prints and then fails must leave no
+# .partial.patch, or a later reader takes a truncated patch for the Builder's work.
+new_repo; got=0; STUB_MODE=events-then-exit STUB_DIFF_FAILS=1 loop/boxd.sh build t prompt.md >out 2>err || got=$?
+expect_true "L21 a failed diff extraction still exits 1" test "$got" -eq 1
+expect_true "L21 a failed diff extraction says no partial patch was saved" grep -q "could not read the diff so far" err
+expect_true "L21 a failed diff extraction leaves no partial patch, not even a truncated one" bash -c '! test -e loop/out/patches/t.partial.patch && ! test -e loop/out/patches/t.partial.patch.tmp'
 expect_true "L21 no PAUSED from a result-less run" bash -c '! test -e loop/out/PAUSED'
 
 # A timed-out or result-less run removes the stable result file an earlier successful run left, and a later
