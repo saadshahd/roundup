@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
+import styles from "../styles.css?inline";
 import { USER } from "../testing/nodes";
 import { mountTodos, todo, todoCallsTo as callsTo, todoEvent, todoRowOf as rowOf } from "./testHarness";
 
@@ -11,6 +12,37 @@ const drawer = () => screen.getByRole("complementary", { name: "drawer" });
 const blocked = () => todo(5, { title: "session store", blocked: true, blockers: [4, 6] });
 
 const shelf = () => [blocked(), todo(4, { title: "migrate" }), todo(6, { title: "later" })];
+
+// jsdom has no layout, but the row's font is monospace, so 1ch is exactly 1 character: a row
+// `ROW_CHARS` wide wraps a title's hanging-indent line (RowButton's `text-indent: -2ch`) the same
+// way the real browser does. `complete`'s computed `position` says whether it is still in flow
+// (the bug: it shrinks the title's available width) or out of it (the fix: it cannot).
+const ROW_CHARS = 40;
+
+const LINE_HEIGHT = 18;
+
+const linesFor = (text: string, firstLineChars: number) =>
+  text.length <= firstLineChars ? 1 : 1 + Math.ceil((text.length - firstLineChars) / (ROW_CHARS - 2));
+
+const measureRows = (ids: number[]) => {
+  const rows: Record<number, { top: number; height: number; lines: number }> = {};
+  let top = 0;
+
+  for (const id of ids) {
+    const row = rowOf(id);
+    const title = within(row).getByRole("button", { name: new RegExp(`#${id}\\b`) });
+    const complete = within(row).queryByRole("button", { name: "complete" });
+    const stealsWidth = complete !== null && getComputedStyle(complete).position !== "absolute";
+    const firstLineChars = ROW_CHARS - (stealsWidth ? "complete".length + 1 : 0);
+    const lines = linesFor(title.textContent ?? "", firstLineChars);
+    const height = lines * LINE_HEIGHT;
+
+    rows[id] = { top, height, lines };
+    top += height;
+  }
+
+  return rows;
+};
 
 describe("u35 Todo triage without the Drawer", () => {
   it("u35_hovering_an_open_row_reveals_complete_which_calls_todo_complete", async () => {
@@ -248,5 +280,30 @@ describe("u35 Todo triage without the Drawer", () => {
     expect([added > 0, removed]).toEqual([true, added]);
     addSpy.mockRestore();
     removeSpy.mockRestore();
+  });
+
+  it("u35_hovering_or_focusing_an_open_row_changes_no_rows_top_edge_height_or_wrapping", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    const longest = "a".repeat(34); // "· #6 " (5 chars) + this nearly fills ROW_CHARS (40)
+    await mountTodos([todo(6, { title: longest }), todo(8)]);
+    await screen.findByRole("button", { name: /#6/ });
+    const row6Button = () => within(rowOf(6)).getByRole("button", { name: /#6/ });
+
+    const atRest = measureRows([6, 8]);
+
+    fireEvent.mouseEnter(rowOf(6));
+    await screen.findByText("complete");
+    const whileHovered = measureRows([6, 8]);
+
+    fireEvent.mouseLeave(rowOf(6));
+    fireEvent.focusIn(row6Button());
+    await screen.findByText("complete");
+    const whileFocused = measureRows([6, 8]);
+
+    sheet.remove();
+
+    expect(whileHovered).toEqual(atRest);
+    expect(whileFocused).toEqual(atRest);
   });
 });

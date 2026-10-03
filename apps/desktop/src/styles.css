@@ -71,6 +71,17 @@ p {
   overflow: auto;
 }
 
+.shelf .row-head {
+  position: relative;
+}
+
+/* absolute: out of flow, so showing it never shrinks or wraps the title (U35) */
+.shelf .complete {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
 .centre {
   background: var(--ground);
 }
