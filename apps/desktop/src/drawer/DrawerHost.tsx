@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { DRAWER_EASING, DRAWER_SLIDE_MS } from "./drawer";
 import type { DrawerContent, DrawerState } from "./drawer";
@@ -9,7 +9,9 @@ import type { DrawerContent, DrawerState } from "./drawer";
  */
 export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor<boolean> }) => {
   const [mounted, setMounted] = createSignal<DrawerContent | null>(null);
+  const [panel, setPanel] = createSignal<HTMLElement>();
   const isOpen = () => props.drawer.content() !== null;
+  let heldFocus: HTMLElement | null = null;
 
   // Content stays mounted until the slide-out ends; with no transition no `transitionend` fires, so it goes at once.
   createEffect(() => {
@@ -18,6 +20,25 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
     if (content !== null) setMounted(() => content);
     else if (props.reducedMotion()) setMounted(null);
   });
+
+  // U40: opening takes the keyboard; closing gives it back to whatever held it, unless focus left the Drawer on its own.
+  createEffect(
+    on(isOpen, (open, wasOpen) => {
+      const host = panel();
+
+      if (open && !wasOpen) {
+        heldFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        host?.querySelector<HTMLElement>(".close")?.focus();
+      } else if (wasOpen && !open) {
+        const stayedInDrawer = host?.contains(document.activeElement) ?? false;
+        const toRefocus = heldFocus;
+
+        heldFocus = null;
+
+        if (stayedInDrawer) toRefocus?.focus();
+      }
+    }),
+  );
 
   // A field or the terminal owns Esc: it cancels the field or reaches the program.
   const closeOnEsc = (key: KeyboardEvent) => {
@@ -34,6 +55,7 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
       class="drawer"
       aria-label="drawer"
       inert={!isOpen()}
+      ref={setPanel}
       style={{
         position: "absolute",
         top: "0",
