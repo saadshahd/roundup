@@ -12,7 +12,7 @@ import {
   loadTokens,
   withStylesheets,
 } from "../testing/contrast";
-import { glyphOf, liveLineOf, mountRail, rowNames, rowOf } from "./railFixture";
+import { glyphOf, shownLiveLine, mountRail, rowNames, rowOf } from "./railFixture";
 import { agent } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -28,14 +28,14 @@ describe("u25 the Daemon is gone", () => {
     );
 
     const tree = screen.getByRole("tree");
-    const before = { glyph: glyphOf("a").textContent, line: liveLineOf("a") };
+    const before = { glyph: glyphOf("a").textContent, line: shownLiveLine("a") };
 
     expect(tree.getAttribute("aria-disabled")).toBeNull();
     setExit({ code: 1 });
 
     expect(tree.getAttribute("aria-disabled")).toBe("true");
     expect(rowNames()).toEqual(["a", "b"]);
-    expect({ glyph: glyphOf("a").textContent, line: liveLineOf("a") }).toEqual(before);
+    expect({ glyph: glyphOf("a").textContent, line: shownLiveLine("a") }).toEqual(before);
   });
 
   it("u25_the_dim_is_a_grayscale_filter_and_never_an_opacity", () => {
