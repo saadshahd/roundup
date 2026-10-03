@@ -11,6 +11,12 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 | `review` keeps the branch's trailers across a merge | L22 | `loop/boxd.sh` and its tests | `loop/boxd.test.sh` | boxd-agents |
 | the boxd check does not depend on files outside the checkout | L40 | `loop/boxd.sh` (shared with L22: merges after it), the tsc setup and their tests | `loop/boxd.test.sh` | boxd-agents |
 
+## To specify
+
+| Item | Needed scenario | Observer before dispatch |
+|---|---|---|
+| Driver dispatches ready Builders without a human choosing every row | Architect assigns a new L id after L49 and specifies a queue reader that atomically claims the oldest ready, approved scenario with disjoint file ownership, starts `BOXD_AGENT=codex loop/boxd.sh build` up to both the WIP and VM caps, ingests each Builder's `Next:` recommendation as a candidate row, and records why a row was skipped; it must never dispatch a duplicate, a blocked dependency or a scenario without approval | fake queue/boxd race tests show two concurrent Driver ticks claim one row once, run independent rows together, stop at caps, and turn one completed Builder recommendation into a durable candidate; a live boxd smoke leaves no `ru-` VM |
+
 ## Waiting
 
 Scenario text is on main. The row starts when what it waits on has merged. A UI row ends its Item with `(Moves: <D ids>)`, the design-system checks it moves (`docs/design-system.md`, baseline protocol); the Builder's PR body repeats the line and corrects it if the diff moves other checks.

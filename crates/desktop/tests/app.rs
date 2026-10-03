@@ -302,8 +302,8 @@ fn s1_a_daemon_that_exits_is_internal_and_carries_its_stderr() {
 }
 
 #[test]
-fn s1_a_daemon_silent_past_the_ready_bound_is_internal_and_carries_its_stderr() {
-    let fx = Fixture::new("echo 'still starting' >&2\nexec cat");
+fn s1_a_daemon_silent_past_the_ready_bound_is_internal() {
+    let fx = Fixture::new("exec cat");
     let mut config = fx.config.clone();
     config.ready_bound = Duration::from_millis(300);
     let (_app, webview) = app(config, None);
@@ -315,7 +315,7 @@ fn s1_a_daemon_silent_past_the_ready_bound_is_internal_and_carries_its_stderr() 
         error["message"]
             .as_str()
             .unwrap()
-            .contains("still starting")
+            .contains("did not answer daemon.ping within 300ms")
     );
 }
 

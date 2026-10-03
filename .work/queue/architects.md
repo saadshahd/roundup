@@ -12,9 +12,13 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 ## Ready now
 
-| Id | Item | Owns | Keeps green |
+U104 merged in #265; U103 merged in #266.
+
+## To specify
+
+| Ids | User need | Scenario work | Observer before dispatch |
 |---|---|---|---|
-| U104 | **top priority: restore a Terminal's screen after a webview reload**; `terminal.snapshot` and output offsets (contract, rule 4) | `crates/terminal/**`, `crates/contracts/**` and generated files, `crates/rupd/src/**` | `u104_` tests replay a coloured, resized, alternate-screen Terminal into a fresh parser and check its screen, cursor, modes, 1000-line bound, output offsets and exited result; `just check`; independent architect approval |
+| A20, U68 | Continue an exited Agent from its Rail menu while preserving its conversation; a plain Terminal needs a separate restart rule | daemon and ui-rail scenario writers decide whether a continued run keeps the Rail node or opens a new one, amend `CONTEXT.md`'s one-process Agent definition if needed, then specify vendor conversation id capture and persistence, Worktree reuse, new Terminal attachment, unsupported older Agents, and the U56 menu narrowing; contract needs independent architect approval | local `claude --help` confirms `--resume [value]` takes a conversation id; red `a20_` and `u68_` tests must precede implementation, with a real CLI smoke and browser proof |
 
 ## Waiting
 

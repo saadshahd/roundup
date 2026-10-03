@@ -6,7 +6,8 @@ The rows this squad holds (`docs/squads.md`, "Moving the queue"). The protocol, 
 
 | Item | Ids | Owns | Observer | Claimed by |
 |---|---|---|---|---|
-| Agent and Terminal screen restored on reload | U103 | `apps/desktop/src/terminal/**` | `u103_` tests, `just check`, 1280×800 reload proof | terminal-reload-ui, PR #266 |
+| Terminal copy and paste | U101 | `apps/desktop/src/terminal/**` and necessary Emulator fixtures | `u101_` tests, `just check`, 1280×800 proof | terminal-reload-ui, PR pending |
+| Shelf row holds still on hover/focus | U112 | `apps/desktop/src/todos/**`, Shelf rules in `styles.css` | `u112_` layout test, `just check`, browser proof | boxd Codex Builder `ru-u112-shelf-hover`, patch pending |
 
 ## Ready now
 
@@ -15,7 +16,7 @@ Scenario text is on main and nothing it needs is unmerged. Every row owns a dire
 | Id | Item | Owns | Keeps green |
 |---|---|---|---|
 | U41 | Rail by keyboard, the rest (Moves: none) | `apps/desktop/src/keys/**`, one line in `src/App.tsx` | U31's and U32's tests |
-| U112 | a Shelf row never moves on hover or focus (QA finding F7; Moves: none) | `apps/desktop/src/todos/**`, the Shelf rules of `apps/desktop/src/styles.css` | U35's tests |
+
 
 ## Waiting
 
@@ -27,7 +28,8 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 | U11 | wide glyphs take two cells: the new dependency `@xterm/addon-unicode11` for `apps/desktop`, loaded with `allowProposedApi` (Moves: none) | `apps/desktop/src/terminal/emulator.ts`, `apps/desktop/package.json`, `pnpm-lock.yaml`; starts from branch `architect/terminal-defects-tdd`, does not edit `u11_wide_glyphs.test.tsx` | `u11_wide_glyphs.test.tsx` passes (3 of 4 red on main); `u11_`, `u12_` and `u34_` tests keep green | `architect/terminal-defects-tdd` on origin (it holds `u11_wide_glyphs.test.tsx`) |
 | U111 | **top priority**: a Drawer never moves the layout (the user's screenshot bug; Moves: none) | `apps/desktop/src/drawer/**`, `apps/desktop/src/styles.css` (the `.columns` rule only), `apps/desktop/src/app/**` for the harness check | `u5_`, `u24_`, `u40_` tests narrowed; new `u111_` | U40 on main; before U105–U110 |
 | U105–U107, U109, U110 | the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3) | `apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns | after the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107 |
-| U101, U102 | Terminal copy and paste (Moves: D3); Terminal text size (Moves: D2) | `apps/desktop/src/terminal/**` | `u11_`–`u13_` tests | after U103 merges; ids U101–U129 are reserved |
+| U86 | vector Glyphs and action icons in the Rail, Shelf, Drawer and error lines (Moves: D2, D4, D5, D6) | `apps/desktop/src/ink/**` and icon call sites across `rail`, `todos`, `pads`, `drawer`, `app`; coordinate with U67 | `u86_` tests and real 1280×800 and 700×800 proof | after U67 merges so `pads` has one writer |
+| U102 | Terminal text size (Moves: D2) | `apps/desktop/src/terminal/**` | `u102_` and `u11_`–`u13_` tests | after U101 merges; same module |
 | U59 | the terminal blends with the app (Moves: D1, D5) | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U103 and the contrast tokens merge |
 | U37 | reopen, webview half (Moves: D3, D5, D6, D7) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) (Moves: D1, D5) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
