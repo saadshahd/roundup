@@ -21,6 +21,7 @@ import type { MessageId as message_MessageId } from "./message/MessageId";
 import type { Route as message_Route } from "./message/Route";
 import type { SendParams as message_SendParams } from "./message/SendParams";
 import type { SetRouteParams as message_SetRouteParams } from "./message/SetRouteParams";
+import type { TakeoverParams as message_TakeoverParams } from "./message/TakeoverParams";
 import type { AppendParams as pad_AppendParams } from "./pad/AppendParams";
 import type { CreateParams as pad_CreateParams } from "./pad/CreateParams";
 import type { ExportParams as pad_ExportParams } from "./pad/ExportParams";
@@ -90,6 +91,8 @@ export type RpcMethods = {
   "message.drop": { params: message_MessageId; result: message_Message };
   "route.set": { params: message_SetRouteParams; result: message_Route };
   "route.list": { params: null; result: message_Route[] };
+  "takeover.begin": { params: message_TakeoverParams; result: null };
+  "takeover.end": { params: message_TakeoverParams; result: null };
   "rail.remove": { params: agent_NodeId; result: null };
 };
 

@@ -37,7 +37,7 @@ const normalised = (value: string) =>
   value.startsWith("#") ? value.toLowerCase() : value.toLowerCase().replace(/\s+/g, "").replace(/\d*\.?\d+/g, (number) => String(Number(number)));
 
 // Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moved `--text` to the table's
-// `#1d1d1f` and deleted its entry; a later slice may add one for `--selected`, which the table's value fails D5 on.
+// `#1d1d1f` and deleted its entry; a later slice may add one.
 const KNOWN_DIFFERENCES = new Map<string, string>();
 
 function valueOf(section: string, token: string): string | undefined {
@@ -125,6 +125,29 @@ describe("u130 tokens", () => {
 
     expect(Object.keys(sheets).sort()).toEqual(["../styles.css", "../terminal/styles.css"]);
     expect(Object.entries(sheets).flatMap(([path, css]) => lookLiterals(css).map((literal) => `${path}: ${literal}`))).toEqual([]);
+  });
+
+  it("u130_rail_styles_have_no_look_literal_outside_a_var_read", () => {
+    const sheets = import.meta.glob<string>(["../rail/styles.css", "../rail/attentionChip.styles.css"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+
+    expect(Object.keys(sheets).sort()).toEqual(["../rail/attentionChip.styles.css", "../rail/styles.css"]);
+    expect(Object.entries(sheets).flatMap(([path, css]) => lookLiterals(css).map((literal) => `${path}: ${literal}`))).toEqual([]);
+  });
+
+  it("u130_inline_styles_in_rail_have_no_look_literal_outside_a_var_read", () => {
+    const sources = import.meta.glob<string>(["../rail/**/*.{ts,tsx}", "!../rail/**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+
+    expect(Object.keys(sources)).toEqual(expect.arrayContaining(["../rail/Rail.tsx", "../rail/RailRow.tsx", "../rail/SpawnPromptField.tsx", "../rail/AttentionChip.tsx"]));
+    expect(Object.keys(sources).filter((path) => /\.test\./.test(path)), "test files are not scanned").toEqual([]);
+    expect(Object.entries(sources).flatMap(([path, source]) => lookLiterals(inlineStyleCss(source)).map((literal) => `${path}: ${literal}`))).toEqual([]);
   });
 
   it("u130_inline_styles_in_drawer_pads_and_todos_have_no_look_literal_outside_a_var_read", () => {

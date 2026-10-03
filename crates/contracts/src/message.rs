@@ -107,3 +107,18 @@ pub struct SetRouteParams {
     pub to: String,
     pub delivery: Delivery,
 }
+
+/// `takeover.begin` and `takeover.end` name the Agent to take over.
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(export, export_to = "message/")]
+pub struct TakeoverParams {
+    pub agent: String,
+}
+
+/// `takeover.changed {agent, on}`: pushed each time a Takeover of `agent` begins or ends.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "message/")]
+pub struct TakeoverChanged {
+    pub agent: String,
+    pub on: bool,
+}
