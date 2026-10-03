@@ -378,4 +378,10 @@ describe("u17 Todo detail", () => {
 
     expect(row.className).not.toBe("word");
   });
+
+  it("u50_the_blocker_button_sits_in_a_paragraph_so_the_drawers_flex_column_does_not_stretch_it", async () => {
+    await openDrawerOf(/#5/);
+
+    expect(within(drawer()).getByText("+ blocker").parentElement?.tagName).toBe("P");
+  });
 });

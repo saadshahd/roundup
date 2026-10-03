@@ -110,6 +110,8 @@ p {
 }
 
 .drawer {
+  display: flex;
+  flex-direction: column;
   width: min(560px, 70%, calc(100% - 252px));
   padding: 16px 72px 16px 16px;
   box-sizing: border-box;
