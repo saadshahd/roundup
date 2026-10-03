@@ -96,7 +96,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | L40 | `boxd check` does not depend on files outside the checkout (round cap on #140: amend; one more reject on the same clause retires it) |
   | U61–U79 | `scenarios/ui-rail.md`, writer-ui-rail |
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
-  | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`, U103–U104 `ui-reload.md`, U105–U110 `ui-attention.md`) |
+  | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`, U103–U104 `ui-reload.md`, U105–U110 `ui-attention.md`, U112 `ui-shelf.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
   | G1–G9 | `scenarios/worktrees.md`, architect-c (G1–G7 written; G8–G9 reserved for the UI half) |
   | B1–B29 | `scenarios/messages.md`, architect-b (B24–B27 from the anchor rules; B25, B26, B27 are spikes) |
