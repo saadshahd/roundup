@@ -444,12 +444,14 @@ fn start_listener(inner: &Arc<Inner>) {
 /// calls `deliver` once, for the oldest deliverable Message to that Agent (B2, B7); a `done` or
 /// `error` Kind ends any Takeover of it and drops its `pending` Messages with the reason
 /// `receiver gone` (B6, B9). A `Lagged` receiver may have missed one of those, so it resyncs from
-/// the Rail instead of guessing what it lost (B9).
+/// the Rail instead of guessing what it lost (B9), and tries again on its next event while the
+/// Rail cannot answer.
 fn spawn_status_listener(
     inner: Arc<Inner>,
     mut events: tokio::sync::broadcast::Receiver<contracts::Event>,
 ) {
     tokio::spawn(async move {
+        let mut resync_due = false;
         loop {
             match events.recv().await {
                 Ok(contracts::Event {
@@ -457,8 +459,11 @@ fn spawn_status_listener(
                     ..
                 }) => on_status(&inner, &status.id, status.status.kind).await,
                 Ok(_) => {}
-                Err(RecvError::Lagged(_)) => resync(&inner).await,
+                Err(RecvError::Lagged(_)) => resync_due = true,
                 Err(RecvError::Closed) => break,
+            }
+            if resync_due {
+                resync_due = !resync(&inner).await;
             }
         }
     });
@@ -475,9 +480,12 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, kind: Kind) {
 /// A receiver that lagged behind the bus may have missed a `done` or `error` `agent.status`; the
 /// Rail still has it, so re-read it and run `on_ended` for every Agent it now shows as ended.
 /// Idempotent: an Agent `on_ended` already handled has no `pending` Messages left to drop and no
-/// Takeover left to end.
-async fn resync(inner: &Arc<Inner>) {
-    let nodes = rail_nodes(inner).await.expect("rail.tree");
+/// Takeover left to end. `false` when the Rail cannot answer, so the caller retries on its next
+/// event instead of losing the `done` it missed.
+async fn resync(inner: &Arc<Inner>) -> bool {
+    let Ok(nodes) = rail_nodes(inner).await else {
+        return false;
+    };
     for node in nodes {
         if let Some(status) = node.status
             && matches!(status.kind, Kind::Done | Kind::Error)
@@ -485,6 +493,7 @@ async fn resync(inner: &Arc<Inner>) {
             on_ended(inner, &node.id);
         }
     }
+    true
 }
 
 /// The Rail's nodes, read with the Daemon as the caller.

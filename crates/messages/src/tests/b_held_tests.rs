@@ -1036,3 +1036,45 @@ async fn b2_a_rail_that_cannot_answer_leaves_the_message_pending_for_the_next_id
     h.until(1, "delivered").await;
     assert_eq!(h.typed(1).await.len(), 1);
 }
+
+fn status_flood(h: &Held2) {
+    for _ in 0..2000 {
+        h.bus.emit(
+            Actor::daemon(),
+            EventData::AgentStatus(StatusEvent {
+                id: "z".into(),
+                status: Status {
+                    kind: Kind::Working,
+                    label: "x".into(),
+                    since: 0,
+                },
+            }),
+        );
+    }
+}
+
+#[tokio::test]
+async fn b9_a_lag_while_the_rail_cannot_answer_still_drops_pending_once_it_can() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+
+    h.rail.fail(true);
+    h.becomes("b", Kind::Done);
+    status_flood(&h);
+    h.settle().await;
+    h.rail.fail(false);
+    status_flood(&h);
+
+    h.until(1, "dropped").await;
+    assert_eq!(h.states().await[&1], dropped("receiver gone"));
+}
+
+#[tokio::test]
+async fn b2_a_sender_no_longer_on_the_rail_is_named_by_its_id() {
+    let (_dir, h) = project();
+    h.send_as(agent("a"), "b", "one").await;
+
+    h.becomes("b", Kind::Idle);
+
+    assert_eq!(h.typed(1).await, ["[from a, note] one"]);
+}
