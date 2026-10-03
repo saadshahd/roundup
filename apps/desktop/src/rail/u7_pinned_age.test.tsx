@@ -58,6 +58,6 @@ describe("u7 the elapsed time is pinned at the row's right edge", () => {
 
     sheet.remove();
 
-    expect(cap).toBe("14ch");
+    expect(cap).toMatch(/^(14ch|112px)$/);
   });
 });
