@@ -32,7 +32,7 @@ A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` 
 | `spawn-boundary.md` | `crates/agents` (`claude_code/`), `crates/rup` | every `F` heading in the file |
 | `rpc.md` | `crates/rpc` | C1 |
 | `worktrees.md` | `crates/agents` (`src/worktree.rs`); end-to-end tests in `crates/rup/tests` | G1–G7 |
-| `proofs.md` | `proofs/` and the pure `step` of `crates/messages` | V1–V6 |
+| `proofs.md` | `proofs/` and the pure `step` of `crates/messages` | V1–V7 |
 | `workspace.md` | root files | W1 |
 | `perf.md` | `crates/perf`, and the keystroke probe in `apps/desktop` | every `R` and `K` heading in the file |
 

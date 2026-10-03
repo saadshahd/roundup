@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Prove the six laws of `proofs/messages/LAWS.bend` for scenarios V2, V3 and V4 in `scenarios/proofs.md`. It starts after the Architect's LAWS.bend PR and the first `crates/messages` PR (the pure `step`, V4) are on main.
+You are a Builder (`.agents/builder.md`). Prove the six laws of `proofs/messages/LAWS.bend` for scenarios V2, V3 and V4 in `scenarios/proofs.md`. It starts after the spike V5 (`proofs-spike.md`) has an outcome, then after the Architect's LAWS.bend PR and the first `crates/messages` PR (the pure `step`, V4) are on main.
 
 Scope: `proofs/messages/model.bend`, `proofs/messages/PROOF.bend`, the `inv_` tests in `crates/messages/tests/**`, the `just proofs` and `just proofs-setup` recipes in `justfile`, and `proofs/BEND_VERSION`. You never edit `LAWS.bend` or `mutants/`.
 
