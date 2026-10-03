@@ -103,7 +103,7 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 **U19 create.** Clicking the `+` beside `pads` opens an inline name field. Enter calls `pad.create {name}`. A `CONFLICT` or `INVALID_PARAMS` shows `✕ <message>` in place of the field.
 
-**U20 open and edit.** Clicking a Pad opens its Drawer: its owner mark and name, then `owned by <owner name>`; a light `export .md`; the text as markdown source in the monospace face; and the last-touch line (U5). Opening calls `provenance.history {item: "pad:<name>"}` and then `pad.read` once; that `pad.read` is the one read Touch. When the user owns the Pad, the text is editable, and leaving the field calls `pad.write` once if the text changed. When an Agent owns it, the text is read-only and an `append` field calls `pad.append`. A `pad.changed` for the open Pad, while the user is not editing it, refreshes its text from `pad.list`.
+**U20 open and edit.** Clicking a Pad opens its Drawer: its owner mark and name, then `owned by <owner name>`; a light `export .md`; the Pad body (rendered by U66); and the last-touch line (U5). Opening calls `provenance.history {item: "pad:<name>"}` and then `pad.read` once; that `pad.read` is the one read Touch. When the user owns the Pad, U66's Editor makes the source editable, and leaving its editing controls calls `pad.write` once if the text changed. When an Agent owns it, the Pad is read-only and an `append` field calls `pad.append`. A `pad.changed` for the open Pad, while the user is not editing it, refreshes its text from `pad.list`.
 
 **U21 export.** `export .md` opens the macOS save chooser, through U1's adapter, with `<name>.md` filled in. Choosing a path calls `pad.export {name, path}`, and cancelling calls nothing. An error shows `✕ <message>` in the Drawer.
 
@@ -149,7 +149,7 @@ Ordered by what each needs; each names its owner files in `.work/queue.md`.
 
 **U49 a Live line never hides what the Agent asked.** Given an Agent whose Status label is longer than the Rail row (`asks: keep v1 routes? …` in a 252px Rail), then the Live line shows the label cut with `…` (U23) and the elapsed time at its right edge, and its `title` is the full label and elapsed time (a row whose Live line is not cut has the same `title`).
 
-**U50 the Pad's text fills its Drawer.** Given a Pad's Drawer (U20), then the text field takes the Drawer's remaining height, with no native resize grip, below the owner line and above the last-touch line, whether the user owns the Pad (an editable field) or an Agent does (a read-only field above the `append` field), and the `export .md` button reads in `--grey`. Found: it was fixed at about 219px of a 769px Drawer. Everything U20 says about owning, editing and appending is unchanged. The same PR removes the `PadDrawer.tsx` entry from U4's contrast allowlist, so the `export .md` button reads in `--grey`.
+**U50 the Pad's text fills its Drawer.** Given a Pad's Drawer (U20), then the Pad body takes the Drawer's remaining height, below the owner line and above the last-touch line, or above `append` for an Agent-owned Pad. U66's rendered view and Editor have no native resize grip, and `export .md` reads in `--grey`. Found: the old field was fixed at about 219px of a 769px Drawer. The same PR removed `PadDrawer.tsx` from U4's contrast allowlist.
 
 ## Empty Terminal notch, a diagnosis (U55)
 
