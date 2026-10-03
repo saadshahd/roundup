@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
+import { RpcError } from "../app/seam";
 import { agent } from "../testing/nodes";
 import { railCallsTo, rowOf } from "../rail/railFixture";
 import { mountKeys } from "./keysFixture";
@@ -49,10 +50,29 @@ describe("u41 a rename gives focus back to the row", () => {
     rowOf("a").focus();
 
     press("F2");
-    fireEvent.keyDown(openedField(), { key: "Escape" });
+    const field = openedField();
+    fireEvent.input(field, { target: { value: "renamed" } });
+    fireEvent.keyDown(field, { key: "Enter" });
     press("ArrowDown");
 
     expect(document.activeElement).toBe(rowOf("b"));
+  });
+
+  it("u41_a_failed_rename_still_returns_focus_to_the_row", async () => {
+    const { app } = await mountKeys([agent("a", "idle", "x")]);
+    app.handlers["rail.rename"] = () => {
+      throw new RpcError(-32000, "CONFLICT");
+    };
+
+    rowOf("a").focus();
+
+    press("F2");
+    const field = openedField();
+    fireEvent.input(field, { target: { value: "renamed" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await screen.findByText("✕ CONFLICT");
+
+    expect(document.activeElement).toBe(rowById("a"));
   });
 
   it("u41_a_rename_ended_by_a_click_elsewhere_leaves_focus_where_the_click_put_it", async () => {
