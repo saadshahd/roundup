@@ -266,8 +266,9 @@ provision() {
 
 # Run claude on the VM with /tmp/prompt.md; each event it produces lands in <stream> as it happens (L21). The
 # verdict, the cost line and L4's pause come only from the stream's last event, which must be a result event.
-# Exits 1 for every outcome (no output, `agent failed` when the final result is an error, a wall-clock timeout) except one that produced events but ended with no final result event, which returns 2
-# so the caller can save what the run got done before deciding its own exit code.
+# Exits 1 when the run produced no event (even if the wall-clock timeout ended it) and when the final result is an
+# error (`agent failed`). Returns 2 when it produced events but ended with no final result event (a wall-clock
+# timeout among them), so the caller can save what the run got done before deciding its own exit code.
 run_agent() {
   local model=$1 stream=$2 rc=0 last
   # A feature-sized task outlasts 570 s (measured: V7 Todo triage hit it and returned nothing), so wait as long as the check may.

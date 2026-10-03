@@ -429,6 +429,26 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
     assert!(report.contains("connection closed"), "{report}");
 }
 
+#[tokio::test]
+async fn g1_the_worktrees_setting_is_set_and_read_through_the_daemon() {
+    let project = start(&[]);
+    let client = project.client().await;
+
+    client
+        .request(
+            "project.setWorktrees",
+            json!({"on": true, "check": "just check"}),
+        )
+        .await
+        .unwrap();
+    let settings = client.request("project.get", json!(null)).await.unwrap();
+
+    assert_eq!(
+        settings,
+        json!({"worktrees": {"on": true, "check": "just check"}})
+    );
+}
+
 /// H15: a loop of 100 tool uses, with the real `rup` hook command registered in the settings file
 /// `agent.spawn` writes, opened by a `UserPromptSubmit`, trying the hook for `PreToolUse` and
 /// `PostToolUse` around each use, then a final `Stop`. The fake `claude` skips an event with no

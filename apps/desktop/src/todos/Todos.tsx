@@ -44,12 +44,12 @@ const OpenRow = (props: {
         setFocused(false);
       }}
     >
-      <div style={{ display: "flex", "justify-content": "space-between", gap: "1ch" }}>
+      <div class="row-head">
         <RowButton onClick={() => props.onOpen(props.todo)}>
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
         <Show when={hovered() || focused()}>
-          <button type="button" class="word" onClick={() => void complete()}>
+          <button type="button" class="word complete" onClick={() => void complete()}>
             complete
           </button>
         </Show>

@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, group } from "../testing/nodes";
+import type { RailNode } from "@contracts/agent/RailNode";
+import { agent, event, group } from "../testing/nodes";
 import styles from "./styles.css?inline";
 import { mountRail, railCallsTo } from "./railFixture";
 
@@ -28,13 +29,21 @@ describe("u32 spawn shortcuts and pinned actions", () => {
   });
 
   it("u32_cmd_t_spawns_a_terminal_under_the_selected_group", async () => {
-    const mounted = await mountRail([group("g")]);
-    mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
+    const tree: RailNode[] = [group("g")];
+    const mounted = await mountRail(tree);
+    mounted.app.handlers["rail.spawnTerminal"] = () => {
+      tree.push(SPAWNED);
+      mounted.app.emit(event({ name: "rail.changed" }));
+
+      return SPAWNED;
+    };
+
     mounted.rail.select("g");
 
     chord("t");
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
+    await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
   });
 
   it("u32_a_second_chord_while_a_spawn_is_in_flight_calls_nothing", async () => {

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
+import styles from "../styles.css?inline";
 import { USER } from "../testing/nodes";
 import { mountTodos, todo, todoCallsTo as callsTo, todoEvent, todoRowOf as rowOf } from "./testHarness";
 
@@ -248,5 +249,49 @@ describe("u35 Todo triage without the Drawer", () => {
     expect([added > 0, removed]).toEqual([true, added]);
     addSpy.mockRestore();
     removeSpy.mockRestore();
+  });
+
+  it("u35_complete_is_out_of_flow_and_reserves_no_width_so_the_title_wraps_as_at_rest", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+
+    try {
+      await mountTodos([todo(6)]);
+      await screen.findByRole("button", { name: /#6/ });
+      fireEvent.mouseEnter(rowOf(6));
+      const complete = await screen.findByText("complete");
+      const head = getComputedStyle(rowOf(6).querySelector(".row-head")!);
+      const button = getComputedStyle(complete);
+
+      expect([parseFloat(head.paddingRight) || 0, head.position, button.position, button.top, button.right]).toEqual([
+        0,
+        "relative",
+        "absolute",
+        "0px",
+        "0px",
+      ]);
+    } finally {
+      sheet.remove();
+    }
+  });
+
+  it("u35_complete_has_the_ground_behind_it_and_a_1ch_pad_so_the_title_text_under_it_does_not_mix_in", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+
+    try {
+      await mountTodos([todo(6)]);
+      await screen.findByRole("button", { name: /#6/ });
+      fireEvent.mouseEnter(rowOf(6));
+      const complete = await screen.findByText("complete");
+
+      const button = getComputedStyle(complete);
+
+      // jsdom turns 1ch into pixels in this property and leaves it as written in others.
+      expect(button.background).toContain("--ground");
+      expect(button.paddingLeft).toMatch(/^(1ch|6\.5px)$/);
+    } finally {
+      sheet.remove();
+    }
   });
 });
