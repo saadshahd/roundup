@@ -104,6 +104,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | L41–L42 | `scenarios/loop.md`: L41 `loop/rules.sh tokens` (row U130), L42 `loop/rules.sh delta` (done, with this reservation) |
   | H1–H29 | `scenarios/decisions.md` (H1–H10) and `scenarios/control.md` (H11–H17), permission Decisions and the control channel, architect-swarm (written; the UI half is architect-b's, from the `U` ranges) |
   | L43 | `loop/rules.sh ranges`: squad ranges hold only unused ids |
+  | L57–L63 | `scenarios/loop.md`: L58 tests-frozen, L59 metrics, L60 friction, L61 VM start and upload checks, L62 reserved (one file per scenario id), L63 reject handling (L57 labels is the earlier id) |
   | E1–E9 | `scenarios/awareness.md`, architect-c (E1–E7 written; E8–E9 reserved) |
   | F1–F9 | `scenarios/spawn-boundary.md`, architect-c (F1–F5 and F7 written; F6 the Rail's `stray` badge; F8–F9 reserved) |
   | Y1–Y3 | UI verification: axe-core on the harness page, per-frame Drawer laws, the laws sheet; architect-c |

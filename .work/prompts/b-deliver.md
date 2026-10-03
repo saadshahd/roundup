@@ -10,3 +10,5 @@ Build, in order, writing each failing test first:
 Only the call to `Agents::prompt` writes a prompt (H16): add no other path to a Terminal. You may edit only the files above. Name tests `b2_...` and `b8_...`. Every existing test stays green; run `just check`. Every commit carries `Author-Agent: <your id>`; the PR body says "Serves PRINCIPLES.md P1, P4" and answers each of their gates.
 
 Observer: `just check` green and the `b2_` and `b8_` tests pass, the e2e one included. Report: what changed, any clause that could not be tested as written, and the PR number.
+
+Pure step (V4, `scenarios/proofs.md`): put every transition you build in the one pure, total function `step(&State, Event) -> (State, Vec<Effect>)` with no I/O, clock or random source, and name each transition as `proofs/messages/model.bend` does. Add an `inv_` replay test for each law of `proofs/messages/LAWS.bend` your slice touches. Never edit `proofs/messages/LAWS.bend`, `model.bend` or `spec.bend`; if the Rust needs a transition the model lacks, stop and report it.
