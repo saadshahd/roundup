@@ -1,6 +1,6 @@
-import { cleanup, fireEvent } from "@solidjs/testing-library";
+import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, group, metaAgent, terminal } from "../testing/nodes";
+import { agent, group, metaAgent, MINUTE, NOW, terminal } from "../testing/nodes";
 import styles from "./styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
 
@@ -40,5 +40,20 @@ describe("u131 a Rail row is 28 px high", () => {
     sheet.remove();
 
     expect([hovered, selected]).toEqual(["28px", "28px"]);
+  });
+
+  it("u131_the_done_fold_line_is_28px_high_like_the_rows_around_it", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    await mountRail([
+      agent("old", "done", "finished", { status: { kind: "done", label: "finished", since: NOW - 20 * MINUTE } }),
+      agent("busy", "working", "w"),
+    ]);
+
+    const fold = getComputedStyle(screen.getByText("✓ 1 done").parentElement!);
+
+    sheet.remove();
+
+    expect(fold.minHeight).toBe("28px");
   });
 });
