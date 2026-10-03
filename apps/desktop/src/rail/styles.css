@@ -10,6 +10,7 @@
 }
 
 .rail-row {
+  min-height: 28px;
   padding-right: 8px;
   cursor: default;
   scroll-margin-bottom: var(--rail-actions-height);

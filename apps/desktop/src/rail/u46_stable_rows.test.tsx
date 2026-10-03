@@ -20,6 +20,7 @@ describe("u46 hovering or selecting never moves a row", () => {
 
     sheet.remove();
 
+    expect(rowOf("docs").querySelector(".name")!.compareDocumentPosition(live!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect([linesBefore, linesAfter, live?.closest(".line") != null, liveStyle?.position]).toEqual([
       1,
       1,
@@ -39,7 +40,16 @@ describe("u46 hovering or selecting never moves a row", () => {
 
     sheet.remove();
 
-    expect([name.flexGrow, live.flexGrow, live.textAlign, live.whiteSpace]).toEqual(["0", "1", "right", "nowrap"]);
+    expect([
+      name.flexGrow,
+      name.flexShrink,
+      name.flexBasis,
+      live.flexGrow,
+      live.flexShrink,
+      live.flexBasis,
+      live.textAlign,
+      live.whiteSpace,
+    ]).toEqual(["0", "1", "auto", "1", "1", "0px", "right", "nowrap"]);
   });
 
   it("u46_a_meta_agents_live_text_joins_the_first_line_too", async () => {
@@ -87,5 +97,22 @@ describe("u46 hovering or selecting never moves a row", () => {
       "ellipsis",
       "hidden",
     ]);
+  });
+
+  it("u46_the_rows_height_is_28px_at_rest_hovered_and_selected", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    const mounted = await mountRail([agent("docs", "working", "writing docs/auth.md")]);
+    const height = () => getComputedStyle(rowOf("docs")).minHeight;
+
+    const rest = height();
+    fireEvent.mouseEnter(rowOf("docs"));
+    const hovered = height();
+    mounted.rail.select("docs");
+    const selected = height();
+
+    sheet.remove();
+
+    expect([rest, hovered, selected]).toEqual(["28px", "28px", "28px"]);
   });
 });
