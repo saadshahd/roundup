@@ -598,3 +598,165 @@ async fn g2_spawn_at_the_project_root_runs_in_the_worktree_root() {
         std::fs::canonicalize(node.worktree.unwrap().path).unwrap()
     );
 }
+
+fn failing_commands_git(dir: &Path, conditions: &str) -> Git {
+    wrapped_git(
+        dir,
+        &format!("if {conditions}; then echo fake failure >&2; exit 1; fi\nexec \"$REAL\" \"$@\""),
+    )
+}
+
+/// `git rev-parse --git-path`, the step after `git worktree add` that locates `info/exclude`.
+const GIT_PATH_FAILS: &str = "[ \"$1\" = rev-parse ] && [ \"$2\" = --git-path ]";
+
+async fn terminal_cwd(f: &Fixture, node: &RailNode) -> String {
+    f.terminals
+        .list()
+        .into_iter()
+        .find(|t| Some(&t.id) == node.terminal_id.as_ref())
+        .unwrap()
+        .cwd
+}
+
+#[tokio::test]
+async fn g1_setting_twice_stores_the_later_value() {
+    let f = Fixture::new();
+    set_worktrees(&f, true, Some("just check")).await;
+
+    set_worktrees(&f, false, None).await;
+
+    assert_eq!(
+        project_get(&f).await.worktrees,
+        Worktrees {
+            on: false,
+            check: None
+        }
+    );
+}
+
+#[tokio::test]
+async fn g2_an_exclude_file_with_no_final_newline_keeps_its_last_line() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let exclude = f.dir.path().join(".git/info/exclude");
+    std::fs::write(&exclude, "target").unwrap();
+
+    f.spawn(None, None).await.unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(exclude).unwrap(),
+        "target\n.roundup/\n"
+    );
+}
+
+#[tokio::test]
+async fn g2_a_repository_with_no_info_directory_still_gets_the_exclude_line() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    std::fs::remove_dir_all(f.dir.path().join(".git/info")).unwrap();
+
+    f.spawn(None, None).await.unwrap();
+
+    let exclude = std::fs::read_to_string(f.dir.path().join(".git/info/exclude")).unwrap();
+    assert_eq!(exclude, ".roundup/\n");
+}
+
+#[tokio::test]
+async fn g2_a_padded_exclude_entry_counts_as_present() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let exclude = f.dir.path().join(".git/info/exclude");
+    std::fs::write(&exclude, "  .roundup/ \r\n").unwrap();
+
+    f.spawn(None, None).await.unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(exclude).unwrap(),
+        "  .roundup/ \r\n"
+    );
+}
+
+#[tokio::test]
+async fn g2_a_failure_locating_the_exclude_file_leaves_nothing() {
+    let wrapper = tempfile::tempdir().unwrap();
+    let f = Fixture::in_git_project(
+        "sleep 30",
+        failing_commands_git(wrapper.path(), GIT_PATH_FAILS),
+    );
+    set_worktrees(&f, true, None).await;
+    let before = git_state(f.dir.path());
+
+    let err = f.spawn(None, None).await.unwrap_err();
+
+    assert_eq!(err.code, code::INTERNAL);
+    assert_eq!(git_state(f.dir.path()), before);
+    assert!(!f.dir.path().join(".roundup/worktrees/agent-1").exists());
+}
+
+#[tokio::test]
+async fn g2_when_git_cannot_remove_a_worktree_its_directory_and_registration_still_go() {
+    let wrapper = tempfile::tempdir().unwrap();
+    let removal_fails = "[ \"$1\" = worktree ] && [ \"$2\" = remove ]";
+    let f = Fixture::in_git_project(
+        "sleep 30",
+        failing_commands_git(
+            wrapper.path(),
+            &format!("{{ {GIT_PATH_FAILS}; }} || {{ {removal_fails}; }}"),
+        ),
+    );
+    set_worktrees(&f, true, None).await;
+    let before = git_state(f.dir.path());
+
+    f.spawn(None, None).await.unwrap_err();
+
+    assert_eq!(git_state(f.dir.path()), before);
+    assert!(!f.dir.path().join(".roundup/worktrees/agent-1").exists());
+}
+
+#[tokio::test]
+async fn g2_a_dotdot_cwd_is_judged_by_where_it_leads() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let sub = f.dir.path().join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join("keep.txt"), "x").unwrap();
+    git_output(f.dir.path(), &["add", "sub/keep.txt"]);
+    git_output(f.dir.path(), &["commit", "-q", "-m", "add sub"]);
+    let before = git_state(f.dir.path());
+
+    let out = spawn_in(&f, &sub.join("../.."), None).await.unwrap_err();
+    let back = spawn_in(&f, &sub.join(".."), None).await.unwrap();
+
+    assert_eq!(out.code, code::INVALID_PARAMS);
+    assert!(
+        out.message.contains("outside the project folder"),
+        "{}",
+        out.message
+    );
+    assert_eq!(
+        git_state(f.dir.path()).0.lines().count(),
+        before.0.lines().count() + 1
+    );
+    let worktree = std::fs::canonicalize(back.worktree.clone().unwrap().path).unwrap();
+    assert_eq!(
+        std::fs::canonicalize(terminal_cwd(&f, &back).await).unwrap(),
+        worktree
+    );
+}
+
+#[tokio::test]
+async fn g2_a_symlink_to_the_project_is_a_cwd_inside_it() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let elsewhere = tempfile::tempdir().unwrap();
+    let link = elsewhere.path().join("link");
+    std::os::unix::fs::symlink(f.dir.path(), &link).unwrap();
+
+    let node = spawn_in(&f, &link, None).await.unwrap();
+
+    let worktree = std::fs::canonicalize(node.worktree.clone().unwrap().path).unwrap();
+    assert_eq!(
+        std::fs::canonicalize(terminal_cwd(&f, &node).await).unwrap(),
+        worktree
+    );
+}

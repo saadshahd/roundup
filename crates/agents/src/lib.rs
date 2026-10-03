@@ -574,6 +574,7 @@ impl Agents {
             return Ok(None);
         }
         let project = self.project_dir().to_owned();
+        let (real_project, real_cwd) = real_paths(&project, cwd)?;
         self.shared.rail().mark_worktree_provisioning(id)?;
         let (git, provisioning_id) = (self.git.clone(), id.to_owned());
         let made =
@@ -590,26 +591,15 @@ impl Agents {
                     return Err(err);
                 }
             };
-        let mapped = match worktree::map_cwd(self.project_dir(), cwd, &made.path) {
+        let mapped = match worktree::map_cwd(&real_project, &real_cwd, &made.path) {
             Some(mapped) if mapped.is_dir() => mapped,
-            Some(_) => {
+            _ => {
                 self.discard_worktree(id, made).await;
                 return Err(RpcError::new(
                     code::INVALID_PARAMS,
                     format!(
                         "cwd_not_in_worktree: {} is not in the fresh worktree",
                         cwd.display()
-                    ),
-                ));
-            }
-            None => {
-                self.discard_worktree(id, made).await;
-                return Err(RpcError::new(
-                    code::INVALID_PARAMS,
-                    format!(
-                        "cwd {} is outside the project folder {}",
-                        cwd.display(),
-                        self.project_dir().display()
                     ),
                 ));
             }
@@ -751,6 +741,26 @@ fn shell_name(shell: Option<&OsStr>) -> String {
 }
 
 /// Milliseconds since the Unix epoch.
+/// `project` and `cwd` with symlinks and `..` resolved, the way A4's trust check reads them, so a
+/// `cwd` is judged by where it is and not by how it is written. Checked before `git` runs.
+fn real_paths(project: &Path, cwd: &Path) -> Result<(PathBuf, PathBuf), RpcError> {
+    let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
+    let real_cwd = cwd
+        .canonicalize()
+        .map_err(|err| invalid(format!("cwd {} is unusable: {err}", cwd.display())))?;
+    let real_project = project
+        .canonicalize()
+        .map_err(|err| RpcError::internal(format!("{}: {err}", project.display())))?;
+    if !real_cwd.starts_with(&real_project) {
+        return Err(invalid(format!(
+            "cwd {} is outside the project folder {}",
+            real_cwd.display(),
+            real_project.display()
+        )));
+    }
+    Ok((real_project, real_cwd))
+}
+
 fn now_ms() -> i64 {
     let since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
