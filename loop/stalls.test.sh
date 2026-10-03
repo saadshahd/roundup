@@ -38,11 +38,11 @@ BOXD
   chmod +x "$dir/bin/gh" "$dir/bin/boxd"
   printf '%s\n' '{"nameWithOwner":"o/r"}' >"$dir/data/repo.json"
   printf '%s\n' '{"contexts":["check"],"checks":[]}' >"$dir/data/required.json"
-  printf '%s\n' '{"check_runs":[{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":1}]}' >"$dir/data/main-checks.json"
+  printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":1}]}]' >"$dir/data/main-checks.json"
   printf '%s\n' '[[{"number":1,"created_at":"2026-10-03T11:50:00Z","head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"human"}}]]' >"$dir/data/pulls.json"
   printf '%s\n' '[[]]' >"$dir/data/comments-1.json"
   printf '%s\n' '[[{"commit":{"message":"work\n\nAuthor-Agent: builder-1"}}]]' >"$dir/data/commits-1.json"
-  printf '%s\n' '{"check_runs":[{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":1}]}' >"$dir/data/pr-checks-1.json"
+  printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":1}]}]' >"$dir/data/pr-checks-1.json"
   printf '%s\n' '[{"name":"ru-a"},{"name":"ru-b"},{"name":"ru-c"},{"name":"ru-d"},{"name":"ru-e"},{"name":"ru-f"},{"name":"ru-g"},{"name":"ru-h"}]' >"$dir/data/machines.json"
 }
 run() { (cd "$dir" && PATH="$dir/bin:$PATH" DATA_DIR="$dir/data" L28_NOW="$now" BOXD_GH_TIMEOUT=1 loop/stalls.sh check); }
@@ -58,17 +58,17 @@ expect no_condition 0
 [ ! -d "$dir/loop/out/stalls" ] || [ -z "$(ls -A "$dir/loop/out/stalls")" ] || { echo 'FAIL: l28_no_condition wrote a file'; failures=$((failures+1)); }
 fixture
 touch "$dir/data/gh-unprotected-required"
-printf '%s\n' '{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:59:00Z","id":2}]}' >"$dir/data/main-checks.json"
+printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:59:00Z","id":2}]}]' >"$dir/data/main-checks.json"
 expect unprotected_main_still_requires_check 1
 fixture
-printf '%s\n' '{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:59:00Z","id":2}]}' >"$dir/data/main-checks.json"
+printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:59:00Z","id":2}]}]' >"$dir/data/main-checks.json"
 expect main_required_check_failed 1
 [ "$(file a-main | sed -n 's/^owner=//p')" = Triage ] || { echo 'FAIL: l28_main owner'; failures=$((failures+1)); }
-printf '%s\n' '{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:58:00Z","id":1},{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":2}]}' >"$dir/data/main-checks.json"
+printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:58:00Z","id":1},{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":2}]}]' >"$dir/data/main-checks.json"
 expect newest_main_run_recovers 0
 [ ! -f "$dir/loop/out/stalls/a-main" ] || { echo 'FAIL: l28_newest main run'; failures=$((failures+1)); }
 fixture
-printf '%s\n' '{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:59:00Z","id":2}]}' >"$dir/data/pr-checks-1.json"
+printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"failure","completed_at":"2026-10-03T11:59:00Z","id":2}]}]' >"$dir/data/pr-checks-1.json"
 expect required_check_red_on_all_prs 1
 [ -f "$dir/loop/out/stalls/a-all-prs" ] || { echo 'FAIL: l28_all-prs file'; failures=$((failures+1)); }
 fixture

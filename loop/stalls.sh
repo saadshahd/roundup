@@ -55,8 +55,6 @@ def pages(value):
 
 
 def check_runs(value):
-    if isinstance(value, dict):
-        return value['check_runs']
     return [run for page in value for run in page['check_runs']]
 
 
@@ -77,7 +75,7 @@ def verdicts(comments, authors, head):
         first = body.splitlines()[0] if body else ''
         reviewer = REVIEWER.search(body)
         if first in ('VERDICT: approve', 'VERDICT: reject') and head in SHA.findall(body) and reviewer and reviewer.group(1) not in authors:
-            valid.append((first, comment.get('created_at', '')))
+            valid.append(first)
     return valid
 
 
@@ -116,7 +114,7 @@ try:
         pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], failed_names(runs, required)))
     machines = call('boxd', 'machine', 'list', '--json')
     vm_count = sum(machine['name'].startswith('ru-') for machine in machines)
-    verdict_files = [(path, path.read_text(), dt.datetime.fromtimestamp(path.stat().st_mtime, UTC))
+    verdict_files = [(path.read_text(), dt.datetime.fromtimestamp(path.stat().st_mtime, UTC))
                      for path in VERDICTS.iterdir() if path.is_file()] if VERDICTS.exists() else []
     desired = {}
     if failed_names(main_runs, required):
@@ -127,7 +125,7 @@ try:
         number = pr['number']
         head = pr['head']['sha']
         valid = verdicts(comments, authors, head)
-        if valid and valid[-1][0] == 'VERDICT: approve' and now - when(pr['created_at']) >= dt.timedelta(minutes=20):
+        if valid and valid[-1] == 'VERDICT: approve' and now - when(pr['created_at']) >= dt.timedelta(minutes=20):
             record('b', number, 'Merger')
         all_rejects = 0
         for comment in comments:
@@ -139,10 +137,11 @@ try:
                     all_rejects += 1
         if all_rejects >= 3:
             record('c', number, 'Architect', author_id)
-        has_verdict = any(line.startswith('VERDICT:') and head in SHA.findall(body)
-                          for comment in comments for body in [comment['body']] for line in body.splitlines())
+        has_verdict = any(head in SHA.findall(comment['body']) and
+                          any(line.startswith('VERDICT:') for line in comment['body'].splitlines())
+                          for comment in comments)
         if not has_verdict and any(head in SHA.findall(body) and now - modified >= dt.timedelta(minutes=5)
-                                   for _, body, modified in verdict_files):
+                                   for body, modified in verdict_files):
             record('d', number, 'Driver')
         if not has_verdict and vm_count < min(8, int(os.environ.get('BOXD_MAX_VMS', '12'))):
             record('e', number, 'Driver')
