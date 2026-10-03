@@ -13,50 +13,6 @@ const blocked = () => todo(5, { title: "session store", blocked: true, blockers:
 
 const shelf = () => [blocked(), todo(4, { title: "migrate" }), todo(6, { title: "later" })];
 
-// jsdom has no layout, so this model counts lines itself: the row's font is monospace, so a row
-// `ROW_CHARS` wide wraps a title's hanging-indent line (RowButton's `text-indent: -2ch`) by character
-// count. Its only inputs from the app are computed styles: the width reserved on the row head
-// (a probe measures what jsdom resolves 1ch to) and whether `complete` is out of flow. It checks that `complete`
-// takes no width, not that a real browser wraps the same.
-const ROW_CHARS = 40;
-
-const pxPerCh = () => {
-  const probe = document.body.appendChild(document.createElement("div"));
-  probe.style.width = "1ch";
-  const px = parseFloat(getComputedStyle(probe).width);
-  probe.remove();
-
-  return px;
-};
-
-const COMPLETE_CHARS = "complete".length + 1;
-
-const LINE_HEIGHT = 18;
-
-const linesFor = (text: string, firstLineChars: number) =>
-  text.length <= firstLineChars ? 1 : 1 + Math.ceil((text.length - firstLineChars) / (ROW_CHARS - 2));
-
-const measureRows = (ids: number[]) => {
-  const rows: Record<number, { top: number; height: number; lines: number }> = {};
-  let top = 0;
-
-  for (const id of ids) {
-    const row = rowOf(id);
-    const title = within(row).getByRole("button", { name: new RegExp(`#${id}\\b`) });
-    const complete = within(row).queryByRole("button", { name: "complete" });
-    const stealsWidth = complete !== null && getComputedStyle(complete).position !== "absolute";
-    const reserved = parseFloat(getComputedStyle(row.querySelector(".row-head")!).paddingRight) / pxPerCh();
-    const firstLineChars = ROW_CHARS - reserved - (stealsWidth ? COMPLETE_CHARS : 0);
-    const lines = linesFor(title.textContent ?? "", firstLineChars);
-    const height = lines * LINE_HEIGHT;
-
-    rows[id] = { top, height, lines };
-    top += height;
-  }
-
-  return rows;
-};
-
 describe("u35 Todo triage without the Drawer", () => {
   it("u35_hovering_an_open_row_reveals_complete_which_calls_todo_complete", async () => {
     const { app } = await mountTodos([todo(3)]);
@@ -295,35 +251,35 @@ describe("u35 Todo triage without the Drawer", () => {
     removeSpy.mockRestore();
   });
 
-  it("u35_hovering_or_focusing_an_open_row_changes_no_rows_top_edge_height_or_wrapping", async () => {
+  it("u35_complete_is_out_of_flow_and_reserves_no_width_so_the_title_wraps_as_at_rest", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
-    const longest = "a".repeat(34); // "· #6 " (5 chars) + this nearly fills ROW_CHARS (40)
 
     try {
-      await mountTodos([todo(6, { title: longest }), todo(8)]);
+      await mountTodos([todo(6)]);
       await screen.findByRole("button", { name: /#6/ });
-      const row6Button = () => within(rowOf(6)).getByRole("button", { name: /#6/ });
-
-      const atRest = measureRows([6, 8]);
+      const headAtRest = getComputedStyle(rowOf(6).querySelector(".row-head")!);
+      const reservedAtRest = headAtRest.paddingRight;
 
       fireEvent.mouseEnter(rowOf(6));
-      await screen.findByText("complete");
-      const whileHovered = measureRows([6, 8]);
+      const complete = await screen.findByText("complete");
+      const head = getComputedStyle(rowOf(6).querySelector(".row-head")!);
+      const button = getComputedStyle(complete);
 
-      fireEvent.mouseLeave(rowOf(6));
-      fireEvent.focusIn(row6Button());
-      await screen.findByText("complete");
-      const whileFocused = measureRows([6, 8]);
-
-      expect(whileHovered).toEqual(atRest);
-      expect(whileFocused).toEqual(atRest);
+      expect([parseFloat(reservedAtRest) || 0, parseFloat(head.paddingRight) || 0, head.position, button.position, button.top, button.right]).toEqual([
+        0,
+        0,
+        "relative",
+        "absolute",
+        "0px",
+        "0px",
+      ]);
     } finally {
       sheet.remove();
     }
   });
 
-  it("u35_complete_sits_in_space_the_title_never_uses", async () => {
+  it("u35_complete_has_the_ground_behind_it_so_the_title_text_under_it_does_not_mix_in", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
 
@@ -332,16 +288,8 @@ describe("u35 Todo triage without the Drawer", () => {
       await screen.findByRole("button", { name: /#6/ });
       fireEvent.mouseEnter(rowOf(6));
       const complete = await screen.findByText("complete");
-      const head = getComputedStyle(rowOf(6).querySelector(".row-head")!);
-      const button = getComputedStyle(complete);
 
-      expect([
-        head.position,
-        parseFloat(head.paddingRight) >= "complete".length * pxPerCh(),
-        button.position,
-        button.top,
-        button.right,
-      ]).toEqual(["relative", true, "absolute", "0px", "0px"]);
+      expect(getComputedStyle(complete).background).toContain("--ground");
     } finally {
       sheet.remove();
     }
