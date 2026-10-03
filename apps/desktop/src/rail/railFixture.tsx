@@ -58,7 +58,13 @@ export const rowOf = (name: string): HTMLElement => {
   return row;
 };
 
-export const liveLineOf = (name: string): string | null => rowOf(name).querySelector(".live")?.textContent ?? null;
+export const liveLineOf = (name: string): string | null => {
+  const live = rowOf(name).querySelector(".live");
+  const label = live?.querySelector(".live-label")?.textContent;
+  const age = live?.querySelector(".live-age")?.textContent;
+
+  return label != null && age != null ? `${label}  ${age}` : (live?.textContent ?? null);
+};
 
 export const glyphOf = (name: string): HTMLElement => {
   const glyph = rowOf(name).querySelector<HTMLElement>(".glyph");
