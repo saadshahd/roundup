@@ -7,10 +7,10 @@ const [table = ""] = Object.values(
 // The Tokens of the "Starting values" table, read from it so a Token added there fails here until tokens.css defines it.
 const TOKENS = table
   .split("\n")
-  .filter((row) => row.startsWith("| `--"))
+  .filter((row) => row.startsWith("| `--x"))
   .flatMap((row) => row.split("|")[1]?.match(/--[\w-]+/g) ?? []);
 
-const rows = table.split("\n").filter((row) => row.startsWith("| `--"));
+const rows = table.split("\n").filter((row) => row.startsWith("| `--x"));
 
 // Token -> light value, from the table's Light column and the prose lines under it (type and space steps).
 const expectedLight = new Map<string, string>();
@@ -71,6 +71,8 @@ describe("u130 tokens", () => {
   it("u130_the_expected_values_cover_the_table_and_the_type_and_space_steps", () => {
     const named = [...expectedLight.keys()];
 
+    expect(TOKENS.length, "the table was read").toBeGreaterThanOrEqual(14);
+    expect(named).toEqual(expect.arrayContaining(["--ground", "--hairline", "--radius-drawer"]));
     expect(named).toEqual(expect.arrayContaining([...TOKENS, "--font-ui", "--font-mono", "--text-title", "--space-1", "--space-6"]));
     expect([...expectedLight.values()].filter((value) => value === "")).toEqual([]);
   });
