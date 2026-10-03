@@ -24,7 +24,7 @@ describe("u141 the user's own append shows the new line", () => {
     scrolledReader(field);
 
     await appendLine(" more");
-    await screen.findByDisplayValue("a more");
+    await waitFor(() => expect(field.textContent).toContain("a more"));
 
     await waitFor(() => expect(field.scrollTop).toBe(1510));
   });
@@ -36,7 +36,7 @@ describe("u141 the user's own append shows the new line", () => {
     state.pads = [padOf("auth-notes", AGENT, "v2")];
 
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
-    await screen.findByDisplayValue("v2");
+    await waitFor(() => expect(field.textContent).toContain("v2"));
 
     expect(field.scrollTop).toBe(1082);
   });

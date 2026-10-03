@@ -233,7 +233,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
       data: { name: "release-checklist" },
     });
 
-    expect(await screen.findByDisplayValue("mine plus agent")).toBe(field);
+    await waitFor(() => expect(field.value).toBe("mine plus agent"));
     expect(screen.queryByText(/changed by/)).toBeNull();
   });
 
@@ -406,7 +406,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
       data: { name: "release-checklist" },
     });
 
-    expect(await screen.findByDisplayValue("new plus agent")).toBe(field);
+    await waitFor(() => expect(field.value).toBe("new plus agent"));
     expect(screen.queryByText(/changed by/)).toBeNull();
   });
 

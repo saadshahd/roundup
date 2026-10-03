@@ -1,0 +1,112 @@
+.pad-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pad-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--space-5);
+}
+
+.pad-actions button {
+  min-height: var(--space-5);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--grey);
+  cursor: pointer;
+}
+
+.pad-actions button:hover {
+  background: var(--hover);
+}
+
+.pad-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pad-markdown,
+.pad-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+  resize: none;
+}
+
+.pad-markdown {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.pad-markdown :where(h1, h2, h3, h4, h5, h6, p, pre, blockquote, ul, ol) {
+  margin: 0;
+}
+
+.pad-markdown > * + * {
+  margin-top: var(--space-4);
+}
+
+.pad-markdown :is(ul, ol) {
+  padding-left: var(--space-5);
+}
+
+.pad-markdown h1,
+.pad-markdown h2,
+.pad-markdown h3,
+.pad-markdown h4,
+.pad-markdown h5,
+.pad-markdown h6 {
+  font-size: var(--text-title);
+}
+
+.pad-markdown pre,
+.pad-markdown code {
+  font-family: var(--font-mono);
+  background: var(--sunken);
+}
+
+.pad-markdown pre {
+  padding: var(--space-3);
+  overflow-x: auto;
+}
+
+.pad-markdown blockquote {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--hairline);
+  color: var(--grey);
+}
+
+.pad-markdown a {
+  color: var(--accent);
+}
+
+.pad-editor .cm-editor {
+  height: 100%;
+  color: var(--text);
+  background: var(--ground);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+}
+
+.pad-editor .cm-scroller {
+  overflow: auto;
+  font-family: var(--font-mono);
+}
+
+.pad-editor .cm-content {
+  padding: var(--space-2) 0;
+}
+
+.pad-editor .cm-focused {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

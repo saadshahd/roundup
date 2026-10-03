@@ -1,6 +1,5 @@
 import { createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { RailNode } from "@contracts/agent/RailNode";
 import type { ConnectedProject } from "../state/connectedProject";
 import { fromBase64, toBase64 } from "./base64";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
@@ -10,8 +9,6 @@ export type Screens = {
   emulatorFor(id: string): Emulator;
   /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited, or a Daemon that has, takes no resize. */
   resize(id: string, size: Size): void;
-  /** Stops the program behind the row: `agent.stop` for an Agent, `terminal.kill` for a Terminal. */
-  stop(node: RailNode): void;
   /**
    * Whether the Terminal's view sits at its newest line; false once the user has scrolled up. Creates the
    * Terminal's emulator if none exists yet (true for that first read), so a caller never needs `emulatorFor`
@@ -115,13 +112,6 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     emulatorFor,
     resize: (id, size) => {
       if (!exited(id) && daemonExit() === null) void attempt(app.rpc("terminal.resize", { id, ...size }));
-    },
-    stop: (node) => {
-      if (node.status !== null) {
-        void attempt(app.rpc("agent.stop", { id: node.id }));
-      } else if (node.terminal_id !== null) {
-        void attempt(app.rpc("terminal.kill", { id: node.terminal_id }));
-      }
     },
     isAtBottom: (id) => holderFor(id).atBottom(),
     returnToBottom: (id) => holderFor(id).returnToBottom(),
