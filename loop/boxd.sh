@@ -419,8 +419,11 @@ build() {
   tail -n 15 "$checklog" >&2
   ! grep -q DeadlineExceeded "$checklog" || record_event check deadline-exceeded
   [ "$check_rc" -eq 0 ] || { echo "boxd.sh: check failed; Builder changes remain in $partial" >&2; exit "$check_rc"; }
-  boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
-  [ -s "$patch" ] || { echo "boxd.sh: $VM produced no final patch despite a nonempty candidate" >&2; exit 1; }
+  PARTIAL_TMP=$patch.tmp
+  boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$PARTIAL_TMP"
+  [ -s "$PARTIAL_TMP" ] || { echo "boxd.sh: $VM produced no final patch despite a nonempty candidate" >&2; exit 1; }
+  mv "$PARTIAL_TMP" "$patch"
+  PARTIAL_TMP=
   rm -f "$partial"
   last=$(tail -n 1 "$stream")
   if [ "$AGENT_KIND" = codex ]; then

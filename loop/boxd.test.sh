@@ -148,7 +148,7 @@ case "$1 $2" in
         [ -n "${STUB_DIFF_EMPTY:-}" ] || echo "partial-diff-against-base"
         [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1
         [ -z "${STUB_DIFF_HANG:-}" ] || { trap '' TERM; sleep 3; exit 1; } ;;
-      *format-patch*) echo "patch" ;;
+      *format-patch*) echo "patch"; [ "${STUB_MODE:-}" != final-patch-fails ] || exit 7 ;;
     esac ;;
 esac
 S
@@ -224,6 +224,10 @@ expect_true "L21 failed check names the saved candidate" grep -q 'check failed; 
 new_repo; STUB_DIFF_EMPTY=1 expect_code 1 "L21 completed Builder with no checkout diff fails before check"
 expect_true "L21 empty Builder output does not run check" bash -c '! grep -q "just check" log'
 expect_true "L21 empty Builder output names the checkout" grep -q 'no changes in ~/roundup' err
+
+new_repo; STUB_MODE=final-patch-fails expect_code 7 "L21 failed final patch extraction keeps the candidate"
+expect_true "L21 failed final extraction retains a candidate patch" test -s loop/out/patches/t.partial.patch
+expect_true "L21 failed final extraction publishes no final patch" bash -c '! test -e loop/out/patches/t.patch'
 
 
 new_repo; STUB_MODE=remove-fails expect_code 0 "L5 cleanup failure does not change the exit code"
