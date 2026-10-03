@@ -168,14 +168,18 @@ count_of() { printf '%s\n' "$1" | g -cxF -- "$2"; }
 # Rule b for one file of merge $1 (parents $2 and $3): the result holds exactly the first parent's lines that main
 # did not remove, plus the lines main added, each at most as often as either side has it.
 carry_rule_b() {
-  local merge=$1 p1=$2 p2=$3 file=$4 base keep result line
+  local merge=$1 p1=$2 p2=$3 file=$4 base keep result first main_side line max
   base=$(git merge-base "$p1" "$p2")
-  keep=$( { comm -23 <(lines_of "$p1" "$file") <(comm -23 <(lines_of "$base" "$file") <(lines_of "$p2" "$file") | sort -u) ; comm -13 <(lines_of "$base" "$file") <(lines_of "$p2" "$file"); } | sort -u)
+  first=$(lines_of "$p1" "$file")
+  main_side=$(lines_of "$p2" "$file")
+  keep=$( { comm -23 <(printf '%s\n' "$first") <(comm -23 <(lines_of "$base" "$file") <(printf '%s\n' "$main_side") | sort -u); comm -13 <(lines_of "$base" "$file") <(printf '%s\n' "$main_side"); } | sort -u)
   result=$(lines_of "$merge" "$file")
+  git cat-file -e "$merge:$file" 2>/dev/null || { echo "carry: $merge: rule b: $file conflicted and is gone from the merge (one side deleted it)" >&2; return 1; }
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     printf '%s\n' "$keep" | grep -qxF -- "$line" || { echo "carry: $merge: rule b: $file holds a line neither side may keep: $line" >&2; return 1; }
-    [ "$(count_of "$result" "$line")" -le "$(( $(count_of "$(lines_of "$p1" "$file")" "$line") > $(count_of "$(lines_of "$p2" "$file")" "$line") ? $(count_of "$(lines_of "$p1" "$file")" "$line") : $(count_of "$(lines_of "$p2" "$file")" "$line") ))" ] || { echo "carry: $merge: rule b: $file repeats a line: $line" >&2; return 1; }
+    max=$(( $(count_of "$first" "$line") > $(count_of "$main_side" "$line") ? $(count_of "$first" "$line") : $(count_of "$main_side" "$line") ))
+    [ "$(count_of "$result" "$line")" -le "$max" ] || { echo "carry: $merge: rule b: $file repeats a line: $line" >&2; return 1; }
   done <<<"$result"
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -189,7 +193,9 @@ carry_one() {
   { [ -n "${p2:-}" ] && [ -z "${extra:-}" ]; } || { echo "carry: $c: not a merge of main" >&2; return 1; }
   git merge-base --is-ancestor "$p2" origin/main || { echo "carry: $c: not a merge of main (second parent is not on origin/main)" >&2; return 1; }
   git log -1 --format=%B "$c" | grep -q '^Author-Agent: ' || { echo "carry: $c: no Author-Agent trailer" >&2; return 1; }
-  trial=$(git merge-tree --write-tree --name-only --no-messages "$p1" "$p2" || true)
+  local mt_rc=0
+  trial=$(git merge-tree --write-tree --name-only --no-messages "$p1" "$p2" 2>/dev/null) || mt_rc=$?
+  { [ "$mt_rc" -le 1 ] && [ -n "$trial" ]; } || { echo "carry: $c: merge-tree failed (exit $mt_rc)" >&2; return 1; }
   conflicted=$(sed 1d <<<"$trial" | sed '/^$/d')
   trial=$(head -n 1 <<<"$trial")
   while IFS= read -r f; do
@@ -197,10 +203,12 @@ carry_one() {
     carry_allowed "$f" || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
     carry_rule_b "$c" "$p1" "$p2" "$f" || return 1
   done <<<"$conflicted"
+  local differs
+  differs=$(git diff --name-only "$trial" "$c") || { echo "carry: $c: could not compare with the trial merge" >&2; return 1; }
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     grep -qxF -- "$f" <<<"$conflicted" || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
-  done <<<"$(git diff --name-only "$trial" "$c")"
+  done <<<"$differs"
 }
 
 carry() {

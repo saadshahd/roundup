@@ -248,7 +248,7 @@ carry_repo; main_commit scenarios/loop.md changed; echo mine >>scenarios/loop.md
 merge_main; echo resolved >scenarios/loop.md; finish_merge
 carry_code 1 "L54 carry: a conflict in scenarios/loop.md exits 1 (rule a)" "rule a"
 
-carry_repo; main_commit other.txt x; merge_main; echo sneaky >>work.txt; finish_merge
+carry_repo; main_commit other.txt x; merge_main; echo sneaky >>scenarios/loop.md; finish_merge
 carry_code 1 "L54 carry: a merge that also edits another file exits 1 (rule c)" "rule c"
 
 carry_repo; main_commit other.txt x; merge_main; finish_merge "no trailer here"
@@ -267,5 +267,35 @@ carry_repo; git rev-parse HEAD >gh-head; got=0; GH_FAIL=1 loop/rules.sh carry 7 
 [ "$got" -eq 4 ] && grep -q gh err && echo "ok:   L54 carry: a gh failure exits 4 naming gh" || { echo "FAIL: L54 carry: a gh failure exits 4 naming gh (got $got)"; failures=$((failures + 1)); }
 got=0; loop/rules.sh carry x >/dev/null 2>&1 || got=$?
 [ "$got" -eq 2 ] && echo "ok:   L54 carry: a non-numeric <pr> exits 2" || { echo "FAIL: L54 carry: a non-numeric <pr> exits 2 (got $got)"; failures=$((failures + 1)); }
+
+# Further L54 carry cases: fail closed, the allowed paths, an empty chain, other shapes of commit.
+carry_repo; git checkout -q --orphan unrelated; git rm -rqf . >/dev/null; echo r >root.txt; git add -A; git commit -qm root -m "Author-Agent: t"
+git update-ref refs/remotes/origin/main HEAD; git checkout -q pr
+git merge -q --no-ff --allow-unrelated-histories --no-edit origin/main -m "Merge main" -m "Author-Agent: t" >/dev/null 2>&1 || true
+carry_code 1 "L54 carry: a merge of unrelated history exits 1, merge-tree failing closed" "merge-tree"
+
+carry_repo
+carry_code 0 "L54 carry: an empty chain (head is the approval) carries" "carried $approval $approval"
+
+carry_repo; git checkout -q main; mkdir -p .work/queue; printf '| id |\n|---|\n| A1 |\n' >.work/queue/daemon.md; git add -A; git commit -qm "squad file" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+echo "| A2 |" >>.work/queue/daemon.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+main_commit .work/queue/daemon.md "$(printf '| id |\n|---|\n| A1 |\n| A3 |\n')"; merge_main; printf '| id |\n|---|\n| A1 |\n| A2 |\n| A3 |\n' >.work/queue/daemon.md; finish_merge
+carry_code 0 "L54 carry: a conflict in a .work/queue/ squad file that keeps both carries"
+
+carry_repo; git checkout -q main; printf '| id |\n|---|\n| A1 |\n' >scenarios/README.md; git add -A; git commit -qm readme -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+echo "| A2 |" >>scenarios/README.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+main_commit scenarios/README.md "$(printf '| id |\n|---|\n| A1 |\n| A3 |\n')"; merge_main; printf '| id |\n|---|\n| A1 |\n| A2 |\n| A3 |\n' >scenarios/README.md; finish_merge
+carry_code 0 "L54 carry: a conflict in scenarios/README.md that keeps both carries"
+
+carry_repo; git checkout -q main; mkdir -p .work/queue; echo base >.work/queue/a.md; git add -A; git commit -qm a -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; echo more >>.work/queue/a.md; git add -A; git commit -qm edit -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+git checkout -q main; git rm -q .work/queue/a.md; git commit -qm "delete" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; merge_main; git rm -qf .work/queue/a.md 2>/dev/null || true; finish_merge
+carry_code 1 "L54 carry: a queue file main deleted that the PR edited exits 1, naming the deletion" "gone from the merge"
+
+carry_repo; main_commit other.txt x; git checkout -q -b side main; echo s >side.txt; git add -A; git commit -qm side -m "Author-Agent: t"; git checkout -q pr; git update-ref refs/remotes/origin/main main
+git merge -q --no-ff -m "Octopus" -m "Author-Agent: t" main side >/dev/null 2>&1 || true
+carry_code 1 "L54 carry: an octopus merge exits 1" "not a merge of main"
+
+carry_repo; git commit -q --allow-empty -m "review: approve" -m "no trailer"; echo later >later.txt; git add -A; git commit -qm "later" -m "Author-Agent: t"
+carry_code 1 "L54 carry: an empty commit without Reviewed-by-Agent is not an approval, the earlier one is" "not a merge of main"
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
