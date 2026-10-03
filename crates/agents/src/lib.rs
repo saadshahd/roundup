@@ -782,7 +782,6 @@ fn shell_name(shell: Option<&OsStr>) -> String {
         )
 }
 
-/// Milliseconds since the Unix epoch.
 /// `project` and `cwd` with symlinks and `..` resolved, the way A4's trust check reads them, so a
 /// `cwd` is judged by where it is and not by how it is written. Checked before `git` runs.
 fn real_paths(project: &Path, cwd: &Path) -> Result<(PathBuf, PathBuf), RpcError> {
@@ -803,6 +802,7 @@ fn real_paths(project: &Path, cwd: &Path) -> Result<(PathBuf, PathBuf), RpcError
     Ok((real_project, real_cwd))
 }
 
+/// Milliseconds since the Unix epoch.
 fn now_ms() -> i64 {
     let since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)

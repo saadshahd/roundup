@@ -760,3 +760,42 @@ async fn g2_a_symlink_to_the_project_is_a_cwd_inside_it() {
         worktree
     );
 }
+
+#[tokio::test]
+async fn g2_a_failed_promote_emits_no_event() {
+    let wrapper = tempfile::tempdir().unwrap();
+    let mut f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
+    set_worktrees(&f, true, None).await;
+    let group = f.group("team", None).await;
+    f.changed();
+
+    promote(&f, &group).await.unwrap_err();
+
+    assert_eq!(f.changed(), 0);
+}
+
+#[tokio::test]
+async fn g2_a_project_opened_through_a_symlink_accepts_its_own_folder() {
+    let mut f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let elsewhere = tempfile::tempdir().unwrap();
+    let link = elsewhere.path().join("project");
+    std::os::unix::fs::symlink(f.dir.path(), &link).unwrap();
+    let bin = f.dir.path().join("fake-claude");
+    let (agents, terminals) = crate::common::open_in_with_git(
+        &link.join(".roundup"),
+        &f.bus,
+        &bin.to_string_lossy(),
+        Git::from_env(),
+    );
+    (f.agents, f.terminals) = (agents, terminals);
+
+    let at_link = spawn_in(&f, &link, None).await.unwrap();
+    let at_real = spawn_in(&f, f.dir.path(), None).await.unwrap();
+
+    for node in [&at_link, &at_real] {
+        let worktree = std::fs::canonicalize(node.worktree.clone().unwrap().path).unwrap();
+        let cwd = std::fs::canonicalize(terminal_cwd(&f, node).await).unwrap();
+        assert_eq!(cwd, worktree);
+    }
+}
