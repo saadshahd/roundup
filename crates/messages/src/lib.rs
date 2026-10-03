@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use contracts::agent::{NodeKind, RailNode};
 use contracts::message::{
-    Delivery, Held, ListParams, Message, MessageId, MessageStatus, Route, SendParams,
+    Delivery, ListParams, Message, MessageId, MessageStatus, Reason, Route, SendParams,
     SetRouteParams,
 };
 use contracts::{Actor, ActorKind, EventData, Kind, Verb};
@@ -39,7 +39,7 @@ impl Messages {
     }
 
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
-        if p.to == ctx.actor.id {
+        if is_receiver(&ctx.actor, &p.to) {
             return Err(RpcError::new(
                 code::INVALID_PARAMS,
                 "a Message cannot be sent to its own sender",
@@ -89,7 +89,7 @@ impl Messages {
                     .unwrap_or(Delivery::Auto)
                 {
                     Delivery::Auto => (MessageStatus::Pending, None),
-                    Delivery::AskFirst => (MessageStatus::Held, Some(Held::AskFirst)),
+                    Delivery::AskFirst => (MessageStatus::Held, Some(Reason::AskFirst)),
                     Delivery::Drop => (MessageStatus::Dropped, None),
                 }
             };
@@ -131,7 +131,9 @@ impl Messages {
             messages.retain(|message| message.status == status);
         }
         if ctx.actor.kind != ActorKind::User {
-            messages.retain(|message| is_sender(message, &ctx.actor) || message.to == ctx.actor.id);
+            messages.retain(|message| {
+                is_sender(message, &ctx.actor) || is_receiver(&ctx.actor, &message.to)
+            });
         }
         reply(&messages)
     }
@@ -222,7 +224,7 @@ impl Messages {
         &self,
         id: u32,
         status: MessageStatus,
-        reason: Option<Held>,
+        reason: Option<Reason>,
     ) -> Result<(), RpcError> {
         if self.store()?.release_held(id, status, reason)? {
             return Ok(());
@@ -255,7 +257,7 @@ fn require_user(ctx: &Ctx, action: &str) -> Result<(), RpcError> {
 fn require_readable(ctx: &Ctx, message: &Message) -> Result<(), RpcError> {
     if ctx.actor.kind == ActorKind::User
         || is_sender(message, &ctx.actor)
-        || message.to == ctx.actor.id
+        || is_receiver(&ctx.actor, &message.to)
     {
         return Ok(());
     }
@@ -269,6 +271,12 @@ fn require_readable(ctx: &Ctx, message: &Message) -> Result<(), RpcError> {
 /// an Extension draw their ids from different namespaces and could share one.
 fn is_sender(message: &Message, actor: &Actor) -> bool {
     message.from.kind == actor.kind && message.from.id == actor.id
+}
+
+/// Whether `to`, a Message's receiver id, names `actor`: Agents and the user are the only
+/// receivers, so an Extension that shares an Agent's id is not that Agent.
+fn is_receiver(actor: &Actor, to: &str) -> bool {
+    matches!(actor.kind, ActorKind::Agent | ActorKind::User) && actor.id == to
 }
 
 fn item(id: u32) -> String {
@@ -710,6 +718,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.code, code::CONFLICT);
+        assert!(err.message.contains("32"), "{}", err.message);
     }
 
     #[tokio::test]
@@ -1824,6 +1833,71 @@ mod tests {
             code::FORBIDDEN,
             "Agent x may not read a Message the Extension x sent, just because the id strings match"
         );
+    }
+
+    fn ext(id: &str) -> Actor {
+        Actor {
+            kind: ActorKind::Ext,
+            id: id.into(),
+            parent: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn b11_an_extension_sharing_a_receivers_id_cannot_read_or_list_its_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        let got = h
+            .call_as(ext("b"), "message.get", json!({"id": sent["id"]}))
+            .await
+            .unwrap_err();
+        let listed = h
+            .call_as(ext("b"), "message.list", json!({}))
+            .await
+            .unwrap();
+
+        assert_eq!(got.code, code::FORBIDDEN);
+        assert_eq!(listed.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn b1_only_an_agent_or_the_user_is_its_own_receiver() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("a", Kind::Idle)]);
+        let to_you = json!({"to": "you", "kind": "note", "body": "hi"});
+
+        let user = h.call("message.send", to_you).await.unwrap_err();
+        let agent_self = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "a", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap_err();
+        let extension = h
+            .call_as(
+                ext("a"),
+                "message.send",
+                json!({"to": "a", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            (user.code, agent_self.code),
+            (code::INVALID_PARAMS, code::INVALID_PARAMS)
+        );
+        assert_eq!(extension["status"], "pending");
     }
 
     #[tokio::test]

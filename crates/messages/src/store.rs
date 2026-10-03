@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use contracts::Actor;
-use contracts::message::{Delivery, Held, Message, MessageKind, MessageStatus, Route};
+use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Reason, Route};
 use rpc::RpcError;
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -46,7 +46,7 @@ impl Store {
         body: &str,
         reply_to: Option<u32>,
         status: MessageStatus,
-        reason: Option<Held>,
+        reason: Option<Reason>,
         at: i64,
     ) -> Result<Message, RpcError> {
         self.db
@@ -60,7 +60,7 @@ impl Store {
                     body,
                     reply_to,
                     status_str(status),
-                    reason.map(held_str),
+                    reason.map(reason_str),
                     at
                 ],
             )
@@ -99,13 +99,13 @@ impl Store {
         &self,
         id: u32,
         status: MessageStatus,
-        reason: Option<Held>,
+        reason: Option<Reason>,
     ) -> Result<bool, RpcError> {
         let changed = self
             .db
             .execute(
                 "UPDATE messages SET status = ?2, reason = ?3 WHERE id = ?1 AND status = 'held'",
-                params![id, status_str(status), reason.map(held_str)],
+                params![id, status_str(status), reason.map(reason_str)],
             )
             .map_err(RpcError::internal)?;
         Ok(changed == 1)
@@ -180,7 +180,7 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         status: parse_status(&row.get::<_, String>(6)?),
         reason: row
             .get::<_, Option<String>>(7)?
-            .map(|text| parse_held(&text)),
+            .map(|text| parse_reason(&text)),
         at: row.get(8)?,
     })
 }
@@ -221,19 +221,23 @@ fn parse_status(text: &str) -> MessageStatus {
     }
 }
 
-fn held_str(held: Held) -> &'static str {
-    match held {
-        Held::AskFirst => "ask-first",
-        Held::Takeover => "takeover",
-        Held::Escalated => "escalated",
+fn reason_str(reason: Reason) -> &'static str {
+    match reason {
+        Reason::AskFirst => "ask-first",
+        Reason::Takeover => "takeover",
+        Reason::Escalated => "escalated",
+        Reason::ReceiverGone => "receiver gone",
+        Reason::NotAccepted => "not accepted",
     }
 }
 
-fn parse_held(text: &str) -> Held {
+fn parse_reason(text: &str) -> Reason {
     match text {
-        "takeover" => Held::Takeover,
-        "escalated" => Held::Escalated,
-        _ => Held::AskFirst,
+        "takeover" => Reason::Takeover,
+        "escalated" => Reason::Escalated,
+        "receiver gone" => Reason::ReceiverGone,
+        "not accepted" => Reason::NotAccepted,
+        _ => Reason::AskFirst,
     }
 }
 
