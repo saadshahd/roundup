@@ -319,8 +319,10 @@ async fn b6_during_a_takeover_a_message_from_anyone_but_the_user_is_held_for_it(
             "message.held",
             "message.sent",
             "message.held",
+            "route.changed",
             "message.sent",
             "message.held",
+            "route.changed",
             "message.sent",
             "message.dropped",
             "message.sent"
