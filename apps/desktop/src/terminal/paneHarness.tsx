@@ -22,6 +22,8 @@ type FakeEmulator = Emulator & {
   fits: number;
   disposed: boolean;
   type(bytes: Uint8Array): void;
+  selectedText: string;
+  pasted: string[];
   scrollsToBottom: number;
   /** Simulates the user scrolling the view, as a wheel or drag would. */
   scroll(atBottom: boolean): void;
@@ -43,6 +45,8 @@ export const fakeEmulators = () => {
       size: { cols: 100, rows: 30 },
       fits: 0,
       disposed: false,
+      selectedText: "",
+      pasted: [],
       scrollsToBottom: 0,
       write: (bytes, parsed) => {
         if (bytes.length > 0) emulator.written.push(bytes);
@@ -52,6 +56,11 @@ export const fakeEmulators = () => {
       reset: () => { emulator.written = []; },
       onInput: (next) => {
         inputListener = next;
+      },
+      selection: () => emulator.selectedText,
+      paste: (text) => {
+        emulator.pasted.push(text);
+        inputListener(new TextEncoder().encode(text));
       },
       onScroll: (next) => {
         scrollListener = next;
