@@ -1,5 +1,7 @@
 # Agents and the Rail
 
+Module: `crates/agents` (+ the `rup signal` subcommand in `crates/rup`). Ids: every `A` heading in the file.
+
 Read `spikes/hooks-state/REPORT.md` and ADR 0006 first: they define how hook Signals, the terminal title and the exit status become a Status.
 
 **A1 signals to status.** Given an adapter replaying `spikes/hooks-state/log*.jsonl` payloads as Signals, then `UserPromptSubmit` gives `working`; `Stop` gives `idle`; `PermissionRequest` gives `needs-you` whose label quotes the question or tool; `StopFailure` gives `error` whose label is the `error` field; `PostToolUse` after a `needs-you` gives `working`; `SessionEnd` gives `done`. The mapping is a pure function `observe(Observation) -> Option<Status>` with `since` set by an injected clock.
