@@ -94,7 +94,6 @@ describe("u111 opening and closing a Drawer leaves the layout where it was", () 
 
     await openPad("auth-notes");
     await waitFor(() => expect(drawerPanel().contains(document.activeElement)).toBe(true));
-    (document.activeElement as HTMLElement).blur();
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => expect(drawerPanel().inert).toBe(true));
 
