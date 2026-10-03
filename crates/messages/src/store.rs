@@ -46,10 +46,7 @@ impl Store {
             .prepare("SELECT 1 FROM pragma_table_info('messages') WHERE name = 'rank'")?
             .exists([])?;
         if !has_rank {
-            db.execute_batch(
-                "ALTER TABLE messages ADD COLUMN rank INTEGER NOT NULL DEFAULT 0;
-                 UPDATE messages SET rank = id WHERE status = 'pending';",
-            )?;
+            db.execute_batch("ALTER TABLE messages ADD COLUMN rank INTEGER NOT NULL DEFAULT 0;")?;
         }
         let mut store = Self {
             db,

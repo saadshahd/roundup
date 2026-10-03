@@ -97,7 +97,7 @@ impl Messages {
                 "a Message cannot be sent to its own sender",
             ));
         }
-        let receiver_status = self.resolve_receiver(ctx, &p.to).await?;
+        let receiver_status = self.resolve_receiver(&p.to).await?;
         if p.body.is_empty() || p.body.len() > MAX_BODY_BYTES {
             return Err(RpcError::new(
                 code::INVALID_PARAMS,
@@ -196,12 +196,12 @@ impl Messages {
         reply(&messages)
     }
 
-    /// B3: moves a `held` Message to `pending`; B2 (typing it in) is a later slice. B9: a Message
+    /// B3, B6: moves a `held` Message to `pending`; the next `idle` types it (B2). B9: a Message
     /// held for an Agent that has since ended is `CONFLICT` and stays `held`.
     async fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "deliver a held Message")?;
         let message = self.get_or_not_found(p.id)?;
-        if let Some(status) = self.resolve_receiver(ctx, &message.to).await?
+        if let Some(status) = self.resolve_receiver(&message.to).await?
             && matches!(status.kind, Kind::Done | Kind::Error)
         {
             return Err(RpcError::conflict(format!(
@@ -256,7 +256,7 @@ impl Messages {
     async fn takeover_begin(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
         require_user(ctx, "begin a Takeover")?;
         let TakeoverParams { agent } = p;
-        if let Some(status) = self.resolve_takeover_target(ctx, &agent).await?
+        if let Some(status) = self.resolve_takeover_target(&agent).await?
             && matches!(status.kind, Kind::Done | Kind::Error)
         {
             return Err(RpcError::conflict(format!("{agent} has ended")));
@@ -279,7 +279,7 @@ impl Messages {
     async fn takeover_end(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
         require_user(ctx, "end a Takeover")?;
         let TakeoverParams { agent } = p;
-        self.resolve_takeover_target(ctx, &agent).await?;
+        self.resolve_takeover_target(&agent).await?;
         let promoted = self.store()?.end_takeover(&agent)?;
         if promoted.is_some() {
             ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
@@ -291,26 +291,15 @@ impl Messages {
     }
 
     /// `agent`'s Status for a Takeover call (B6): `NOT_FOUND` unless `agent` names an Agent node
-    /// on the Rail — never the user, a Terminal or a Group, none of which can be taken over.
+    /// on the Rail or a Meta-agent — never the user, a Terminal or a plain Group.
     async fn resolve_takeover_target(
         &self,
-        ctx: &Ctx,
         agent: &str,
     ) -> Result<Option<contracts::Status>, RpcError> {
-        let query_ctx = Ctx {
-            actor: Actor::daemon(),
-            bus: ctx.bus.clone(),
-            touches: Arc::clone(&ctx.touches),
-        };
-        let tree = self
-            .inner
-            .agents
-            .call(&query_ctx, "rail.tree", Value::Null)
-            .await?;
-        let nodes: Vec<RailNode> = serde_json::from_value(tree).map_err(RpcError::internal)?;
+        let nodes = rail_nodes(&self.inner).await?;
         let node = nodes
             .into_iter()
-            .find(|node| node.id == agent && node.kind == NodeKind::Agent)
+            .find(|node| node.id == agent && (node.kind == NodeKind::Agent || node.meta))
             .ok_or_else(|| RpcError::not_found(format!("actor {agent}")))?;
         Ok(node.status)
     }
@@ -318,25 +307,11 @@ impl Messages {
     /// `to`'s Status, when it names an Agent or a Meta-agent; `None` when it names the user.
     /// `NOT_FOUND` when it names no Actor; `INVALID_PARAMS` when it names a Terminal or a plain
     /// Group, neither of which can receive a Message.
-    async fn resolve_receiver(
-        &self,
-        ctx: &Ctx,
-        to: &str,
-    ) -> Result<Option<contracts::Status>, RpcError> {
+    async fn resolve_receiver(&self, to: &str) -> Result<Option<contracts::Status>, RpcError> {
         if to == Actor::user().id {
             return Ok(None);
         }
-        let query_ctx = Ctx {
-            actor: Actor::daemon(),
-            bus: ctx.bus.clone(),
-            touches: Arc::clone(&ctx.touches),
-        };
-        let tree = self
-            .inner
-            .agents
-            .call(&query_ctx, "rail.tree", Value::Null)
-            .await?;
-        let nodes: Vec<RailNode> = serde_json::from_value(tree).map_err(RpcError::internal)?;
+        let nodes = rail_nodes(&self.inner).await?;
         let node = nodes
             .into_iter()
             .find(|node| node.id == to)
@@ -502,17 +477,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, kind: Kind) {
 /// Idempotent: an Agent `on_ended` already handled has no `pending` Messages left to drop and no
 /// Takeover left to end.
 async fn resync(inner: &Arc<Inner>) {
-    let ctx = Ctx {
-        actor: Actor::daemon(),
-        bus: inner.bus.clone(),
-        touches: Arc::clone(&inner.touches),
-    };
-    let tree = inner
-        .agents
-        .call(&ctx, "rail.tree", Value::Null)
-        .await
-        .expect("rail.tree");
-    let nodes: Vec<RailNode> = serde_json::from_value(tree).expect("rail.tree is a list of nodes");
+    let nodes = rail_nodes(inner).await.expect("rail.tree");
     for node in nodes {
         if let Some(status) = node.status
             && matches!(status.kind, Kind::Done | Kind::Error)
@@ -520,6 +485,32 @@ async fn resync(inner: &Arc<Inner>) {
             on_ended(inner, &node.id);
         }
     }
+}
+
+/// The Rail's nodes, read with the Daemon as the caller.
+async fn rail_nodes(inner: &Inner) -> Result<Vec<RailNode>, RpcError> {
+    let ctx = Ctx {
+        actor: Actor::daemon(),
+        bus: inner.bus.clone(),
+        touches: Arc::clone(&inner.touches),
+    };
+    let tree = inner.agents.call(&ctx, "rail.tree", Value::Null).await?;
+
+    serde_json::from_value(tree).map_err(RpcError::internal)
+}
+
+/// B2's `<sender's name>`: the Rail name for an Agent, since a Rail node can be renamed; the
+/// Actor's id for the user (`you`), the Daemon and an Extension.
+async fn sender_name(inner: &Inner, from: &Actor) -> String {
+    if from.kind != ActorKind::Agent {
+        return from.id.clone();
+    }
+    let nodes = rail_nodes(inner).await.expect("rail.tree");
+
+    nodes
+        .into_iter()
+        .find(|node| node.id == from.id)
+        .map_or_else(|| from.id.clone(), |node| node.name)
 }
 
 /// B2, B7: types the oldest pending Message to `agent`, if any; the next `idle` picks up the
@@ -539,12 +530,12 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str) {
     };
     let text = format!(
         "[from {}, {}] {}",
-        message.from.id,
+        sender_name(inner, &message.from).await,
         kind_label(message.kind),
         message.body
     );
     if (inner.deliver)(agent.to_owned(), text).await.is_err() {
-        // Busy, NotAccepted and NotFound are slice 3's: this slice leaves the Message pending.
+        // Every refusal is slice 3's to tell apart; here each one undoes the record, back to `pending`, or `held` for `takeover` if one began meanwhile (B6).
         let reverted = inner
             .store
             .lock()

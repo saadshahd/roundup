@@ -960,3 +960,61 @@ async fn b1_held_for_takeover_messages_count_toward_the_bound_of_32() {
 
     assert_eq!(err.code, code::CONFLICT);
 }
+
+#[tokio::test]
+async fn b6_a_meta_agent_can_be_taken_over() {
+    let dir = tempfile::tempdir().unwrap();
+    let working = Status {
+        kind: Kind::Working,
+        label: "x".into(),
+        since: 0,
+    };
+    let h = Held2::new(
+        dir.path(),
+        vec![node("m", NodeKind::Group, true, Some(working))],
+    );
+
+    h.call("takeover.begin", json!({"agent": "m"}))
+        .await
+        .unwrap();
+    let sent = h.send_as(agent("a"), "m", "one").await;
+
+    assert_eq!(
+        (sent["status"].clone(), sent["reason"].clone()),
+        ("held".into(), json!("takeover"))
+    );
+}
+
+#[tokio::test]
+async fn b2_typed_text_names_an_agent_by_its_rail_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut renamed = agent_node("a", Kind::Working);
+    renamed.name = "builder".into();
+    let h = Held2::new(dir.path(), vec![renamed, agent_node("b", Kind::Working)]);
+    h.send_as(agent("a"), "b", "x").await;
+
+    h.becomes("b", Kind::Idle);
+
+    assert_eq!(h.typed(1).await, ["[from builder, note] x"]);
+}
+
+#[tokio::test]
+async fn b6_a_busy_refusal_of_a_users_message_during_a_takeover_leaves_it_pending() {
+    let dir = tempfile::tempdir().unwrap();
+    let (deliver, calls, release) = blocking_then_busy();
+    let rail = FakeRail::new(vec![agent_node("b", Kind::Working)]);
+    let mut h = Held2::over_with(dir.path(), rail, Bus::new(), deliver, calls);
+    h.send_as(Actor::user(), "b", "one").await;
+    h.becomes("b", Kind::Idle);
+    h.typed(1).await;
+    h.call("takeover.begin", json!({"agent": "b"}))
+        .await
+        .unwrap();
+    h.names();
+
+    release.notify_waiters();
+    h.settle().await;
+
+    assert_eq!(h.states().await[&1], pending());
+    assert!(!h.names().contains(&"message.held".to_owned()));
+}
