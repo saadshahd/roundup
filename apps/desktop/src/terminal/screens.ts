@@ -21,8 +21,8 @@ export type Screens = {
   isAtBottom(id: string): boolean;
   /** Returns the Terminal's view to its newest line, as clicking `↓ latest` or typing (U12) does. */
   returnToBottom(id: string): void;
-  /** The last call or `terminal.output` that failed, until a later call succeeds. */
-  failure: Accessor<string | null>;
+  /** The selected Terminal's last failed call or `terminal.output`, until a later call for that Terminal succeeds. */
+  failure(id: string | null): string | null;
   dispose(): void;
 };
 
@@ -42,15 +42,29 @@ type Holder = {
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
   const holders = new Map<string, Holder>();
-  const [failure, setFailure] = createSignal<string | null>(null);
+  const [failures, setFailures] = createSignal(new Map<string, string>());
   let disposed = false;
+
+  const setFailure = (id: string, message: string | null): void => {
+    setFailures((current) => {
+      if ((current.get(id) ?? null) === message) return current;
+
+      const next = new Map(current);
+
+      next.delete(id);
+
+      if (message !== null) next.set(id, message);
+
+      return next;
+    });
+  };
 
   const resize = (id: string, size: Size): void => {
     const holder = holders.get(id);
 
     if (holder?.shownSize) holder.shownSize = size;
 
-    if (!exited(id) && daemonExit() === null) void attempt(app.rpc("terminal.resize", { id, ...size }));
+    if (!exited(id) && daemonExit() === null) void attempt(id, app.rpc("terminal.resize", { id, ...size }));
   };
 
   const reflow = (id: string, holder: Holder): void => {
@@ -100,7 +114,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         if (!(thrown instanceof Error)) throw thrown;
 
         takeFirst(holder);
-        setFailure(`terminal.output: ${thrown.message}`);
+        setFailure(id, `terminal.output: ${thrown.message}`);
       }
     }
   };
@@ -123,13 +137,13 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       holder.emulator.write(bytes, () => requestAnimationFrame(() => reflow(id, holder)));
       holder.after = snapshot.after;
       holder.complete = true;
-      setFailure(null);
+      setFailure(id, null);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
       if (disposed) return;
 
-      setFailure(`terminal.snapshot: ${thrown.message}`);
+      setFailure(id, `terminal.snapshot: ${thrown.message}`);
 
       if (!holder.complete) holder.after = holder.pending[0]?.offset ?? 0;
 
@@ -156,14 +170,14 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     return node !== undefined && rail.exitOf(node) !== null;
   };
 
-  const attempt = async (call: Promise<unknown>): Promise<void> => {
+  const attempt = async (id: string, call: Promise<unknown>): Promise<void> => {
     try {
       await call;
-      setFailure(null);
+      setFailure(id, null);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
-      setFailure(thrown.message);
+      setFailure(id, thrown.message);
     }
   };
 
@@ -186,7 +200,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
           const data = toBase64(Uint8Array.from(typed));
 
           typed = [];
-          await attempt(app.rpc("terminal.write", { id, data }));
+          await attempt(id, app.rpc("terminal.write", { id, data }));
         }
       } finally {
         writing = false;
@@ -252,7 +266,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
-      setFailure(`terminal.output: ${thrown.message}`);
+      setFailure(chunk.id, `terminal.output: ${thrown.message}`);
     }
   });
 
@@ -262,7 +276,17 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     resize,
     isAtBottom: (id) => holderFor(id).atBottom(),
     returnToBottom: (id) => holderFor(id).returnToBottom(),
-    failure,
+    failure: (id) => {
+      const current = failures();
+
+      if (id !== null) return current.get(id) ?? null;
+
+      let latest: string | null = null;
+
+      for (const message of current.values()) latest = message;
+
+      return latest;
+    },
     dispose: () => {
       disposed = true;
       stopListening();

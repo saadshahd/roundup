@@ -89,8 +89,9 @@ const mount = async (tree = [node("a")], terminals = [info("t-a")]) => {
 
   const snapshots = () => app.calls.filter((call) => call.method === "terminal.snapshot");
   const log = () => made.get("t-a")?.log ?? [];
+  const logOf = (id: string) => made.get(id)?.log ?? [];
 
-  return { app, pending, snapshots, log, shown: () => made.get("t-a")?.shown ?? false, fits: () => made.get("t-a")?.fits ?? 0 };
+  return { app, connected, pending, snapshots, log, logOf, shown: () => made.get("t-a")?.shown ?? false, fits: () => made.get("t-a")?.fits ?? 0 };
 };
 
 const typed = (app: { calls: { method: string }[] }) => app.calls.filter((call) => call.method === "terminal.write");
@@ -275,6 +276,32 @@ describe("u103 a reloaded pane shows the screen", () => {
     await vi.waitFor(() => expect(log()).toEqual(["live"]));
     app.emit(chunk("t-a", "more", 4));
     expect(log()).toEqual(["live", "more"]);
+  });
+
+  it("u103_a_background_terminals_snapshot_cannot_clear_or_show_another_panes_failure", async () => {
+    const { app, connected, pending, snapshots, logOf } = await mount(
+      [node("a"), node("b")],
+      [info("t-a"), info("t-b")],
+    );
+
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+    pending[0]?.(new Error("A failed"));
+    await screen.findByText("✕ terminal.snapshot: A failed");
+
+    app.emit(chunk("t-b", "other", 0));
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(2));
+    pending[1]?.(snapshotOf("B screen", 0));
+    await vi.waitFor(() => expect(logOf("t-b")).toContain("B screen"));
+    expect(screen.getByText("✕ terminal.snapshot: A failed")).toBeTruthy();
+
+    app.emit(chunk("t-b", "late", 50));
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(3));
+    pending[2]?.(new Error("B failed"));
+    await vi.waitFor(() => expect(screen.getByText("✕ terminal.snapshot: A failed")).toBeTruthy());
+    expect(screen.queryByText("✕ terminal.snapshot: B failed")).toBeNull();
+
+    connected.rail.select("b");
+    expect(await screen.findByText("✕ terminal.snapshot: B failed")).toBeTruthy();
   });
 
   it("u103_nothing_is_typed_for_a_done_agent_and_its_screen_is_still_restored", async () => {
