@@ -94,6 +94,20 @@ describe("u22 a release outside the Rail", () => {
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "b", parent: null, index: 0 }]));
   });
+
+  it("u22_leaving_the_rail_above_or_to_the_left_after_a_drop_line_showed_calls_nothing", async () => {
+    const mounted = await mountRail(TREE);
+    mounted.app.handlers["rail.move"] = () => null;
+
+    dragFrom("b", pointerAt(0, 0));
+    fireEvent.pointerMove(window, { clientX: -10, clientY: 20 });
+    expect(dropLine()).toBeNull();
+    fireEvent.pointerMove(window, { clientX: 100, clientY: -10 });
+    release({ clientX: 100, clientY: -10 });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(railCallsTo(mounted.app, "rail.move")).toEqual([]);
+  });
 });
 
 describe("u22 a drag near the Rail's top or bottom edge scrolls it", () => {
@@ -171,5 +185,37 @@ describe("u22 a drag near the Rail's top or bottom edge scrolls it", () => {
     frames(5);
 
     expect(rail.scrollTop).toBe(STEP_PX);
+  });
+
+  it("u22_a_pointer_just_outside_either_zone_scrolls_nothing", async () => {
+    await mountRail(TREE);
+    const rail = scrollableRail(100);
+
+    dragFrom("b", { clientX: 100, clientY: 400 - EDGE_PX - 1 });
+    frames(3);
+    fireEvent.pointerMove(window, { clientX: 100, clientY: EDGE_PX + 1 });
+    frames(3);
+
+    expect(rail.scrollTop).toBe(100);
+  });
+
+  it("u22_the_drop_line_follows_the_pointer_while_the_rail_scrolls", async () => {
+    const mounted = await mountRail(Array.from({ length: 30 }, (_, n) => agent(`r${n}`, "idle", "i", { order: n })));
+    mounted.app.handlers["rail.move"] = () => null;
+    const rail = scrollableRail(0, 600, 400);
+
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute("role") === "treeitem") return new DOMRect(0, screen.getAllByRole("treeitem").indexOf(this) * 20 - rail.scrollTop, 200, 20);
+
+      if (this.classList.contains("rail-tree")) return new DOMRect(0, 0, 200, 400);
+
+      return new DOMRect(0, 0, 20, 20);
+    });
+
+    dragFrom("r0", { clientX: 0, clientY: 380 });
+    frames(5);
+    release({ clientX: 0, clientY: 380 });
+
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "r0", parent: null, index: 21 }]));
   });
 });
