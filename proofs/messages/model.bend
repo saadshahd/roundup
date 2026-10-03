@@ -223,10 +223,27 @@ def user_deliver(+id: Nat, s: World) -> World:
     case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
       deliver_pick(Bool.and(mem(id, haf), Bool.not(g)), Bool.and(mem(id, htk), Bool.not(g)), id, W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
 
+def drop_tk(b: Bool, +id: Nat, s: World) -> World:
+  match b:
+    case False{}:
+      s
+    case True{}:
+      match s:
+        case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          W{q, haf, remove(id, htk), t, snoc(d, id), u, tt, rl, n, tk, i, g}
+
+def drop_pick(a: Bool, b: Bool, +id: Nat, s: World) -> World:
+  match a:
+    case True{}:
+      drop_if(True{}, id, s)
+    case False{}:
+      drop_tk(b, id, s)
+
+# B3, B6: the user can drop a Message held for ask-first or for a Takeover; the Takeover goes on.
 def user_drop(+id: Nat, s: World) -> World:
   match s:
     case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
-      drop_if(mem(id, haf), id, W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
+      drop_pick(mem(id, haf), mem(id, htk), id, W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
 
 def set_idle(b: Bool, s: World) -> World:
   match s:
