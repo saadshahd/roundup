@@ -55,7 +55,15 @@ impl Daemon {
         };
         daemon.register(Arc::new(todos::Todos::open(dir, bus.clone())?));
         daemon.register(Arc::new(pads::Pads::open(dir, bus.clone())?));
-        daemon.register(Arc::new(messages::Messages::open(dir, bus, agents_module)?));
+        // Slice 3 maps `Agents::prompt` onto this; it does not exist yet, so nothing is typed.
+        let deliver: messages::Deliver =
+            Arc::new(|_, _| Box::pin(async { Err(messages::Refusal::NotFound) }));
+        daemon.register(Arc::new(messages::Messages::open(
+            dir,
+            bus,
+            agents_module,
+            deliver,
+        )?));
         daemon.register(agents);
         daemon.register(terminals);
         Ok(daemon)

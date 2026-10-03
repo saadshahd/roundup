@@ -88,6 +88,8 @@ pub const METHODS: &[Method] = &[
     m("message.drop", "message_MessageId", "message_Message"),
     m("route.set", "message_SetRouteParams", "message_Route"),
     m("route.list", "null", "message_Route[]"),
+    m("takeover.begin", "message_TakeoverParams", "null"),
+    m("takeover.end", "message_TakeoverParams", "null"),
     m("rail.remove", "agent_NodeId", "null"),
 ];
 

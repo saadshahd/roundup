@@ -1,41 +1,93 @@
 //! Messages between Actors, and the Routes that decide how they are delivered. Owner: messages
-//! Builder. This slice stores Messages and Routes and answers the user's and an Actor's calls;
-//! it never types into a Terminal, which is a later slice's job (H11, `Agents::prompt`).
+//! Builder. Stores Messages and Routes, answers the user's and an Actor's calls, and on an `idle`
+//! hands one Message to `Deliver` (slice 3 maps that to H11's `Agents::prompt`).
 
 mod store;
 
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{NodeKind, RailNode};
 use contracts::message::{
-    Delivery, ListParams, Message, MessageId, MessageStatus, Reason, Route, SendParams,
-    SetRouteParams,
+    Delivery, ListParams, Message, MessageId, MessageKind, MessageStatus, Reason, Route,
+    SendParams, SetRouteParams, TakeoverChanged, TakeoverParams,
 };
 use contracts::{Actor, ActorKind, EventData, Kind, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use store::Store;
+use tokio::sync::broadcast::error::RecvError;
 
 const MAX_BODY_BYTES: usize = 8192;
 const OPEN_BOUND: u32 = 32;
 
-pub struct Messages {
+/// Types a Message's text into an Agent's Terminal: the Agent id and the text. Slice 3 maps
+/// `Agents::prompt` onto this; tests pass a fake that records calls.
+pub type Deliver = Arc<
+    dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Why `deliver` could not type a Message, from `Agents::prompt` (B2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    Busy,
+    NotAccepted,
+    NotFound,
+}
+
+struct Inner {
     store: Mutex<Store>,
     /// Answers `rail.tree`, the only thing `message.send` needs to know about a receiver: whether
     /// it names an Agent (or a Meta-agent) at all, and that Agent's Kind.
     agents: Arc<dyn Module>,
+    bus: Bus,
+    deliver: Deliver,
+    /// Starts the listener at most once: immediately when `open` already runs on a Tokio
+    /// runtime, lazily on the first call otherwise (a caller that builds a `Messages` before
+    /// its own runtime exists).
+    listener_started: std::sync::Once,
+    /// Subscribed at `open`, before any runtime may exist, so no `agent.status` fires between
+    /// `open` and the listener's first poll; `start_listener` takes it out at most once.
+    events: Mutex<Option<tokio::sync::broadcast::Receiver<contracts::Event>>>,
+    /// A `Ctx` for the calls the listener makes on its own behalf (B9's resync), never the
+    /// caller's: nothing reads this log.
+    touches: Arc<provenance::Touches>,
+}
+
+pub struct Messages {
+    inner: Arc<Inner>,
 }
 
 impl Messages {
-    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused.
-    pub fn open(dir: &Path, _bus: Bus, agents: Arc<dyn Module>) -> Result<Self, OpenError> {
-        Ok(Self {
+    /// `dir` is the Project's `.roundup/` directory. `bus` is for events no call caused, and is
+    /// how this module learns a Kind changed (it reads `agent.status`); `deliver` types a
+    /// Message's text into an Agent's Terminal.
+    pub fn open(
+        dir: &Path,
+        bus: Bus,
+        agents: Arc<dyn Module>,
+        deliver: Deliver,
+    ) -> Result<Self, OpenError> {
+        let events = bus.subscribe();
+        let inner = Arc::new(Inner {
             store: Mutex::new(Store::open(&dir.join("messages.db"))?),
             agents,
-        })
+            bus,
+            deliver,
+            listener_started: std::sync::Once::new(),
+            events: Mutex::new(Some(events)),
+            touches: Arc::new(provenance::Touches::in_memory()?),
+        });
+        if tokio::runtime::Handle::try_current().is_ok() {
+            start_listener(&inner);
+        }
+        Ok(Self { inner })
     }
 
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
@@ -45,7 +97,7 @@ impl Messages {
                 "a Message cannot be sent to its own sender",
             ));
         }
-        let receiver_status = self.resolve_receiver(ctx, &p.to).await?;
+        let receiver_status = self.resolve_receiver(&p.to).await?;
         if p.body.is_empty() || p.body.len() > MAX_BODY_BYTES {
             return Err(RpcError::new(
                 code::INVALID_PARAMS,
@@ -84,10 +136,16 @@ impl Messages {
             let (status, reason) = if p.to == Actor::user().id {
                 (MessageStatus::Delivered, None)
             } else {
-                match store
+                let route = store
                     .get_route(&ctx.actor.id, &p.to)?
-                    .unwrap_or(Delivery::Auto)
-                {
+                    .unwrap_or(Delivery::Auto);
+                // B6: under a Takeover, an auto Message from any Actor but the user is held for
+                // it; the user's own Messages are delivered as B2 says, Takeover or not.
+                let held_for_takeover = ctx.actor.kind != ActorKind::User
+                    && route == Delivery::Auto
+                    && store.is_takeover_active(&p.to);
+                match route {
+                    _ if held_for_takeover => (MessageStatus::Held, Some(Reason::Takeover)),
                     Delivery::Auto => (MessageStatus::Pending, None),
                     Delivery::AskFirst => (MessageStatus::Held, Some(Reason::AskFirst)),
                     Delivery::Drop => (MessageStatus::Dropped, None),
@@ -138,9 +196,19 @@ impl Messages {
         reply(&messages)
     }
 
-    /// B3: moves a `held` Message to `pending`; B2 (typing it in) is a later slice.
-    fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
+    /// B3, B6: moves a `held` Message to `pending`; the next `idle` types it (B2). B9: a Message
+    /// held for an Agent that has since ended is `CONFLICT` and stays `held`.
+    async fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "deliver a held Message")?;
+        let message = self.get_or_not_found(p.id)?;
+        if let Some(status) = self.resolve_receiver(&message.to).await?
+            && matches!(status.kind, Kind::Done | Kind::Error)
+        {
+            return Err(RpcError::conflict(format!(
+                "{} cannot receive a Message: its Kind is {:?}",
+                message.to, status.kind
+            )));
+        }
         self.release_held(p.id, MessageStatus::Pending, None)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
         reply(&self.get_or_not_found(p.id)?)
@@ -183,27 +251,67 @@ impl Messages {
         reply(&self.store()?.list_routes()?)
     }
 
+    /// B6: starts a Takeover of `agent`. A repeated call, while one is already active, changes
+    /// nothing and is not an error.
+    async fn takeover_begin(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
+        require_user(ctx, "begin a Takeover")?;
+        let TakeoverParams { agent } = p;
+        if let Some(status) = self.resolve_takeover_target(&agent).await?
+            && matches!(status.kind, Kind::Done | Kind::Error)
+        {
+            return Err(RpcError::conflict(format!("{agent} has ended")));
+        }
+        let held = self.store()?.begin_takeover(&agent)?;
+        if let Some(held) = held {
+            for message in &held {
+                ctx.emit(EventData::MessageHeld(message.clone()));
+            }
+            ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
+                agent,
+                on: true,
+            }));
+        }
+        Ok(Value::Null)
+    }
+
+    /// B6: ends a Takeover of `agent`. A repeated call, or one with no Takeover active, changes
+    /// nothing and is not an error.
+    async fn takeover_end(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
+        require_user(ctx, "end a Takeover")?;
+        let TakeoverParams { agent } = p;
+        self.resolve_takeover_target(&agent).await?;
+        let promoted = self.store()?.end_takeover(&agent)?;
+        if promoted.is_some() {
+            ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
+                agent,
+                on: false,
+            }));
+        }
+        Ok(Value::Null)
+    }
+
+    /// `agent`'s Status for a Takeover call (B6): `NOT_FOUND` unless `agent` names an Agent node
+    /// on the Rail or a Meta-agent — never the user, a Terminal or a plain Group.
+    async fn resolve_takeover_target(
+        &self,
+        agent: &str,
+    ) -> Result<Option<contracts::Status>, RpcError> {
+        let nodes = rail_nodes(&self.inner).await?;
+        let node = nodes
+            .into_iter()
+            .find(|node| node.id == agent && (node.kind == NodeKind::Agent || node.meta))
+            .ok_or_else(|| RpcError::not_found(format!("actor {agent}")))?;
+        Ok(node.status)
+    }
+
     /// `to`'s Status, when it names an Agent or a Meta-agent; `None` when it names the user.
     /// `NOT_FOUND` when it names no Actor; `INVALID_PARAMS` when it names a Terminal or a plain
     /// Group, neither of which can receive a Message.
-    async fn resolve_receiver(
-        &self,
-        ctx: &Ctx,
-        to: &str,
-    ) -> Result<Option<contracts::Status>, RpcError> {
+    async fn resolve_receiver(&self, to: &str) -> Result<Option<contracts::Status>, RpcError> {
         if to == Actor::user().id {
             return Ok(None);
         }
-        let query_ctx = Ctx {
-            actor: Actor::daemon(),
-            bus: ctx.bus.clone(),
-            touches: Arc::clone(&ctx.touches),
-        };
-        let tree = self
-            .agents
-            .call(&query_ctx, "rail.tree", Value::Null)
-            .await?;
-        let nodes: Vec<RailNode> = serde_json::from_value(tree).map_err(RpcError::internal)?;
+        let nodes = rail_nodes(&self.inner).await?;
         let node = nodes
             .into_iter()
             .find(|node| node.id == to)
@@ -240,7 +348,8 @@ impl Messages {
     }
 
     fn store(&self) -> Result<MutexGuard<'_, Store>, RpcError> {
-        self.store
+        self.inner
+            .store
             .lock()
             .map_err(|_| RpcError::internal("message store poisoned"))
     }
@@ -296,20 +405,212 @@ fn now_ms() -> i64 {
 #[async_trait]
 impl Module for Messages {
     fn namespaces(&self) -> &'static [&'static str] {
-        &["message", "route"]
+        &["message", "route", "takeover"]
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
+        start_listener(&self.inner);
         match method {
             "message.send" => self.send(ctx, params(value)?).await,
             "message.get" => self.get(ctx, params(value)?),
             "message.list" => self.list(ctx, params(value)?),
-            "message.deliver" => self.deliver(ctx, params(value)?),
+            "message.deliver" => self.deliver(ctx, params(value)?).await,
             "message.drop" => self.drop_message(ctx, params(value)?),
             "route.set" => self.set_route(ctx, params(value)?),
             "route.list" => self.list_routes(),
+            "takeover.begin" => self.takeover_begin(ctx, params(value)?).await,
+            "takeover.end" => self.takeover_end(ctx, params(value)?).await,
             _ => Err(RpcError::method_not_found(method)),
         }
+    }
+}
+
+/// Starts the status listener at most once for this `Inner` (its `Once`), and only when a Tokio
+/// runtime is there to run it on. The subscription itself was already taken at `open`, so no
+/// `agent.status` fired between `open` and this first poll is lost.
+fn start_listener(inner: &Arc<Inner>) {
+    inner.listener_started.call_once(|| {
+        let events = inner
+            .events
+            .lock()
+            .unwrap()
+            .take()
+            .expect("subscribed once, at open");
+        spawn_status_listener(Arc::clone(inner), events);
+    });
+}
+
+/// Reads `agent.status` off `events` for as long as `inner` has a subscriber: an `idle` Kind
+/// calls `deliver` once, for the oldest deliverable Message to that Agent (B2, B7); a `done` or
+/// `error` Kind ends any Takeover of it and drops its `pending` Messages with the reason
+/// `receiver gone` (B6, B9). A `Lagged` receiver may have missed one of those, so it resyncs from
+/// the Rail instead of guessing what it lost (B9), and tries again on its next event while the
+/// Rail cannot answer.
+fn spawn_status_listener(
+    inner: Arc<Inner>,
+    mut events: tokio::sync::broadcast::Receiver<contracts::Event>,
+) {
+    tokio::spawn(async move {
+        let mut resync_due = false;
+        loop {
+            match events.recv().await {
+                Ok(contracts::Event {
+                    data: EventData::AgentStatus(status),
+                    ..
+                }) => on_status(&inner, &status.id, status.status.kind).await,
+                Ok(_) => {}
+                Err(RecvError::Lagged(_)) => resync_due = true,
+                Err(RecvError::Closed) => break,
+            }
+            if resync_due {
+                resync_due = !resync(&inner).await;
+            }
+        }
+    });
+}
+
+async fn on_status(inner: &Arc<Inner>, agent: &str, kind: Kind) {
+    match kind {
+        Kind::Idle => on_idle(inner, agent).await,
+        Kind::Done | Kind::Error => on_ended(inner, agent),
+        Kind::Working | Kind::Blocked | Kind::NeedsYou => {}
+    }
+}
+
+/// A receiver that lagged behind the bus may have missed a `done` or `error` `agent.status`; the
+/// Rail still has it, so re-read it and run `on_ended` for every Agent it now shows as ended.
+/// Idempotent: an Agent `on_ended` already handled has no `pending` Messages left to drop and no
+/// Takeover left to end. `false` when the Rail cannot answer, so the caller retries on its next
+/// event instead of losing the `done` it missed.
+async fn resync(inner: &Arc<Inner>) -> bool {
+    let Ok(nodes) = rail_nodes(inner).await else {
+        return false;
+    };
+    for node in nodes {
+        if let Some(status) = node.status
+            && matches!(status.kind, Kind::Done | Kind::Error)
+        {
+            on_ended(inner, &node.id);
+        }
+    }
+    true
+}
+
+/// The Rail's nodes, read with the Daemon as the caller.
+async fn rail_nodes(inner: &Inner) -> Result<Vec<RailNode>, RpcError> {
+    let ctx = Ctx {
+        actor: Actor::daemon(),
+        bus: inner.bus.clone(),
+        touches: Arc::clone(&inner.touches),
+    };
+    let tree = inner.agents.call(&ctx, "rail.tree", Value::Null).await?;
+
+    serde_json::from_value(tree).map_err(RpcError::internal)
+}
+
+/// B2's `<sender's name>`: the Rail name for an Agent, since a Rail node can be renamed; the
+/// Actor's id for the user (`you`), the Daemon and an Extension.
+async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
+    if from.kind != ActorKind::Agent {
+        return Ok(from.id.clone());
+    }
+    let nodes = rail_nodes(inner).await?;
+
+    Ok(nodes
+        .into_iter()
+        .find(|node| node.id == from.id)
+        .map_or_else(|| from.id.clone(), |node| node.name))
+}
+
+/// B2, B7: types the oldest pending Message to `agent`, if any; the next `idle` picks up the
+/// next one, so exactly one Message is typed per `idle`. It is recorded `delivered` in one
+/// conditional write before typing starts (B8), so a Takeover beginning while the prompt is being
+/// typed cannot hold a Message already in flight; a refusal reverts that record.
+async fn on_idle(inner: &Arc<Inner>, agent: &str) {
+    let found = inner
+        .store
+        .lock()
+        .unwrap()
+        .next_pending(agent)
+        .expect("message store");
+    let Some(found) = found else {
+        return;
+    };
+    // The name is read before the record: a Rail that cannot answer leaves the Message `pending`
+    // for the next `idle`, where a read after the record would strand it `delivered` and untyped.
+    let Ok(from) = sender_name(inner, &found.from).await else {
+        return;
+    };
+    let recorded = inner
+        .store
+        .lock()
+        .unwrap()
+        .mark_delivered(found.id)
+        .expect("message store");
+    let Some(message) = recorded else {
+        return;
+    };
+    let text = format!(
+        "[from {from}, {}] {}",
+        kind_label(message.kind),
+        message.body
+    );
+    if (inner.deliver)(agent.to_owned(), text).await.is_err() {
+        // Every refusal is slice 3's to tell apart; here each one undoes the record, back to `pending`, or `held` for `takeover` if one began meanwhile (B6).
+        let reverted = inner
+            .store
+            .lock()
+            .unwrap()
+            .unmark_delivered(message.id)
+            .expect("message store");
+        if let Some(held) = reverted.filter(|m| m.status == MessageStatus::Held) {
+            inner
+                .bus
+                .emit(Actor::daemon(), EventData::MessageHeld(held));
+        }
+        return;
+    }
+    inner
+        .bus
+        .emit(Actor::daemon(), EventData::MessageDelivered(message));
+}
+
+/// B6, B9: an Agent that exits ends its Takeover, if any, then drops every Message still
+/// `pending` for it (which now includes any just promoted from a `takeover` hold).
+fn on_ended(inner: &Arc<Inner>, agent: &str) {
+    let ended_takeover = inner
+        .store
+        .lock()
+        .unwrap()
+        .end_takeover(agent)
+        .expect("message store");
+    if ended_takeover.is_some() {
+        inner.bus.emit(
+            Actor::daemon(),
+            EventData::TakeoverChanged(TakeoverChanged {
+                agent: agent.to_owned(),
+                on: false,
+            }),
+        );
+    }
+    let dropped = inner
+        .store
+        .lock()
+        .unwrap()
+        .drop_all_pending(agent, Reason::ReceiverGone)
+        .expect("message store");
+    for message in dropped {
+        inner
+            .bus
+            .emit(Actor::daemon(), EventData::MessageDropped(message));
+    }
+}
+
+/// B2's `<kind>`: `note` or `question` as on the wire, never Rust's `Debug` spelling.
+fn kind_label(kind: MessageKind) -> &'static str {
+    match kind {
+        MessageKind::Note => "note",
+        MessageKind::Question => "question",
     }
 }
 
@@ -326,13 +627,20 @@ mod tests {
 
     use super::*;
 
+    mod b_held_tests;
+
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,
     /// without a real Agent, Terminal or Launcher.
-    struct FakeRail(StdMutex<Vec<RailNode>>);
+    struct FakeRail(StdMutex<Vec<RailNode>>, std::sync::atomic::AtomicBool);
 
     impl FakeRail {
         fn new(nodes: Vec<RailNode>) -> Arc<Self> {
-            Arc::new(Self(StdMutex::new(nodes)))
+            Arc::new(Self(StdMutex::new(nodes), false.into()))
+        }
+
+        /// While `true`, `rail.tree` answers with an error.
+        fn fail(&self, failing: bool) {
+            self.1.store(failing, std::sync::atomic::Ordering::SeqCst);
         }
     }
 
@@ -344,6 +652,9 @@ mod tests {
 
         async fn call(&self, _ctx: &Ctx, method: &str, _params: Value) -> Result<Value, RpcError> {
             match method {
+                "rail.tree" if self.1.load(std::sync::atomic::Ordering::SeqCst) => {
+                    Err(RpcError::internal("rail.tree is down"))
+                }
                 "rail.tree" => Ok(serde_json::to_value(&*self.0.lock().unwrap()).unwrap()),
                 _ => Err(RpcError::method_not_found(method)),
             }
@@ -385,6 +696,11 @@ mod tests {
         }
     }
 
+    /// A `Deliver` for tests that never trigger an `idle` event: it is never called.
+    fn noop_deliver() -> Deliver {
+        Arc::new(|_, _| Box::pin(async { Ok(()) }))
+    }
+
     struct Harness {
         messages: Messages,
         bus: Bus,
@@ -397,7 +713,8 @@ mod tests {
             let bus = Bus::new();
             let bus_events = bus.subscribe();
             Self {
-                messages: Messages::open(dir, bus.clone(), FakeRail::new(rail)).unwrap(),
+                messages: Messages::open(dir, bus.clone(), FakeRail::new(rail), noop_deliver())
+                    .unwrap(),
                 bus,
                 bus_events,
                 touches: Arc::new(Touches::in_memory().unwrap()),
@@ -1388,6 +1705,7 @@ mod tests {
                     dir.path(),
                     bus.clone(),
                     FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                    noop_deliver(),
                 )
                 .unwrap(),
             );
@@ -1451,6 +1769,7 @@ mod tests {
                     dir.path(),
                     bus.clone(),
                     FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                    noop_deliver(),
                 )
                 .unwrap(),
             );
