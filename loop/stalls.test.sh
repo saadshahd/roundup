@@ -95,6 +95,23 @@ fixture
 printf '%s\n' '[[{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: builder-1"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: r-2"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: r-3"}]]' >"$dir/data/comments-1.json"
 expect self_reject_does_not_count 0
 fixture
+other_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+printf '%s\n' "[[{\"body\":\"VERDICT: reject\\n$other_sha\\nReviewed-by-Agent: r-1\"},{\"body\":\"VERDICT: reject\\n$other_sha\\nReviewed-by-Agent: r-2\"},{\"body\":\"VERDICT: reject\\n$other_sha\\nReviewed-by-Agent: r-3\"}]]" >"$dir/data/comments-1.json"
+expect unrelated_sha_rejects_do_not_trip_round_cap 0
+printf '%s\n' "[[{\"sha\":\"$other_sha\",\"commit\":{\"message\":\"work\\n\\nAuthor-Agent: builder-1\"}}]]" >"$dir/data/commits-1.json"
+expect prior_pr_head_rejects_still_count 1
+[ -f "$dir/loop/out/stalls/c-1" ] || { echo 'FAIL: l28_prior head rejects not counted'; failures=$((failures+1)); }
+fixture
+printf '%s\n' '[]' >"$dir/data/machines.json"
+printf '%s\n' '[[{"body":"VERDICT: approve\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: builder-1"}]]' >"$dir/data/comments-1.json"
+expect self_verdict_does_not_hide_vm_stall 1
+[ -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_self verdict hid e'; failures=$((failures+1)); }
+fixture
+printf '%s\n' '[[{"commit":{"message":"work\n\nAuthor-Agent: Build.Agent_1"}}]]' >"$dir/data/commits-1.json"
+printf '%s\n' '[[{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.One_1"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.Two_2"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.Three_3"}]]' >"$dir/data/comments-1.json"
+expect dotted_underscored_uppercase_ids_count 1
+[ "$(file c-1 | sed -n 's/^except=//p')" = Build.Agent_1 ] || { echo 'FAIL: l28_valid author id not parsed'; failures=$((failures+1)); }
+fixture
 printf '%s\n' "$head_sha" >"$dir/loop/out/verdicts/review.md"
 python3 - "$dir/loop/out/verdicts/review.md" <<'PY'
 import os,sys

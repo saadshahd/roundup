@@ -20,8 +20,8 @@ ROOT = pathlib.Path('loop/out')
 STALLS = ROOT / 'stalls'
 VERDICTS = ROOT / 'verdicts'
 SHA = re.compile(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])')
-AUTHOR = re.compile(r'^Author-Agent: ([a-z0-9][a-z0-9-]*)$', re.M)
-REVIEWER = re.compile(r'^Reviewed-by-Agent: ([a-z0-9][a-z0-9-]*)$', re.M)
+AUTHOR = re.compile(r'^Author-Agent: ([A-Za-z0-9_.-]+)$', re.M)
+REVIEWER = re.compile(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)$', re.M)
 RED = {'failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale'}
 
 
@@ -111,7 +111,8 @@ try:
         commits = pages(call('gh', 'api', f'repos/{repo}/pulls/{number}/commits?per_page=100', '--paginate', '--slurp'))
         runs = check_runs(call('gh', 'api', f'repos/{repo}/commits/{pr["head"]["sha"]}/check-runs', '--paginate', '--slurp'))
         author_ids = [author for commit in commits for author in AUTHOR.findall(commit['commit']['message'])]
-        pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], failed_names(runs, required)))
+        known_heads = {pr['head']['sha']} | {commit['sha'] for commit in commits if 'sha' in commit}
+        pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], known_heads, failed_names(runs, required)))
     machines = call('boxd', 'machine', 'list', '--json')
     vm_count = sum(machine['name'].startswith('ru-') for machine in machines)
     verdict_files = [(path.read_text(), dt.datetime.fromtimestamp(path.stat().st_mtime, UTC))
@@ -119,9 +120,9 @@ try:
     desired = {}
     if failed_names(main_runs, required):
         record('a', 'main', 'Triage')
-    if pr_data and any(all(name in failed for _, _, _, _, failed in pr_data) for name in required):
+    if pr_data and any(all(name in failed for _, _, _, _, _, failed in pr_data) for name in required):
         record('a', 'all-prs', 'Triage')
-    for pr, comments, authors, author_id, _ in pr_data:
+    for pr, comments, authors, author_id, known_heads, _ in pr_data:
         number = pr['number']
         head = pr['head']['sha']
         valid = verdicts(comments, authors, head)
@@ -133,7 +134,8 @@ try:
             first = body.splitlines()[0] if body else ''
             if first == 'VERDICT: reject':
                 reviewer = REVIEWER.search(body)
-                if reviewer and reviewer.group(1) not in authors and SHA.search(body):
+                named_heads = set(SHA.findall(body))
+                if reviewer and reviewer.group(1) not in authors and len(named_heads) == 1 and named_heads <= known_heads:
                     all_rejects += 1
         if all_rejects >= 3:
             record('c', number, 'Architect', author_id)
@@ -143,7 +145,7 @@ try:
         if not has_verdict and any(head in SHA.findall(body) and now - modified >= dt.timedelta(minutes=5)
                                    for body, modified in verdict_files):
             record('d', number, 'Driver')
-        if not has_verdict and vm_count < min(8, int(os.environ.get('BOXD_MAX_VMS', '12'))):
+        if not valid and vm_count < min(8, int(os.environ.get('BOXD_MAX_VMS', '12'))):
             record('e', number, 'Driver')
     if STALLS.exists():
         for path in STALLS.iterdir():
