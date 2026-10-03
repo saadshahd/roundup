@@ -70,4 +70,22 @@ describe("u50 the Pad's text fills its Drawer", () => {
 
     expect(screen.getByText("export .md").style.color).toBe("var(--grey)");
   });
+
+  it("u50_the_drawer_rule_is_a_flex_column_so_the_fields_flex_1_can_fill_it", () => {
+    const sheets = import.meta.glob<string>("../styles.css", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+
+    const css = sheets["../styles.css"]!;
+    const drawerRule = /\.drawer\s*\{([^}]*)\}/.exec(css)?.[1];
+
+    if (!drawerRule) throw new Error("no .drawer rule in styles.css");
+
+    expect([
+      /display:\s*flex;/.test(drawerRule),
+      /flex-direction:\s*column;/.test(drawerRule),
+    ]).toEqual([true, true]);
+  });
 });
