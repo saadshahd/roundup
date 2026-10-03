@@ -20,13 +20,14 @@ const focusCalls = () => vi.spyOn(HTMLElement.prototype, "focus");
 
 describe("u111 opening and closing a Drawer leaves the layout where it was", () => {
   it("u111_the_element_holding_the_rail_the_terminal_and_the_shelf_clips_sideways", async () => {
-    const overflowX = await withStylesheet(async () => {
+    const overflow = await withStylesheet(async () => {
       await mountTodos([todo(1)]);
+      const columns = getComputedStyle(document.querySelector(".columns")!);
 
-      return getComputedStyle(document.querySelector(".columns")!).overflowX;
+      return [columns.overflowX, columns.overflowY];
     });
 
-    expect(overflowX).toBe("clip");
+    expect(overflow).toEqual(["clip", "clip"]);
   });
 
   it("u111_every_focus_into_or_out_of_the_drawer_passes_prevent_scroll", async () => {
@@ -36,7 +37,7 @@ describe("u111 opening and closing a Drawer leaves the layout where it was", () 
     connected.drawer.open(() => <input aria-label="field" />);
     await waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     connected.drawer.close();
-    await waitFor(() => expect((screen.getByLabelText("drawer") as HTMLElement & { inert: boolean }).inert).toBe(true));
+    await waitFor(() => expect(screen.getByLabelText("drawer").inert).toBe(true));
 
     const options = spy.mock.calls.map(([option]) => option);
     spy.mockRestore();
@@ -54,7 +55,7 @@ describe("u111 opening and closing a Drawer leaves the layout where it was", () 
     connected.drawer.open(() => <p>detail</p>);
     await waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect((screen.getByLabelText("drawer") as HTMLElement & { inert: boolean }).inert).toBe(true));
+    await waitFor(() => expect(screen.getByLabelText("drawer").inert).toBe(true));
 
     const options = spy.mock.calls.map(([option]) => option);
     spy.mockRestore();
