@@ -569,9 +569,12 @@ expect_true "L19 no second VM after the agent ran" test "$(count_log 'machine ne
 expect_true "L19 the no-output event is recorded with VM and phase" grep -q ' ru-t agent no-output' loop/out/events.log
 new_repo; STUB_MODE=deadline expect_code 1 "L19 a wedged agent run fails"
 expect_true "L19 the deadline event is recorded, not retried" bash -c "grep -q ' ru-t agent deadline-exceeded' loop/out/events.log && test \"\$(grep -c 'machine new ru-t ' log)\" = 1"
-new_repo; BOXD_AGENT_TIMEOUT=1 STUB_CLAUDE_SLEEP=2 STUB_MODE=deadline expect_code 1 "L19 a silent run past BOXD_AGENT_TIMEOUT still fails"
-expect_true "L19 no timeout message on a silent run past BOXD_AGENT_TIMEOUT" bash -c '! grep -q "agent timed out after" err'
-expect_true "L19 the no-output message is used instead" grep -q "agent produced no output" err
+new_repo; BOXD_AGENT_TIMEOUT=8 STUB_CLAUDE_SLEEP=5 STUB_MODE=deadline expect_code 1 "L21 a silent run that the boxd stub ends with DeadlineExceeded after 5 s fails, inside a longer BOXD_AGENT_TIMEOUT"
+expect_true "L21 no timeout message when the deadline came from boxd" bash -c '! grep -q "agent timed out after" err'
+expect_true "L21 the no-output message is used" grep -q "agent produced no output" err
+expect_true "L21 the deadline event is recorded for that run" grep -q " ru-t agent deadline-exceeded" loop/out/events.log
+new_repo; BOXD_TIMEOUT_CMD=no-such-timeout expect_code 2 "L21 a missing GNU timeout is refused at start-up"
+expect_true "L21 the refusal names timeout and coreutils and made no VM" bash -c 'grep -q "needs GNU timeout" err && ! grep -q "machine new" log'
 new_repo; STUB_MODE=check-deadline expect_code 1 "L19 a build whose check hits the deadline fails"
 expect_true "L19 the build check's deadline event is recorded with VM and phase" grep -q ' ru-t check deadline-exceeded' loop/out/events.log
 

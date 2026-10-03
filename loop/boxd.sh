@@ -23,12 +23,18 @@ MAX_VMS=${BOXD_MAX_VMS:-12}
 # The agent and the check each get up to AGENT_TIMEOUT / 1800 s; VM_TTL must outlast both plus the reboot wait (at most 60 attempts of 5 s plus 1 s, 360 s), upload and the patch step.
 AGENT_TIMEOUT=${BOXD_AGENT_TIMEOUT:-1800}
 VM_TTL=4200
+# GNU timeout bounds the agent run by wall clock; stock macOS has none (coreutils installs it as gtimeout). BOXD_TIMEOUT_CMD overrides.
+TIMEOUT_CMD=${BOXD_TIMEOUT_CMD:-$(command -v timeout || command -v gtimeout || true)}
+need_timeout() {
+  command -v "${TIMEOUT_CMD:-}" >/dev/null 2>&1 || { echo "boxd.sh: needs GNU timeout or gtimeout (brew install coreutils); found '${TIMEOUT_CMD:-}'" >&2; exit 2; }
+}
 SLOT_WAIT=${BOXD_SLOT_WAIT:-0}
 REBOOT_ATTEMPTS=${BOXD_REBOOT_ATTEMPTS:-60}
 EVENTS=$OUT/events.log
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)-$$
 PROVISION_RETRY_WITHIN=${BOXD_RETRY_WITHIN:-30}
 VM=
+PARTIAL_TMP=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
 lock_held=0
@@ -41,6 +47,7 @@ STRAY_NODE_MODULES=/node_modules
 cleanup() {
   local rc=$?
   if [ "$lock_held" -eq 1 ]; then rmdir "$LOCK" || true; fi
+  [ -z "$PARTIAL_TMP" ] || rm -f "$PARTIAL_TMP"
   if [ -n "$VM" ]; then
     boxd machine remove "$VM" -y >/dev/null </dev/null || echo "boxd.sh: LEAKED VM $VM; remove it by hand" >&2
   fi
@@ -259,7 +266,7 @@ provision() {
 
 # Run claude on the VM with /tmp/prompt.md; each event it produces lands in <stream> as it happens (L21). The
 # verdict, the cost line and L4's pause come only from the stream's last event, which must be a result event.
-# Exits for every outcome except one that produced events but ended with no final result event, which returns 2
+# Exits 1 for every outcome (no output, `agent failed` when the final result is an error, a wall-clock timeout) except one that produced events but ended with no final result event, which returns 2
 # so the caller can save what the run got done before deciding its own exit code.
 run_agent() {
   local model=$1 stream=$2 rc=0 last
@@ -269,7 +276,7 @@ run_agent() {
   # boxd's own --timeout is a no-output deadline: a run that keeps streaming events never trips it. `timeout` puts
   # the command in its own process group and signals that whole group, so a streaming agent still ends at
   # BOXD_AGENT_TIMEOUT; its exit code 124 is how the branch below tells a wall-clock cutoff from a plain early exit.
-  timeout "$AGENT_TIMEOUT" boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
+  "$TIMEOUT_CMD" "$AGENT_TIMEOUT" boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -- \
     "cd ~/roundup && . ~/.cargo/env && claude -p --model $model --output-format stream-json --verbose --dangerously-skip-permissions 2>/dev/null </tmp/prompt.md" </dev/null >"$stream" 2>"${stream%.jsonl}.err" || rc=$?
   cat "${stream%.jsonl}.err" >&2
   ! grep -q DeadlineExceeded "${stream%.jsonl}.err" || record_event agent deadline-exceeded
@@ -324,8 +331,10 @@ build() {
   if [ "$agent_rc" -eq 2 ]; then
     # Diffed against `base`, not HEAD, so a commit the agent already made lands in the partial too; written to a
     # temp file and renamed only on success, so a failed extraction never leaves a stale empty .partial.patch.
+    PARTIAL_TMP=$partial.tmp
     if boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && git diff --cached base' </dev/null >"$partial.tmp"; then
       mv "$partial.tmp" "$partial"
+      PARTIAL_TMP=
     else
       rm -f "$partial.tmp"
       echo "boxd.sh: could not read the diff so far from $VM; no $partial saved" >&2
@@ -459,11 +468,11 @@ kill_vms() {
 
 case "${1:-}" in
   bake) bake ;;
-  build) build "${2:?name}" "${3:?prompt-file}" ;;
+  build) need_timeout; build "${2:?name}" "${3:?prompt-file}" ;;
   check) check "${2:?pr-number-or-branch}" ;;
-  swarm) shift; swarm "$@" ;;
+  swarm) need_timeout; shift; swarm "$@" ;;
   status) status ;;
   kill) kill_vms "${2:?name or all}" ;;
-  review) review "${2:?name}" "${3:?prompt-file}" "${4:-HEAD}" ;;
+  review) need_timeout; review "${2:?name}" "${3:?prompt-file}" "${4:-HEAD}" ;;
   *) sed -n '2,14p' "$0" >&2; exit 2 ;;
 esac
