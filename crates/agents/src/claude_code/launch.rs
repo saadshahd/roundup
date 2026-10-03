@@ -20,6 +20,7 @@ use unicode_normalization::UnicodeNormalization;
 /// against this list itself and finds no event prunable, since A2's star hold reads `PreToolUse`
 /// to tell a star that may precede a dialog from one that may not (`mod.rs`). H15's saving is a
 /// current-thread tokio runtime for `rup signal` alone (`crates/rup/src/main.rs`).
+/// It is `pub` only so `crates/agents/tests/state_events.rs` can read it.
 pub const STATE_EVENTS: [&str; 9] = [
     "SessionStart",
     "UserPromptSubmit",

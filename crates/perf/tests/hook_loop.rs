@@ -22,7 +22,7 @@ async fn h15_a_failing_rup_signal_fails_the_metric() {
         &fake_rup(dir.path(), 1),
         &dir.path().join("s"),
         "1",
-        &payload,
+        &[&payload],
         3,
     )
     .await
@@ -41,7 +41,7 @@ async fn h15_calls_that_exit_0_report_their_wall_time() {
         &fake_rup(dir.path(), 0),
         &dir.path().join("s"),
         "1",
-        &payload,
+        &[&payload],
         3,
     )
     .await

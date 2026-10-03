@@ -149,12 +149,13 @@ pub async fn hook_calls(
     rup: &Path,
     socket: &Path,
     id: &str,
-    payload: &Path,
+    payloads: &[&Path],
     calls: usize,
 ) -> io::Result<Duration> {
     let started = Instant::now();
 
-    for _ in 0..calls {
+    for call in 0..calls {
+        let payload = payloads[call % payloads.len()];
         let status = Command::new(rup)
             .args(["signal", id])
             .env("RUPD_SOCKET", socket)
@@ -182,8 +183,10 @@ async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
     let claude = dir.path().join("fake-claude.sh");
     std::fs::write(&claude, "#!/bin/sh\nsleep 300\n")?;
     std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755))?;
-    let payload = dir.path().join("post-tool-use.json");
-    std::fs::write(&payload, r#"{"hook_event_name":"PostToolUse"}"#)?;
+    let pre = dir.path().join("pre-tool-use.json");
+    std::fs::write(&pre, r#"{"hook_event_name":"PreToolUse"}"#)?;
+    let post = dir.path().join("post-tool-use.json");
+    std::fs::write(&post, r#"{"hook_event_name":"PostToolUse"}"#)?;
 
     let mut child = Command::new(rupd)
         .arg(dir.path())
@@ -210,9 +213,10 @@ async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
         .as_str()
         .ok_or_else(|| io::Error::other("agent.spawn returned no id"))?;
 
-    let elapsed = hook_calls(rup, &socket, id, &payload, HOOK_LOOP_CALLS).await?;
+    let elapsed = hook_calls(rup, &socket, id, &[&pre, &post], HOOK_LOOP_CALLS).await;
+    ask(&client, "rail.remove", json!({ "id": id })).await?;
 
-    Ok(ms(elapsed))
+    Ok(ms(elapsed?))
 }
 
 /// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Groups on the Rail.
