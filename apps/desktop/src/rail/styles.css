@@ -16,6 +16,10 @@
   scroll-margin-bottom: var(--rail-actions-height);
 }
 
+.rail-fold {
+  min-height: 28px;
+}
+
 .rail-row[data-selected="true"] {
   background: rgba(0, 0, 0, 0.05);
 }
