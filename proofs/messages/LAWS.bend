@@ -5,6 +5,8 @@ import ./spec.bend as S
 # Laws of crates/messages for one receiver, stated over every schedule (a List<Ev>) of model.bend's pure `step`.
 # Human-written. A Builder never edits this file; a law may only become stronger.
 # Not stated yet: M8 (escalation terminates) and M9 (restart is a replay) need the escalation chain and the store in the model.
+# Stated in part only: M4 (the typed list only grows at its end; B7's ties-by-id and held-never-blocks are not), M5 (disjointness;
+# that ids never change status and rise by one is only counted by M6).
 
 # M1: a Message is typed at most once.
 law m1_final_and_at_most_once:
@@ -38,10 +40,12 @@ law m6_no_silent_loss:
   for evs: +List<M.Ev>
   {Nat.add(1n, Nat.add(S.len(S.queue(S.world(evs))), Nat.add(S.len(S.held_af(S.world(evs))), Nat.add(S.len(S.held_tk(S.world(evs))), Nat.add(S.len(S.typed(S.world(evs))), S.len(S.dropped(S.world(evs)))))))) == S.next_id(S.world(evs)) : Nat}
 
-# M7: once the receiver is gone, nothing is pending and nothing waits on a Takeover.
+# M7: once the receiver is gone, nothing is pending and nothing waits on a Takeover, and a later send changes nothing (CONFLICT).
 law m7_receiver_gone:
   for evs: +List<M.Ev>
-  {S.implies(S.gone(S.world(evs)), Bool.and(S.is_nil(S.queue(S.world(evs))), S.is_nil(S.held_tk(S.world(evs))))) == True{} : Bool}
+  for fu: Bool
+  for r: M.Route
+  {Bool.and(S.implies(S.gone(S.world(evs)), Bool.and(S.is_nil(S.queue(S.world(evs))), S.is_nil(S.held_tk(S.world(evs))))), S.implies(S.gone(S.world(evs)), Nat.is_eq(S.next_id(M.step(M.Send{fu, r}, S.world(evs))), S.next_id(S.world(evs))))) == True{} : Bool}
 
 # M10: under the fairness assumption that a live receiver turns idle again (cycle), every pending Message is typed.
 # Without the assumption nothing is typed from a receiver that stays busy.
