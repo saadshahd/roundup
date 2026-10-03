@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Prove the six laws of `proofs/messages/LAWS.bend` for scenarios V2, V3 and V4 in `scenarios/proofs.md`. It starts after the spike V5 (`proofs-spike.md`) has an outcome, then after the Architect's LAWS.bend PR and the first `crates/messages` PR (the pure `step`, V4) are on main.
+You are a Builder (`.agents/builder.md`). Prove the ten laws of `proofs/messages/LAWS.bend` for scenarios V2, V3 and V4 in `scenarios/proofs.md`. It starts after the spike V5 (`proofs-spike.md`) has an outcome, then after the Architect's LAWS.bend PR and the first `crates/messages` PR (the pure `step`, V4) are on main.
 
 Scope: `proofs/messages/model.bend`, `proofs/messages/PROOF.bend`, the `inv_` tests in `crates/messages/tests/**`, the `just proofs` and `just proofs-setup` recipes in `justfile`, and `proofs/BEND_VERSION`. You never edit `LAWS.bend` or `mutants/`.
 
@@ -9,4 +9,4 @@ Build, in order, failing test first:
 4. `inv_<law name>` Rust tests that replay the event sequences each law quantifies over (fixed seed, at most 6 events and 3 Messages) against `step`, and a check that the transition names in `step` and `model.bend` are the same set.
 5. `just proofs` runs `bend proofs/messages/PROOF.bend` and the Quint check (when `model.qnt` exists), prints `ALL PROOFS CHECK`, exits 0 only if all pass, and fails on a missing file, `@unsafe`, `?TODO` or a law with no def; `just check` runs it. Each mutant in `mutants/` must make it print `SOME PROOFS FAIL` naming its law.
 
-The PR body says "Serves PRINCIPLES.md P1", pastes the last line of `just proofs`, and says Bend proves `model.bend`, not the Rust. Every commit carries `Author-Agent: <your id>`. Observer: `just check` green with `just proofs` inside it. Report: what changed, any law that would not go through, the PR number.
+The PR body says "Serves PRINCIPLES.md P1", pastes the last line of `just proofs`, and says Bend proves `model.bend`, not the Rust. Every commit carries `Author-Agent: <your id>`. Also add to `loop/rules.test.sh` the V7 test: `.agents/reviewer.md` and `.agents/architect.md` each contain the proof-checking rule text (grep for `just proofs` and `LAWS.bend` in the first, `M1 to M10` in the second). Observer: `just check` green with `just proofs` inside it. Report: what changed, any law that would not go through, the PR number.
