@@ -17,6 +17,15 @@ describe("u133 one focus ring rule", () => {
     expect(bare[0]?.body).toMatch(/outline-offset:\s*1px/);
   });
 
+  it("u133_the_ring_rule_comes_after_every_all_unset_rule_so_a_reset_button_keeps_its_ring", () => {
+    const all = rules(sheetNamed("/src/styles.css"));
+    const ring = all.findIndex((rule) => rule.selector === ":focus-visible");
+    const resets = all.flatMap((rule, index) => (/\ball:\s*unset\b/.test(rule.body) ? [index] : []));
+
+    expect(resets.length).toBeGreaterThan(0);
+    expect(ring).toBeGreaterThan(Math.max(...resets));
+  });
+
   it("u133_no_stylesheet_sets_another_outline_colour_or_removes_the_outline", () => {
     const offences = Object.entries(sheets).flatMap(([path, css]) =>
       rules(uncommented(css))
