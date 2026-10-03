@@ -73,6 +73,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U60 | an Agent's Todos under it |
   | R11, R12 | #93, keystroke probe (merged) |
   | R13 | load-aware perf comparison |
+  | V1–V7 | formal proofs of the Messages laws (`scenarios/proofs.md`); V4's pure `step` is the `V4` row of `.work/queue/architects.md`, M8 and M9 are its `V4b` row, both held by architect-b |
   | A13 | symlinked agents directory |
   | A14 | hold an early Signal until the Agent is registered |
   | A15 | clean environment for every program the Daemon starts |
@@ -98,7 +99,7 @@ Agents coordinate only through this repo: this file, `scenarios/`, PRs and their
   | U80–U99 | `scenarios/ui-surfaces.md`, writer-ui-surfaces |
   | U100–U129 | `scenarios/ui-*.md`, architect-b (U100 `ui-persist.md`, U101–U102 `ui-daily.md`, U103–U104 `ui-reload.md`, U105–U110 `ui-attention.md`, U112 `ui-shelf.md`) |
   | U130–U137 | `scenarios/ui-visual.md`, architect visual-system |
-  | U138–U140 | `scenarios/ui-keyboard.md`, architect-c (ux-auditor-1's keyboard sweep: complete focus, Todo edit keys, F2 on the focused row) |
+  | U138–U141 | `scenarios/ui-keyboard.md`, architect-c (ux-auditor-1's keyboard sweep: complete focus, Todo edit keys, F2 on the focused row, Pad append scroll) |
   | G1–G9 | `scenarios/worktrees.md`, architect-c (G1–G7 written; G8–G9 reserved for the UI half) |
   | B1–B29 | `scenarios/messages.md`, architect-b (B24–B27 from the anchor rules; B25, B26, B27 are spikes) |
   | L44–L49 | `scenarios/loop.md`: merge policy, `loop/rules.sh` `class`, `rounds`, `merge-ready`, `revert-due`, `dispatch` and stall kind f (rows below) |

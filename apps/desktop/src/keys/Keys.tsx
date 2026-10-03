@@ -53,12 +53,8 @@ export const Keys = () => {
     }
   };
 
-  const onRename = (): void => {
-    const id = rail.selected();
-
-    if (id === null) return;
-
-    rowElement(id)?.querySelector(".name")?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  const onRename = (row: HTMLElement): void => {
+    row.querySelector(".name")?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
   };
 
   const onKey = (press: KeyboardEvent): void => {
@@ -80,7 +76,7 @@ export const Keys = () => {
       onArrow(press.target, press.key === "ArrowLeft" ? "left" : "right");
     } else if (press.key === "F2") {
       press.preventDefault();
-      onRename();
+      onRename(press.target);
     }
   };
 
