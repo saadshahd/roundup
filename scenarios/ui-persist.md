@@ -1,5 +1,7 @@
 # UI: the Rail's layout survives a restart (U100)
 
+Module: `apps/desktop` (the webview). Ids: U100.
+
 Webview only. No App command, no Daemon method and nothing under `contracts/` changes: the webview keeps this state in its own storage, per Project path. `docs/motion.md` has no row for it, because nothing animates.
 
 **U100 the Rail's layout survives a restart.** Given an open Project whose Rail has a selected row and one or more collapsed Groups or Meta-agents (U3, U8), when the webview is closed and opened again on the same Project path, or reopens it after `daemon-exited` (S5, U37), then after the first `rail.tree` the same row is selected, its Terminal shows as a click on it would (U6), and the same nodes are collapsed (U8), all in the frame that first shows the tree: no expand, collapse or scroll animation runs for it, and no row shows expanded and then collapses. Before that tree arrives nothing is selected and nothing is drawn from the saved state.
