@@ -35,26 +35,45 @@ type Holder = {
   after: number | null;
   restoring: boolean;
   complete: boolean;
-  snapshotFailed: boolean;
   lostOutput: boolean;
   shownSize: Size | null;
+};
+
+type FailureEntry = { message: string; order: number };
+
+type TerminalFailures = { snapshot: FailureEntry | null; live: FailureEntry | null };
+
+const newestFailure = (state: TerminalFailures | undefined): FailureEntry | null => {
+  if (!state?.snapshot) return state?.live ?? null;
+
+  if (!state.live) return state.snapshot;
+
+  return state.snapshot.order > state.live.order ? state.snapshot : state.live;
 };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
   const { app, output, rail, daemonExit } = connected;
   const holders = new Map<string, Holder>();
-  const [failures, setFailures] = createSignal(new Map<string, string>());
+  const [failures, setFailures] = createSignal(new Map<string, TerminalFailures>());
+  let failureOrder = 0;
   let disposed = false;
 
-  const setFailure = (id: string, message: string | null): void => {
+  const setFailure = (id: string, kind: keyof TerminalFailures, message: string | null): void => {
     setFailures((current) => {
-      if ((current.get(id) ?? null) === message) return current;
+      const previous = current.get(id) ?? { snapshot: null, live: null };
+
+      if (message === null && previous[kind] === null) return current;
+
+      const state: TerminalFailures = {
+        ...previous,
+        [kind]: message === null ? null : { message, order: ++failureOrder },
+      };
 
       const next = new Map(current);
 
       next.delete(id);
 
-      if (message !== null) next.set(id, message);
+      if (state.snapshot !== null || state.live !== null) next.set(id, state);
 
       return next;
     });
@@ -115,7 +134,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         if (!(thrown instanceof Error)) throw thrown;
 
         takeFirst(holder);
-        setFailure(id, `terminal.output: ${thrown.message}`);
+        setFailure(id, "live", `terminal.output: ${thrown.message}`);
       }
     }
   };
@@ -138,15 +157,13 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       holder.emulator.write(bytes, () => requestAnimationFrame(() => reflow(id, holder)));
       holder.after = snapshot.after;
       holder.complete = true;
-      holder.snapshotFailed = false;
-      setFailure(id, null);
+      setFailure(id, "snapshot", null);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
       if (disposed) return;
 
-      holder.snapshotFailed = true;
-      setFailure(id, `terminal.snapshot: ${thrown.message}`);
+      setFailure(id, "snapshot", `terminal.snapshot: ${thrown.message}`);
 
       if (!holder.complete) holder.after = holder.pending[0]?.offset ?? 0;
 
@@ -177,11 +194,11 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     try {
       await call;
 
-      if (!holders.get(id)?.snapshotFailed) setFailure(id, null);
+      setFailure(id, "live", null);
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
-      setFailure(id, thrown.message);
+      setFailure(id, "live", thrown.message);
     }
   };
 
@@ -229,7 +246,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
     const holder: Holder = {
       emulator, atBottom, returnToBottom, pending: [], pendingChars: 0,
-      after: null, restoring: false, complete: false, snapshotFailed: false, lostOutput: false, shownSize: null,
+      after: null, restoring: false, complete: false, lostOutput: false, shownSize: null,
     };
 
     holders.set(id, holder);
@@ -270,7 +287,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 
-      setFailure(chunk.id, `terminal.output: ${thrown.message}`);
+      setFailure(chunk.id, "live", `terminal.output: ${thrown.message}`);
     }
   });
 
@@ -283,13 +300,17 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     failure: (id) => {
       const current = failures();
 
-      if (id !== null) return current.get(id) ?? null;
+      if (id !== null) return newestFailure(current.get(id))?.message ?? null;
 
-      let latest: string | null = null;
+      let latest: FailureEntry | null = null;
 
-      for (const message of current.values()) latest = message;
+      for (const state of current.values()) {
+        const failure = newestFailure(state);
 
-      return latest;
+        if (failure && (!latest || failure.order > latest.order)) latest = failure;
+      }
+
+      return latest?.message ?? null;
     },
     dispose: () => {
       disposed = true;

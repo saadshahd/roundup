@@ -289,6 +289,29 @@ describe("u103 a reloaded pane shows the screen", () => {
     expect(log()).toEqual([]);
   });
 
+  it("u103_a_resolved_newer_resize_failure_reveals_the_older_snapshot_failure", async () => {
+    const resizes: ((reply: Error | null) => void)[] = [];
+
+    const { pending, snapshots } = await mount(undefined, undefined, (app) => {
+      app.handlers["terminal.resize"] = () => new Promise<null>((resolve, reject) => {
+        resizes.push((reply) => reply instanceof Error ? reject(reply) : resolve(null));
+      });
+    });
+
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+    await vi.waitFor(() => expect(resizes).toHaveLength(1));
+    pending[0]?.(new Error("snapshot failed"));
+    await screen.findByText("✕ terminal.snapshot: snapshot failed");
+    resizes[0]?.(new Error("resize failed"));
+    await screen.findByText("✕ resize failed");
+
+    window.dispatchEvent(new Event("resize"));
+    await vi.waitFor(() => expect(resizes).toHaveLength(2));
+    resizes[1]?.(null);
+    await vi.waitFor(() => expect(screen.getByText("✕ terminal.snapshot: snapshot failed")).toBeTruthy());
+    expect(screen.queryByText("✕ resize failed")).toBeNull();
+  });
+
   it("u103_output_held_during_a_failed_initial_snapshot_continues_as_live_output", async () => {
     const { app, pending, snapshots, log } = await mount();
 
