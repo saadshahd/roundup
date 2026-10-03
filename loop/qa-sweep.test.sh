@@ -154,13 +154,20 @@ if [[ " $* " == *" screenshot "* ]]; then
     clip) script='document.querySelector("[aria-label=centre]").style.clipPath = "inset(50%)"' ;;
     mask) script='document.querySelector("[aria-label=centre]").style.maskImage = "linear-gradient(transparent, transparent)"' ;;
     ancestor-mask) script='document.querySelector("[aria-label=centre]").parentElement.style.maskImage = "linear-gradient(transparent, transparent)"' ;;
+    filter) script='document.querySelector("[aria-label=centre]").style.filter = "opacity(0)"' ;;
+    ancestor-filter) script='document.querySelector("[aria-label=centre]").parentElement.style.filter = "opacity(0)"' ;;
+    opacity) script='document.querySelector("[aria-label=centre]").style.opacity = "0"' ;;
+    ancestor-opacity) script='document.querySelector("[aria-label=centre]").parentElement.style.opacity = "0"' ;;
+    visibility) script='document.querySelector("[aria-label=centre]").style.visibility = "hidden"' ;;
+    ancestor-visibility) script='document.querySelector("[aria-label=centre]").parentElement.style.visibility = "hidden"' ;;
   esac
   "$QA_SWEEP_REAL_BROWSER" "${@:1:2}" eval "$script" >/dev/null
 fi
 exec "$QA_SWEEP_REAL_BROWSER" "$@"
 LIVE_BROWSER
     chmod +x "$scratch/live-bin/agent-browser"
-    for hide in clip mask ancestor-mask; do
+    read -r -a hides <<< "${QA_SWEEP_LIVE_CASES:-clip mask ancestor-mask filter ancestor-filter opacity ancestor-opacity visibility ancestor-visibility}"
+    for hide in "${hides[@]}"; do
       rm -rf "$QA_SWEEP_OUT"
       if PATH="$scratch/live-bin:${PATH#*:}" QA_SWEEP_REAL_BROWSER="$real_browser" QA_SWEEP_VISUAL_HIDE="$hide" QA_SWEEP_PORT="$port" env -u QA_SWEEP_URL "$root/loop/qa-sweep.sh" > "$scratch/$hide.log"; then
         echo "$hide centre returned green" >&2
