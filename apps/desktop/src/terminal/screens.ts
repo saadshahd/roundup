@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { OutputEvent } from "@contracts/terminal/OutputEvent";
 import type { ConnectedProject } from "../state/connectedProject";
+import { MAX_HELD_CHARS } from "../state/output";
 import { fromBase64, toBase64 } from "./base64";
 import type { Emulator, EmulatorFactory, Size } from "./emulator";
 
@@ -31,9 +32,11 @@ type Holder = {
   atBottom: Accessor<boolean>;
   returnToBottom: () => void;
   pending: OutputEvent[];
+  pendingChars: number;
   after: number | null;
   restoring: boolean;
   complete: boolean;
+  lostOutput: boolean;
 };
 
 export const createScreens = (connected: ConnectedProject, createEmulator: EmulatorFactory): Screens => {
@@ -41,6 +44,14 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
   const holders = new Map<string, Holder>();
   const [failure, setFailure] = createSignal<string | null>(null);
   let disposed = false;
+
+  const takeFirst = (holder: Holder): OutputEvent | undefined => {
+    const chunk = holder.pending.shift();
+
+    if (chunk) holder.pendingChars -= chunk.data.length;
+
+    return chunk;
+  };
 
   const drain = (id: string, holder: Holder): void => {
     if (holder.restoring || holder.after === null || disposed) return;
@@ -55,7 +66,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
         const end = chunk.offset + bytes.length;
 
         if (end <= holder.after) {
-          holder.pending.shift();
+          takeFirst(holder);
 
           continue;
         }
@@ -68,11 +79,11 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
 
         holder.emulator.write(bytes.subarray(holder.after - chunk.offset));
         holder.after = end;
-        holder.pending.shift();
+        takeFirst(holder);
       } catch (thrown) {
         if (!(thrown instanceof Error)) throw thrown;
 
-        holder.pending.shift();
+        takeFirst(holder);
         setFailure(`terminal.output: ${thrown.message}`);
       }
     }
@@ -114,7 +125,13 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     }
 
     holder.restoring = false;
-    drain(id, holder);
+
+    if (holder.lostOutput) {
+      holder.lostOutput = false;
+      void restore(id, holder);
+    } else {
+      drain(id, holder);
+    }
   };
 
   const exited = (id: string): boolean => {
@@ -176,7 +193,8 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       if (!writing) void flush();
     });
     const holder: Holder = {
-      emulator, atBottom, returnToBottom, pending: [], after: null, restoring: false, complete: false,
+      emulator, atBottom, returnToBottom, pending: [], pendingChars: 0,
+      after: null, restoring: false, complete: false, lostOutput: false,
     };
 
     holders.set(id, holder);
@@ -192,7 +210,19 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
       const holder = holderFor(chunk.id);
 
       holder.pending.push(chunk);
-      drain(chunk.id, holder);
+      holder.pendingChars += chunk.data.length;
+
+      while (holder.pendingChars > MAX_HELD_CHARS) {
+        takeFirst(holder);
+        holder.lostOutput = true;
+      }
+
+      if (holder.lostOutput && !holder.restoring) {
+        holder.lostOutput = false;
+        void restore(chunk.id, holder);
+      } else {
+        drain(chunk.id, holder);
+      }
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 

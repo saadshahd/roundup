@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as xtermModule from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
 import type { Event as DaemonEvent } from "@contracts/Event";
-import type { OutputEvent } from "@contracts/terminal/OutputEvent";
 import { ConnectedProjectContext } from "../state/connectedProject";
 import { event, info, node, agent } from "../testing/nodes";
 import { connectFakeProject } from "./paneHarness";
@@ -23,9 +22,9 @@ const snapshotOf = (text: string, after: number, size: Size = { cols: 100, rows:
 });
 
 const chunk = (id: string, text: string, offset: number): DaemonEvent =>
-  event({ name: "terminal.output", data: { id, data: toBase64(new TextEncoder().encode(text)), offset } as OutputEvent });
+  event({ name: "terminal.output", data: { id, data: toBase64(new TextEncoder().encode(text)), offset } });
 
-type Recorder = Emulator & { setSize(size: Size): void; log: string[] };
+type Recorder = Emulator & { log: string[] };
 
 /** Records, in order, `size <cols>x<rows>` and each written text. */
 const recordingEmulators = () => {
@@ -133,6 +132,20 @@ describe("u103 a reloaded pane shows the screen", () => {
     await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
     pending[0]?.(snapshotOf("", 0));
     await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+  });
+
+  it("u103_output_held_during_a_slow_snapshot_stays_bounded_and_resnapshots_after_a_dropped_prefix", async () => {
+    const { app, pending, snapshots } = await mount();
+    const large = "x".repeat(400_000);
+
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+    app.emit(chunk("t-a", large, 0));
+    app.emit(chunk("t-a", large, large.length));
+    app.emit(chunk("t-a", large, large.length * 2));
+    pending[0]?.(snapshotOf("", 0));
+
+    await vi.waitFor(() => expect(snapshots()).toHaveLength(2));
+    pending[1]?.(snapshotOf("complete", large.length * 3));
   });
 
   it("u103_an_event_at_or_below_the_snapshot_is_dropped_and_a_straddling_one_keeps_only_its_tail", async () => {
