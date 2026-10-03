@@ -24,7 +24,7 @@ case "$*" in
 esac
 if [ -f "$DATA_DIR/gh-fail-$file" ]; then exit 9; fi
 if [ -f "$DATA_DIR/gh-unprotected-$file" ]; then echo 'gh: Branch not protected (HTTP 404)' >&2; exit 1; fi
-if [ -f "$DATA_DIR/gh-hang-$file" ]; then sleep 3; fi
+if [ -f "$DATA_DIR/gh-hang-$file" ]; then sleep 4; fi
 cat "$DATA_DIR/$file.json"
 GH
   cat >"$dir/bin/boxd" <<'BOXD'
@@ -32,7 +32,7 @@ GH
 set -euo pipefail
 [ "$*" = 'machine list --json' ] || exit 9
 if [ -f "$DATA_DIR/boxd-fail" ]; then exit 9; fi
-if [ -f "$DATA_DIR/boxd-hang" ]; then sleep 3; fi
+if [ -f "$DATA_DIR/boxd-hang" ]; then sleep 4; fi
 cat "$DATA_DIR/machines.json"
 BOXD
   chmod +x "$dir/bin/gh" "$dir/bin/boxd"
@@ -45,7 +45,7 @@ BOXD
   printf '%s\n' '[{"check_runs":[{"name":"check","conclusion":"success","completed_at":"2026-10-03T11:59:00Z","id":1}]}]' >"$dir/data/pr-checks-1.json"
   printf '%s\n' '[{"name":"ru-a"},{"name":"ru-b"},{"name":"ru-c"},{"name":"ru-d"},{"name":"ru-e"},{"name":"ru-f"},{"name":"ru-g"},{"name":"ru-h"}]' >"$dir/data/machines.json"
 }
-run() { (cd "$dir" && PATH="$dir/bin:$PATH" DATA_DIR="$dir/data" L28_NOW="$now" BOXD_GH_TIMEOUT=1 loop/stalls.sh check); }
+run() { (cd "$dir" && PATH="$dir/bin:$PATH" DATA_DIR="$dir/data" L28_NOW="$now" BOXD_GH_TIMEOUT=2 loop/stalls.sh check); }
 expect() {
   local name=$1 want=$2 got=0 output
   output=$(run 2>&1) || got=$?
@@ -106,15 +106,28 @@ printf '%s\n' "[[{\"body\":\"VERDICT: reject\\nHead: $head_sha\\nDiff-base: $oth
 expect rejects_with_diff_base_still_count 1
 [ -f "$dir/loop/out/stalls/c-1" ] || { echo 'FAIL: l28_diff-base rejected verdicts lost'; failures=$((failures+1)); }
 fixture
+printf '%s\n' "[[{\"body\":\"VERDICT: reject — first finding\\n$head_sha\\nDiff-base: $other_sha\\nReviewed-by-Agent: r-1\"},{\"body\":\"VERDICT: reject — second finding\\n$head_sha\\nDiff-base: $other_sha\\nReviewed-by-Agent: r-2\"},{\"body\":\"VERDICT: reject — third finding\\n$head_sha\\nDiff-base: $other_sha\\nReviewed-by-Agent: r-3\"}]]" >"$dir/data/comments-1.json"
+expect bare_reviewed_head_with_diff_base_counts 1
+[ -f "$dir/loop/out/stalls/c-1" ] || { echo 'FAIL: l28_bare reviewed head lost'; failures=$((failures+1)); }
+fixture
+printf '%s\n' "[[{\"body\":\"VERDICT: reject\\n$other_sha\\nDiff-base: $head_sha\\nReviewed-by-Agent: r-1\"},{\"body\":\"VERDICT: reject\\n$other_sha\\nDiff-base: $head_sha\\nReviewed-by-Agent: r-2\"},{\"body\":\"VERDICT: reject\\n$other_sha\\nDiff-base: $head_sha\\nReviewed-by-Agent: r-3\"}]]" >"$dir/data/comments-1.json"
+expect diff_base_is_not_reviewed_head 0
+fixture
 printf '%s\n' '[]' >"$dir/data/machines.json"
 python3 - "$dir/data/pulls.json" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('11:50:00','11:39:00'))
 PY
-printf '%s\n' "[[{\"sha\":\"$other_sha\",\"commit\":{\"message\":\"work\\n\\nAuthor-Agent: builder-1\"}},{\"sha\":\"$head_sha\",\"parents\":[{\"sha\":\"$other_sha\"}],\"commit\":{\"message\":\"approve\\n\\nReviewed-by-Agent: reviewer-1\"}}]]" >"$dir/data/commits-1.json"
+printf '%s\n' "[[{\"sha\":\"$other_sha\",\"commit\":{\"message\":\"work\\n\\nAuthor-Agent: builder-1\",\"tree\":{\"sha\":\"1111111111111111111111111111111111111111\"}}},{\"sha\":\"$head_sha\",\"parents\":[{\"sha\":\"$other_sha\"}],\"commit\":{\"message\":\"approve\\n\\nReviewed-by-Agent: reviewer-1\",\"tree\":{\"sha\":\"1111111111111111111111111111111111111111\"}}}]]" >"$dir/data/commits-1.json"
 printf '%s\n' "[[{\"body\":\"VERDICT: approve\\nHead reviewed: $other_sha\\nReviewed-by-Agent: reviewer-1\\nDiff-base: cccccccccccccccccccccccccccccccccccccccc\"}]]" >"$dir/data/comments-1.json"
 expect approval_commit_parent_is_reviewed_head 1
 [ -f "$dir/loop/out/stalls/b-1" ] && [ ! -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_approval commit reported wrong stall'; failures=$((failures+1)); }
+python3 - "$dir/data/commits-1.json" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]); s=p.read_text(); p.write_text(s.replace('1111111111111111111111111111111111111111', '2222222222222222222222222222222222222222', 1))
+PY
+expect changed_tree_does_not_carry_approval 1
+[ -f "$dir/loop/out/stalls/e-1" ] && [ ! -f "$dir/loop/out/stalls/b-1" ] || { echo 'FAIL: l28_nonempty approval carried'; failures=$((failures+1)); }
 printf '%s\n' '[{"name":"ru-a"},{"name":"ru-b"},{"name":"ru-c"},{"name":"ru-d"},{"name":"ru-e"},{"name":"ru-f"},{"name":"ru-g"},{"name":"ru-h"}]' >"$dir/data/machines.json"
 printf '%s\n' "[[{\"body\":\"VERDICT: approve\\nHead reviewed: cccccccccccccccccccccccccccccccccccccccc\\nComparison: $head_sha\\nReviewed-by-Agent: reviewer-1\"}]]" >"$dir/data/comments-1.json"
 expect reviewed_head_marker_ignores_comparison 0
@@ -124,6 +137,9 @@ printf '%s\n' '[]' >"$dir/data/machines.json"
 printf '%s\n' '[[{"body":"VERDICT: approve\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: builder-1"}]]' >"$dir/data/comments-1.json"
 expect self_verdict_does_not_hide_vm_stall 1
 [ -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_self verdict hid e'; failures=$((failures+1)); }
+printf '%s\n' '[[{"body":"VERDICT: approve\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: reviewer-1\nReviewed-by-Agent: builder-1"}]]' >"$dir/data/comments-1.json"
+expect two_reviewers_do_not_make_an_independent_verdict 1
+[ -f "$dir/loop/out/stalls/e-1" ] || { echo 'FAIL: l28_two reviewer lines hid e'; failures=$((failures+1)); }
 fixture
 printf '%s\n' '[[{"commit":{"message":"work\n\nAuthor-Agent: Build.Agent_1"}}]]' >"$dir/data/commits-1.json"
 printf '%s\n' '[[{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.One_1"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.Two_2"},{"body":"VERDICT: reject\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nReviewed-by-Agent: Review.Three_3"}]]' >"$dir/data/comments-1.json"

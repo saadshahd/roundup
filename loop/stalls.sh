@@ -21,7 +21,7 @@ STALLS = ROOT / 'stalls'
 VERDICTS = ROOT / 'verdicts'
 SHA = re.compile(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])')
 AUTHOR = re.compile(r'^Author-Agent: ([A-Za-z0-9_.-]+)$', re.M)
-REVIEWER = re.compile(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)$', re.M)
+REVIEWER = re.compile(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)[ \t]*$', re.M)
 RED = {'failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale'}
 
 
@@ -68,20 +68,32 @@ def failed_names(runs, required):
     return {name for name, (_, conclusion) in latest.items() if conclusion in RED}
 
 
-def mentioned_heads(body):
+def reviewed_head(body):
     explicit = re.findall(r'^(?:Reviewed[- ]head|Head(?: reviewed)?): ([0-9a-f]{40})[ \t]*$', body, re.M)
-    return set(explicit) if explicit else set(SHA.findall(body))
+    if explicit:
+        return explicit[0] if len(explicit) == 1 else None
+    for line in body.splitlines():
+        if line.lstrip().startswith('Diff-base:'):
+            continue
+        found = SHA.search(line)
+        if found:
+            return found.group()
+    return None
+
+
+def reviewer_id(body):
+    ids = REVIEWER.findall(body)
+    return ids[0] if len(ids) == 1 else None
 
 
 def verdicts(comments, authors, reviewable_heads):
     valid = []
     for comment in comments:
         body = comment['body']
-        first = body.splitlines()[0] if body else ''
-        reviewer = REVIEWER.search(body)
-        named = mentioned_heads(body)
-        if first in ('VERDICT: approve', 'VERDICT: reject') and len(named) == 1 and named <= reviewable_heads and reviewer and reviewer.group(1) not in authors:
-            valid.append(first)
+        kind = re.match(r'^VERDICT: (approve|reject)\b', body)
+        reviewer = reviewer_id(body)
+        if kind and reviewed_head(body) in reviewable_heads and reviewer and reviewer not in authors:
+            valid.append(kind.group(1))
     return valid
 
 
@@ -119,9 +131,15 @@ try:
         author_ids = [author for commit in commits for author in AUTHOR.findall(commit['commit']['message'])]
         known_heads = {pr['head']['sha']} | {commit['sha'] for commit in commits if 'sha' in commit}
         reviewable_heads = {pr['head']['sha']}
-        approval = next((commit for commit in commits if commit.get('sha') == pr['head']['sha'] and REVIEWER.search(commit['commit']['message'])), None)
-        if approval and len(approval.get('parents', [])) == 1:
-            reviewable_heads.add(approval['parents'][0]['sha'])
+        commits_by_sha = {commit['sha']: commit for commit in commits if 'sha' in commit}
+        approval = commits_by_sha.get(pr['head']['sha'])
+        if approval:
+            message = approval['commit']['message']
+            parents = approval.get('parents', [])
+            if reviewer_id(message) and not AUTHOR.search(message) and len(parents) == 1:
+                parent = commits_by_sha.get(parents[0]['sha'])
+                if parent and approval['commit']['tree']['sha'] == parent['commit']['tree']['sha']:
+                    reviewable_heads.add(parents[0]['sha'])
         pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], known_heads, reviewable_heads, failed_names(runs, required)))
     machines = call('boxd', 'machine', 'list', '--json')
     vm_count = sum(machine['name'].startswith('ru-') for machine in machines)
@@ -136,15 +154,14 @@ try:
         number = pr['number']
         head = pr['head']['sha']
         valid = verdicts(comments, authors, reviewable_heads)
-        if valid and valid[-1] == 'VERDICT: approve' and now - when(pr['created_at']) >= dt.timedelta(minutes=20):
+        if valid and valid[-1] == 'approve' and now - when(pr['created_at']) >= dt.timedelta(minutes=20):
             record('b', number, 'Merger')
         all_rejects = 0
         for comment in comments:
             body = comment['body']
-            first = body.splitlines()[0] if body else ''
-            if first == 'VERDICT: reject':
-                reviewer = REVIEWER.search(body)
-                if reviewer and reviewer.group(1) not in authors and mentioned_heads(body) & known_heads:
+            if re.match(r'^VERDICT: reject\b', body):
+                reviewer = reviewer_id(body)
+                if reviewer and reviewer not in authors and reviewed_head(body) in known_heads:
                     all_rejects += 1
         if all_rejects >= 3:
             record('c', number, 'Architect', author_id)
