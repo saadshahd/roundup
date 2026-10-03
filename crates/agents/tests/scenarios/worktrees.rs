@@ -232,6 +232,25 @@ async fn g2_exclude_worktrees_is_added_once() {
 }
 
 #[tokio::test]
+async fn g2_a_project_whose_git_is_a_file_gets_the_exclude_line_in_the_real_git_dir() {
+    let f = Fixture::in_git_project("sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let elsewhere = tempfile::tempdir().unwrap();
+    let git_dir = elsewhere.path().join("gitdir");
+    std::fs::rename(f.dir.path().join(".git"), &git_dir).unwrap();
+    std::fs::write(
+        f.dir.path().join(".git"),
+        format!("gitdir: {}\n", git_dir.display()),
+    )
+    .unwrap();
+
+    f.spawn(None, None).await.unwrap();
+
+    let exclude = std::fs::read_to_string(git_dir.join("info/exclude")).unwrap();
+    assert!(exclude.lines().any(|line| line.trim() == ".roundup/"));
+}
+
+#[tokio::test]
 async fn g2_cwd_outside_project_is_invalid_params() {
     let f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
