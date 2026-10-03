@@ -34,6 +34,7 @@ EVENTS=$OUT/events.log
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)-$$
 PROVISION_RETRY_WITHIN=${BOXD_RETRY_WITHIN:-30}
 VM=
+AGENT_KIND=claude
 PARTIAL_TMP=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
@@ -155,6 +156,22 @@ require_claude() {
   [ ! -e "$PAUSED" ] || pause "paused since $(cat "$PAUSED")"
 }
 
+require_codex() {
+  mkdir -p "$OUT/patches" "$OUT/runs" "$OUT/verdicts"
+  [ ! -e "$PAUSED" ] || pause "paused since $(cat "$PAUSED")"
+  [[ ${BOXD_CODEX_AUTH_VM:-} =~ ^ru-[a-z0-9][a-z0-9-]*$ ]] || { echo "boxd.sh: BOXD_CODEX_AUTH_VM must name a ru- login holder" >&2; exit 2; }
+  boxd machine exec "$BOXD_CODEX_AUTH_VM" -- 'test -s ~/.codex/auth.json && codex login status >/dev/null' </dev/null >/dev/null || { echo "boxd.sh: Codex login is unavailable on $BOXD_CODEX_AUTH_VM" >&2; exit 1; }
+}
+
+transfer_codex_login() {
+  local source=$BOXD_CODEX_AUTH_VM
+  [ "$source" != "$VM" ] || { echo "boxd.sh: Codex login holder and Builder VM must differ" >&2; return 1; }
+  boxd machine cp "$source:.codex/auth.json" - 2>"$OUT/runs/$RUN_ID.auth.err" |
+    boxd machine cp - "$VM:.codex/auth.json" >/dev/null 2>>"$OUT/runs/$RUN_ID.auth.err" || { echo "boxd.sh: Codex login transfer to $VM failed" >&2; return 1; }
+  boxd machine exec "$VM" -- 'chmod 600 ~/.codex/auth.json && codex login status >/dev/null' </dev/null >/dev/null || { echo "boxd.sh: Codex login is unavailable on $VM" >&2; return 1; }
+  boxd machine exec "$VM" -- 'if gh auth status >/dev/null 2>&1; then echo "boxd.sh: GitHub login available on Builder VM" >&2; exit 1; fi; if command -v run >/dev/null && run github-app get-token >/dev/null 2>&1; then echo "boxd.sh: GitHub App available on Builder VM" >&2; exit 1; fi' </dev/null || return 1
+}
+
 # Append one line to the events log: UTC time, VM, phase, event.
 record_event() {
   mkdir -p "$OUT"
@@ -175,7 +192,10 @@ create_vm() {
   done
   # The timer outlasts everything that runs after creation (reboot wait of at most 360 s, upload, an agent run of up to AGENT_TIMEOUT, then run_check's 1800 s).
   # Own the name only once `new` succeeds, so a failed create never removes someone else's VM.
-  boxd machine new "ru-$name" --from-snapshot "$SNAPSHOT" --isolated --auto-suspend-timeout 0 --auto-destroy-timeout $VM_TTL >/dev/null </dev/null
+  local vm_args=("ru-$name" --from-snapshot "$SNAPSHOT")
+  [ "$AGENT_KIND" = codex ] || vm_args+=(--isolated)
+  vm_args+=(--auto-suspend-timeout 0 --auto-destroy-timeout "$VM_TTL")
+  boxd machine new "${vm_args[@]}" >/dev/null </dev/null
   VM="ru-$name"
   release_lock
 }
@@ -247,7 +267,7 @@ provision() {
     else
       started=$SECONDS
       set +e
-      ( set -e; upload_checkout "$name" "$base_ref" "$ref" "$prompt" )
+      ( set -e; [ "$AGENT_KIND" != codex ] || transfer_codex_login; upload_checkout "$name" "$base_ref" "$ref" "$prompt" )
       rc=$?
       set -e
       if [ "$rc" -ne 0 ]; then
@@ -262,6 +282,24 @@ provision() {
     boxd machine remove "$VM" -y >/dev/null </dev/null || echo "boxd.sh: LEAKED VM $VM; remove it by hand" >&2
     VM=
   done
+}
+
+run_codex() {
+  local stream=$1 rc=0 last
+  "$TIMEOUT_CMD" "$AGENT_TIMEOUT" boxd machine exec "$VM" --timeout "$AGENT_TIMEOUT" -- \
+    'cd ~/roundup && . ~/.cargo/env && codex exec --json --ephemeral --ignore-user-config --dangerously-bypass-approvals-and-sandbox - </tmp/prompt.md' </dev/null >"$stream" 2>"${stream%.jsonl}.err" || rc=$?
+  cat "${stream%.jsonl}.err" >&2
+  [ -s "$stream" ] || { echo "boxd.sh: Codex produced no output" >&2; return 1; }
+  last=$(tail -n 1 "$stream")
+  if jq -e '.type == "turn.failed"' <<<"$last" >/dev/null 2>&1; then
+    echo "boxd.sh: Codex turn failed: $stream" >&2
+    return 1
+  fi
+  if ! jq -e '.type == "turn.completed"' <<<"$last" >/dev/null 2>&1; then
+    echo "boxd.sh: Codex turn incomplete (exit $rc): $stream" >&2
+    return 2
+  fi
+  [ "$rc" -eq 0 ] || { echo "boxd.sh: Codex exited $rc after completion" >&2; return 1; }
 }
 
 # Run claude on the VM with /tmp/prompt.md; each event it produces lands in <stream> as it happens (L21). The
@@ -322,13 +360,21 @@ build() {
   local name=$1 prompt=$2
   validate_args "$name" "$prompt"
   local stream="$OUT/runs/$name-$RUN_ID.jsonl" patch="$OUT/patches/$name.patch" partial="$OUT/patches/$name.partial.patch" checklog="$OUT/runs/$name-$RUN_ID.check.log" agent_rc=0 check_rc=0 last
-  require_claude
+  case ${BOXD_AGENT:-claude} in
+    codex) AGENT_KIND=codex; require_codex ;;
+    claude) require_claude ;;
+    *) echo "boxd.sh: BOXD_AGENT must be codex or claude" >&2; exit 2 ;;
+  esac
   # A result file is always from the latest run: no-output and a pause leave run_agent through `exit`, never back to
   # this function. A timeout, or a run that produced events but ended with no result, returns 2 here instead, and
   # this function exits after saving the partial patch below, so an earlier run's stale patch can only be cleared here.
   rm -f "$patch" "$partial"
   provision "$name" HEAD HEAD "$prompt"
-  run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
+  if [ "$AGENT_KIND" = codex ]; then
+    run_codex "$stream" || agent_rc=$?
+  else
+    run_agent "${BOXD_MODEL:-sonnet}" "$stream" || agent_rc=$?
+  fi
   if [ "$agent_rc" -eq 2 ]; then
     # Diffed against `base`, not HEAD, so a commit the agent already made lands in the partial too; written to a
     # temp file and renamed only on success, so a failed extraction never leaves a stale empty .partial.patch.
@@ -342,6 +388,7 @@ build() {
     fi
     exit 1
   fi
+  [ "$agent_rc" -eq 0 ] || exit "$agent_rc"
   # The observer is our own check, not the Builder's claim that it passed.
   run_check >"$checklog" 2>&1 || check_rc=$?
   tail -n 15 "$checklog" >&2
@@ -349,7 +396,11 @@ build() {
   [ "$check_rc" -eq 0 ] || exit "$check_rc"
   boxd machine exec "$VM" -- 'cd ~/roundup && git add -A && { git diff --cached --quiet || git -c user.email=builder@roundup -c user.name=builder commit -qm "builder: task" -m "Author-Agent: builder"; } && git format-patch base --stdout' </dev/null >"$patch"
   last=$(tail -n 1 "$stream")
-  jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
+  if [ "$AGENT_KIND" = codex ]; then
+    jq -r '"boxd.sh: Codex complete, \(.usage.input_tokens // 0) input and \(.usage.output_tokens // 0) output tokens"' <<<"$last"
+  else
+    jq -r '"boxd.sh: \(.num_turns) turns, \(.duration_ms / 1000 | floor)s, $\(.total_cost_usd) notional"' <<<"$last"
+  fi
 }
 
 # A PR number or a branch name becomes a fetch refspec; anything else is refused before it reaches git.
