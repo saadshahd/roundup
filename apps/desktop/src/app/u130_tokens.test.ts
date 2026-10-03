@@ -37,10 +37,8 @@ const normalised = (value: string) =>
   value.startsWith("#") ? value.toLowerCase() : value.toLowerCase().replace(/\s+/g, "").replace(/\d*\.?\d+/g, (number) => String(Number(number)));
 
 // Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moved `--text` to the table's
-// `#1d1d1f` and deleted its entry. The table's `--selected` is `rgba(0,0,0,.07)`, which gives `--grey` text about
-// 4.34:1 on the band, below U4's 4.5:1 (D5); `rail/styles.css`'s PR (u130_every_token_has_the_tables_light_value_except_the_named_differences)
-// sets it to `rgba(0, 0, 0, 0.05)` instead and names this entry, until an architect settles the table's value.
-const KNOWN_DIFFERENCES = new Map<string, string>([["--selected", "rgba(0, 0, 0, 0.05)"]]);
+// `#1d1d1f` and deleted its entry; a later slice may add one.
+const KNOWN_DIFFERENCES = new Map<string, string>();
 
 function valueOf(section: string, token: string): string | undefined {
   return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
