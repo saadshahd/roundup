@@ -6,7 +6,6 @@ import { info, node } from "../testing/nodes";
 
 afterEach(cleanup);
 
-/** The selectors of every rule in `sheet` that declares `position: absolute` and names `.pane-latest`. */
 const placingSelectors = (sheet: string): string[] =>
   [...sheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter(([, , body]) => /(^|;|\s)position\s*:\s*absolute\b/.test(body!))

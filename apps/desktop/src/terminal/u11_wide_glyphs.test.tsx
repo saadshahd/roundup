@@ -7,7 +7,6 @@ afterEach(() => vi.restoreAllMocks());
 
 const write = (terminal: Terminal, data: string) => new Promise<void>((resolve) => terminal.write(data, resolve));
 
-/** The real xterm Terminal that `createXtermEmulators` builds, cursor at the origin. */
 const realTerminal = (): Terminal => {
   const spy = vi.spyOn(xtermModule, "Terminal");
 
