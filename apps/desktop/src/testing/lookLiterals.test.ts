@@ -10,6 +10,18 @@ describe("u130 the look-literal scanner", () => {
       ["background: #ffffff;", "background: #ffffff"],
       ["border-left-color: #c7c7cc;", "border-left-color: #c7c7cc"],
       ["color: red;", "color: red"],
+      ["stroke: red;", "stroke: red"],
+      ["border-left-color: red;", "border-left-color: red"],
+      ["border: 1px solid hsl(0 0% 50%);", "border: 1px solid hsl(0 0% 50%)"],
+      ["border: 1px solid #FFFFFF;", "border: 1px solid #FFFFFF"],
+      ["outline: 2px solid red;", "outline: 2px solid red"],
+      ["border-top: 1px solid black;", "border-top: 1px solid black"],
+      ["text-shadow: 0 1px red;", "text-shadow: 0 1px red"],
+      ["background-image: linear-gradient(red, blue);", "background-image: linear-gradient(red, blue)"],
+      ["background: oklch(0.5 0.1 200);", "background: oklch(0.5 0.1 200)"],
+      ["background: hwb(200 10% 10%);", "background: hwb(200 10% 10%)"],
+      ["font: 1.1em Menlo;", "font: 1.1em Menlo"],
+      ["transition-delay: 100ms;", "transition-delay: 100ms"],
       ["background: red;", "background: red"],
       ["font-size: large;", "font-size: large"],
       ["fill: hsl(0 0% 50%);", "fill: hsl(0 0% 50%)"],
@@ -48,6 +60,8 @@ describe("u130 the look-literal scanner", () => {
 
   it("u130_scanner_reads_the_last_declaration_without_a_semicolon_and_compact_rules", () => {
     expect(lookLiterals(".a { color: red }")).toEqual(["color: red"]);
+    expect(lookLiterals("color: red")).toEqual(["color: red"]);
+    expect(lookLiterals(".a{COLOR:RED}")).toEqual(["COLOR: RED"]);
     expect(lookLiterals(".a{border-radius:4px;}")).toEqual(["border-radius: 4px"]);
   });
 
@@ -56,8 +70,22 @@ describe("u130 the look-literal scanner", () => {
     expect(literals("color: var(--text) ;")).toEqual([]);
   });
 
-  it("u130_scanner_does_not_match_a_longer_property_name_or_a_custom_property", () => {
-    expect(literals("xbackground: red;\n --light: #86868b;\n --row--hover: red;")).toEqual([]);
+  it("u130_scanner_does_not_match_a_longer_property_name", () => {
+    expect(literals("xbackground: red;\n --row--hover: red;")).toEqual([]);
+  });
+
+  it("u130_scanner_flags_a_custom_property_that_holds_a_colour_or_a_time_except_the_two_slice_3_deletes", () => {
+    expect(literals("--light: #86868b;\n --lightest: #c7c7cc;")).toEqual([]);
+    expect(literals("--row-band: #123;")).toEqual(["--row-band: #123"]);
+    expect(literals("--slide: 180ms;")).toEqual(["--slide: 180ms"]);
+    expect(literals("--x: oklch(0.5 0.1 200);")).toEqual(["--x: oklch(0.5 0.1 200)"]);
+    expect(literals("--y: color-mix(in srgb, red, blue);")).toEqual(["--y: color-mix(in srgb, red, blue)"]);
+    expect(literals("--space-3: 12px;\n --mono: ui-monospace, Menlo;")).toEqual([]);
+  });
+
+  it("u130_scanner_allows_a_border_and_an_outline_that_read_tokens", () => {
+    expect(literals("background-image: linear-gradient(to right, var(--ground), var(--sunken));")).toEqual([]);
+    expect(literals("border: 1px solid var(--hairline);\n outline: 2px solid var(--accent);\n text-decoration: underline;\n border-top: none;")).toEqual([]);
   });
 
   it("u130_scanner_ignores_spacing_comments_and_the_font_family", () => {
@@ -73,6 +101,19 @@ describe("u130 the look-literal scanner", () => {
   it("u130_inline_extractor_ignores_text_outside_a_style_block_and_allows_tokens_and_ch", () => {
     expect(inlineStyleCss('<button aria-label="make #120 yours">#120</button>')).toBe("");
     expect(lookLiterals(inlineStyleCss('<p style={{ color: "var(--grey)", "padding-left": "2ch", "box-shadow": "var(--shadow-drawer)" }} />'))).toEqual([]);
+  });
+
+  it("u130_inline_scan_reads_a_template_literal_a_ternary_and_a_single_quoted_colour", () => {
+    const flagged = (pair: string) => lookLiterals(inlineStyleCss(`<i style={{ ${pair} }} />`));
+
+    expect(flagged("transition: reduced() ? \"none\" : `transform ${MS}ms ${EASING}`")).toHaveLength(1);
+    expect(flagged("transition: reduced() ? \"none\" : `transform var(--duration-drawer) ${EASING}`")).toEqual([]);
+    expect(flagged('color: hot ? "red" : "var(--text)"')).toHaveLength(1);
+    expect(flagged("transition: 'opacity var(--d) ease, transform 200ms ease'")).toHaveLength(1);
+    expect(flagged("transition: `opacity var(--d) ease, transform 200ms ease`")).toHaveLength(1);
+    expect(flagged("color: '#fff'")).toEqual(["color: #fff"]);
+    expect(flagged("color: `#fff`")).toEqual(["color: #fff"]);
+    expect(flagged('color: hot ? "var(--grey)" : "var(--text)"')).toHaveLength(1);
   });
 
   it("u130_inline_scan_flags_named_and_hsl_colours_and_em_sizes", () => {
