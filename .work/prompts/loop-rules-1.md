@@ -2,4 +2,4 @@ You are a Builder (`.agents/builder.md`). Read `AGENTS.md`, `CONTEXT.md`, `PRINC
 
 Scenarios: L33 (`base`), L44 (`class`), L45 (`rounds`).
 
-Edit only: `loop/rules.sh`, `loop/rules.test.sh`, `.github/workflows/loop.yml` (add the new steps L44 to L45 name, and nothing else), `docs/development-loop.md` (the commands table). This is the first slice of the `loop/rules.sh` chain: nothing else edits that file until it merges. Add `base`, `class` and `rounds` as `case` arms beside `size`, `trailers`, `vocab`, `delta`, reusing their helpers; do not duplicate the diff or trailer parsing already there.
+Edit only: `loop/rules.sh`, `loop/rules.test.sh`, `.github/workflows/loop.yml` (add the new steps L44 to L45 name, and nothing else), `docs/development-loop.md` (one short section for the new command; the file has no commands table). This is the first slice of the `loop/rules.sh` chain: nothing else edits that file until it merges. Add `base`, `class` and `rounds` as `case` arms beside `size`, `trailers`, `vocab`, `delta`, reusing their helpers; do not duplicate the diff or trailer parsing already there.
