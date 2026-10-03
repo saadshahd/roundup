@@ -15,6 +15,8 @@ const PadMarkdown = lazy(() => import("./PadMarkdown"));
 
 const PadEditor = lazy(() => import("./PadEditor"));
 
+const PadRichEditor = lazy(() => import("./PadRichEditor"));
+
 const PadBody = (props: {
   initial: Pad;
   pads: Accessor<readonly Pad[]>;
@@ -26,7 +28,7 @@ const PadBody = (props: {
   const [shown, setShown] = createSignal(props.initial.text);
   const [origin, setOrigin] = createSignal(props.initial.text);
   const [editing, setEditing] = createSignal(false);
-  const [mode, setMode] = createSignal<"read" | "edit" | "preview">("read");
+  const [mode, setMode] = createSignal<"read" | "edit" | "source" | "preview">("read");
   const [conflictActor, setConflictActor] = createSignal<Actor | null>(null);
   const actionFailure = createFailure();
   const [deleted, setDeleted] = createSignal(false);
@@ -158,6 +160,8 @@ const PadBody = (props: {
 
     if (next instanceof Node && next.parentElement?.closest(".pad-actions")) return;
 
+    if (next instanceof Node && next.parentElement?.closest(".pad-rich-editor")) return;
+
     void leaveField(currentDraft());
   };
 
@@ -212,6 +216,11 @@ const PadBody = (props: {
             <button type="button" onClick={() => setMode("edit")}>edit</button>
           </Show>
           <Show when={mode() === "edit"}>
+            <button type="button" onClick={() => {
+              switchingView = true;
+              editor = undefined;
+              setMode("source");
+            }}>source</button>
             <button
               type="button"
               onClick={() => {
@@ -223,6 +232,18 @@ const PadBody = (props: {
               Preview
             </button>
           </Show>
+          <Show when={mode() === "source"}>
+            <button type="button" onClick={() => {
+              switchingView = true;
+              editor = undefined;
+              setMode("edit");
+            }}>formatted</button>
+            <button type="button" onClick={() => {
+              switchingView = true;
+              editor = undefined;
+              setMode("preview");
+            }}>Preview</button>
+          </Show>
           <Show when={mode() === "preview"}>
             <button type="button" onClick={() => setMode("edit")}>edit</button>
           </Show>
@@ -233,6 +254,17 @@ const PadBody = (props: {
       </Show>
       <Suspense>
         <Show when={mode() === "edit" && ownedByUser()}>
+          <PadRichEditor
+            text={shown()}
+            onText={onText}
+            onBlur={onEditorBlur}
+            onReady={(ready) => {
+              editor = ready;
+              switchingView = false;
+            }}
+          />
+        </Show>
+        <Show when={mode() === "source" && ownedByUser()}>
           <PadEditor
             text={shown()}
             onText={onText}

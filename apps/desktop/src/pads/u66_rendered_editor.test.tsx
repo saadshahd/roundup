@@ -61,6 +61,7 @@ describe("u66 rendered Pads and a source Editor", () => {
     await openShelf([padOf("note", USER, "# Heading")]);
     await open("note");
     fireEvent.click(screen.getByRole("button", { name: "edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "source" }));
 
     const editor = await screen.findByRole("textbox", { name: "Editor" });
     expect(editor.textContent).toContain("# Heading");
@@ -97,6 +98,7 @@ describe("u66 rendered Pads and a source Editor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     await screen.findByLabelText("Preview");
     fireEvent.click(screen.getByRole("button", { name: "edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "source" }));
 
     const editor = await screen.findByRole("textbox", { name: "Editor" });
     expect(EditorView.findFromDOM(editor)?.state.doc.toString()).toBe(source);
