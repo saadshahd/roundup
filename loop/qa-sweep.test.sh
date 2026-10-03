@@ -144,25 +144,32 @@ JUST
   printf 'l52_consecutive_sweeps_release_harness_passed\n'
 
   if [[ ${QA_SWEEP_LIVE:-0} == 1 ]]; then
-    [[ -n $real_browser ]] || { echo 'agent-browser is required for live clipping test' >&2; exit 1; }
-    rm -rf "$QA_SWEEP_OUT"
+    [[ -n $real_browser ]] || { echo 'agent-browser is required for live visibility test' >&2; exit 1; }
     mkdir -p "$scratch/live-bin"
     cat > "$scratch/live-bin/agent-browser" <<'LIVE_BROWSER'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ " $* " == *" screenshot "* ]]; then
-  "$QA_SWEEP_REAL_BROWSER" "${@:1:2}" eval 'document.querySelector("[aria-label=centre]").style.clipPath = "inset(50%)"' >/dev/null
+  case "$QA_SWEEP_VISUAL_HIDE" in
+    clip) script='document.querySelector("[aria-label=centre]").style.clipPath = "inset(50%)"' ;;
+    mask) script='document.querySelector("[aria-label=centre]").style.maskImage = "linear-gradient(transparent, transparent)"' ;;
+    ancestor-mask) script='document.querySelector("[aria-label=centre]").parentElement.style.maskImage = "linear-gradient(transparent, transparent)"' ;;
+  esac
+  "$QA_SWEEP_REAL_BROWSER" "${@:1:2}" eval "$script" >/dev/null
 fi
 exec "$QA_SWEEP_REAL_BROWSER" "$@"
 LIVE_BROWSER
     chmod +x "$scratch/live-bin/agent-browser"
-    if PATH="$scratch/live-bin:${PATH#*:}" QA_SWEEP_REAL_BROWSER="$real_browser" QA_SWEEP_PORT="$port" env -u QA_SWEEP_URL "$root/loop/qa-sweep.sh" > "$scratch/clipped.log"; then
-      echo 'clipped centre returned green' >&2
-      exit 1
-    fi
-    record=$(find "$QA_SWEEP_OUT" -name 'sweep-*.json' -print | sort | tail -1)
-    jq -e '.findings | any(.text | contains("hidden"))' "$record" >/dev/null
-    printf 'l52_clipped_centre_fails_with_a_record_passed\n'
+    for hide in clip mask ancestor-mask; do
+      rm -rf "$QA_SWEEP_OUT"
+      if PATH="$scratch/live-bin:${PATH#*:}" QA_SWEEP_REAL_BROWSER="$real_browser" QA_SWEEP_VISUAL_HIDE="$hide" QA_SWEEP_PORT="$port" env -u QA_SWEEP_URL "$root/loop/qa-sweep.sh" > "$scratch/$hide.log"; then
+        echo "$hide centre returned green" >&2
+        exit 1
+      fi
+      record=$(find "$QA_SWEEP_OUT" -name 'sweep-*.json' -print -quit)
+      jq -e '.findings | any(.text | contains("hidden"))' "$record" >/dev/null
+      printf 'l52_%s_centre_fails_with_a_record_passed\n' "$hide"
+    done
   fi
 else
   echo 'l52_sweep_missing' >&2

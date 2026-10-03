@@ -98,8 +98,14 @@ browser set media light reduced-motion >/dev/null || fail "agent-browser could n
 browser wait --fn 'document.querySelector("[aria-label=rail]") && document.querySelector("[aria-label=todos]") && document.querySelector("[aria-label=pads]")' >/dev/null || fail "harness did not render Rail and Shelf"
 
 geometry='(() => {
-  const unclipped = element => { for (let node = element; node; node = node.parentElement) if (getComputedStyle(node).clipPath !== "none") return false; return true; };
-  const box = element => { const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height,visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) && unclipped(element)}; };
+  const unmasked = element => {
+    for (let node = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.clipPath !== "none" || (style.maskImage && style.maskImage !== "none")) return false;
+    }
+    return true;
+  };
+  const box = element => { const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height,visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) && unmasked(element)}; };
   const rail = document.querySelector("[aria-label=rail]");
   const centre = document.querySelector("[aria-label=centre]");
   const shelf = document.querySelector("[aria-label=shelf]");
