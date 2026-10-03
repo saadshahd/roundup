@@ -9,7 +9,7 @@ Note: this is a Linux/Chromium repro environment, not the macOS WKWebView the bu
 Per the scenario (`scenarios/ui-drawer.md` U111), Chrome already returned `scrollLeft` to 0 even
 before the fix ("stays there in the real WKWebView window (800 by 600) though Chrome returns it to
 0"), so a zero reading here does not by itself prove the WKWebView regression is fixed — the jsdom
-unit tests (`u111_layout_stable.test.tsx`, narrowed `u40_drawer_focus.test.tsx` / `u5_drawer.test.tsx`)
+unit tests (`drawer/u111_layout.test.tsx`, written first by architect-c)
 are what pin the `overflow-x: clip` and `{ preventScroll: true }` behaviour the fix relies on. These
 screenshots and samples demonstrate the layout stays put and `overflow-x` computes to `clip` for a
 real render, for both Drawer kinds and both named window sizes.
