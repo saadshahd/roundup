@@ -6,11 +6,13 @@ import { exitText } from "../ink/exitText";
 
 const UNPROMPTED: readonly Kind[] = ["blocked", "needs-you", "error"];
 
-/** The second line under a row: an Agent's label and age, an exited Terminal's ending, nothing for a running Terminal or a plain Group. */
-export const liveLineOf = (node: RailNode, exit: ExitState | null, now: number): string | null => {
-  if (node.status) return `${node.status.label}  ${elapsed(node.status.since, now)}`;
+/** The Live line's label and, for an Agent or Meta-agent, its elapsed time pinned after it (U7); an exited Terminal's ending has no age. */
+export type LiveLine = { label: string; age: string | null };
 
-  if (node.kind === "terminal" && exit) return exitText(exit);
+export const liveLineOf = (node: RailNode, exit: ExitState | null, now: number): LiveLine | null => {
+  if (node.status) return { label: node.status.label, age: elapsed(node.status.since, now) };
+
+  if (node.kind === "terminal" && exit) return { label: exitText(exit), age: null };
 
   return null;
 };

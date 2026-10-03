@@ -150,9 +150,12 @@ export const RailRowView = (props: {
           />
         </Show>
         <Show when={showsLiveLine() ? liveLine() : null}>
-          {(text) => (
-            <span class="live light" title={text()}>
-              {text()}
+          {(line) => (
+            <span class="live light" title={line().age !== null ? `${line().label}  ${line().age}` : line().label}>
+              <span class="live-label">{line().label}</span>
+              <Show when={line().age !== null}>
+                <span class="live-age">{line().age}</span>
+              </Show>
             </span>
           )}
         </Show>
