@@ -1,11 +1,6 @@
 :root {
-  --ground: #ffffff;
-  --text: #1c1c1e;
-  --grey: #6e6e73;
   --light: #86868b;
   --lightest: #c7c7cc;
-  --amber: #9a5b00;
-  --red: #c4262e;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   font-family: var(--mono);
   font-size: 13px;

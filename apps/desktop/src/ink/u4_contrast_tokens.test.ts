@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveToken, tokensOf } from "../testing/contrast";
+import { resolveToken, tokensFrom } from "../testing/contrast";
 
 /** Every rule block (`selector { body }`) in a stylesheet's text, so a check can see which selector owns a declaration. */
 const rulesOf = (css: string): { selector: string; body: string }[] =>
@@ -27,6 +27,7 @@ describe("u4 stylesheet text-colour allowlist", () => {
       "../rail/styles.css",
       "../styles.css",
       "../terminal/styles.css",
+      "../tokens.css",
     ]);
 
     for (const [file, css] of Object.entries(sheets)) {
@@ -50,7 +51,7 @@ describe("u4 stylesheet text-colour allowlist", () => {
 
   it("u4_the_word_hover_colour_is_text", () => {
     const styles = allStylesheets()["../styles.css"]!;
-    const tokens = tokensOf(styles);
+    const tokens = tokensFrom(allStylesheets()["../tokens.css"]!, styles);
     const hoverRule = rulesOf(styles).find((rule) => rule.selector === ".word:hover");
 
     if (!hoverRule) throw new Error("no .word:hover rule in styles.css");
