@@ -470,7 +470,10 @@ fn start_listener(inner: &Arc<Inner>) {
 /// `error` Kind ends any Takeover of it and drops its `pending` Messages with the reason
 /// `receiver gone` (B6, B9). A `Lagged` receiver may have missed one of those, so it resyncs from
 /// the Rail instead of guessing what it lost (B9).
-fn spawn_status_listener(inner: Arc<Inner>, mut events: tokio::sync::broadcast::Receiver<contracts::Event>) {
+fn spawn_status_listener(
+    inner: Arc<Inner>,
+    mut events: tokio::sync::broadcast::Receiver<contracts::Event>,
+) {
     tokio::spawn(async move {
         loop {
             match events.recv().await {
