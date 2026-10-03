@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFilter, blendBlackOver, contrastRatio, grayscale, greyedRailFilter, resolveToken, tokensOf } from "./contrast";
+import { applyFilter, blendBlackOver, contrastRatio, grayscale, greyedRailFilter, resolveToken, tokensFrom, tokensOf } from "./contrast";
 
 describe("contrast", () => {
   it("contrastRatio_black_on_white_is_21_to_1", () => {
@@ -26,6 +26,19 @@ describe("contrast", () => {
     const tokens = tokensOf(":root {\n  --ground: #ffffff;\n  --grey: #6e6e73;\n}\n.other { color: red; }");
 
     expect([tokens.get("ground"), tokens.get("grey")]).toEqual(["#ffffff", "#6e6e73"]);
+  });
+
+  it("tokensFrom_lets_a_later_sheet_win_a_name_both_define", () => {
+    const tokens = tokensFrom(":root {\n  --x: #111111;\n}", ":root {\n  --x: #222222;\n  --y: #333333;\n}");
+
+    expect([tokens.get("x"), tokens.get("y")]).toEqual(["#222222", "#333333"]);
+  });
+
+  it("tokensOf_ignores_a_token_with_no_value", () => {
+    const tokens = tokensOf(":root { --x: ; --y: #000000; }");
+
+    expect(tokens.has("x")).toBe(false);
+    expect(tokens.get("y")).toBe("#000000");
   });
 
   it("resolveToken_follows_a_chain_of_var_references_to_a_literal", () => {

@@ -1,5 +1,7 @@
 # Todos
 
+Module: `crates/todos`. Ids: every `T` heading in the file.
+
 **T1 create.** Given an empty Project, when the user calls `todo.create {title}`, then the result is a Todo with id 1, `done: false`, `blocked: false`; `todo.create` again gives id 2; each call emits `todo.created` and logs a `wrote` Touch on `todo:<id>` by the caller.
 
 **T2 read.** Given Todos 1 and 2, when `todo.list` is called, then both come back in id order; `todo.get {id: 2}` returns Todo 2 and logs a `read` Touch by the caller; an unknown id is `NOT_FOUND`.

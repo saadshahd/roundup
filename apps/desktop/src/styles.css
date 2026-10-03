@@ -1,11 +1,6 @@
 :root {
-  --ground: #ffffff;
-  --text: #1c1c1e;
-  --grey: #6e6e73;
   --light: #86868b;
   --lightest: #c7c7cc;
-  --amber: #9a5b00;
-  --red: #c4262e;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   font-family: var(--mono);
   font-size: 13px;
@@ -41,7 +36,8 @@ p {
   grid-template-columns: clamp(252px, 20%, 320px) minmax(690px, 1fr) clamp(160px, 14%, 280px);
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: clip;
 }
 
 @media (max-width: 1101px) {
@@ -114,6 +110,8 @@ p {
 }
 
 .drawer {
+  display: flex;
+  flex-direction: column;
   width: min(560px, 70%, calc(100% - 252px));
   padding: 16px 72px 16px 16px;
   box-sizing: border-box;

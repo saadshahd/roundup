@@ -432,6 +432,114 @@ async fn m3_stdout_carries_only_protocol_messages_up_to_the_exit() {
     }
 }
 
+/// Raw `tools/list` over stdio, against a Daemon that only answers `daemon.identify`: listing
+/// tools never touches the Daemon, so this stand-in is enough. Returns the reply's `result`.
+async fn raw_tools_list(socket: &Path, cursor: Option<&str>) -> Value {
+    let mut child = start_rup_mcp(socket, "a1");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut params = json!({});
+    if let Some(cursor) = cursor {
+        params = json!({ "cursor": cursor });
+    }
+    for message in [
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": ProtocolVersion::LATEST_WITH_INITIALIZE.as_str(),
+            "capabilities": {},
+            "clientInfo": { "name": "test", "version": "0" },
+        }}),
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": params }),
+    ] {
+        write_line(&mut stdin, &message).await;
+    }
+    loop {
+        let line = tokio::time::timeout(BOUND, stdout.next_line())
+            .await
+            .expect("the shim answered tools/list")
+            .unwrap()
+            .expect("stdout is open until the shim answers tools/list");
+        let message: Value = serde_json::from_str(&line).unwrap();
+        if message["id"] == 2 {
+            return message["result"].clone();
+        }
+    }
+}
+
+/// The `tools/list` result schema the interactive Claude Code 2.1.288 validates a reply against,
+/// read from its own (minified) source: `ttlMs` a non-negative integer, `cacheScope` the enum
+/// `public`/`private`, `tools` an array, `nextCursor` an optional string. Extracted with:
+///
+///   strings -n 4 ~/.local/share/claude/versions/2.1.288 \
+///     | grep -o '"tools/list":Re({[^}]*}[^)]*)'
+///
+/// which prints (`claude --version` there is `2.1.288 (Claude Code)`):
+///
+///   "tools/list":Re({ttlMs:k().int().min(0),cacheScope:j(["public","private"]),tools:C(Ge),nextCursor:s.optional()})
+///
+/// (`k()` is a bound `z.number()`, `j([...])` is `z.enum([...])`, `C()` is `z.array()`, `s` is a
+/// bound `z.string()`.) The same command against `~/.local/share/claude/versions/2.1.283`
+/// (`claude --version` there is `2.1.283 (Claude Code)`, the headless build M4 says accepts the
+/// older reply) extracts the same schema under other minified names (`cacheScope:G([...])`,
+/// `tools:A(Ge)`), so the two builds differ in what they tolerate, not in what they validate
+/// against. A later `claude` that adds a new required field, narrows `cacheScope`'s enum so it
+/// excludes `public`, or tightens `ttlMs` (a minimum above 0 or a maximum) makes this reply
+/// invalid: `/mcp` reconnecting against the real client (M4's laptop check) would fail while every
+/// test here stayed green, so re-extract the schema and update the copy when `claude` is upgraded.
+fn assert_matches_tools_list_schema(reply: &Value) {
+    let ttl_ms = reply
+        .get("ttlMs")
+        .unwrap_or_else(|| panic!("no ttlMs: {reply}"));
+    assert!(
+        ttl_ms.is_u64(),
+        "ttlMs must be an integer >= 0 (zod `k().int().min(0)`): {reply}"
+    );
+    let cache_scope = reply
+        .get("cacheScope")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("no string cacheScope: {reply}"));
+    assert!(
+        matches!(cache_scope, "public" | "private"),
+        "cacheScope must be \"public\" or \"private\" (zod `j([\"public\",\"private\"])`): {reply}"
+    );
+    assert!(
+        reply.get("tools").is_some_and(Value::is_array),
+        "no tools array: {reply}"
+    );
+    if let Some(next_cursor) = reply.get("nextCursor") {
+        assert!(
+            next_cursor.is_string(),
+            "nextCursor must be a string when present: {reply}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let _requests = fake_daemon(&socket, &["daemon.identify"]);
+
+    let result = raw_tools_list(&socket, None).await;
+
+    assert_matches_tools_list_schema(&result);
+    assert_eq!(result["tools"].as_array().unwrap().len(), M1_METHODS.len());
+    assert_eq!(result["cacheScope"], "public", "{result}");
+}
+
+#[tokio::test]
+async fn m4_the_empty_list_a_cursor_gets_carries_a_numeric_ttl_ms_and_cache_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let _requests = fake_daemon(&socket, &["daemon.identify"]);
+
+    let result = raw_tools_list(&socket, Some("past-the-end")).await;
+
+    assert_matches_tools_list_schema(&result);
+    assert_eq!(result["tools"].as_array().unwrap().len(), 0);
+    assert_eq!(result["cacheScope"], "public", "{result}");
+}
+
 #[tokio::test]
 async fn m3_the_call_after_the_daemon_goes_away_makes_the_shim_exit_nonzero() {
     let project = start_daemon();

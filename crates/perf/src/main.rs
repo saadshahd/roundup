@@ -18,6 +18,9 @@ struct Args {
     calls: usize,
     #[arg(long, default_value = "target/release/rupd")]
     rupd: PathBuf,
+    /// The built `rup`, run as Claude Code's hook command (H15's `hook_loop_ms`).
+    #[arg(long, default_value = "target/release/rup")]
+    rup: PathBuf,
     #[arg(long, default_value = "crates/perf/budgets.json")]
     budgets: PathBuf,
     #[arg(long, default_value = "target/perf.json")]
@@ -36,7 +39,7 @@ async fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
         eprintln!("run {turn}/{}: load {load:.1} on {cpus} cpus", args.runs);
         loads.push(load);
 
-        for (name, value) in one_run(&args.rupd, args.calls).await? {
+        for (name, value) in one_run(&args.rupd, &args.rup, args.calls).await? {
             per_run.entry(name).or_default().push(value);
         }
     }

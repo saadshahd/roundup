@@ -20,6 +20,7 @@ describe("u46 hovering or selecting never moves a row", () => {
 
     sheet.remove();
 
+    expect(rowOf("docs").querySelector(".name")!.compareDocumentPosition(live!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect([linesBefore, linesAfter, live?.closest(".line") != null, liveStyle?.position]).toEqual([
       1,
       1,
@@ -39,7 +40,16 @@ describe("u46 hovering or selecting never moves a row", () => {
 
     sheet.remove();
 
-    expect([name.flexGrow, live.flexGrow, live.textAlign, live.whiteSpace]).toEqual(["0", "1", "right", "nowrap"]);
+    expect([
+      name.flexGrow,
+      name.flexShrink,
+      name.flexBasis,
+      live.flexGrow,
+      live.flexShrink,
+      live.flexBasis,
+      live.textAlign,
+      live.whiteSpace,
+    ]).toEqual(["0", "1", "auto", "1", "1", "0px", "right", "nowrap"]);
   });
 
   it("u46_a_meta_agents_live_text_joins_the_first_line_too", async () => {
@@ -82,10 +92,41 @@ describe("u46 hovering or selecting never moves a row", () => {
     expect([live.minWidth, live.paddingLeft, live.marginLeft, live.textIndent, live.textOverflow, live.overflow]).toEqual([
       "0px",
       "0",
-      "-8px",
+      "0px",
       "16px",
       "ellipsis",
       "hidden",
     ]);
+  });
+
+  it("u46_the_rows_height_is_28px_at_rest_hovered_and_selected", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    const mounted = await mountRail([agent("docs", "working", "writing docs/auth.md")]);
+    const height = () => getComputedStyle(rowOf("docs")).minHeight;
+
+    const rest = height();
+    fireEvent.mouseEnter(rowOf("docs"));
+    const hovered = height();
+    mounted.rail.select("docs");
+    const selected = height();
+
+    sheet.remove();
+
+    expect([rest, hovered, selected]).toEqual(["28px", "28px", "28px"]);
+  });
+
+  it("u46_every_item_after_the_first_keeps_an_8px_margin_except_the_live_line_which_has_none", async () => {
+    const sheet = document.head.appendChild(document.createElement("style"));
+    sheet.textContent = styles;
+    await mountRail([agent("docs", "working", "writing docs/auth.md")]);
+    fireEvent.mouseEnter(rowOf("docs"));
+
+    const margins = (selector: string) => getComputedStyle(rowOf("docs").querySelector(selector)!).marginLeft;
+    const result = [margins(".name"), margins(".live")];
+
+    sheet.remove();
+
+    expect(result).toEqual(["8px", "0px"]);
   });
 });
