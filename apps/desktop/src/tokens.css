@@ -1,4 +1,4 @@
-/* The Token file (docs/design-system.md, "Tokens"). styles.css and rail/styles.css still hold colour literals, migrated in a later U130 slice. */
+/* The Token file (docs/design-system.md, "Tokens"). The light values only: styles.css and rail/styles.css still hold colour literals until the U130 slices that migrate them, and no dark scheme is set until slice 3. */
 
 :root {
   --ground: #ffffff;

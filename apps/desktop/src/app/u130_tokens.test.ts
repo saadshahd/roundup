@@ -1,22 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-// Every Token docs/design-system.md's "Starting values" table lists; U130 fails any left without both schemes.
-const TOKENS = [
-  "--ground",
-  "--sunken",
-  "--hover",
-  "--selected",
-  "--text",
-  "--grey",
-  "--accent",
-  "--amber",
-  "--red",
-  "--hairline",
-  "--shadow-drawer",
-  "--radius-row",
-  "--radius-control",
-  "--radius-drawer",
-] as const;
+const [table = ""] = Object.values(
+  import.meta.glob<string>("../../../../docs/design-system.md", { query: "?raw", import: "default", eager: true }),
+);
+
+// The Tokens of the "Starting values" table, read from it so a Token added there fails here until tokens.css defines it.
+const TOKENS = table
+  .split("\n")
+  .filter((row) => row.startsWith("| `--"))
+  .flatMap((row) => row.split("|")[1]?.match(/--[\w-]+/g) ?? []);
 
 function valueOf(section: string, token: string): string | undefined {
   return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
@@ -47,7 +39,7 @@ describe("u130 tokens", () => {
     expect(withoutLight, "tokens missing a light value").toEqual([]);
   });
 
-  // U130 lands the dark block with --light, --lightest and the selected-band values, plus a dark-scheme contrast test.
+  // Slice 3 of U130 gives every Token a dark value and turns this into a test.
   it.todo("u130_every_token_has_a_dark_value");
 
   it("u130_styles_css_does_not_shadow_a_shared_token", () => {
@@ -63,5 +55,17 @@ describe("u130 tokens", () => {
     const shadowed = TOKENS.filter((token) => valueOf(css!, token));
 
     expect(shadowed, "tokens.css's values must not be shadowed in styles.css").toEqual([]);
+  });
+
+  // Slice 1 keeps the App light by setting no scheme at all; slice 3 deletes this test with the dark block.
+  it("u130_no_stylesheet_sets_a_dark_scheme_before_slice_3", () => {
+    const sheets = import.meta.glob<string>("../**/*.css", { query: "?raw", import: "default", eager: true });
+
+    const dark = Object.entries(sheets)
+      .filter(([, css]) => /prefers-color-scheme|color-scheme/.test(css))
+      .map(([path]) => path);
+
+    expect(Object.keys(sheets).length, "stylesheets are read").toBeGreaterThan(1);
+    expect(dark).toEqual([]);
   });
 });
