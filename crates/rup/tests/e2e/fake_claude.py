@@ -15,7 +15,7 @@ file. What it does comes from the environment, so one script serves every scenar
                            same way Claude Code itself never runs a command for an unregistered
                            event
   FAKE_CLAUDE_LOOP_REPORT  a file path: after the loop, written with a JSON list of the event
-                           names whose hook command actually ran, in order
+                           names whose hook command actually ran, in order, before a final Stop
 
 It then sleeps until the Daemon stops it.
 """
@@ -58,6 +58,8 @@ def play_loop():
             command = hooks[0]["hooks"][0]["command"]
             subprocess.run(command, shell=True, input=payload, text=True, check=True)
             ran.append(event)
+    stop = settings["hooks"]["Stop"][0]["hooks"][0]["command"]
+    subprocess.run(stop, shell=True, input=json.dumps({"hook_event_name": "Stop"}), text=True, check=True)
     if "FAKE_CLAUDE_LOOP_REPORT" in os.environ:
         with open(os.environ["FAKE_CLAUDE_LOOP_REPORT"], "w") as report:
             json.dump(ran, report)

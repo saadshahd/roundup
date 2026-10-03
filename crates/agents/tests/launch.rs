@@ -5,9 +5,21 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use agents::claude_code::{Launcher, STATE_EVENTS};
+use agents::claude_code::Launcher;
 use rpc::code;
 use serde_json::{Value, json};
+
+const EVENTS: [&str; 9] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "Stop",
+    "StopFailure",
+    "SessionEnd",
+];
 
 fn read(path: &Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
@@ -148,11 +160,11 @@ fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
     assert!(s.rup.is_absolute() && s.rup.exists());
     let command = format!("'{}' signal '7'", s.rup.display());
     let entry = json!([{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]);
-    let expected: serde_json::Map<String, Value> = STATE_EVENTS
+    let expected: serde_json::Map<String, Value> = EVENTS
         .iter()
         .map(|event| ((*event).to_owned(), entry.clone()))
         .collect();
-    // The late Notification and the spurious SubagentStop (ADR 0006) are not among the events.
+    // The late Notification and the spurious SubagentStop are not among the events.
     assert_eq!(settings, json!({ "hooks": expected }));
 }
 
