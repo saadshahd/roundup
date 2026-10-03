@@ -329,6 +329,9 @@ if args[:2] == ['pr', 'merge']:
     actual = subprocess.check_output(['git', 'rev-parse', 'work'], text=True).strip()
     sys.exit(0 if expected == actual else 1)
 if args[:2] == ['pr', 'view']:
+    if d.get('fail_carry'):
+        print('gh fixture unavailable during carry', file=sys.stderr)
+        sys.exit(1)
     print(d.get('head') or subprocess.check_output(['git', 'rev-parse', 'work'], text=True).strip())
     sys.exit(0)
 assert args[0] == 'api' and '--paginate' in args and '--slurp' in args, args
@@ -418,6 +421,21 @@ commit docs 'Author-Agent: builder'
 expect_output post 'L44 regular docs are post' gate class 12
 expect_exit 0 'L46 CI trailers accept authored post prose without approval' gate ci-trailers 12
 expect_exit 0 'L46 post needs no approval' gate merge-ready 12
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L46 post rejects an approval-only commit in CI' gate ci-trailers 12
+expect_exit 1 'L46 post rejects an approval-only commit at merge' gate merge-ready 12
+
+gate_repo
+git reset -q --hard main
+printf 'Notes\n' >docs/notes.md
+commit docs 'Author-Agent: builder'
+git checkout -q main
+printf 'Other note\n' >docs/other.md
+commit other-note
+git checkout -q work
+git merge -q --no-ff main -m 'merge main without a trailer'
+expect_exit 0 'L46 post allows an untrailed merge in CI' gate ci-trailers 12
+expect_exit 0 'L46 post allows an untrailed merge at merge' gate merge-ready 12
 
 gate_repo
 expect_exit 0 'L53 nonvisible test proof passes' gate proof 12
@@ -487,6 +505,17 @@ git checkout -q work
 git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 gate_set --arg sha "$old_approval" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nReviewed-head: "+$sha+"\nReviewed-by-Agent: reviewer")}]]'
 expect_exit 1 'L46 reject on carried approval still blocks' gate merge-ready 12
+
+gate_repo
+git checkout -q main
+printf 'main update\n' >docs/main.md
+commit main-update
+git checkout -q work
+git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
+expect_exit 0 'L54 pinned API base accepts carry when origin/main is stale' gate merge-ready 12
+gate_set '.fail_carry=true'
+expect_exit 4 'L46 carry gh failure is an infrastructure error in CI' gate ci-trailers 12
+expect_exit 4 'L46 carry gh failure is an infrastructure error at merge' gate merge-ready 12
 
 gate_repo
 for state in queued in_progress completed; do
@@ -618,7 +647,7 @@ expect_exit 1 'L53 missing before fails' gate proof 12
 gate_visible
 gate_set '.tree={truncated:false,tree:[]}'
 expect_exit 1 'L53 absent linked file fails' gate proof 12
-gate_set '.tree.tree=[{path:"proof/before.png",type:"blob",mode:"100644",size:6291456}]'
+gate_set '.tree.tree[0].size=6291456'
 expect_exit 1 'L53 six MiB file fails' gate proof 12
 gate_visible
 gate_set '.body += "\nShows: /Users/private"'

@@ -132,9 +132,8 @@ Loop rules that describe screenshots do not make a loop-only PR visible.
 
 The block lane requires an empty independent approval, either at the head or
 carried through later merges of `main` that pass L54, and runs `proof`. The post lane needs Author-Agent
-trailers and both successful checks; the existing `loop` workflow still runs
-`trailers` for every PR, so a post PR cannot obtain green `rules` without an
-approval until that workflow is updated. Labels (L57) and architect approval
+trailers on non-merge commits and both successful checks. The `loop` workflow runs
+`ci-trailers <pr>`, which applies the same lane-specific trailer rules. Labels (L57) and architect approval
 for contract changes remain separate gates for the Driver.
 
 In `## Proof`, name the full head SHA and include a fenced test-output block,

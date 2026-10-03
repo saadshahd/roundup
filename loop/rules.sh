@@ -190,10 +190,10 @@ carry_rule_b() {
 }
 
 carry_one() {
-  local c=$1 p1 p2 extra trial conflicted f
+  local c=$1 main_ref=$2 p1 p2 extra trial conflicted f
   read -r _ p1 p2 extra <<<"$(git rev-list --parents -n 1 "$c")"
   { [ -n "${p2:-}" ] && [ -z "${extra:-}" ]; } || { echo "carry: $c: not a merge of main" >&2; return 1; }
-  git merge-base --is-ancestor "$p2" origin/main || { echo "carry: $c: not a merge of main (second parent is not on origin/main)" >&2; return 1; }
+  git merge-base --is-ancestor "$p2" "$main_ref" || { echo "carry: $c: not a merge of main (second parent is not on $main_ref)" >&2; return 1; }
   git log -1 --format=%B "$c" | grep -q '^Author-Agent: ' || { echo "carry: $c: no Author-Agent trailer" >&2; return 1; }
   local mt_rc=0
   trial=$(git merge-tree --write-tree --name-only --no-messages "$p1" "$p2" 2>/dev/null) || mt_rc=$?
@@ -214,7 +214,7 @@ carry_one() {
 }
 
 carry() {
-  local pr=$1 head approval c chain=()
+  local pr=$1 main_ref=${2:-origin/main} head approval c chain=()
   [[ $pr =~ ^[0-9]+$ ]] || { echo "carry: <pr> must be digits" >&2; return 2; }
   head=$(gh pr view "$pr" --json headRefOid -q .headRefOid) || { echo "carry: gh failed reading PR $pr" >&2; return 4; }
   git cat-file -e "$head^{commit}" 2>/dev/null || { echo "carry: head $head is not fetched" >&2; return 1; }
@@ -223,7 +223,7 @@ carry() {
     chain=("$c" ${chain[@]+"${chain[@]}"})
   done
   [ -n "${approval:-}" ] || { echo "carry: no approval commit on $head" >&2; return 1; }
-  for c in "${chain[@]+"${chain[@]}"}"; do carry_one "$c" || return 1; done
+  for c in "${chain[@]+"${chain[@]}"}"; do carry_one "$c" "$main_ref" || return 1; done
   echo "carried $approval $head"
 }
 
@@ -320,10 +320,11 @@ def history(base, head):
     require(authors, 'no Author-Agent trailers')
     return authors, records
 
-def trailer_gate(records, authors, lane, head):
+def trailer_gate(records, authors, lane, head, base):
     for commit, parents, author, reviewer in records:
         if len(parents) != 1:
-            require(author and not reviewer, f'trailers: merge {commit} needs Author-Agent only')
+            require(not reviewer and (lane == 'post' or author),
+                    f'trailers: merge {commit} has an invalid trailer')
         elif lane == 'post':
             require(author and not reviewer, f'trailers: {commit} needs Author-Agent only')
         elif reviewer:
@@ -335,8 +336,15 @@ def trailer_gate(records, authors, lane, head):
     if lane == 'block' and not records[-1][3]:
         approval = next((commit for commit, _, _, reviewer in reversed(records) if reviewer), None)
         require(approval, 'trailers: no approval commit')
-        result = subprocess.run(['bash', 'loop/rules.sh', 'carry', number],
-                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=limit)
+        try:
+            result = subprocess.run(['bash', 'loop/rules.sh', 'carry', number, base],
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=limit)
+        except subprocess.TimeoutExpired as error:
+            print(f'trailers: carry timed out: {error}', file=sys.stderr)
+            sys.exit(4)
+        if result.returncode == 4:
+            print('trailers: carry: '+result.stderr.strip(), file=sys.stderr)
+            sys.exit(4)
         require(result.returncode == 0 and result.stdout.strip() == f'carried {approval} {head}',
                 'trailers: approval was not carried: '+result.stderr.strip())
     elif lane == 'block':
@@ -546,7 +554,7 @@ try:
     elif command == 'ci-trailers':
         authors, records = history(base, head)
         base_gate(pr)
-        trailer_gate(records, authors, lane_of(files, paths, base, head), head)
+        trailer_gate(records, authors, lane_of(files, paths, base, head), head, base)
     else:
         authors, records = history(base, head)
         events = comments(authors, head, base, records)
@@ -566,7 +574,7 @@ try:
             gate(lambda: require(not verdicts or verdicts[-1] != 'reject', 'newest independent verdict is reject'))
             gate(lambda: checks(head))
             lane = lane_of(files, paths, base, head)
-            gate(lambda: trailer_gate(records, authors, lane, head))
+            gate(lambda: trailer_gate(records, authors, lane, head, base))
             if lane == 'block':
                 gate(lambda: proof(pr, paths, head))
             latest = one(pull)
@@ -590,6 +598,6 @@ case "${1:-}" in
   trailers) trailers ;;
   vocab) vocab ;;
   delta) delta "${2:-}" "${3:-}" ;;
-  carry) carry "${2:-}" ;;
+  carry) carry "${2:-}" "${3:-origin/main}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;
 esac
