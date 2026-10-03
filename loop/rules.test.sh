@@ -229,6 +229,25 @@ carry_code 1 "L54 carry: a merge that invents a row exits 1 (rule b)" "rule b"
 
 carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
 | L2 | two |
+| L3 | main |
+')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm mine -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
+merge_main; queue_with '| L1 | one |
+| L2 | two |
+
+| L9 | mine |
+| L3 | main |
+' >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: an invented blank line exits 1 (rule b)" "rule b"
+
+carry_repo; printf '| L2 | two |\n' >>.work/queue.md; git add -A; git commit -qm duplicate -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
+main_commit .work/queue.md "$(queue_with '| L1 | one |
+')"; merge_main; queue_with '| L1 | one |
+| L2 | two |
+' >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a duplicated row removed by main exits 1 (rule b)" "rule b"
+
+carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
+| L2 | two |
 | L3 | three |
 ')"; printf '| L3 | three |\n' >>.work/queue.md; git add -A; git commit -qm "same row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
 merge_main; queue_with '| L1 | one |
@@ -286,7 +305,12 @@ carry_code 0 "L54 carry: a conflict in a .work/queue/ squad file that keeps both
 carry_repo; git checkout -q main; printf '| id |\n|---|\n| A1 |\n' >scenarios/README.md; git add -A; git commit -qm readme -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
 echo "| A2 |" >>scenarios/README.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
 main_commit scenarios/README.md "$(printf '| id |\n|---|\n| A1 |\n| A3 |\n')"; merge_main; printf '| id |\n|---|\n| A1 |\n| A2 |\n| A3 |\n' >scenarios/README.md; finish_merge
-carry_code 0 "L54 carry: a conflict in scenarios/README.md that keeps both carries"
+carry_code 1 "L54 carry: a conflict in scenarios/README.md exits 1 because it has no table" "rule a"
+
+carry_repo; git checkout -q main; printf 'Intro\nShared prose\n' >scenarios/README.md; git add -A; git commit -qm readme -m 'Author-Agent: t'; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m 'Merge main' -m 'Author-Agent: t' origin/main >/dev/null; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
+echo 'PR prose' >>scenarios/README.md; git add -A; git commit -qm prose -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
+main_commit scenarios/README.md "$(printf 'Intro\nShared prose\nMain prose\n')"; merge_main; printf 'Intro\nShared prose\nPR prose\nMain prose\n' >scenarios/README.md; finish_merge
+carry_code 1 "L54 carry: README prose conflict exits 1 (rule a)" "rule a"
 
 carry_repo; git checkout -q main; mkdir -p .work/queue; echo base >.work/queue/a.md; git add -A; git commit -qm a -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; echo more >>.work/queue/a.md; git add -A; git commit -qm edit -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
 git checkout -q main; git rm -q .work/queue/a.md; git commit -qm "delete" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; merge_main; git rm -qf .work/queue/a.md 2>/dev/null || true; finish_merge
@@ -486,6 +510,12 @@ gate_set '.comments[][] .body |= sub("[0-9a-f]{40}"; "00000000000000000000000000
 expect_exit 1 'L45 independent verdicts on rewritten history still count' gate rounds 12
 
 gate_repo
+reviewed=$(git rev-parse HEAD)
+earlier=$(git rev-parse HEAD^)
+gate_set --arg reviewed "$reviewed" --arg earlier "$earlier" '.comments=[[range(1;4) | {id: .,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nHead: "+$reviewed+"\nEarlier: "+$earlier+"\nReviewed-by-Agent: reviewer")}]]'
+expect_exit 1 'L45 explicit Head counts despite explanatory earlier SHA' gate rounds 12
+
+gate_repo
 reviewed_content=$(git rev-parse HEAD^)
 gate_set --arg sha "$reviewed_content" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\n"+$sha+"\nReviewed-by-Agent: reviewer")}]]'
 expect_exit 1 'L46 a reject on the content below the approval blocks' gate merge-ready 12
@@ -505,6 +535,18 @@ git checkout -q work
 git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 gate_set --arg sha "$old_approval" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nReviewed-head: "+$sha+"\nReviewed-by-Agent: reviewer")}]]'
 expect_exit 1 'L46 reject on carried approval still blocks' gate merge-ready 12
+
+gate_repo
+older_approval=$(git rev-parse HEAD)
+git checkout -q main
+printf 'main update\n' >docs/main.md
+commit main-update
+git update-ref refs/remotes/origin/main HEAD
+git checkout -q work
+git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
+carried_head=$(git rev-parse HEAD)
+gate_set --arg head "$carried_head" --arg older "$older_approval" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: reject\nReviewed-head: "+$head+"\nReviewed-by-Agent: reviewer")},{id:2,created_at:"2026-10-03T00:01:00Z",body:("VERDICT: approve\nReviewed-head: "+$older+"\nReviewed-by-Agent: reviewer-two")}]]'
+expect_exit 1 'L46 approval of ancestor cannot clear reject on carried head' gate merge-ready 12
 
 gate_repo
 git checkout -q main

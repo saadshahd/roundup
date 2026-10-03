@@ -163,30 +163,44 @@ delta() {
 }
 
 # L54: does a PR's approval still hold after merges of main? Prints `carried <A> <H>` or names the commit and rule.
-carry_allowed() { case $1 in .work/queue.md | .work/queue/* | scenarios/README.md) return 0 ;; *) return 1 ;; esac; }
-lines_of() { git show "$1:$2" 2>/dev/null | sort; }
-count_of() { printf '%s\n' "$1" | g -cxF -- "$2"; }
+carry_allowed() { case $1 in .work/queue.md | .work/queue/*) return 0 ;; *) return 1 ;; esac; }
 
 # Rule b for one file of merge $1 (parents $2 and $3): the result holds exactly the first parent's lines that main
 # did not remove, plus the lines main added, each at most as often as either side has it.
 carry_rule_b() {
-  local merge=$1 p1=$2 p2=$3 file=$4 base keep result first main_side line max
+  local merge=$1 p1=$2 p2=$3 file=$4 base
   base=$(git merge-base "$p1" "$p2")
-  first=$(lines_of "$p1" "$file")
-  main_side=$(lines_of "$p2" "$file")
-  keep=$( { comm -23 <(printf '%s\n' "$first") <(comm -23 <(lines_of "$base" "$file") <(printf '%s\n' "$main_side") | sort -u); comm -13 <(lines_of "$base" "$file") <(printf '%s\n' "$main_side"); } | sort -u)
-  result=$(lines_of "$merge" "$file")
-  git cat-file -e "$merge:$file" 2>/dev/null || { echo "carry: $merge: rule b: $file conflicted and is gone from the merge (one side deleted it)" >&2; return 1; }
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    printf '%s\n' "$keep" | grep -qxF -- "$line" || { echo "carry: $merge: rule b: $file holds a line neither side may keep: $line" >&2; return 1; }
-    max=$(( $(count_of "$first" "$line") > $(count_of "$main_side" "$line") ? $(count_of "$first" "$line") : $(count_of "$main_side" "$line") ))
-    [ "$(count_of "$result" "$line")" -le "$max" ] || { echo "carry: $merge: rule b: $file repeats a line: $line" >&2; return 1; }
-  done <<<"$result"
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    printf '%s\n' "$result" | grep -qxF -- "$line" || { echo "carry: $merge: rule b: $file lost a line a side keeps: $line" >&2; return 1; }
-  done <<<"$keep"
+  python3 - "$merge" "$p1" "$p2" "$base" "$file" <<'PY'
+from collections import Counter
+import subprocess
+import sys
+
+merge, first_ref, main_ref, base_ref, path = sys.argv[1:]
+
+def lines(ref):
+    result = subprocess.run(['git', 'show', f'{ref}:{path}'], capture_output=True)
+    if result.returncode:
+        return None
+    content = result.stdout.split(b'\n')
+    if content[-1] == b'':
+        content.pop()
+    return Counter(content)
+
+result = lines(merge)
+if result is None:
+    sys.exit(f'carry: {merge}: rule b: {path} conflicted and is gone from the merge (one side deleted it)')
+base = lines(base_ref) or Counter()
+first = lines(first_ref) or Counter()
+main = lines(main_ref) or Counter()
+keep = (set(first) - (set(base) - set(main))) | (set(main) - set(base))
+for line, count in result.items():
+    if line not in keep:
+        sys.exit(f'carry: {merge}: rule b: {path} holds a line neither side may keep: {line!r}')
+    if count > max(first[line], main[line]):
+        sys.exit(f'carry: {merge}: rule b: {path} repeats a line: {line!r}')
+for line in keep - set(result):
+    sys.exit(f'carry: {merge}: rule b: {path} lost a line a side keeps: {line!r}')
+PY
 }
 
 carry_one() {
@@ -287,6 +301,11 @@ pull = f'{repo}/pulls/{number}'
 def git(*args):
     return subprocess.check_output(['git', *args], text=True, timeout=limit).rstrip('\n')
 
+def ancestor(older, newer):
+    result = subprocess.run(['git', 'merge-base', '--is-ancestor', older, newer], timeout=limit)
+    require(result.returncode in (0, 1), f'cannot compare {older} to {newer}')
+    return result.returncode == 0
+
 def sha(value):
     require(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{40}', value), 'missing or invalid SHA')
     return value
@@ -375,14 +394,14 @@ def comments(authors, head, base, records):
         verdict = re.match(r'VERDICT: (approve|reject)\b', body)
         ids = re.findall(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if verdict and len(ids) == 1 and ids[0] not in authors:
-            explicit = re.findall(r'^Reviewed-head: ([0-9a-f]{40})\s*$', body, re.M)
+            explicit = re.findall(r'^(?:Reviewed-head|Head): ([0-9a-f]{40})\s*$', body, re.M)
             named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
             if len(set(named)) == 1:
-                events.append((verdict[1], named[0] in current_heads))
+                events.append((verdict[1], named[0] if named[0] in current_heads else None))
         pick = re.match(r'ARCHITECT: (split|amend|retire)\b', body)
         ids = re.findall(r'^Architect: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if pick and len(ids) == 1 and ids[0] in architects - authors:
-            events.append((pick[1], False))
+            events.append((pick[1], None))
     return events
 
 def rounds(events):
@@ -570,8 +589,13 @@ try:
             gate(lambda: base_gate(pr))
             gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
             gate(lambda: rounds(events))
-            verdicts = [event for event, current in events if current and event in ('approve', 'reject')]
-            gate(lambda: require(not verdicts or verdicts[-1] != 'reject', 'newest independent verdict is reject'))
+            rejected = set()
+            for event, named_head in events:
+                if named_head and event == 'reject':
+                    rejected.add(named_head)
+                elif named_head and event == 'approve':
+                    rejected = {old for old in rejected if not ancestor(old, named_head)}
+            gate(lambda: require(not rejected, 'newest independent verdict is reject'))
             gate(lambda: checks(head))
             lane = lane_of(files, paths, base, head)
             gate(lambda: trailer_gate(records, authors, lane, head, base))
