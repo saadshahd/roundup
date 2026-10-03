@@ -497,7 +497,7 @@ running_children() {
 status() {
   local vm state
   while read -r vm; do
-    state=$(boxd machine exec "$vm" --timeout 10 -- 'pgrep -x claude >/dev/null && echo agent-running || echo idle' </dev/null 2>/dev/null) || state=unreachable
+    state=$(boxd machine exec "$vm" --timeout 10 -- 'if pgrep -x claude >/dev/null || pgrep -x codex >/dev/null; then echo agent-running; else echo idle; fi' </dev/null 2>/dev/null) || state=unreachable
     echo "$vm $state"
   done < <(boxd machine list --json </dev/null | jq -r '.[] | select(.name | startswith("ru-")) | .name')
 }

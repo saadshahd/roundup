@@ -40,6 +40,7 @@ case "$1 $2" in
     elif [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
     elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'
     elif [ "${STUB_MODE:-}" = mixed ]; then echo '[{"name":"ru-builder-1"},{"name":"ru-reviewer-2"},{"name":"ru-x8-1"},{"name":"ru-builderx"},{"name":"ru-x-builder-9"},{"name":"ru-builder-x"},{"name":"ru-builder-1x"},{"name":"ru-builder-3"}]'
+    elif [ "${STUB_MODE:-}" = codex-running ]; then echo '[{"name":"ru-codex-1"}]'
     else (cd "$STUB_DIR" && ls alive-* 2>/dev/null || true) | jq -Rnc '[inputs | {name: sub("^alive-"; "")}]'; fi ;;
   "machine new")
     [ "${STUB_MODE:-}" != exists ] && [ ! -e "$STUB_DIR/alive-$3" ] || exit 1
@@ -68,7 +69,12 @@ case "$1 $2" in
         echo x >>"$STUB_DIR/tars"
         if [ "$(wc -l <"$STUB_DIR/tars")" -le "${STUB_TARFAIL:-0}" ]; then sleep "${STUB_TARFAIL_SLEEP:-0}"; exit 2; fi ;;
       *pgrep*)
-        case "$3" in ru-builder-1) echo agent-running ;; ru-reviewer-2) echo idle ;; *) exit 1 ;; esac ;;
+        case "$3" in
+          ru-builder-1) echo agent-running ;;
+          ru-reviewer-2) echo idle ;;
+          ru-codex-1) case "$*" in *"pgrep -x codex"*) echo agent-running ;; *) echo idle ;; esac ;;
+          *) exit 1 ;;
+        esac ;;
       *claude*)
         case "${STUB_MODE:-}" in
           no-output) exit 1 ;;
@@ -708,6 +714,8 @@ expect_true "L13 status shows agent-running" grep -qx 'ru-builder-1 agent-runnin
 expect_true "L13 status shows idle" grep -qx 'ru-reviewer-2 idle' out
 expect_true "L13 status shows unreachable" grep -qx 'ru-x8-1 unreachable' out
 expect_true "L13 status lists every ru- VM" test "$(wc -l <out | tr -d ' ')" = 8
+new_repo; STUB_MODE=codex-running loop/boxd.sh status >out 2>err
+expect_true "L64 status reports a running Codex Builder" grep -qx 'ru-codex-1 agent-running' out
 
 new_repo; STUB_MODE=mixed loop/boxd.sh kill all >out 2>err
 expect_log 'machine remove ru-builder-1' "L14 kill all removes swarm builders"
