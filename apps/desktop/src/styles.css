@@ -67,6 +67,19 @@ p {
   overflow: auto;
 }
 
+/* Out of flow, so showing `complete` never shrinks, wraps or moves the title or any row; it covers the title's last characters on that line while it shows (QA F7). */
+.shelf .row-head {
+  position: relative;
+}
+
+.shelf .complete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding-left: 1ch;
+  background: var(--ground);
+}
+
 .centre {
   background: var(--ground);
 }

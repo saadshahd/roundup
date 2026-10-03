@@ -28,6 +28,7 @@ describe("u7 exited wording", () => {
       status: null,
       meta: false,
       terminal_id: id === "none" ? null : `t-${id}`,
+      worktree: null,
     }));
 
     app.handlers["rail.tree"] = () => nodes;

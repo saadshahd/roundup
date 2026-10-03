@@ -362,6 +362,7 @@ mod tests {
             status,
             meta,
             terminal_id: None,
+            worktree: None,
         }
     }
 
