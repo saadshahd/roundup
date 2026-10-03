@@ -174,6 +174,37 @@ async fn a16_removing_an_agent_leaves_its_pads_and_todos_untouched() {
     assert_eq!(reclaimed.owner, Actor::user());
 }
 
+/// T8: `rail.remove` (A16) does not know `creator`, since `crates/agents` has no `todos` dependency;
+/// the Todo the removed Agent made must still read with that Agent as its creator.
+#[tokio::test]
+async fn t8_creator_survives_removing_the_agent_that_made_the_todo() {
+    let (project, agent, todo) = agent_created_a_todo().await;
+    let client = project.client().await;
+    let before: Todo = serde_json::from_value(
+        client
+            .request("todo.get", json!({"id": todo.id}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(before.creator.kind, ActorKind::Agent);
+    assert_eq!(before.creator.id, agent.id);
+
+    client
+        .request("rail.remove", json!({"id": agent.id}))
+        .await
+        .unwrap();
+
+    let after: Todo = serde_json::from_value(
+        client
+            .request("todo.get", json!({"id": todo.id}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(after.creator, before.creator);
+}
+
 /// How much memory the Daemon allows its own share of ten idle Agents (rule 7).
 const BUDGET_MB: u64 = 150;
 
