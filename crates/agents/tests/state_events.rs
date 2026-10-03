@@ -5,11 +5,12 @@
 //! D2's own payload sequence); and, for every run that also has a `screen*.jsonl` title capture of
 //! the same run (A2, `title.rs`'s RUN1 to RUN7), removing the Signal from the full interleaved
 //! Signal-and-Title timeline leaves the replayed Status sequence byte-for-byte unchanged (the
-//! Kind-only check cannot see the star hold A2 reads from the title, `mod.rs`: that is how a
-//! production build silently lost it when the first version of this rule dropped `PreToolUse`).
+//! Kind-only check cannot see the star hold A2 reads from the title, `mod.rs`: a Kind-only replay
+//! once wrongly called `PreToolUse` prunable, because it only ever repeats the Kind
+//! `UserPromptSubmit` already set; replayed with titles, dropping it changes A2's star hold).
 //! `log.jsonl` has no paired title capture, so it is checked by Kind alone. This test checks the
-//! rule against `STATE_EVENTS` itself, not a hand copy of it, and asserts the one event it drops:
-//! `PreToolUse`.
+//! rule against `STATE_EVENTS` itself, not a hand copy of it, and asserts that no event is
+//! prunable by the rule: `STATE_EVENTS` keeps `PreToolUse`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -242,7 +243,7 @@ fn prunable_from_timelines(event: &str, timelines: &[Vec<(f64, Observation)>]) -
 }
 
 #[test]
-fn h15_pre_tool_use_is_the_only_event_a_replay_lets_state_events_drop() {
+fn h15_a_replay_with_titles_lets_state_events_drop_nothing() {
     let signal_only_runs: Vec<Vec<Value>> = FIXTURES
         .iter()
         .copied()
@@ -254,15 +255,14 @@ fn h15_pre_tool_use_is_the_only_event_a_replay_lets_state_events_drop() {
         .map(|(log, screen)| timeline(log, screen))
         .collect();
 
-    let candidates: Vec<&str> = STATE_EVENTS.iter().copied().chain(["PreToolUse"]).collect();
-
-    let dropped: Vec<&str> = candidates
-        .into_iter()
+    let dropped: Vec<&str> = STATE_EVENTS
+        .iter()
+        .copied()
         .filter(|event| {
             prunable_from_signals(event, &signal_only_runs)
                 && prunable_from_timelines(event, &timelines)
         })
         .collect();
 
-    assert_eq!(dropped, ["PreToolUse"]);
+    assert_eq!(dropped, [] as [&str; 0]);
 }

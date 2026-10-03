@@ -401,9 +401,12 @@ async fn d4_a_miss_tells_a_closed_connection_from_a_slow_daemon() {
 /// H15: a loop of 100 tool uses, with the real `rup` hook command registered in the settings file
 /// `agent.spawn` writes, trying the hook for `PreToolUse` and `PostToolUse` around each use. The
 /// fake `claude` skips an event with no entry in the settings, exactly as Claude Code itself would;
-/// each hook command that does run is `rup signal`, so a command that exits 0 proves the Daemon
-/// answered `agent.signal` for it. The Daemon must see exactly the `STATE_EVENTS` Signals: every
-/// `PostToolUse` and not one `PreToolUse`.
+/// each hook command that does run is `rup signal`, so a command that exits 0 proves only that
+/// the RPC call answered, not that the Daemon acted on it (a Daemon whose `agent.signal` handler
+/// dropped every Signal on the floor would still make `rup signal` exit 0). The Daemon must see
+/// exactly the `STATE_EVENTS` Signals, both `PreToolUse` and `PostToolUse` around every tool use,
+/// and must actually fold at least one into the Agent's Status: `rail.tree` is read straight from
+/// the Daemon's own Runs, not from anything the fake `claude` reports about itself.
 #[tokio::test]
 async fn h15_the_daemon_sees_exactly_the_signals_of_state_events_from_a_hundred_tool_use_loop() {
     let report = tempfile::NamedTempFile::new().unwrap();
@@ -413,7 +416,7 @@ async fn h15_the_daemon_sees_exactly_the_signals_of_state_events_from_a_hundred_
         ("FAKE_CLAUDE_LOOP_REPORT", &report_path),
     ]);
     let client = project.client().await;
-    project.spawn_agent(&client).await;
+    let agent = project.spawn_agent(&client).await;
 
     let deadline = Instant::now() + Duration::from_secs(30);
     let ran: Vec<String> = loop {
@@ -426,10 +429,21 @@ async fn h15_the_daemon_sees_exactly_the_signals_of_state_events_from_a_hundred_
         tokio::time::sleep(Duration::from_millis(20)).await;
     };
 
-    assert_eq!(ran.len(), 100, "{ran:?}");
+    assert_eq!(ran.len(), 200, "{ran:?}");
     assert!(
-        ran.iter().all(|event| event == "PostToolUse"),
-        "a PreToolUse hook ran: {ran:?}"
+        ran.chunks(2)
+            .all(|pair| pair == ["PreToolUse", "PostToolUse"]),
+        "{ran:?}"
+    );
+
+    let tree = rail_tree(&client).await;
+    let node = tree.iter().find(|node| node.id == agent.id).unwrap();
+    assert_eq!(
+        node.status.as_ref().map(|status| status.label.as_str()),
+        Some("working"),
+        "the Daemon's own Status for the Agent never left `starting`, so it cannot have observed \
+         a Signal from the loop: {:?}",
+        node.status
     );
 }
 

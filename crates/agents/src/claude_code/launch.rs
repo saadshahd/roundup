@@ -13,15 +13,17 @@ use serde_json::{Map, Value, json};
 use unicode_normalization::UnicodeNormalization;
 
 /// The hook events that carry state. Notification and SubagentStop are left out on purpose: the
-/// first arrives about 6 s late, the second fires spuriously (ADR 0006). PreToolUse is left out by
-/// H15's replay rule: dropping its Signal from every fixture in `spikes/hooks-state/log*.jsonl` and
-/// from D2, and replaying the fixture's titles alongside what is left, leaves every Status
-/// unchanged, so Claude Code never runs its hook and a 100-tool-use loop costs one `rup signal` per
-/// tool use instead of two (`crates/agents/tests/state_events.rs` proves the rule against this list
-/// itself, not a hand copy of it).
-pub const STATE_EVENTS: [&str; 8] = [
+/// first arrives about 6 s late, the second fires spuriously (ADR 0006). H15's replay rule would
+/// also drop an event here when removing its Signal from every fixture in
+/// `spikes/hooks-state/log*.jsonl` and from D2, replayed with the fixture's titles alongside what
+/// is left, leaves every Status unchanged; `crates/agents/tests/state_events.rs` checks the rule
+/// against this list itself and finds no event prunable, since A2's star hold reads `PreToolUse`
+/// to tell a star that may precede a dialog from one that may not (`mod.rs`). H15's saving is a
+/// current-thread tokio runtime for `rup signal` alone (`crates/rup/src/main.rs`).
+pub const STATE_EVENTS: [&str; 9] = [
     "SessionStart",
     "UserPromptSubmit",
+    "PreToolUse",
     "PermissionRequest",
     "PostToolUse",
     "PostToolUseFailure",
