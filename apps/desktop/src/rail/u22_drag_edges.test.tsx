@@ -218,4 +218,44 @@ describe("u22 a drag near the Rail's top or bottom edge scrolls it", () => {
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.move")).toEqual([{ id: "r0", parent: null, index: 21 }]));
   });
+
+  it("u22_the_drop_line_sits_at_the_pointers_gap_in_a_scrolled_rail_on_every_frame", async () => {
+    await mountRail(Array.from({ length: 30 }, (_, n) => agent(`r${n}`, "idle", "i", { order: n })));
+    const rail = scrollableRail(100, 600, 400);
+
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute("role") === "treeitem") return new DOMRect(0, screen.getAllByRole("treeitem").indexOf(this) * 20 - rail.scrollTop, 200, 20);
+
+      if (this.classList.contains("rail-tree")) return new DOMRect(0, 0, 200, 400);
+
+      return new DOMRect(0, 0, 20, 20);
+    });
+
+    const lineTop = () => Number.parseFloat(dropLine()?.style.top ?? "NaN");
+
+    dragFrom("r0", { clientX: 0, clientY: 200 });
+    const tops = [lineTop()];
+    fireEvent.pointerMove(window, { clientX: 0, clientY: 380 });
+    tops.push(lineTop());
+    frames(1);
+    tops.push(lineTop());
+    frames(2);
+    tops.push(lineTop());
+
+    expect(tops).toEqual([280, 460, 480, 500]);
+  });
+
+  it("u22_a_pointer_outside_the_rail_beside_above_or_below_it_scrolls_nothing", async () => {
+    await mountRail(TREE);
+    const rail = scrollableRail(100);
+
+    dragFrom("b", { clientX: 300, clientY: 400 - EDGE_PX + 1 });
+    frames(3);
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 450 });
+    frames(3);
+    fireEvent.pointerMove(window, { clientX: 100, clientY: -10 });
+    frames(3);
+
+    expect(rail.scrollTop).toBe(100);
+  });
 });
