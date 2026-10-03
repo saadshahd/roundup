@@ -874,8 +874,7 @@ got=0; STUB_MODE=events-then-exit loop/boxd.sh review r prompt.md >out 2>err || 
 expect_true "L21 a result-less review exits 1" test "$got" -eq 1
 expect_true "L21 a result-less review after a successful one removes the stale verdict" bash -c '! test -e loop/out/verdicts/r.md'
 
-# A stale result file must go even on an exit path that never reaches build()'s or review()'s own cleanup branch:
-# a failed check (not a timed-out or result-less run), a no-output run and a paused run all exit before that point.
+# A stale final result must go on failure. A completed build whose check fails keeps its new candidate.
 new_repo; STUB_MODE='' loop/boxd.sh build t prompt.md >out 2>err
 expect_true "L21 setup: a successful build writes the stable patch (2)" test -e loop/out/patches/t.patch
 got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
@@ -885,7 +884,8 @@ expect_true "L21 a failed check after a successful build removes the stale patch
 new_repo; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
 expect_true "L21 setup: a timed-out build writes the partial patch" test -e loop/out/patches/t.partial.patch
 got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
-expect_true "L21 a failed check after a timed-out build removes the stale partial patch" bash -c '! test -e loop/out/patches/t.partial.patch'
+expect_true "L21 a failed check after a timed-out build replaces the candidate patch" test -s loop/out/patches/t.partial.patch
+expect_true "L21 that failed check publishes no final patch" bash -c '! test -e loop/out/patches/t.patch'
 
 new_repo; loop/boxd.sh review r prompt.md >out 2>err
 expect_true "L21 setup: a successful review writes the stable verdict (2)" test -e loop/out/verdicts/r.md
