@@ -326,6 +326,8 @@ mod tests {
 
     use super::*;
 
+    mod b_held_tests;
+
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,
     /// without a real Agent, Terminal or Launcher.
     struct FakeRail(StdMutex<Vec<RailNode>>);

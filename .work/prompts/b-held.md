@@ -2,7 +2,9 @@ You are a Builder (`.agents/builder.md`). Build the second slice of the daemon M
 
 Scope: `crates/messages` and the contract additions it implements in `crates/contracts` (regenerate `contracts/generated/`, never edit it by hand): the methods `takeover.begin` and `takeover.end` (the user's calls, B6) and the event `takeover.changed`. A contract change (`AGENTS.md` rule 4): its PR needs an architect's approval.
 
-Build, in order, writing each failing test first:
+**Test-first split.** The failing tests are written: `crates/messages/src/tests/b_held_tests.rs` on the branch `architect/b-held-tests`, stacked on slice 1 (rebase it onto `main` once slice 1 merges; its head is in your task message). Make them pass and never edit that file: if a test looks wrong, stop and message `architect-b`. Its header names the pinned seams: `Messages::open` gains a `Deliver` argument and a `Refusal` enum; `Messages` reads `agent.status` events on its bus; an `idle` event calls `deliver` once for the oldest deliverable Message (typing at send time and refusal outcomes stay slice 3); a Message's `reason` is a string on the wire. Update the call in the older `Harness::new` in `lib.rs` and nothing else there. The tests do not cover the Bend `inv_` replays or the 32-Message bound under a Takeover: write those beside the code.
+
+Build, in order:
 1. Takeovers, held in memory (B6): `begin` and `end` as the text says, including `FORBIDDEN`, `NOT_FOUND`, `CONFLICT` for an ended Agent, a repeated call changing nothing, and `takeover.changed`.
 2. Held reasons (B6): during a Takeover a Message from any Actor but the user is `held` with the reason `takeover` on an `auto` Route, keeps `ask-first` on that Route, and is `dropped` on a `drop` Route; at the end the `takeover` ones become `pending` in id order; `message.deliver` on one releases it at once.
 3. Order (B7): pending Messages go in the order in which they became deliverable, ties by id; a held Message never blocks a later one.
