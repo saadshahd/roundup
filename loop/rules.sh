@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md rules 1, 3, 6 and 8. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir>
+# Machine checks for AGENTS.md rules 1, 3, 6 and 8. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir> | carry <pr>
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -160,10 +160,68 @@ delta() {
   return "$regressed"
 }
 
+# L54: does a PR's approval still hold after merges of main? Prints `carried <A> <H>` or names the commit and rule.
+carry_allowed() { case $1 in .work/queue.md | .work/queue/* | scenarios/README.md) return 0 ;; *) return 1 ;; esac; }
+lines_of() { git show "$1:$2" 2>/dev/null | sort; }
+count_of() { printf '%s\n' "$1" | g -cxF -- "$2"; }
+
+# Rule b for one file of merge $1 (parents $2 and $3): the result holds exactly the first parent's lines that main
+# did not remove, plus the lines main added, each at most as often as either side has it.
+carry_rule_b() {
+  local merge=$1 p1=$2 p2=$3 file=$4 base keep result line
+  base=$(git merge-base "$p1" "$p2")
+  keep=$( { comm -23 <(lines_of "$p1" "$file") <(comm -23 <(lines_of "$base" "$file") <(lines_of "$p2" "$file") | sort -u) ; comm -13 <(lines_of "$base" "$file") <(lines_of "$p2" "$file"); } | sort -u)
+  result=$(lines_of "$merge" "$file")
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    printf '%s\n' "$keep" | grep -qxF -- "$line" || { echo "carry: $merge: rule b: $file holds a line neither side may keep: $line" >&2; return 1; }
+    [ "$(count_of "$result" "$line")" -le "$(( $(count_of "$(lines_of "$p1" "$file")" "$line") > $(count_of "$(lines_of "$p2" "$file")" "$line") ? $(count_of "$(lines_of "$p1" "$file")" "$line") : $(count_of "$(lines_of "$p2" "$file")" "$line") ))" ] || { echo "carry: $merge: rule b: $file repeats a line: $line" >&2; return 1; }
+  done <<<"$result"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    printf '%s\n' "$result" | grep -qxF -- "$line" || { echo "carry: $merge: rule b: $file lost a line a side keeps: $line" >&2; return 1; }
+  done <<<"$keep"
+}
+
+carry_one() {
+  local c=$1 p1 p2 extra trial conflicted f
+  read -r _ p1 p2 extra <<<"$(git rev-list --parents -n 1 "$c")"
+  { [ -n "${p2:-}" ] && [ -z "${extra:-}" ]; } || { echo "carry: $c: not a merge of main" >&2; return 1; }
+  git merge-base --is-ancestor "$p2" origin/main || { echo "carry: $c: not a merge of main (second parent is not on origin/main)" >&2; return 1; }
+  git log -1 --format=%B "$c" | grep -q '^Author-Agent: ' || { echo "carry: $c: no Author-Agent trailer" >&2; return 1; }
+  trial=$(git merge-tree --write-tree --name-only --no-messages "$p1" "$p2" || true)
+  conflicted=$(sed 1d <<<"$trial" | sed '/^$/d')
+  trial=$(head -n 1 <<<"$trial")
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    carry_allowed "$f" || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
+    carry_rule_b "$c" "$p1" "$p2" "$f" || return 1
+  done <<<"$conflicted"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    grep -qxF -- "$f" <<<"$conflicted" || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
+  done <<<"$(git diff --name-only "$trial" "$c")"
+}
+
+carry() {
+  local pr=$1 head approval c chain=()
+  [[ $pr =~ ^[0-9]+$ ]] || { echo "carry: <pr> must be digits" >&2; return 2; }
+  head=$(gh pr view "$pr" --json headRefOid -q .headRefOid) || { echo "carry: gh failed reading PR $pr" >&2; return 4; }
+  git cat-file -e "$head^{commit}" 2>/dev/null || { echo "carry: head $head is not fetched" >&2; return 1; }
+  for c in $(git rev-list --first-parent "$head"); do
+    if [ -z "$(git diff-tree --no-commit-id --name-only -r "$c^!" 2>/dev/null)" ] && [ "$(git rev-list --parents -n 1 "$c" | wc -w)" -eq 2 ] && git log -1 --format=%B "$c" | grep -q '^Reviewed-by-Agent: '; then approval=$c; break; fi
+    chain=("$c" ${chain[@]+"${chain[@]}"})
+  done
+  [ -n "${approval:-}" ] || { echo "carry: no approval commit on $head" >&2; return 1; }
+  for c in "${chain[@]+"${chain[@]}"}"; do carry_one "$c" || return 1; done
+  echo "carried $approval $head"
+}
+
 case "${1:-}" in
   size) size ;;
   trailers) trailers ;;
   vocab) vocab ;;
   delta) delta "${2:-}" "${3:-}" ;;
+  carry) carry "${2:-}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;
 esac

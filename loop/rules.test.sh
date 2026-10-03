@@ -156,4 +156,116 @@ new_dirs
 expect_exit 2 "L42 delta: no checks files exits 2" delta base head
 expect_exit 2 "L42 delta: a directory that does not exist exits 2" delta base nope
 
+# L54 carry: a temporary repo with `origin/main`, a PR branch holding an approval commit, and a fake `gh` that
+# prints the PR's head. Exit codes: 0 carried, 1 not carried (named), 4 gh failed.
+carry_repo() {
+  new_repo
+  git checkout -q main
+  printf '| id | item |\n|---|---|\n| L1 | one |\n| L2 | two |\n' >q.md
+  mkdir -p .work scenarios && mv q.md .work/queue.md && echo a >scenarios/loop.md
+  git add -A && git commit -qm "queue" -m "Author-Agent: t"
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q -b pr
+  echo work >work.txt && git add -A && git commit -qm "work" -m "Author-Agent: t"
+  git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+  approval=$(git rev-parse HEAD)
+  mkdir -p fakebin
+  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\ncat "$PWD/gh-head"\n' >fakebin/gh && chmod +x fakebin/gh
+  export PATH="$PWD/fakebin:$PATH"
+}
+# main_commit <file> <content>: advance origin/main on its own branch, then come back to pr.
+main_commit() {
+  git checkout -q main && printf '%s' "$2" >"$1" && git add -A && git commit -qm "main change" -m "Author-Agent: t" && git update-ref refs/remotes/origin/main HEAD && git checkout -q pr
+}
+# merge_main: merge origin/main into pr; the caller resolves a conflict by writing the file, then calls finish_merge.
+merge_main() { git merge -q --no-commit --no-ff origin/main >/dev/null 2>&1 || true; }
+finish_merge() { git add -A && git commit -qm "Merge main" -m "${1-Author-Agent: t}"; }
+carry() { git rev-parse HEAD >gh-head; loop/rules.sh carry 7; }
+carry_code() { local want=$1 name=$2 why=${3:-} got=0 out; out=$(carry 2>&1) || got=$?; if [ "$got" -eq "$want" ] && [[ $out == *"$why"* ]]; then echo "ok:   $name"; else echo "FAIL: $name (wanted exit $want, got $got: $out)"; failures=$((failures + 1)); fi; }
+queue_with() { printf '| id | item |\n|---|---|\n%s' "$1"; }
+
+carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
+| L2 | two |
+| L3 | three |
+')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"; approval=$(git rev-parse HEAD)
+merge_main; queue_with '| L1 | one |
+| L2 | two |
+| L9 | mine |
+| L3 | three |
+' >.work/queue.md; finish_merge
+carry_code 0 "L54 carry: a merge that conflicts only in queue rows and keeps both carries"
+out=$(carry 2>&1 || true); [[ $out == "carried $approval "* ]] && echo "ok:   L54 carry prints carried <A> <H>" || { echo "FAIL: L54 carry prints carried <A> <H> ($out)"; failures=$((failures + 1)); }
+
+carry_repo; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+main_commit .work/queue.md "$(queue_with '| L1 | one |
+| L2 | two |
+| L3 | three |
+')"; merge_main; queue_with '| L1 | one |
+| L2 | two |
+| L9 | mine |
+' >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a merge that drops a row main added exits 1 (rule b)" "rule b"
+
+carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
+')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+merge_main; queue_with '| L1 | one |
+| L2 | two |
+| L9 | mine |
+' >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a merge that keeps a row main removed exits 1 (rule b)" "rule b"
+
+carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
+| L2 | two |
+| L3 | three |
+')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+merge_main; queue_with '| L1 | one |
+| L2 | two |
+| L9 | mine |
+| L3 | three |
+| L7 | invented |
+' >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a merge that invents a row exits 1 (rule b)" "rule b"
+
+carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
+| L2 | two |
+| L3 | three |
+')"; printf '| L3 | three |\n' >>.work/queue.md; git add -A; git commit -qm "same row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+merge_main; queue_with '| L1 | one |
+| L2 | two |
+| L3 | three |
+' >.work/queue.md; finish_merge
+carry_code 0 "L54 carry: a row both sides added appears once and carries"
+
+carry_repo; git checkout -q -b offmain main; echo x >off.txt; git add -A; git commit -qm off -m "Author-Agent: t"; git checkout -q pr
+git merge -q --no-ff offmain -m "Merge offmain" -m "Author-Agent: t" >/dev/null
+carry_code 1 "L54 carry: a merge whose second parent is off main exits 1" "not a merge of main"
+
+carry_repo; main_commit other.txt x; main_commit other.txt y; git update-ref refs/remotes/origin/main main
+git merge -q --no-ff "$(git rev-parse main~1)" -m "Merge main" -m "Author-Agent: t" >/dev/null
+carry_code 0 "L54 carry: a merge of main's older ancestor carries"
+
+carry_repo; main_commit scenarios/loop.md changed; echo mine >>scenarios/loop.md; git add -A; git commit -qm "edit loop" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+merge_main; echo resolved >scenarios/loop.md; finish_merge
+carry_code 1 "L54 carry: a conflict in scenarios/loop.md exits 1 (rule a)" "rule a"
+
+carry_repo; main_commit other.txt x; merge_main; echo sneaky >>work.txt; finish_merge
+carry_code 1 "L54 carry: a merge that also edits another file exits 1 (rule c)" "rule c"
+
+carry_repo; main_commit other.txt x; merge_main; finish_merge "no trailer here"
+carry_code 1 "L54 carry: a merge with no Author-Agent exits 1" "Author-Agent"
+
+carry_repo; echo more >more.txt; git add -A; git commit -qm "later work" -m "Author-Agent: t"
+carry_code 1 "L54 carry: a non-merge commit after the approval exits 1" "not a merge"
+
+carry_repo; main_commit other.txt x; merge_main; finish_merge; main_commit other2.txt y; merge_main; finish_merge
+carry_code 0 "L54 carry: two carried merges in a row carry"
+
+new_repo; git checkout -q main; git update-ref refs/remotes/origin/main HEAD; git checkout -q work; mkdir -p fakebin; printf '#!/bin/sh\ncat "$PWD/gh-head"\n' >fakebin/gh; chmod +x fakebin/gh; export PATH="$PWD/fakebin:$PATH"
+carry_code 1 "L54 carry: a head with no approval commit exits 1" "no approval"
+
+carry_repo; git rev-parse HEAD >gh-head; got=0; GH_FAIL=1 loop/rules.sh carry 7 >/dev/null 2>err || got=$?
+[ "$got" -eq 4 ] && grep -q gh err && echo "ok:   L54 carry: a gh failure exits 4 naming gh" || { echo "FAIL: L54 carry: a gh failure exits 4 naming gh (got $got)"; failures=$((failures + 1)); }
+got=0; loop/rules.sh carry x >/dev/null 2>&1 || got=$?
+[ "$got" -eq 2 ] && echo "ok:   L54 carry: a non-numeric <pr> exits 2" || { echo "FAIL: L54 carry: a non-numeric <pr> exits 2 (got $got)"; failures=$((failures + 1)); }
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
