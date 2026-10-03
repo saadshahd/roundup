@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inlineStyleCss, lookLiterals } from "../testing/lookLiterals";
 
 const [table = ""] = Object.values(
   import.meta.glob<string>("../../../../docs/design-system.md", { query: "?raw", import: "default", eager: true }),
@@ -35,9 +36,9 @@ steps.forEach((step, index) => expectedLight.set(`--space-${index + 1}`, `${step
 const normalised = (value: string) =>
   value.startsWith("#") ? value.toLowerCase() : value.toLowerCase().replace(/\s+/g, "").replace(/\d*\.?\d+/g, (number) => String(Number(number)));
 
-// Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moves `styles.css`, takes `#1d1d1f`
-// for `--text` with the `u4_` tests that read it, and deletes the entry; until then the App's text colour must not change.
-const KNOWN_DIFFERENCES = new Map([["--text", "#1c1c1e"]]);
+// Tokens whose light value is knowingly not the table's yet. Slice 2 of U130 moved `--text` to the table's
+// `#1d1d1f` and deleted its entry; a later slice may add one for `--selected`, which the table's value fails D5 on.
+const KNOWN_DIFFERENCES = new Map<string, string>();
 
 function valueOf(section: string, token: string): string | undefined {
   return section.match(new RegExp(`(?:^|[\\s;{])${token}:\\s*([^;\\s][^;]*);`))?.[1];
@@ -85,7 +86,11 @@ describe("u130 tokens", () => {
     );
 
     expect(wrong, "Tokens whose light value is not the table's").toEqual([]);
-    expect(valueOf(css, "--text"), "the named difference is real, or the entry goes").not.toBe(expectedLight.get("--text"));
+
+    for (const [name, difference] of KNOWN_DIFFERENCES)
+      expect(normalised(difference), `the named difference for ${name} is real, or the entry goes`).not.toBe(
+        normalised(expectedLight.get(name) ?? ""),
+      );
   });
 
   it("u130_main_and_the_harness_import_tokens_css_before_styles_css", () => {
@@ -113,6 +118,25 @@ describe("u130 tokens", () => {
     const shadowed = TOKENS.filter((token) => valueOf(css!, token));
 
     expect(shadowed, "tokens.css's values must not be shadowed in styles.css").toEqual([]);
+  });
+
+  it("u130_styles_css_and_terminal_styles_css_have_no_look_literal_outside_a_var_read", () => {
+    const sheets = import.meta.glob<string>(["../styles.css", "../terminal/styles.css"], { query: "?raw", import: "default", eager: true });
+
+    expect(Object.keys(sheets).sort()).toEqual(["../styles.css", "../terminal/styles.css"]);
+    expect(Object.entries(sheets).flatMap(([path, css]) => lookLiterals(css).map((literal) => `${path}: ${literal}`))).toEqual([]);
+  });
+
+  it("u130_inline_styles_in_drawer_pads_and_todos_have_no_look_literal_outside_a_var_read", () => {
+    const sources = import.meta.glob<string>(["../drawer/**/*.{ts,tsx}", "../pads/**/*.{ts,tsx}", "../todos/**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+
+    expect(Object.keys(sources)).toEqual(expect.arrayContaining(["../drawer/DrawerHost.tsx", "../pads/PadDrawer.tsx", "../todos/Todos.tsx"]));
+    expect(Object.keys(sources).filter((path) => /\.test\./.test(path)), "test files are not scanned").toEqual([]);
+    expect(Object.entries(sources).flatMap(([path, source]) => lookLiterals(inlineStyleCss(source)).map((literal) => `${path}: ${literal}`))).toEqual([]);
   });
 
   // Slice 1 keeps the App light by setting no scheme at all; slice 3 deletes this test with the dark block.
