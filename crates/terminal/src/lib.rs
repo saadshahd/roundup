@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use contracts::terminal::{
-    ExitedEvent, OutputEvent, ResizeParams, SpawnParams, TerminalId, TerminalInfo, TitleEvent,
-    WriteParams,
+    ExitedEvent, OutputEvent, ResizeParams, Snapshot, SpawnParams, TerminalId, TerminalInfo,
+    TitleEvent, WriteParams,
 };
 use contracts::{Actor, EventData};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -28,9 +28,8 @@ use tokio::sync::broadcast;
 
 /// Events a slow subscriber may fall behind by before it is told it lagged (it never blocks the reader).
 const EVENT_BACKLOG: usize = 1024;
-/// The parser only listens for titles, so its screen is small and fixed however big the window is.
-const TITLE_ROWS: u16 = 24;
-const TITLE_COLS: u16 = 80;
+const SNAPSHOT_SCROLLBACK: usize = 1000;
+const SNAPSHOT_MAX_BYTES: usize = 1_048_576;
 /// How often the reader thread checks whether a program that closed its PTY has ended.
 const REAP_POLL: Duration = Duration::from_millis(5);
 const READ_CHUNK: usize = 8192;
@@ -61,6 +60,12 @@ struct Entry {
     info: TerminalInfo,
     events: broadcast::Sender<EventData>,
     handle: Option<Arc<Handle>>,
+    screen: Arc<Mutex<ScreenState>>,
+}
+
+struct ScreenState {
+    parser: Option<vt100::Parser<Titles>>,
+    after: u64,
 }
 
 /// State shared with each Terminal's reader thread.
@@ -162,14 +167,24 @@ impl Terminals {
         let reader = pair.master.try_clone_reader().map_err(RpcError::internal)?;
         let writer = pair.master.take_writer().map_err(RpcError::internal)?;
         let number = self.next.fetch_add(1, Ordering::Relaxed);
+        let screen = Arc::new(Mutex::new(ScreenState {
+            parser: Some(vt100::Parser::new_with_callbacks(
+                params.rows,
+                params.cols,
+                SNAPSHOT_SCROLLBACK,
+                Titles::default(),
+            )),
+            after: 0,
+        }));
         let (arrival, child_arrives) = mpsc::channel();
         let shared = Arc::clone(&self.shared);
+        let reader_screen = Arc::clone(&screen);
         std::thread::Builder::new()
             .name(format!("terminal-{number}"))
             .spawn(move || {
                 // No child means the program never started: nothing to report.
                 if let Ok(program) = child_arrives.recv() {
-                    pump(&shared, number, reader, &program);
+                    pump(&shared, number, reader, &program, &reader_screen);
                 }
             })
             .map_err(RpcError::internal)?;
@@ -209,6 +224,7 @@ impl Terminals {
                 },
                 events: sender,
                 handle: Some(Arc::new(handle)),
+                screen,
             },
         );
         arrival
@@ -239,8 +255,41 @@ impl Terminals {
     pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), RpcError> {
         let size = window(cols, rows)?;
         let handle = self.running(id)?;
+        let screen = self.screen(id)?;
+        let mut state = screen.lock().expect("terminal screen lock");
         let master = handle.master.lock().expect("terminal master lock");
-        master.resize(size).map_err(RpcError::internal)
+        master.resize(size).map_err(RpcError::internal)?;
+        if let Some(parser) = state.parser.as_mut() {
+            parser.screen_mut().set_size(rows, cols);
+        }
+        Ok(())
+    }
+
+    /// Return the Terminal's last screen and the output offset represented by it, from one cut.
+    pub fn snapshot(&self, id: &str) -> Result<Snapshot, RpcError> {
+        let screen = self.screen(id)?;
+        let state = screen.lock().expect("terminal screen lock");
+        let parser = state
+            .parser
+            .as_ref()
+            .ok_or_else(|| RpcError::internal("terminal screen parser stopped"))?;
+        let (rows, cols) = parser.screen().size();
+        let data = formatted_snapshot(parser.screen())?;
+        Ok(Snapshot {
+            cols,
+            rows,
+            after: state.after,
+            data: STANDARD.encode(data),
+        })
+    }
+
+    fn screen(&self, id: &str) -> Result<Arc<Mutex<ScreenState>>, RpcError> {
+        let number = parse_terminal_number(id)?;
+        self.shared
+            .table()
+            .get(&number)
+            .map(|entry| Arc::clone(&entry.screen))
+            .ok_or_else(|| RpcError::not_found(format!("terminal {id}")))
     }
 
     /// Stop a running Terminal's program (SIGHUP, then SIGKILL if it lingers) and return once it is
@@ -341,45 +390,51 @@ fn reap(program: &Program) -> std::io::Result<portable_pty::ExitStatus> {
 }
 
 /// Read until the program closes the PTY, publishing each chunk, then report how it ended.
-fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program: &Program) {
+fn pump(
+    shared: &Shared,
+    number: u64,
+    mut reader: Box<dyn Read + Send>,
+    program: &Program,
+    screen: &Mutex<ScreenState>,
+) {
     let id = number.to_string();
-    let mut parser = Some(vt100::Parser::new_with_callbacks(
-        TITLE_ROWS,
-        TITLE_COLS,
-        0,
-        Titles::default(),
-    ));
     let mut chunk = [0u8; READ_CHUNK];
     // Linux reports the closed PTY as an error, macOS as end of file: both mean "no more output".
     while let Ok(read) = reader.read(&mut chunk) {
         if read == 0 {
             break;
         }
-        let data = STANDARD.encode(&chunk[..read]);
+        let (offset, titles) = {
+            let mut state = screen.lock().expect("terminal screen lock");
+            let offset = state.after;
+            let parsed = state.parser.as_mut().map(|parser| {
+                catch_unwind(AssertUnwindSafe(|| {
+                    parser.process(&chunk[..read]);
+                    std::mem::take(&mut parser.callbacks_mut().0)
+                }))
+            });
+            state.after += read as u64;
+            match parsed {
+                Some(Ok(titles)) => (offset, titles),
+                Some(Err(_)) => {
+                    eprintln!("terminal {number}: screen parser panicked; snapshots are off");
+                    state.parser = None;
+                    (offset, Vec::new())
+                }
+                None => (offset, Vec::new()),
+            }
+        };
         shared.publish(
             number,
             EventData::TerminalOutput(OutputEvent {
                 id: id.clone(),
-                data,
+                offset,
+                data: STANDARD.encode(&chunk[..read]),
             }),
         );
-        // A parser bug must cost titles, never the reader: the Terminal has to report its exit.
-        let parsed = parser.as_mut().map(|parser| {
-            catch_unwind(AssertUnwindSafe(|| {
-                parser.process(&chunk[..read]);
-                std::mem::take(&mut parser.callbacks_mut().0)
-            }))
-        });
-        match parsed {
-            Some(Ok(titles)) => titles
-                .into_iter()
-                .for_each(|title| shared.retitle(number, title)),
-            Some(Err(_)) => {
-                eprintln!("terminal {number}: title parser panicked; titles are off");
-                parser = None;
-            }
-            None => {}
-        }
+        titles
+            .into_iter()
+            .for_each(|title| shared.retitle(number, title));
     }
     let code = match reap(program) {
         Ok(status) if status.signal().is_some() => None,
@@ -391,6 +446,45 @@ fn pump(shared: &Shared, number: u64, mut reader: Box<dyn Read + Send>, program:
         }
     };
     shared.finish(number, code);
+}
+
+fn formatted_snapshot(screen: &vt100::Screen) -> Result<Vec<u8>, RpcError> {
+    let visible = screen.state_formatted();
+    let alternate = screen.alternate_screen();
+    let prefix = if alternate {
+        b"\x1b[?1049h".as_slice()
+    } else {
+        &[]
+    };
+    if prefix.len() + visible.len() > SNAPSHOT_MAX_BYTES {
+        return Err(RpcError::internal("terminal screen exceeds snapshot limit"));
+    }
+
+    let mut history = Vec::new();
+    if !alternate {
+        let mut prior = screen.clone();
+        prior.set_scrollback(SNAPSHOT_SCROLLBACK);
+        let count = prior.scrollback();
+        let (_, cols) = prior.size();
+        for offset in (1..=count).rev() {
+            prior.set_scrollback(offset);
+            let row = prior.rows(0, cols).next().unwrap_or_default();
+            let mut line = row.into_bytes();
+            line.extend_from_slice(b"\r\n");
+            history.push(line);
+        }
+    }
+    let mut total = prefix.len() + visible.len() + history.iter().map(Vec::len).sum::<usize>();
+    while total > SNAPSHOT_MAX_BYTES {
+        total -= history.remove(0).len();
+    }
+    let mut data = Vec::with_capacity(total);
+    data.extend_from_slice(prefix);
+    for line in history {
+        data.extend_from_slice(&line);
+    }
+    data.extend_from_slice(&visible);
+    Ok(data)
 }
 
 /// What the OS would refuse at exec time, caught here so it is the caller's error with a short message.
@@ -477,6 +571,10 @@ impl Module for Terminals {
                 self.kill(&id).await.and(reply(&()))
             }
             "terminal.list" => reply(&self.list()),
+            "terminal.snapshot" => {
+                let TerminalId { id } = params(value)?;
+                reply(&self.snapshot(&id)?)
+            }
             _ => Err(RpcError::method_not_found(method)),
         }
     }

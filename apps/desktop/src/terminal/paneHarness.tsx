@@ -95,10 +95,10 @@ export const fakeEmulators = () => {
   return { factory, made };
 };
 
-export const output = (id: string, text: string): DaemonEvent => ({
+export const output = (id: string, text: string, offset = 0): DaemonEvent => ({
   actor: USER,
   name: "terminal.output",
-  data: { id, data: toBase64(new TextEncoder().encode(text)) },
+  data: { id, offset, data: toBase64(new TextEncoder().encode(text)) },
 });
 
 type Mounted = {

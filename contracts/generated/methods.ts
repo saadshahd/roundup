@@ -33,6 +33,7 @@ import type { WriteParams as pad_WriteParams } from "./pad/WriteParams";
 import type { ProjectSettings as project_ProjectSettings } from "./project/ProjectSettings";
 import type { Worktrees as project_Worktrees } from "./project/Worktrees";
 import type { ResizeParams as terminal_ResizeParams } from "./terminal/ResizeParams";
+import type { Snapshot as terminal_Snapshot } from "./terminal/Snapshot";
 import type { SpawnParams as terminal_SpawnParams } from "./terminal/SpawnParams";
 import type { TerminalId as terminal_TerminalId } from "./terminal/TerminalId";
 import type { TerminalInfo as terminal_TerminalInfo } from "./terminal/TerminalInfo";
@@ -54,6 +55,7 @@ export type RpcMethods = {
   "terminal.resize": { params: terminal_ResizeParams; result: null };
   "terminal.kill": { params: terminal_TerminalId; result: null };
   "terminal.list": { params: null; result: terminal_TerminalInfo[] };
+  "terminal.snapshot": { params: terminal_TerminalId; result: terminal_Snapshot };
   "todo.create": { params: todo_CreateParams; result: todo_Todo };
   "todo.get": { params: todo_TodoId; result: todo_Todo };
   "todo.list": { params: null; result: todo_Todo[] };

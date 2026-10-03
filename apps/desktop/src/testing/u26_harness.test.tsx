@@ -100,7 +100,7 @@ describe("u26 the controls", () => {
 
     writeOutput("t-agent-1", "hi");
 
-    expect(seen).toEqual([event({ name: "terminal.output", data: { id: "t-agent-1", data: "aGk=" } })]);
+    expect(seen).toEqual([event({ name: "terminal.output", data: { id: "t-agent-1", offset: 0, data: "aGk=" } })]);
   });
 
   it("u26_emit_sends_the_event_it_is_given", async () => {

@@ -56,6 +56,18 @@ pub struct OutputEvent {
     pub id: String,
     /// Base64 of the bytes the program wrote.
     pub data: String,
+    #[ts(type = "number")]
+    pub offset: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "terminal/")]
+pub struct Snapshot {
+    pub cols: u16,
+    pub rows: u16,
+    #[ts(type = "number")]
+    pub after: u64,
+    pub data: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
