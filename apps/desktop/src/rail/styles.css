@@ -113,6 +113,13 @@
   --rail-actions-height: 40px;
 }
 
+.rail-tree > .ink {
+  position: sticky;
+  bottom: var(--rail-actions-height);
+  z-index: 1;
+  background: var(--ground);
+}
+
 .rail-row {
   user-select: none;
 }
