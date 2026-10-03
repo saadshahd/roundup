@@ -1,5 +1,7 @@
 # App
 
+Module: `crates/desktop` (the App: Tauri shell, App seam). Ids: every `S` heading in the file.
+
 The App is the Tauri 2 shell in `crates/desktop` (ADR 0001). It starts a Daemon for one Project and passes calls and events between the webview (`apps/desktop`, see `ui.md`) and that Daemon. It holds no state of its own beyond which Project is open and the list of recently opened Projects (S6). Tests use Tauri's mock runtime (`tauri::test`) and need no window. A fake `rupd` comes from `ROUNDUP_RUPD_BIN`; a real Daemon runs in-process on a temp socket (`rupd` as a dev-dependency).
 
 ## App seam
