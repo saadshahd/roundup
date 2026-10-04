@@ -66,12 +66,30 @@ it("u86_rail_marks_share_the_disclosures_scan_line_when_selected", async () => {
   try {
     await withStylesheets(async () => {
       const { rail } = await mountRail([group("topic"), agent("a", "working", "w")]);
-      rail.select("a");
+      const values = tokensFrom(tokens);
 
       for (const name of ["topic", "a"]) {
-        const line = rowOf(name).querySelector(".line")!;
-        expect(resolveToken(getComputedStyle(line).minHeight, tokensFrom(tokens))).toBe("24px");
-        expect(getComputedStyle(rowOf(name)).minHeight).toBe("28px");
+        const row = rowOf(name);
+
+        for (const selected of [false, true]) {
+          if (selected) rail.select(name);
+
+          expect(row.getAttribute("aria-selected")).toBe(String(selected));
+          const band = getComputedStyle(row);
+          const line = getComputedStyle(row.querySelector(".line")!);
+          const icon = getComputedStyle(row.querySelector("svg")!);
+          const mark = getComputedStyle(row.querySelector(".line > button, .line > .glyph")!);
+
+          expect(band.minHeight).toBe("28px");
+          expect(resolveToken(line.minHeight === "inherit" ? band.minHeight : line.minHeight, values)).toBe("28px");
+          expect(line.display).toBe("flex");
+          expect(line.alignItems).toBe("center");
+          expect([icon.width, icon.height].map((value) => resolveToken(value, values))).toEqual(["16px", "16px"]);
+          expect(resolveToken(name === "topic" ? mark.minWidth : mark.width, values)).toBe("24px");
+          expect(mark.justifyContent).toBe("center");
+
+          if (name === "topic") expect(resolveToken(mark.minHeight, values)).toBe("24px");
+        }
       }
     });
   } finally {
