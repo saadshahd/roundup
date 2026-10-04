@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Build scenario M4 in `scenarios/mcp.md`, and nothing else. Read `AGENTS.md`, `CONTEXT.md`, `PRINCIPLES.md`, `scenarios/mcp.md` and `.claude/sound/` first.
+You are a Builder (`.agents/builder.md`). Build scenario M4 in `scenarios/mcp.md`, and nothing else. Read `AGENTS.md`, `GLOSSARY.md`, `PRINCIPLES.md`, `scenarios/mcp.md` and `.claude/sound/` first.
 
 Finding: the installed Claude Code rejects the `roundup` server's `tools/list` reply with "expected number, received undefined" at `ttlMs`, so an Agent cannot use any `mcp__roundup__*` tool. Edit only `crates/rup/src/mcp.rs`, `crates/rup/tests/mcp.rs` and line 3 of `scenarios/mcp.md` (it says no claude is involved; except M4's VM run).
 

@@ -14,7 +14,7 @@ new_repo() {
   git config user.name t
   mkdir loop crates contracts
   cp "$script" loop/rules.sh
-  printf '_Avoid:_ session, bot, process.\n_Avoid:_ parent agent.\n' >CONTEXT.md
+  printf '_Avoid_: session, bot, process\n_Avoid_: parent agent\n' >GLOSSARY.md
   echo 'pub fn ok() {}' >crates/a.rs
   git add -A
   git commit -qm base
@@ -100,8 +100,8 @@ new_repo; mkdir -p crates/other/claude_code; echo 'pub fn session_id() {}' >crat
 expect fail "L3 vocab: another claude_code dir is not exempt" rules vocab
 new_repo; echo 'export type SessionId = string;' >contracts/a.ts; commit x
 expect fail "L3 vocab: TS export" rules vocab
-new_repo; rm CONTEXT.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
-expect fail "L3 vocab: missing CONTEXT.md fails loudly" rules vocab
+new_repo; rm GLOSSARY.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
+expect fail "L3 vocab: missing GLOSSARY.md fails loudly" rules vocab
 
 # delta
 expect_exit() {
@@ -823,7 +823,7 @@ expect_exit 1 'L53 specification missing consistency review fails' gate proof 12
 gate_specification
 gate_set '.body |= sub("Proof scope: specification"; "Proof scope: implementation")'
 expect_exit 1 'L53 unknown explicit proof scope fails' gate proof 12
-for path in crates/change.rs AGENTS.md CONTEXT.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
+for path in crates/change.rs AGENTS.md GLOSSARY.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
   gate_specification
   printf 'changed\n' >>"$path"
   commit mixed 'Author-Agent: builder'

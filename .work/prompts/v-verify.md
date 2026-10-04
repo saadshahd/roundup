@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Build scenarios Y1, Y2 and Y3 in `scenarios/ui-verify.md`, and nothing else. Read `AGENTS.md`, `CONTEXT.md`, `PRINCIPLES.md`, `scenarios/ui-verify.md`, `scenarios/ui-drawer.md` (U111), `scenarios/ui.md` (U26) and `.claude/sound/` first.
+You are a Builder (`.agents/builder.md`). Build scenarios Y1, Y2 and Y3 in `scenarios/ui-verify.md`, and nothing else. Read `AGENTS.md`, `GLOSSARY.md`, `PRINCIPLES.md`, `scenarios/ui-verify.md`, `scenarios/ui-drawer.md` (U111), `scenarios/ui.md` (U26) and `.claude/sound/` first.
 
 Edit only `apps/desktop/src/testing/**`, `apps/desktop/harness.html`, the three scenario files named below, `apps/desktop/package.json` (the `axe-core` dependency, MPL-2.0, from the npm registry, pinned to the 4.13 line), `loop/rules.sh` and `loop/rules.test.sh`. Edit scenario files only for those three lines, and do not edit `loop/rules.sh` outside the new `laws` subcommand. Use the library: do not write a contrast or ARIA checker of your own, and do not add a second implementation of D1 to D10 (U137's module stays the one).
 

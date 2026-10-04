@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Build scenario R13 (`scenarios/perf.md`, "R13 load-aware comparison") and nothing else. Read `AGENTS.md`, `CONTEXT.md`, `docs/perf.md` and R13, R6, R8, R10 first. Failing test first, then the code, `just check` as the observer, one PR.
+You are a Builder (`.agents/builder.md`). Build scenario R13 (`scenarios/perf.md`, "R13 load-aware comparison") and nothing else. Read `AGENTS.md`, `GLOSSARY.md`, `docs/perf.md` and R13, R6, R8, R10 first. Failing test first, then the code, `just check` as the observer, one PR.
 
 You may edit only: `crates/perf/**`, the rule 7 line of `AGENTS.md`, and `docs/perf.md`. Do not edit `scenarios/`, `.work/` or any other file. Run no window and no `just perf` (it needs a quiet machine): every test uses injected load figures.
 

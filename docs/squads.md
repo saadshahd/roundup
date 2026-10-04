@@ -23,7 +23,7 @@ Three architects: `architect-swarm` (contracts, ids, queue), `architect-b` (UI a
 - any edit under `contracts/`, including a new RPC method, an event or a field;
 - any App seam command (a Tauri command or capability);
 - any change to the shared design tokens (U4's colours and type);
-- `CONTEXT.md` terms that two squads use, and ADRs;
+- `GLOSSARY.md` terms that two squads use, and ADRs;
 - a change to a scenario that a merged test asserts, when it crosses squads;
 - a conflict between squads.
 

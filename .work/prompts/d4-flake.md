@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Fix the nondeterminism in scenario D4 (`scenarios/daemon.md`, "D4 ten idle Agents") and nothing else. Read `AGENTS.md`, `CONTEXT.md`, `scenarios/daemon.md` and `.claude/sound/` first.
+You are a Builder (`.agents/builder.md`). Fix the nondeterminism in scenario D4 (`scenarios/daemon.md`, "D4 ten idle Agents") and nothing else. Read `AGENTS.md`, `GLOSSARY.md`, `scenarios/daemon.md` and `.claude/sound/` first.
 
 Evidence: at 8acd9f3, `d4_ten_idle_agents_cost_the_daemon_less_than_150_mb` (crates/rup/tests/e2e.rs) failed once with "the event arrived: Elapsed(())" after 30.4 s from `next` in crates/rup/tests/e2e/daemon.rs, then passed on an identical rerun; it passed at 803c5f7. The commits between touch only apps/desktop and one agents launch test. The cause is unknown: either an `AgentStatus` Idle event was lost or the Daemon was slow under load. Do not guess and do not raise the 30 s.
 

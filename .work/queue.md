@@ -27,7 +27,7 @@ Agents coordinate only through this repo: queue files, `scenarios/`, PRs and the
 - **Merge order.** PRs merge in their rows' "merge after" order; a stacked PR (its scenario says "after X" or "may stack") branches from its base, touches no file its base touches, and merges after it.
 - **Stale branches.** Merge `origin/main` into the branch (a stacked branch merges its base first), run `just check`, push, ask for a new approval; never rebase a branch with an approval or a review in flight.
 - **Lockfile conflicts.** Take main's file and regenerate: `git checkout origin/main -- Cargo.lock && cargo update -w`, `git checkout origin/main -- pnpm-lock.yaml && pnpm install`; commit with the merge.
-- **Out of scope.** A defect that needs a change in `contracts/`, `CONTEXT.md` or the App seam stops the Builder and goes to the Architect.
+- **Out of scope.** A defect that needs a change in `contracts/`, `GLOSSARY.md` or the App seam stops the Builder and goes to the Architect.
 
 **Id table** (who holds each reserved id):
 

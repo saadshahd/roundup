@@ -1,4 +1,4 @@
-You are a Builder (`.agents/builder.md`). Implement only the first truthful Meta-agent Brief/Todo slice. Read AGENTS.md, CONTEXT.md, PRINCIPLES.md, scenarios/awareness.md E1, scenarios/messages.md B24 and `.claude/sound/` first. You are not alone; preserve other work and stay inside the ownership below. This dedicated VM checkout is your worktree; edit it directly, do not create another checkout.
+You are a Builder (`.agents/builder.md`). Implement only the first truthful Meta-agent Brief/Todo slice. Read AGENTS.md, GLOSSARY.md, PRINCIPLES.md, scenarios/awareness.md E1, scenarios/messages.md B24 and `.claude/sound/` first. You are not alone; preserve other work and stay inside the ownership below. This dedicated VM checkout is your worktree; edit it directly, do not create another checkout.
 
 Scenarios: E1 B24
 

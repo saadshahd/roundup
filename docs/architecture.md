@@ -1,6 +1,6 @@
 # Architecture
 
-roundup is a Claude Code workbench: Terminals, Agents (Claude Code only), Todos, Pads. macOS only for the MVP. No accounts, sync or telemetry. Terms are defined in `/CONTEXT.md`.
+roundup is a Claude Code workbench: Terminals, Agents (Claude Code only), Todos, Pads. macOS only for the MVP. No accounts, sync or telemetry. Terms are defined in `/GLOSSARY.md`.
 
 ```
  ┌ Tauri UI (Solid) ┐  ┌ rup CLI ┐  ┌ Claude Code agents ┐  ┌ extensions ┐

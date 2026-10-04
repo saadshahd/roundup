@@ -1,6 +1,6 @@
 # Scenarios
 
-A scenario is the spec for a unit of work: given / when / then, in `CONTEXT.md` words. No scenario, no work.
+A scenario is the spec for a unit of work: given / when / then, in `GLOSSARY.md` words. No scenario, no work.
 
 - Ids are a letter and a number (`T3`). A test that proves a scenario has the lowercase id as the start of its name: `fn t3_completing_a_blocker_unblocks_the_todo`.
 - A PR names the scenario ids it implements; rule 1 ("done") requires each to have a passing test whose name starts with its id. Two exceptions: W1 changes only root config, and U55 is a diagnosis that changes no app file. Each names the observer that proves it instead of a test.

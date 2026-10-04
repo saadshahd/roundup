@@ -51,7 +51,7 @@ Mono is for the Terminal, paths, ids and code. Every other word is `--font-ui`.
 
 ## Colour
 
-Kind has two carriers, a Glyph shape and a tone. The shape is enough on its own: colour never carries a Kind alone. Ink (bold plus hue) stays what `CONTEXT.md` says: only `needs-you` and `error`.
+Kind has two carriers, a Glyph shape and a tone. The shape is enough on its own: colour never carries a Kind alone. Ink (bold plus hue) stays what `GLOSSARY.md` says: only `needs-you` and `error`.
 
 | Kind | Glyph | Tone | Ink |
 |---|---|---|---|

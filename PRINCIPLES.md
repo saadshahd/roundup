@@ -1,6 +1,6 @@
 # Principles
 
-What roundup is for, beyond a lean, extensible, fast workbench. Every design and UX choice serves these. Terms are in `CONTEXT.md`; **Thread**, **Card** and **Decision** are named here and defined there after the naming pass (`/shape`).
+What roundup is for, beyond a lean, extensible, fast workbench. Every design and UX choice serves these. Terms are in `GLOSSARY.md`; **Thread**, **Card** and **Decision** are named here and defined there after the naming pass (`/shape`).
 
 A PR body lists the principle ids it serves and answers each gate below. A gate is a yes/no question. The answer must be "no" to merge, unless the principle says it is a goal. The Reviewer checks the answers against the diff (`AGENTS.md` rule 1).
 

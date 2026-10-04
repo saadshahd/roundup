@@ -23,7 +23,7 @@ One prompt per role in `.agents/`, which names the skills the role invokes; Buil
 
 | Role | Does | Never |
 |---|---|---|
-| Architect (a committee of three, `docs/squads.md`) | Approves contract changes; owns `CONTEXT.md`, ADRs, Tokens and Checks; fixes a rejected PR; turns recurring failures into rules. | Writes feature code. |
+| Architect (a committee of three, `docs/squads.md`) | Approves contract changes; owns `GLOSSARY.md`, ADRs, Tokens and Checks; fixes a rejected PR; turns recurring failures into rules. | Writes feature code. |
 | Builder | Failing test first, then code, in its own worktree. Opens a PR. | Reviews its own PR. |
 | Reviewer | Judges the diff on rule 5's input; approves or lists defects. | Sees the Builder's rationale. |
 | Driver | Starts each step, merges when rule 1 holds, files Todos, stops on its stop conditions. | Writes code or reviews. |
@@ -89,7 +89,7 @@ Every write the App can make (spawn, create Group, rename, promote, move, stop, 
 | 3 PR size guide | `loop/rules.sh size` (advisory only: prints when a PR spans more than one module directory or exceeds about 2000 changed lines; exits 0 whatever the size; an unknown base ref still fails) | "generated files" means `*.lock`, `pnpm-lock.yaml`, `*/generated/*`; extend as generators appear |
 | 4 Contract change | the Architect's `ARCHITECT: approve` comment, by hand | CODEOWNERS and a required review are GitHub settings; ask the user first |
 | 5 Reviewer input | the Driver's brief | not machine-checkable |
-| 6 Vocabulary | `loop/rules.sh vocab`: Avoid words from `CONTEXT.md` against public Rust items, TS exports and `contracts/` text | UI strings and RPC names outside `contracts/` are not scanned; enum variants are not scanned |
+| 6 Vocabulary | `loop/rules.sh vocab`: Avoid words from `GLOSSARY.md` against public Rust items, TS exports and `contracts/` text | UI strings and RPC names outside `contracts/` are not scanned; enum variants are not scanned |
 | 7 Perf budget | `just perf` (`docs/perf.md`) | keystroke-to-render is limit-only, macOS only (`just perf-keystroke`) |
 | 8 Visual change | `loop/rules.sh delta` (L42); the Checks as `vitest` tests (U130 to U137) in `just check` | `tokens` (L41) is not written; until U137 lands, the critic measures by hand and `delta` has no input; the PR body's `Moves:` line is read by the Reviewer, not a script |
 
