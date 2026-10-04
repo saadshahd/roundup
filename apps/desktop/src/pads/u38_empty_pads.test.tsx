@@ -150,12 +150,12 @@ describe("u38 empty Pads", () => {
       </ConnectedProjectContext.Provider>
     ));
 
-    expect((await screen.findByText(/boom/)).textContent).toBe("✕ boom");
+    expect((await screen.findByText(/boom/)).textContent).toBe("boom");
 
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
     await waitFor(() => expect(calls).toBe(2));
 
-    expect(screen.getByText("✕ boom")).toBeTruthy();
+    expect(screen.getByText("boom")).toBeTruthy();
     expect(screen.queryByText("no pads yet")).toBeNull();
 
     retry.resolve([]);
@@ -179,7 +179,7 @@ describe("u38 empty Pads", () => {
       </ConnectedProjectContext.Provider>
     ));
 
-    expect((await screen.findByText(/daemon says no/)).textContent).toBe("✕ daemon says no");
+    expect((await screen.findByText(/daemon says no/)).textContent).toBe("daemon says no");
     expect(screen.queryByText("no pads yet")).toBeNull();
   });
 });

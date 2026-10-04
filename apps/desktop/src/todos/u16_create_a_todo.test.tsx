@@ -6,7 +6,7 @@ import { mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarne
 afterEach(cleanup);
 
 const openField = async () => {
-  fireEvent.click(await screen.findByText("+"));
+  fireEvent.click(await screen.findByRole("button", { name: "add todo" }));
 
   return screen.getByRole("textbox", { name: "new todo title" });
 };
@@ -19,14 +19,14 @@ describe("u16 create a Todo", () => {
 
     const field = await openField();
 
-    expect(field.nextElementSibling?.textContent).toBe("· #1 todo 1");
+    expect(field.nextElementSibling?.textContent).toBe(" #1 todo 1");
   });
 
   it("u16_clicking_plus_twice_still_shows_one_field", async () => {
     await mountTodos([]);
     await openField();
 
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(screen.getByRole("button", { name: "add todo" }));
 
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
@@ -35,7 +35,7 @@ describe("u16 create a Todo", () => {
     await mountTodos([]);
     type(await openField(), "half a thought");
 
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(screen.getByRole("button", { name: "add todo" }));
 
     expect(screen.getByRole("textbox", { name: "new todo title" })).toHaveProperty("value", "half a thought");
   });
@@ -98,7 +98,7 @@ describe("u16 create a Todo", () => {
     fireEvent.keyDown(field, { key: "Enter" });
 
     expect([(await screen.findByText(/title is empty/)).textContent, screen.queryByRole("textbox")]).toEqual([
-      "✕ title is empty",
+      "title is empty",
       null,
     ]);
   });
@@ -111,7 +111,7 @@ describe("u16 create a Todo", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     await screen.findByText(/title is empty/);
 
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(screen.getByRole("button", { name: "add todo" }));
 
     expect([screen.queryByText(/title is empty/), screen.getAllByRole("textbox")]).toEqual([null, [expect.anything()]]);
   });
@@ -135,7 +135,7 @@ describe("u16 create a Todo", () => {
     await waitFor(() => expect(callsTo(app, "todo.create")).toHaveLength(1));
     await new Promise((settle) => setTimeout(settle));
     expect(screen.getByRole("textbox", { name: "new todo title" })).toHaveProperty("value", "second thought");
-    expect(screen.getByText(/title is empty/).textContent).toBe("✕ title is empty");
+    expect(screen.getByText(/title is empty/).textContent).toBe("title is empty");
   });
 
   it("u16_the_next_enter_clears_a_shown_failure", async () => {

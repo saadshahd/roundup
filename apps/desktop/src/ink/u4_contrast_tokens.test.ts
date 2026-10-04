@@ -28,7 +28,9 @@ describe("u4 stylesheet text-colour allowlist", () => {
       "../rail/styles.css",
       "../styles.css",
       "../terminal/styles.css",
+      "../todos/rowButton.styles.css",
       "../tokens.css",
+      "./styles.css",
     ]);
 
     for (const [file, css] of Object.entries(sheets)) {

@@ -1,8 +1,8 @@
-import { cleanup, fireEvent } from "@solidjs/testing-library";
+import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
 import { withStylesheets } from "../testing/contrast";
 import { agent, group, metaAgent, terminal } from "../testing/nodes";
-import { exitedTerminal, mountRail, rowOf } from "./railFixture";
+import { exitedTerminal, mountRail } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -26,7 +26,8 @@ it.each([0, 1, 2])("u6_row_contents_stay_centered_in_the_selection_band_at_depth
     ], [exitedTerminal("exited", 0)]);
 
     for (const node of nodes) {
-      const row = rowOf(node.name);
+      const row = within(screen.getByRole("tree")).getByText(node.name, { selector: ".name" })
+        .closest<HTMLElement>("[role=treeitem]")!;
 
       for (const state of ["rest", "hover", "selected"] as const) {
         if (state === "hover") fireEvent.mouseEnter(row);

@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
-import { glyphOf } from "../ink/glyph";
+import { KindGlyph } from "../ink/KindGlyph";
+import { Icon } from "../ink/Icon";
 import { useConnectedProject } from "../state/connectedProject";
 import { attentionCount } from "./attention";
 import { createRailDrag } from "./drag";
@@ -279,7 +280,7 @@ export const Rail = () => {
                             class="word"
                             onClick={() => setUnfolded((open) => toggled(open, view().parent))}
                           >
-                            {`${glyphOf("done").mark} ${view().count} done`}
+                            <KindGlyph kind="done" decorative /> {view().count} done
                           </button>
                         </div>
                       )}
@@ -320,21 +321,21 @@ export const Rail = () => {
             spawnAgent();
           }}
         >
-          + agent
+          <Icon name="plus" /> agent
         </button>
         <button
           class="word"
           disabled={!canSpawn()}
           onClick={spawnTerminal}
         >
-          + terminal
+          <Icon name="plus" /> terminal
         </button>
         <button
           class="word"
           disabled={!canSpawn()}
           onClick={() => guarded(() => app.rpc("rail.createGroup", { name: "group", parent: parent() }))}
         >
-          + group
+          <Icon name="plus" /> group
         </button>
       </div>
     </div>

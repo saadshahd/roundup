@@ -21,7 +21,7 @@ describe("u47 a spawned terminal is selected and shown", () => {
       return SPAWNED_TERMINAL;
     };
 
-    fireEvent.click(screen.getByText("+ terminal"));
+    fireEvent.click(screen.getByText("terminal"));
 
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh-terminal"));
   });

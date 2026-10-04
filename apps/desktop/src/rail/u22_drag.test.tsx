@@ -101,7 +101,7 @@ describe("u22 drag", () => {
     ]);
 
     mounted.app.handlers["rail.move"] = () => null;
-    fireEvent.click(screen.getByText("✓ 1 done"));
+    fireEvent.click(screen.getByText("1 done"));
 
     dragFrom("a", pointerAt(4, 0));
 
@@ -124,7 +124,7 @@ describe("u22 drag", () => {
     ]);
 
     mounted.app.handlers["rail.move"] = () => null;
-    screen.getAllByText("✓ 1 done").forEach((line) => fireEvent.click(line));
+    screen.getAllByText("1 done").forEach((line) => fireEvent.click(line));
 
     dragFrom("c", pointerAt(6, 0));
 
@@ -143,7 +143,7 @@ describe("u22 drag", () => {
     ]);
 
     mounted.app.handlers["rail.move"] = () => null;
-    fireEvent.click(screen.getByText("✓ 1 done"));
+    fireEvent.click(screen.getByText("1 done"));
 
     dragFrom("d", pointerAt(0, 0));
     release(pointerAt(0, 0));
@@ -221,7 +221,7 @@ describe("u22 drag", () => {
     it("u22_the_opened_done_line_and_the_live_line_are_back", async () => {
       const mounted = await mountRail([doneAgent("d", 0), agent("b", "idle", "i", { order: 1 })]);
       mounted.rail.select("b");
-      fireEvent.click(screen.getByText("✓ 1 done"));
+      fireEvent.click(screen.getByText("1 done"));
       const before = [rowNames(), rowOf("b").querySelector(".live") !== null];
 
       dragFrom("b", pointerAt(0, 0));
@@ -301,7 +301,7 @@ describe("u22 drag", () => {
     dragFrom("b", pointerAt(0, 0));
     release(pointerAt(0, 0));
 
-    await screen.findByText("✕ CONFLICT: cannot move under an agent");
+    await screen.findByText("CONFLICT: cannot move under an agent");
     expect([rowNames(), dropLine()]).toEqual([["a", "g", "x", "b"], null]);
   });
 
@@ -313,10 +313,10 @@ describe("u22 drag", () => {
 
     dragFrom("b", pointerAt(0, 0));
     release(pointerAt(0, 0));
-    await screen.findByText("✕ CONFLICT: cannot move under an agent");
+    await screen.findByText("CONFLICT: cannot move under an agent");
     fireEvent.click(rowOf("a"));
 
-    expect(screen.queryByText("✕ CONFLICT: cannot move under an agent")).not.toBeNull();
+    expect(screen.queryByText("CONFLICT: cannot move under an agent")).not.toBeNull();
   });
 
   it("u22_releasing_where_the_row_already_is_calls_nothing", async () => {

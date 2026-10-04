@@ -12,7 +12,7 @@ describe("u44 a row brought into view is never under the pinned actions", () => 
     sheet.textContent = styles;
     await mountRail([agent("a", "idle", "i")]);
 
-    const bar = getComputedStyle(screen.getByText("+ agent").closest(".rail-actions") ?? document.body);
+    const bar = getComputedStyle(screen.getByText("agent").closest(".rail-actions") ?? document.body);
     const row = getComputedStyle(rowOf("a"));
 
     const values = [

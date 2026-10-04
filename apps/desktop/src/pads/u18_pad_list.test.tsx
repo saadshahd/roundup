@@ -43,8 +43,8 @@ describe("u18 list and ownership", () => {
     await screen.findByText("auth-notes");
 
     expect([
-      screen.getAllByText("◈").length,
-      screen.getAllByText("◇").length,
+      screen.getAllByRole("img", { name: "agent owned" }).length,
+      screen.getAllByRole("img", { name: "user owned" }).length,
     ]).toEqual([1, 1]);
   });
 
@@ -58,19 +58,19 @@ describe("u18 list and ownership", () => {
       return padOf(name, owner);
     };
 
-    fireEvent.click(await screen.findByText("◈"));
-    await screen.findByText("◇");
+    fireEvent.click(await screen.findByRole("img", { name: "agent owned" }));
+    await screen.findByRole("img", { name: "user owned" });
 
     expect(app.calls.filter((call) => call.method === "pad.setOwner")).toEqual([
       { method: "pad.setOwner", params: { name: "auth-notes", owner: USER } },
     ]);
-    expect(screen.queryByText("◈")).toBeNull();
+    expect(screen.queryByRole("img", { name: "agent owned" })).toBeNull();
   });
 
   it("u18_the_mark_◇_is_not_clickable", async () => {
     const { calls } = await openShelf([padOf("release-checklist", USER)]);
 
-    fireEvent.click(await screen.findByText("◇"));
+    fireEvent.click(await screen.findByRole("img", { name: "user owned" }));
 
     expect(calls()).not.toContain("pad.setOwner");
   });
@@ -81,10 +81,10 @@ describe("u18 list and ownership", () => {
       throw new RpcError(-32001, "only the owner may hand it over");
     };
 
-    fireEvent.click(await screen.findByText("◈"));
+    fireEvent.click(await screen.findByRole("img", { name: "agent owned" }));
 
     expect((await screen.findByText(/only the owner/)).textContent).toBe(
-      "✕ only the owner may hand it over",
+      "only the owner may hand it over",
     );
   });
 

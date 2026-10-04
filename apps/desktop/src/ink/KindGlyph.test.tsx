@@ -13,16 +13,16 @@ afterEach(cleanup);
 
 describe("u4 ink", () => {
   it.each([
-    ["needs-you", "●", "amber"],
-    ["error", "✕", "red"],
-    ["blocked", "⏸", "grey"],
-    ["working", "○", "light"],
-    ["idle", "·", "light"],
-    ["done", "✓", "lightest"],
+    ["needs-you", "circle", "amber"],
+    ["error", "x", "red"],
+    ["blocked", "pause", "grey"],
+    ["working", "circle", "accent"],
+    ["idle", "dot", "grey"],
+    ["done", "check", "grey"],
   ] as const)("u4_the_glyph_component_draws_%s_as_%s_in_%s", (kind, mark, tone) => {
     const span = markOf(kind);
 
-    expect([span?.textContent, span?.dataset["tone"]]).toEqual([mark, tone]);
+    expect([span?.querySelector("svg")?.classList.contains(`lucide-${mark}`), span?.dataset["tone"]]).toEqual([true, tone]);
   });
 
   it.each([

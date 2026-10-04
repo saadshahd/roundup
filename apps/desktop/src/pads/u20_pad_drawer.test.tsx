@@ -36,7 +36,7 @@ describe("u20 open and edit", () => {
     await openPad("auth-notes");
 
     expect(screen.getByLabelText("drawer").textContent).toContain(
-      "◈ auth-notes owned by auth-refactor",
+      "auth-notes owned by auth-refactor",
     );
   });
 
@@ -165,7 +165,7 @@ describe("u20 open and edit", () => {
     sheet.textContent = styles;
     await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
-    const close = screen.getByText("close");
+    const close = screen.getByRole("button", { name: "close" });
     const exportWord = screen.getByText("export .md");
     const row = exportWord.closest("p");
 
@@ -488,7 +488,7 @@ describe("u20 open and edit", () => {
     });
 
     expect((await screen.findByText(/was deleted/)).textContent).toBe(
-      "✕ pad auth-notes was deleted",
+      "pad auth-notes was deleted",
     );
   });
 
@@ -510,7 +510,7 @@ describe("u20 open and edit", () => {
 
     expect(
       (await screen.findByText(/only the owner may write/)).textContent,
-    ).toBe("✕ only the owner may write");
+    ).toBe("only the owner may write");
     expect(screen.queryByLabelText("drawer")?.textContent).not.toContain(
       "only the owner",
     );

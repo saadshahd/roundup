@@ -40,7 +40,7 @@ describe("u2 first run", () => {
     await screen.findByText("open a folder to start");
 
     expect(region("shelf").textContent).toBe(
-      "todosagents add them as theyplan; so can youpads◈ agent notes◇ yours",
+      "todosagents add them as theyplan; so can youpads agent notes yours",
     );
   });
 
@@ -95,7 +95,7 @@ describe("u2 first run", () => {
     app.project = () => Promise.reject(new RpcError(-32603, "app is not ready"));
     renderApp(app);
 
-    expect((await screen.findByText("✕ app is not ready")).className).toBe("ink");
+    expect((await screen.findByText("app is not ready")).className).toBe("ink");
   });
 
   it("u2_a_failed_chooser_shows_the_message_in_ink", async () => {
@@ -105,7 +105,7 @@ describe("u2 first run", () => {
 
     fireEvent.click(await screen.findByText("choose folder…"));
 
-    expect((await screen.findByText("✕ the chooser could not open")).className).toBe("ink");
+    expect((await screen.findByText("the chooser could not open")).className).toBe("ink");
   });
 
   it("u2_a_failed_open_project_shows_the_message_in_ink_in_place_of_the_prompt", async () => {
@@ -116,8 +116,8 @@ describe("u2 first run", () => {
 
     fireEvent.click(await screen.findByText("choose folder…"));
 
-    expect((await screen.findByText("✕ /not/a/dir is not a directory")).textContent).toBe(
-      "✕ /not/a/dir is not a directory",
+    expect((await screen.findByText("/not/a/dir is not a directory")).textContent).toBe(
+      "/not/a/dir is not a directory",
     );
     expect(screen.queryByText("open a folder to start")).toBeNull();
   });
@@ -129,7 +129,7 @@ describe("u2 first run", () => {
     const { container } = renderApp(app);
 
     fireEvent.click(await screen.findByText("choose folder…"));
-    await screen.findByText("✕ not a directory");
+    await screen.findByText("not a directory");
 
     expect(container.querySelectorAll(".ink").length).toBe(1);
   });
@@ -143,7 +143,7 @@ describe("u2 first run", () => {
 
     app.emit({ actor: { kind: "user", id: "you", parent: null }, name: "rail.changed" });
 
-    expect((await within(region("centre")).findByText("✕ daemon is gone")).className).toBe("ink");
+    expect((await within(region("centre")).findByText("daemon is gone")).className).toBe("ink");
   });
 
   it("u5_the_app_passes_prefers_reduced_motion_to_its_drawer", async () => {

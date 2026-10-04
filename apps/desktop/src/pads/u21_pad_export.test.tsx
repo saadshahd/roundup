@@ -64,6 +64,6 @@ describe("u21 export", () => {
     expect([
       line.textContent,
       screen.getByLabelText("drawer").contains(line),
-    ]).toEqual(["✕ directory /gone does not exist", true]);
+    ]).toEqual(["directory /gone does not exist", true]);
   });
 });

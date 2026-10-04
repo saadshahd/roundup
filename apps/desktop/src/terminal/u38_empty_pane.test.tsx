@@ -36,8 +36,9 @@ describe("u38 empty Pane", () => {
 
     app.emit(event({ name: "terminal.output", data: { id: "t-a", offset: 0, data: "***" } }));
 
-    await screen.findByText(/^✕ terminal\.output:/);
+    await screen.findByRole("alert", { name: /^terminal\.output:/ });
     expect(screen.queryByText("select an agent or a terminal")).toBeNull();
+    expect(screen.getByRole("alert").querySelector('svg.lucide-x[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("u38_a_failed_initial_rail_tree_shows_no_empty_pane_text", async () => {

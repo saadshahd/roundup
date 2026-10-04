@@ -1,16 +1,18 @@
+import type { ComponentProps } from "solid-js";
+import type { Icon } from "./Icon";
 import type { Kind } from "@contracts/Kind";
 
-type Tone = "amber" | "red" | "grey" | "light" | "lightest";
+type Tone = "amber" | "red" | "grey" | "accent";
 
-type Glyph = { mark: string; tone: Tone };
+type Glyph = { icon: ComponentProps<typeof Icon>["name"]; tone: Tone };
 
 const GLYPHS: Record<Kind, Glyph> = {
-  "needs-you": { mark: "●", tone: "amber" },
-  error: { mark: "✕", tone: "red" },
-  blocked: { mark: "⏸", tone: "grey" },
-  working: { mark: "○", tone: "light" },
-  idle: { mark: "·", tone: "light" },
-  done: { mark: "✓", tone: "lightest" },
+  "needs-you": { icon: "circle", tone: "amber" },
+  error: { icon: "x", tone: "red" },
+  blocked: { icon: "pause", tone: "grey" },
+  working: { icon: "circle", tone: "accent" },
+  idle: { icon: "dot", tone: "grey" },
+  done: { icon: "check", tone: "grey" },
 };
 
 /** Most urgent first, as listed under Kind in CONTEXT.md; the type forces every Kind to have a rank. */

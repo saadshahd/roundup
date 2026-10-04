@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
-import { mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
+import { assertKind, mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
 import { USER } from "../testing/nodes";
 
 afterEach(() => {
@@ -16,7 +16,7 @@ const shelf = () => [todo(4, { title: "migrate users" }), blocked(), todo(10, { 
 
 const drawer = () => screen.getByRole("complementary", { name: "drawer" });
 
-// A regex like /#4/ matches both a blocked Todo's own row ("· #4 migrate users") and its
+// A regex like /#4/ matches both a blocked Todo's own row ("#4 migrate users") and its
 // blocker's "#4" link; the row is the candidate that is not that light "word" link.
 const rowButton = async (title: RegExp): Promise<HTMLElement> => {
   const row = (await screen.findAllByRole("button", { name: title })).find((candidate) => candidate.className !== "word");
@@ -29,7 +29,7 @@ const rowButton = async (title: RegExp): Promise<HTMLElement> => {
 const openDrawerOf = async (title: RegExp, todos = shelf(), reducedMotion = true) => {
   const mounted = await mountTodos(todos, reducedMotion);
   fireEvent.click(await rowButton(title));
-  await within(drawer()).findByText("+ blocker");
+  await within(drawer()).findByText("blocker");
 
   return mounted;
 };
@@ -38,7 +38,8 @@ describe("u17 Todo detail", () => {
   it("u17_clicking_a_todo_opens_its_drawer_with_its_id_title_and_glyph", async () => {
     await openDrawerOf(/#5/);
 
-    expect(drawer().textContent).toContain("⏸ #5  session store");
+    expect(drawer().textContent).toContain("#5  session store");
+    assertKind(within(drawer()).getByText("session store").parentElement!, "blocked", "pause");
   });
 
   it("u17_the_title_row_keeps_a_space_between_the_glyph_and_the_id", async () => {
@@ -50,19 +51,22 @@ describe("u17 Todo detail", () => {
   it("u17_waits_on_lists_each_blocker_with_its_own_glyph", async () => {
     await openDrawerOf(/#5/);
 
-    expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe("· #4  migrate users");
+    expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe(" #4  migrate users");
+    assertKind(within(drawer()).getByText("#4 migrate users"), "idle", "dot");
   });
 
   it("u17_a_done_blocker_still_shows_under_waits_on_with_the_done_glyph", async () => {
     await openDrawerOf(/#5/, [todo(4, { title: "migrate users", done: true }), blocked()]);
 
-    expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe("✓ #4  migrate users");
+    expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe(" #4  migrate users");
+    assertKind(within(drawer()).getByText("#4 migrate users"), "done", "check");
   });
 
   it("u17_blocks_lists_each_todo_that_waits_on_this_one", async () => {
     await openDrawerOf(/#5/);
 
-    expect(within(drawer()).getByText("blocks").nextElementSibling?.textContent).toBe("⏸ #10  session tests");
+    expect(within(drawer()).getByText("blocks").nextElementSibling?.textContent).toBe(" #10  session tests");
+    assertKind(within(drawer()).getByText("#10 session tests"), "blocked", "pause");
   });
 
   it("u17_a_todo_with_no_blockers_has_no_waits_on_and_no_blocks_sections", async () => {
@@ -114,24 +118,24 @@ describe("u17 Todo detail", () => {
 
     app.emit(todoEvent("todo.updated", todo(4)));
 
-    await waitFor(() => expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe("✓ #4  migrate users"));
+    await waitFor(() => assertKind(within(drawer()).getByText("#4 migrate users"), "done", "check"));
   });
 
   it("u17_plus_blocker_offers_the_other_todos_that_are_not_yet_blockers", async () => {
     await openDrawerOf(/#5/);
 
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
 
     expect(within(drawer()).getAllByRole("button").map((button) => button.textContent).filter((text) => text?.includes("#"))).toEqual([
-      "· #7  todo 7",
-      "⏸ #10  session tests",
+      " #7  todo 7",
+      " #10  session tests",
     ]);
   });
 
   it("u17_choosing_an_offered_todo_calls_set_blockers_with_the_whole_new_list", async () => {
     const { app } = await openDrawerOf(/#5/);
     app.handlers["todo.setBlockers"] = () => blocked();
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
 
     fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
 
@@ -143,11 +147,11 @@ describe("u17 Todo detail", () => {
   it("u17_a_conflict_from_set_blockers_shows_inline", async () => {
     const { app } = await openDrawerOf(/#5/);
     app.handlers["todo.setBlockers"] = () => Promise.reject(new RpcError(-32010, "#10 already waits on #5"));
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
 
     fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
 
-    expect((await within(drawer()).findByText(/already waits/)).textContent).toBe("✕ #10 already waits on #5");
+    expect((await within(drawer()).findByText(/already waits/)).textContent).toBe("#10 already waits on #5");
   });
 
   it("u17_complete_calls_todo_complete", async () => {
@@ -176,7 +180,7 @@ describe("u17 Todo detail", () => {
     fireEvent.click(within(drawer()).getByText("delete"));
 
     expect([(await within(drawer()).findByText(/not found/)).textContent, connected.drawer.content() === null]).toEqual([
-      "✕ not found",
+      "not found",
       false,
     ]);
   });
@@ -260,7 +264,7 @@ describe("u17 Todo detail", () => {
 
     app.emit({ actor: USER, name: "todo.deleted", data: { id: 5 } });
 
-    expect((await within(drawer()).findByText(/was deleted/)).textContent).toBe("✕ #5 was deleted");
+    expect((await within(drawer()).findByText(/was deleted/)).textContent).toBe("#5 was deleted");
   });
 
   it("u17_the_last_touch_line_comes_before_complete_and_delete", async () => {
@@ -278,9 +282,9 @@ describe("u17 Todo detail", () => {
   it("u17_two_quick_blocker_picks_both_land_the_second_built_on_the_first", async () => {
     const { app } = await openDrawerOf(/#5/);
     app.handlers["todo.setBlockers"] = async ({ blockers }) => ({ ...blocked(), blockers });
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
     fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
 
     fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
 
@@ -294,14 +298,14 @@ describe("u17 Todo detail", () => {
   it("u17_a_blocker_change_by_another_actor_between_two_picks_is_not_undone_by_the_second", async () => {
     const { app, store } = await openDrawerOf(/#5/);
     app.handlers["todo.setBlockers"] = async ({ blockers }) => ({ ...blocked(), blockers });
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
     fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
     await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(1));
     store.todos = shelf().map((each) => (each.id === 5 ? { ...each, blockers: [], blocked: false } : each));
     app.emit(todoEvent("todo.updated", todo(5)));
     await waitFor(() => expect(within(drawer()).queryByText("waits on")).toBeNull());
 
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
     fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
 
     await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
@@ -311,11 +315,11 @@ describe("u17 Todo detail", () => {
   it("u17_a_todo_just_picked_is_not_offered_again_before_the_event_arrives", async () => {
     const { app } = await openDrawerOf(/#5/);
     app.handlers["todo.setBlockers"] = async ({ blockers }) => ({ ...blocked(), blockers });
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
     fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
     await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(1));
 
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
 
     expect(within(drawer()).queryByRole("button", { name: /#7/ })).toBeNull();
   });
@@ -361,9 +365,9 @@ describe("u17 Todo detail", () => {
         return { ...blocked(), blockers };
       };
     })();
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
     fireEvent.click(within(drawer()).getByRole("button", { name: /#7/ }));
-    fireEvent.click(within(drawer()).getByText("+ blocker"));
+    fireEvent.click(within(drawer()).getByText("blocker"));
     fireEvent.click(within(drawer()).getByRole("button", { name: /#10/ }));
 
     await waitFor(() => expect(callsTo(app, "todo.setBlockers")).toHaveLength(2));
@@ -382,6 +386,6 @@ describe("u17 Todo detail", () => {
   it("u50_the_blocker_button_sits_in_a_paragraph_so_the_drawers_flex_column_does_not_stretch_it", async () => {
     await openDrawerOf(/#5/);
 
-    expect(within(drawer()).getByText("+ blocker").parentElement?.tagName).toBe("P");
+    expect(within(drawer()).getByText("blocker").parentElement?.tagName).toBe("P");
   });
 });

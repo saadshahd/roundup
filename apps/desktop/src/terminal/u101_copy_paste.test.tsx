@@ -172,12 +172,13 @@ describe("u101 Terminal copy and paste", () => {
     emulators.get("t-a")!.selectedText = "copy";
     clip.writeText.mockRejectedValueOnce(new Error("copy denied"));
     key(target, "c", { metaKey: true });
-    expect((await screen.findByText("✕ copy denied")).closest(".pane-failure")).not.toBeNull();
+    expect((await screen.findByRole("alert", { name: "copy denied" })).closest(".pane-failure")).not.toBeNull();
 
     clip.readText.mockRejectedValueOnce(new Error("paste denied"));
     key(target, "v", { metaKey: true });
-    expect((await screen.findByText("✕ paste denied")).closest(".pane-failure")).not.toBeNull();
+    expect((await screen.findByRole("alert", { name: "paste denied" })).closest(".pane-failure")).not.toBeNull();
     expect(emulators.get("t-a")!.pasted).toEqual([]);
+    expect(screen.getByRole("alert").querySelector('svg.lucide-x[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("u101_clipboard_failure_belongs_to_its_terminal", async () => {
@@ -191,11 +192,12 @@ describe("u101 Terminal copy and paste", () => {
     emulators.get("t-a")!.selectedText = "copy";
     clip.writeText.mockRejectedValueOnce(new Error("copy denied"));
     key(container.querySelector("[data-terminal='t-a']")!, "c", { metaKey: true });
-    expect(await screen.findByText("✕ copy denied")).not.toBeNull();
+    expect(await screen.findByRole("alert", { name: "copy denied" })).not.toBeNull();
 
     connected.rail.select("b");
-    expect(screen.queryByText("✕ copy denied")).toBeNull();
+    expect(screen.queryByRole("alert", { name: "copy denied" })).toBeNull();
     connected.rail.select("a");
-    expect(await screen.findByText("✕ copy denied")).not.toBeNull();
+    expect(await screen.findByRole("alert", { name: "copy denied" })).not.toBeNull();
+    expect(screen.getByRole("alert").querySelector('svg.lucide-x[aria-hidden="true"]')).not.toBeNull();
   });
 });

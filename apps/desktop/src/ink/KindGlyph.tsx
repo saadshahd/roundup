@@ -1,9 +1,10 @@
 import type { Kind } from "@contracts/Kind";
 import { glyphOf, hasInk } from "./glyph";
+import { Icon } from "./Icon";
 
-/** The mark for a Kind; Ink (bold plus colour) only for `needs-you` and `error`. Colours live in `styles.css` under `[data-tone]`. */
-export const KindGlyph = (props: { kind: Kind }) => (
-  <span class={hasInk(glyphOf(props.kind)) ? "glyph ink" : "glyph"} data-tone={glyphOf(props.kind).tone}>
-    {glyphOf(props.kind).mark}
+export const KindGlyph = (props: { kind: Kind; decorative?: boolean }) => (
+  <span class={hasInk(glyphOf(props.kind)) ? "glyph ink" : "glyph"} data-tone={glyphOf(props.kind).tone}
+    role={props.decorative ? undefined : "img"} aria-label={props.decorative ? undefined : props.kind} aria-hidden={props.decorative ? "true" : undefined}>
+    <Icon name={glyphOf(props.kind).icon} filled={props.kind === "needs-you"} />
   </span>
 );

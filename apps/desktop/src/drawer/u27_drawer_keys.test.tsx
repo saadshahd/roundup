@@ -112,7 +112,7 @@ describe("u27 focus returns", () => {
 
     connected.drawer.open(() => <input aria-label="field" />);
     await vi.waitFor(() => expect(screen.getByLabelText("drawer").contains(document.activeElement)).toBe(true));
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await vi.waitFor(() => expect(document.activeElement).toBe(field));
     expect(connected.drawer.content()).toBeNull();
@@ -121,7 +121,7 @@ describe("u27 focus returns", () => {
   it("u27_with_no_terminal_shown_closing_the_drawer_focuses_nothing", async () => {
     const { focused } = await mountPaneWithDrawer(false);
 
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     await Promise.resolve();
     expect(focused).toEqual([]);

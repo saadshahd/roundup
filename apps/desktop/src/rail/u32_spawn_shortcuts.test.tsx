@@ -76,7 +76,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     chord("n");
 
-    expect((await screen.findByText(/no room/)).textContent).toBe("✕ no room");
+    expect((await screen.findByText(/no room/)).textContent).toBe("no room");
   });
 
   it.each<[string, KeyboardEventInit]>([
@@ -143,7 +143,7 @@ describe("u32 spawn shortcuts and pinned actions", () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     await mountRail([group("g")]);
-    const line = getComputedStyle(screen.getByText("+ agent").closest(".rail-actions") ?? document.body);
+    const line = getComputedStyle(screen.getByText("agent").closest(".rail-actions") ?? document.body);
     const pinned = [line.position, line.bottom, line.background];
 
     sheet.remove();
