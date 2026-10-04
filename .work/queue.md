@@ -20,6 +20,8 @@ Rows are in `.work/queue/<squad>.md`, one file per squad of `docs/squads.md`, an
 - Inbox, Messages, Routes, Extensions and history;
 - packaging (a signed `.app`).
 
+Product roadmap and accepted choices: [Rooms, Doors and Sketches](../docs/wireframes.md#accepted-product-direction-rooms-doors-and-sketches). This direction needs scoped scenarios before dispatch.
+
 ## Swarm protocol
 
 **Stacking.** A Builder may branch from an unmerged base PR's branch when its scenario says "after X" or "may stack", opens its PR against `main` as `AGENTS.md` says, and merges only after its base has merged. Its own commits touch no file its base's commits touch, so the two stay reviewable apart.
