@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
+import { Icon } from "../ink/Icon";
 import { useConnectedProject } from "../state/connectedProject";
 import { createXtermEmulators } from "./emulator";
 import type { EmulatorFactory } from "./emulator";
@@ -113,7 +114,8 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
           <p class="pane-empty">select an agent or a terminal</p>
         </Show>
         <Show when={selected()?.kind === "room" && selected() !== null && rail.exitOf(selected()!) !== null}>
-          <button class="word" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
+          <button class="word pane-empty" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
+            <Icon name="right" />
             {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
           </button>
         </Show>

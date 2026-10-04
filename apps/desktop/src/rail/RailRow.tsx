@@ -181,6 +181,7 @@ export const RailRowView = (props: {
               props.onStartDoor();
             }}
           >
+            <Icon name="right" />
             {props.doorFailure ? "retry Door" : "start Door"}
           </button>
         </Show>
