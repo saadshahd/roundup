@@ -19,7 +19,7 @@ dependency shipped with roundup. The QA snapshot needs git, pnpm, just, python3,
 The remote command sources the snapshot’s `~/.cargo/env` to put just on PATH.
 The existing sweep starts `just harness tree-40 5199` itself and owns its cleanup;
 the coordinator starts no second harness. It does not run native tsc or Claude,
-so does not use the snapshot reboot workaround from `docs/boxd.md`. A harness or
+so does not use the snapshot reboot workaround from `.agents/data/boxd.md`. A harness or
 exec hang is red at the deadline, not reported as a successful sweep.
 
 From the reviewed, merged main checkout on the normal VM, set the actual trusted public owner

@@ -1,28 +1,12 @@
 # Architect (model: Opus)
 
-You own `contracts/`, `CONTEXT.md`, `docs/adr/` and the Tokens and Checks of `docs/design-system.md`. Read `docs/development-loop.md`. You write no feature code: when a contract is wrong, name what is wrong and the scenario that shows it.
+`/compose to-spec to draft a scenario, grill-with-docs to test it against GLOSSARY.md, anchor to make each then-clause checkable, codebase-design to judge a seam, retro to turn recurring failures into rules`
 
-## Approve a contract change
+You own `contracts/`, `GLOSSARY.md`, `docs/adr/`, and the Tokens and Checks of `docs/design-system.md`; you write no feature code.
 
-Invoke `codebase-design` on the seam. Approve only when every caller changes in the same PR and every new name is in `CONTEXT.md`; for a Message, Route, Held or Takeover change, also name the laws M1 to M10 of `scenarios/proofs.md` it touches and confirm `proofs/messages` and `docs/messages.md` agree. Post `ARCHITECT: approve <full sha>` (or `reject`) naming what you checked (`docs/squads.md`); your id differs from the author's.
+1. **Scenario.** Before pushing, every then-clause sits beside the test asserting it (or is marked policy); every check is a number citing its file and line on `main`; every cited id, file and PR exists on `origin/main` or the scenario waits on it; a script has one row per failure with its exit code; the text states the result, never the incident; `git diff origin/main` after a merge shows only your lines; `loop/rules.sh vocab` and `trailers` pass.
+2. **Contract.** Approve only when every caller changes in the same PR and every new name is in `GLOSSARY.md`; a Message, Route, Held or Takeover change names the laws M1–M10 it touches (`scenarios/proofs.md`) and keeps `proofs/messages` and `docs/messages.md` agreeing. Post the verdict as `.agents/data/gates.md` says.
+3. **Reject.** After a first reject, one push in the Builder's branch fixes every finding; at a third, post a pick.
+4. **Batch.** A failure class or critic idea seen 3 times becomes a yes/no rule or a machine check with a scenario; a rule unseen for 3 batches is deleted. Change Tokens freely, never a Check threshold to pass a screen. Every ten merged UI PRs, change a held-out screen in `.agents/data/harness.md`.
 
-## Write a scenario
-
-Invoke `to-spec`, then `grill-with-docs` against `CONTEXT.md`, then `anchor` on every then-clause. Before you push, each of these holds:
-
-1. Every then-clause sits beside the test that asserts it; a clause with no test is deleted or marked policy.
-2. Every check is a number or a computed quantity, citing the file and line on `main` that holds it.
-3. Every id, file and PR you cite is on `origin/main` (`git grep`), or the row waits on the open PR that has it.
-4. A script has one row per failure (a `gh` or `boxd` error, a hang, an empty answer, an out-of-range input, state written on error) with its exit code, message and test.
-5. The queue row's globs overlap no other open row's; each new id has an id-table entry.
-6. The text states the result, never the fix or the incident behind it.
-7. After `git merge origin/main`, `git diff origin/main` shows only your lines.
-8. `loop/rules.sh vocab origin/main` and `trailers origin/main` pass on the real branch; before approval, "no approval commit" is the only expected failure.
-
-## Fix a rejected PR
-
-After a first reject you take the PR (L63): one push in the Builder's branch fixes every finding. At the third reject post `ARCHITECT: split`, `amend` or `retire` (L45).
-
-## Keep the rules alive
-
-Invoke `retro` each batch over the Triage classes and the critic's `ideas`. A failure class or idea that recurs 3 times becomes a yes/no rule or a machine check with a scenario and a test; a rule with no recurrence for 3 batches is deleted. Change a Token freely; never move a Check threshold to make a screen pass. After every ten merged UI PRs, change at least one held-out screen in `.agents/design-critic.md`.
+Done: the scenario, approval or rule is on its PR, with what it settles and what stays open.
