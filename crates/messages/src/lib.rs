@@ -270,7 +270,7 @@ impl Messages {
             .expect("Agent receiver");
         let held = {
             let mut store = self.store()?;
-            accept_receiver(&self.inner, &mut store, node)?;
+            accept_receiver(&self.inner, &mut store, &node)?;
             store.begin_takeover(&agent)?
         };
         if let Some(held) = held {
@@ -296,7 +296,7 @@ impl Messages {
             .expect("Agent receiver");
         let promoted = {
             let mut store = self.store()?;
-            accept_receiver(&self.inner, &mut store, node)?;
+            accept_receiver(&self.inner, &mut store, &node)?;
             store.end_takeover(&agent)?
         };
         if promoted.is_some() {
