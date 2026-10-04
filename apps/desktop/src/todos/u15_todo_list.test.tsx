@@ -45,7 +45,10 @@ describe("u15 Todo list", () => {
   it("u15_done_todos_fold_into_one_line_counting_them", async () => {
     await mountTodos([todo(1, { done: true, title: "old one" }), todo(2, { done: true }), todo(3)]);
 
-    await screen.findByRole("button", { name: "2 done" });
+    const summary = await screen.findByRole("button", { name: "2 done" });
+
+    expect(summary.querySelectorAll("svg")).toHaveLength(1);
+    expect(summary.querySelector("svg.lucide-check")?.getAttribute("aria-hidden")).toBe("true");
 
     expect([rows(), screen.queryByText(/old one/)]).toEqual([["", "#3 todo 3", "2 done"], null]);
   });
