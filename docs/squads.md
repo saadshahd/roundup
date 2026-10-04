@@ -10,11 +10,11 @@ A squad is one scenario writer, its Builders and its reviewer pool. It writes sc
 |---|---|---|---|
 | ui-rail | `apps/desktop/src/rail`, `drawer`, `todos`, `pads` | `ui-rail.md` | U61 to U79 |
 | ui-surfaces | `apps/desktop/src` outside those four (switcher, first run, help, pane, empty and error states, and the keystroke probe) | `ui-surfaces.md` | U80 to U99 |
-| daemon | `crates/agents`, `crates/terminal`, `crates/todos`, `crates/pads`, `crates/rupd`, `crates/rup`, `crates/rpc`, `crates/desktop` | `agents.md`, `terminal.md`, `todos.md`, `pads.md`, `daemon.md`, `mcp.md`, `rpc.md`, `app.md` | A20 to A29, X11 to X20, T10 to T15, P11 to P14, D8 to D9, M4 to M6, C2 to C9, S8 to S12 (A17 to A19, T9, P10, D5 to D7 and S7 are held) |
-| loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L34 to L39 (L26 to L33 are held) |
+| daemon | `crates/agents`, `crates/terminal`, `crates/todos`, `crates/pads`, `crates/rupd`, `crates/rup`, `crates/rpc`, `crates/desktop` | `agents.md`, `terminal.md`, `todos.md`, `pads.md`, `daemon.md`, `mcp.md`, `rpc.md`, `app.md` | A20 to A29, X11 to X20, T10 to T15, P11 to P14, D8 to D9, M4 to M6, C2 to C9, S8 to S12 |
+| loop | `loop/`, `.agents/`, `docs/boxd.md` | `loop.md` | L34 to L39 |
 | perf | `crates/perf`, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
 
-The architects hold ranges for scenarios they write themselves, and no squad allocates from them: A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59. Ids already in `.work/queue.md` stay with their holders. A squad that runs out of ids asks the committee for the next block. Two squads never edit one scenario file. `ui.md` (U1 to U60) is no squad's file for new ids; an edit to one of its existing scenarios belongs to the squad whose module directory that scenario owns, and the other squads' scenarios go in their own files. A scenario that needs a file another squad owns names it, and the owning squad's writer adds that part.
+Architects allocate from A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59; ids in `.work/queue.md`'s table keep their holders. A squad out of ids asks the committee. Two squads never edit one scenario file: `ui.md` (U1 to U60) takes no new ids, and an edit to one of its scenarios belongs to the squad owning that scenario's module; a scenario needing another squad's file names it, and that squad's writer adds the part.
 
 ## Architect committee
 
@@ -27,12 +27,8 @@ Three architects: `architect-swarm` (contracts, ids, queue), `architect-b` (UI a
 - a change to a scenario that a merged test asserts, when it crosses squads;
 - a conflict between squads.
 
-An approval is one architect whose id differs from the author of the PR or scenario. If a second architect disagrees, the third decides, and the decision is recorded as a PR comment; when the third is the author, the user decides. The approval is a comment `ARCHITECT: approve <full sha>` or `ARCHITECT: reject <full sha>`, naming what was checked, and it counts for the head it names. A squad does not wait for the committee on anything outside this list. The committee is not a gate on scenarios inside a squad's range, and it does not read every PR.
-
-## Unchanged
-
-Rules 1, 2, 3, 5, 6 and 7 of `AGENTS.md`: a reviewer's id differs from the author's, the checks and the scenario test are required, the Reviewer's input excludes the author's rationale, and vocabulary and the perf budget apply. A PR still goes through a different agent's review and a Merger. Red main is still stop-the-line and a revert.
+An approval is a comment `ARCHITECT: approve <full sha>` (or `reject`) from one architect other than the author, naming what was checked; it counts for the head it names. When a second architect disagrees the third decides in a PR comment, or the user when the third is the author. Nothing outside this list waits on the committee.
 
 ## Moving the queue
 
-`.work/queue.md` keeps the swarm protocol and the id table. Each squad's rows are in `.work/queue/<squad>.md`, and rows no squad owns (contracts, spikes, rows that cross squads) are in `.work/queue/architects.md`.
+`.work/queue.md` keeps the swarm protocol and the id table. Each squad's rows are in `.work/queue/<squad>.md`; rows no squad owns (contracts, spikes, rows that cross squads) are in `.work/queue/architects.md`.
