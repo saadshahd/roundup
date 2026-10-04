@@ -394,6 +394,8 @@ elif '/issues/' in route:
 elif route == 'repos/{owner}/{repo}':
     out = [{'full_name': 'example/roundup'}]
 elif '/git/trees/proof/' in route:
+    if d.get('no_proof_branch'):
+        sys.exit(1)
     out = [d.get('tree', {'truncated': False, 'tree': [
         {'path': 'proof/'+name+'.png', 'mode': '100644', 'type': 'blob', 'size': 1024}
         for name in ['before', 'after']]})]
@@ -701,6 +703,72 @@ gate_visible() {
   git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
   gate_set '.body="Scenarios: U1\n## Shape\n```\na -> b\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok U1_visible\n```\nU1 before [image](https://github.com/example/roundup/blob/proof/pr-12/proof/before.png) 1280×800\nU1 after [image](https://github.com/example/roundup/blob/proof/pr-12/proof/after.png) 1280×800\nShows: layout"'
 }
+l76_unchanged() {
+  gate_visible
+  gate_set '.body |= sub("U1 before[\\s\\S]*"; "Visual: unchanged") | .no_proof_branch=true'
+  gate_set --arg head "$(git rev-parse HEAD^)" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nVisual: unchanged\nReviewed-by-Agent: reviewer")}]]'
+}
+l76_unchanged
+expect_exit 0 'L76 unchanged tree across empty approval needs no proof branch' gate proof 12
+expect_exit 0 'L76 unchanged attestation passes merge-ready' gate merge-ready 12
+gate_set '.comments=[[]]'
+expect_exit 1 'L76 author body claim alone fails' gate proof 12
+l76_unchanged
+gate_set --arg head "$(git rev-parse main)" '.comments[0][0].body += "\nHead: "+$head'
+expect_exit 1 'L76 ambiguous reviewed head fails' gate proof 12
+l76_unchanged
+git reset -q --hard HEAD^
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 0 'L76 attestation can be checked before approval commit' gate proof 12
+expect_exit 1 'L76 attestation does not replace approval commit' gate merge-ready 12
+l76_unchanged
+gate_set '.comments[0][0].body |= sub("reviewer"; "builder")'
+expect_exit 1 'L76 author verdict fails' gate proof 12
+l76_unchanged
+gate_set '.comments[0][0].body += "\nReviewed-by-Agent: another"'
+expect_exit 1 'L76 multiple reviewer ids fail' gate proof 12
+l76_unchanged
+gate_set '.comments[0][0].body |= sub("Visual: unchanged"; "Visual: unchanged maybe")'
+expect_exit 1 'L76 attestation must be explicit' gate proof 12
+l76_unchanged
+gate_set --arg head "$(git rev-parse HEAD^)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 1 'L76 test output must name exact approval head' gate proof 12
+l76_unchanged
+for verdict in reject approve; do
+  gate_set --arg verdict "$verdict" --arg head "$(git rev-parse HEAD)" '.comments[1]=[{id:2,created_at:"2026-10-03T00:01:00Z",body:("VERDICT: "+$verdict+"\nReviewed-head: "+$head+"\nReviewed-by-Agent: another")}]'
+  expect_exit 1 "L76 newer $verdict without attestation supersedes it" gate proof 12
+done
+l76_unchanged
+echo changed >>apps/desktop/src/view.tsx
+commit followup 'Author-Agent: another'
+git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 1 'L76 changed code invalidates earlier attestation' gate proof 12
+l76_unchanged
+git commit -q --allow-empty -m coauthor -m 'Author-Agent: reviewer'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 1 'L76 reviewer must differ from every author' gate proof 12
+
+l76_unchanged
+gate_set '.body |= sub("Visual: unchanged"; "")'
+expect_exit 0 'L76 reviewer attestation needs no author visibility claim' gate proof 12
+l76_unchanged
+git checkout -q main
+echo main >crates/from-main.rs
+commit main
+git checkout -q work
+git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 1 'L76 carried approval does not carry attestation across changed tree' gate proof 12
+expect_exit 1 'L76 merge-ready still needs proof after changed-tree carry' gate merge-ready 12
+l76_unchanged
+git checkout -q main
+git commit -q --allow-empty -m main
+git checkout -q work
+git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 0 'L76 same-tree carry retains attestation' gate merge-ready 12
+
 gate_visible
 expect_exit 0 'L53 visible before and after evidence passes' gate proof 12
 gate_set '.body |= sub("U1 before[^\n]*\n"; "")'
