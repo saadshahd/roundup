@@ -639,7 +639,7 @@ for path in docs/notes.md .work/queue/notes.md scenarios/notes.md; do
   commit prose 'Author-Agent: builder'
   expect_output post "L44 allowed $path is post" gate class 12
 done
-for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md .work/queue/.hidden.md; do
+for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md scenarios/loop-rules.md .work/queue/.hidden.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo prose >"$path"

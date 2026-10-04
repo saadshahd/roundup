@@ -8,7 +8,7 @@ A scenario is the spec for a unit of work: given / when / then, in `GLOSSARY.md`
 - Every write or read of a Todo or Pad is a Touch: `ctx.touch(verb, "todo:<id>" | "pad:<name>")`.
 - Tests run without Claude, a network or a display. Anything that needs a real `claude` is replayed from `spikes/hooks-state/*.jsonl`.
 
-Each scenario file states its module and ids on its `Module:` line, just under its title (`scenarios/loop.md` L50); this file holds no table of files, so adding a scenario file edits no line here.
+Each scenario file states its module and ids on its `Module:` line, just under its title (`scenarios/loop-rules.md` L50); this file holds no table of files, so adding a scenario file edits no line here.
 
 Each file's `## Work` table holds its rows; `loop/rules.sh ready` prints what can start (`docs/squads.md`).
 

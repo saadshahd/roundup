@@ -416,7 +416,7 @@ def lane_of(files, paths, base, head):
             return 'block'
         if path in {'docs/development-loop.md', 'docs/boxd.md', 'docs/squads.md', 'docs/design-system.md'} or path.startswith('docs/adr/'):
             return 'block'
-        if scenario and parts[-1] in {'loop.md', 'daemon.md', 'rpc.md', 'control.md', 'agents.md', 'app.md', 'mcp.md'}:
+        if scenario and (parts[-1].startswith('loop') or parts[-1] in {'daemon.md', 'rpc.md', 'control.md', 'agents.md', 'app.md', 'mcp.md'}):
             return 'block'
         old, new = tree_entry(start, path), tree_entry(head, path)
         if any(entry and entry[0] not in ('100644', '100755') for entry in (old, new)) or (old and new and old[0] != new[0]):

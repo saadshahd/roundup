@@ -9,7 +9,7 @@ Data for the Builder, Reviewer and Driver. Rule numbers are `AGENTS.md`'s.
 | Lane | Merges on | After merge |
 |---|---|---|
 | block | `merge-ready` (L46): CI `check` and `rules` green on the exact head, base `main`, an independent approval commit (carried across `main` merges by L54), `proof` (L53), fewer than 3 rejects or an Architect pick (L45) | — |
-| post | `merge-ready`: green CI, base `main`, `Author-Agent` trailers | an independent verdict within 60 minutes (L47); a newest-verdict reject 60 minutes after merge is reverted (L48), unless a newer independent approve on the same head withdraws it |
+| post | `merge-ready`: green CI, base `main`, `Author-Agent` trailers | an independent verdict within 60 minutes (a Stall, L28); a newest-verdict reject 60 minutes after merge is reverted (L48), unless a newer independent approve on the same head withdraws it |
 
 By hand until their scripts exist: `revert-due` (L48), `dispatch` (L49: a scenario's newest change merged block-lane or with an independent approve), labels (L57), `tokens` (L41), contract approval (rule 4).
 

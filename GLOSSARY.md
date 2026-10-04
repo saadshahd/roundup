@@ -209,7 +209,7 @@ A screen the Design critic runs that no Builder's prompt lists.
 ### The loop
 
 **Stall**:
-A condition that stops the loop's work (`scenarios/loop.md` L28), recorded in `loop/out/stalls/` with one Owner and a deadline. A Todo's blockers are not Stalls.
+A condition that stops the loop's work (`scenarios/loop-rules.md` L28), recorded in `loop/out/stalls/` with one Owner and a deadline. A Todo's blockers are not Stalls.
 
 **Owner**:
 The one loop role answering for a Stall: Triage, Merger, Architect or Driver.
