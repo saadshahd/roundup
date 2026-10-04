@@ -28,6 +28,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: L66 command dependencies
+        run: |
+          brew install coreutils jq
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: taiki-e/install-action@just
       - run: pnpm install --frozen-lockfile
       - run: just check

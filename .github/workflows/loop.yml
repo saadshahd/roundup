@@ -20,4 +20,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - run: loop/rules.sh vocab
       - run: loop/rules.test.sh
+      - run: loop/merge-ready.test.sh
       - run: loop/boxd.test.sh
