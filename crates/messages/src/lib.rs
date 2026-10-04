@@ -154,7 +154,7 @@ impl Messages {
                     Delivery::Drop => (MessageStatus::Dropped, None),
                 }
             };
-            let message = store.insert(
+            store.insert(
                 &ctx.actor,
                 &p.to,
                 p.kind,
@@ -164,8 +164,7 @@ impl Messages {
                 reason,
                 now_ms(),
                 receiver_status.as_ref().map_or((0, 0), binding),
-            )?;
-            message
+            )?
         };
         ctx.touch(Verb::Wrote, &item(message.id))?;
         ctx.emit(EventData::MessageSent(message.clone()));
@@ -210,7 +209,7 @@ impl Messages {
         {
             let mut store = self.store()?;
             if let Some(node) = &receiver {
-                accept_receiver(&self.inner, &mut store, &node)?;
+                accept_receiver(&self.inner, &mut store, node)?;
             }
             if !store.release_held(p.id, MessageStatus::Pending, None)? {
                 return Err(RpcError::conflict("Message is not held"));
@@ -271,7 +270,7 @@ impl Messages {
             .expect("Agent receiver");
         let held = {
             let mut store = self.store()?;
-            accept_receiver(&self.inner, &mut store, &node)?;
+            accept_receiver(&self.inner, &mut store, node)?;
             store.begin_takeover(&agent)?
         };
         if let Some(held) = held {
@@ -297,7 +296,7 @@ impl Messages {
             .expect("Agent receiver");
         let promoted = {
             let mut store = self.store()?;
-            accept_receiver(&self.inner, &mut store, &node)?;
+            accept_receiver(&self.inner, &mut store, node)?;
             store.end_takeover(&agent)?
         };
         if promoted.is_some() {
