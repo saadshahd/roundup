@@ -6,9 +6,9 @@ A PR body lists the principle ids it serves and answers each gate below. A gate 
 
 ## P1 Single front door
 
-The user speaks to one Thread, not to several Agents. The Thread breaks down objectives, routes work, absorbs Agent chatter, and gives one summary when its work settles.
+The Room organizes the work. Its Door is the default Agent the user speaks to; the Thread is that conversation, not another container. The Door breaks down objectives, routes work, absorbs Agent chatter, and gives one summary when its work settles. These coordinating behaviors remain goals until their scenario observers pass.
 
-The door is the default, never the only way in. The user can always open any Agent and type into its terminal. During a Takeover of an Agent, the Thread sends it nothing: its Messages wait as Held and deliver when the Takeover ends.
+The Door is the default, never the only way in. The user can always open any Agent and type into its terminal. During a Takeover of an Agent, the Door sends it nothing: its Messages wait as Held and deliver when the Takeover ends.
 
 Gate: does a new path make the user address an Agent, not the Thread, to start work, route it, or read its result? Does a new path make an Agent reachable only through the Thread, or let the Thread send to an Agent under Takeover?
 Observer: a scenario that starts, routes and finishes work through the Thread alone; a scenario where the user takes over an Agent and its Messages stay Held until the Takeover ends.
@@ -47,9 +47,9 @@ An Agent never pushes the shared branch. Its changes rebase, pass `check`, and f
 Gate: does a path write `main` other than rebase, `check` green, then fast-forward? Does a rejected Agent leave an entry in `git worktree list` or `git branch`?
 Observer: a test comparing both lists before spawn and after reject.
 
-## P6 A topic holds everything
+## P6 A Room holds its work
 
-A Group or Meta-agent is a topic. Everything about the topic sits in it: Agents, Terminals, Todos, Pads and every view or tool added later. Each item has one Home, and the user can change any item's Home at any time. A Meta-agent's Agent places the children it makes; the user's own move always wins.
+A Room holds its Door, Agents, Terminals, Todos, dependencies and Sketches. Each item has one Home, and the user can change its Home. The Door places the children it makes; the user's own move always wins. The Room survives its Door stopping. Room-scoped Todos and Sketches are required product work; the existing Project-wide Shelf does not satisfy this goal.
 
 Gate: does a new kind of item lack a Home, or can the user not change its Home? Does an Agent's placement override a placement the user made?
 Observer: a scenario that makes one item of each kind in Home A, changes its Home to B, and finds it only in B, with the change logged in Provenance.
