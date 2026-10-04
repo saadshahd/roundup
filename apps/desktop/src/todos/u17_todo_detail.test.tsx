@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
-import { mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
+import { assertKind, mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
 import { USER } from "../testing/nodes";
 
 afterEach(() => {
@@ -39,6 +39,7 @@ describe("u17 Todo detail", () => {
     await openDrawerOf(/#5/);
 
     expect(drawer().textContent).toContain("#5  session store");
+    assertKind(within(drawer()).getByText("session store").parentElement!, "blocked", "pause");
   });
 
   it("u17_the_title_row_keeps_a_space_between_the_glyph_and_the_id", async () => {
@@ -51,18 +52,21 @@ describe("u17 Todo detail", () => {
     await openDrawerOf(/#5/);
 
     expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe(" #4  migrate users");
+    assertKind(within(drawer()).getByText("#4 migrate users"), "idle", "dot");
   });
 
   it("u17_a_done_blocker_still_shows_under_waits_on_with_the_done_glyph", async () => {
     await openDrawerOf(/#5/, [todo(4, { title: "migrate users", done: true }), blocked()]);
 
     expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe(" #4  migrate users");
+    assertKind(within(drawer()).getByText("#4 migrate users"), "done", "check");
   });
 
   it("u17_blocks_lists_each_todo_that_waits_on_this_one", async () => {
     await openDrawerOf(/#5/);
 
     expect(within(drawer()).getByText("blocks").nextElementSibling?.textContent).toBe(" #10  session tests");
+    assertKind(within(drawer()).getByText("#10 session tests"), "blocked", "pause");
   });
 
   it("u17_a_todo_with_no_blockers_has_no_waits_on_and_no_blocks_sections", async () => {
@@ -114,7 +118,7 @@ describe("u17 Todo detail", () => {
 
     app.emit(todoEvent("todo.updated", todo(4)));
 
-    await waitFor(() => expect(within(drawer()).getByText("waits on").nextElementSibling?.textContent).toBe(" #4  migrate users"));
+    await waitFor(() => assertKind(within(drawer()).getByText("#4 migrate users"), "done", "check"));
   });
 
   it("u17_plus_blocker_offers_the_other_todos_that_are_not_yet_blockers", async () => {

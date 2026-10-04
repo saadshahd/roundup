@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
+import { assertKind, mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
 import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -14,6 +14,7 @@ describe("u15 Todo list", () => {
     await screen.findByText(/refresh tokens/);
 
     expect(rows()).toEqual(["", "#3 refresh tokens", "#7 split checkout flow"]);
+    assertKind(screen.getByRole("button", { name: "idle #3 refresh tokens" }), "idle", "dot");
   });
 
   it("u15_a_blocked_todo_has_the_pause_glyph_and_a_second_line_naming_its_open_blockers_in_id_order", async () => {
@@ -25,6 +26,7 @@ describe("u15 Todo list", () => {
 
     await screen.findByText(/session store/);
 
+    assertKind(screen.getByRole("button", { name: "blocked #5 session store" }), "blocked", "pause");
     expect([rows()[2], screen.getByText(/^waits on/).textContent]).toEqual(["#5 session store", "waits on #4, #6"]);
   });
 
@@ -54,6 +56,7 @@ describe("u15 Todo list", () => {
     fireEvent.click(await screen.findByRole("button", { name: "1 done" }));
 
     expect(rows()).toEqual(["", "1 done", "#1 old one"]);
+    assertKind(screen.getByRole("button", { name: "done #1 old one" }), "done", "check");
   });
 
   it("u15_no_done_todos_show_no_done_line", async () => {
