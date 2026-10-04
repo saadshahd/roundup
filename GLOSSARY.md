@@ -1,6 +1,6 @@
 # roundup
 
-roundup supervises coding Agents in one Project from a macOS App. Every identifier, RPC method and UI string uses a term here, or adds it in the same PR (`AGENTS.md` rule 6); `loop/rules.sh vocab` fails a public name holding an _Avoid_ word, except under `crates/agents/claude_code/`, where Claude Code's own terms (session, hook, transcript) are allowed.
+roundup supervises coding Agents in one Project from a macOS App. Names use these terms (`AGENTS.md` rule 6); _Avoid_ words are allowed only under `crates/agents/claude_code/`, where Claude Code's own terms live.
 
 ## Language
 
@@ -25,10 +25,10 @@ A named, process-less node holding Agents, Terminals, Todos, Pads, views and Gro
 _Avoid_: folder
 
 **Home**:
-The Group or Meta-agent an item sits in; the Project is the root Home. Each item has exactly one, and the user can change it.
+The one Group or Meta-agent an item sits in; the Project is the root Home.
 
 **Meta-agent**:
-A Group promoted so a live Agent sits at it and receives its children's events; the Agent places the children it makes, and the user's own move always wins. The user's own term.
+A Group promoted so a live Agent sits at it and receives its children's events. The user's own term.
 _Avoid_: parent agent, lead
 
 **Worktree**:
@@ -38,7 +38,7 @@ The git worktree roundup makes for one Agent when the Project's `worktrees` sett
 The branch checked out in the Project when the Agent spawned; the Agent's branch starts there.
 
 **Landing**:
-Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base; it fails loud on a conflict and never picks a side.
+Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base.
 
 ### The App
 
@@ -95,7 +95,7 @@ Selected text attached to the Thread's input as a block with its source.
 `{kind, label, since}`.
 
 **Kind**:
-One of `error | needs-you | blocked | working | idle | done`, most urgent first. The Adapter decides `needs-you`, `working` and `idle` from Observations, and `error` (a non-zero exit or crash) and `done` from exit; the Daemon decides `blocked` from Todos and Routes. Hooks never change it.
+One of `error | needs-you | blocked | working | idle | done`, most urgent first; the Adapter decides all but `blocked`, which the Daemon decides from Todos and Routes. Hooks never change it.
 
 **Glyph**:
 The one mark a row shows for its most urgent Kind: `✕ ● ⏸ ○ · ✓`.
@@ -107,7 +107,7 @@ Bold plus colour, used only for `error` (red) and `needs-you` (amber).
 An extra label after a name; it never changes the Glyph.
 
 **Live line**:
-The Status label and how long it has held, right-aligned on a Rail row's own line (U46).
+The Status label and how long it has held, on a Rail row's own line.
 
 ### Agents at work
 
@@ -130,13 +130,13 @@ Ending the Agent's current turn through the Adapter (`agent.interrupt`); the Age
 _Avoid_: cancel, abort
 
 **Takeover**:
-The user typing into an Agent directly. Meanwhile no other Actor sends it anything: auto Messages wait Held until it ends, ask-first ones stay Held for the user, drop-route ones are dropped.
+The user typing into an Agent directly; meanwhile no other Actor sends it anything.
 
 **Brief**:
-The text roundup gives an Agent at start: a file with its id, that roundup supervises it and which tools reach roundup; and a start text with its Home, who to ask, its peers and its open Todos (`docs/awareness.md`).
+The text roundup gives an Agent at start about itself, its Home, its peers and its open Todos (`docs/awareness.md`).
 
 **Channel**:
-Whether `rup mcp <id>` (the `roundup` MCP server, A11) has reported to the Daemon for one Agent by `agent.channelUp`: `pending`, `up` or `missing`. It holds no standing connection; not the vendor's own channels feature.
+Whether one Agent's `roundup` MCP server (`rup mcp <id>`) has reported to the Daemon: `pending`, `up` or `missing`. Not the vendor's own channels feature.
 
 **Evaluator**:
 A small model run inside the Daemon for a routine judgement at no frontier-model cost; a spike (B27), not yet built.
@@ -144,17 +144,17 @@ A small model run inside the Daemon for a routine judgement at no frontier-model
 ### Messages and Cards
 
 **Thread**:
-The conversation the user has with one Meta-agent about its Home; its Agent breaks down objectives, routes work to its children and gives one summary when the work settles.
+The conversation the user has with one Meta-agent about its Home.
 _Avoid_: chat, main agent
 
 **Door**:
 The Thread as the default way in, never the only one: the user can always open any Agent and type into it. Name provisional.
 
 **Message**:
-A typed envelope `{from, to, kind, body, replyTo}` between Actors, with a status of `pending`, `held`, `delivered` or `dropped`; `passedFrom` names the Message it was passed on from (`message.pass`).
+A typed envelope `{from, to, kind, body, replyTo}` between Actors, with a status of `pending`, `held`, `delivered` or `dropped`.
 
 **Digest**:
-The fixed entry `{name, kind, last, todos, pads}`, at most 512 bytes, telling a Meta-agent about one child (`agent.digest`, or pushed as a Message when the child changes).
+The fixed, bounded entry `{name, kind, last, todos, pads}` telling a Meta-agent about one child.
 
 **Route**:
 A sender→receiver pair with a delivery value: `auto | ask-first | drop`.
@@ -170,7 +170,7 @@ Anything the user sees in the app (a permission request, a question, an Inbox Me
 _Avoid_: popup
 
 **Decision**:
-The kind of Card that blocks an Agent on a live hook or tool call; it lives in memory, has no Route, is never Held, and only the user answers it.
+The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it.
 
 **Actor**:
 The user, an Agent, an Extension or the Daemon (as `rupd`) making a call.
@@ -209,7 +209,7 @@ A screen the Design critic runs that no Builder's prompt lists.
 ### The loop
 
 **Stall**:
-A condition that stops the loop's work (`scenarios/loop-rules.md` L28), recorded in `loop/out/stalls/` with one Owner and a deadline. A Todo's blockers are not Stalls.
+A condition that stops the loop's work, with one Owner and a deadline; specified by L28 and not yet built. A Todo's blockers are not Stalls.
 
 **Owner**:
 The one loop role answering for a Stall: Triage, Merger, Architect or Driver.
@@ -218,5 +218,5 @@ The one loop role answering for a Stall: Triage, Merger, Architect or Driver.
 The Driver while it merges a PR.
 
 **VM tool**:
-A Claude Code plugin, skill, hook or MCP server that `loop/boxd.sh` gives the agent on a VM, listed per role in `loop/vm-tools.json`; not an Extension.
+A Claude Code plugin, skill, hook or MCP server the agent uses on a boxd VM; not an Extension.
 _Avoid_: plugin
