@@ -1,0 +1,9 @@
+.todo-row-button {
+  all: unset;
+  --todo-row-indent: calc(var(--space-4) + 1ch);
+}
+
+.todo-row-button:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--accent);
+  outline-offset: calc(var(--space-1) / 4);
+}

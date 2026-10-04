@@ -15,7 +15,7 @@ describe("u4 ink contrast: Drawer", () => {
       render(() => <DrawerHost drawer={drawer} reducedMotion={() => true} />);
       drawer.open(() => <p>detail</p>);
 
-      expect(contrastRatio(colourOf(screen.getByText("close"), tokens), ground)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(colourOf(screen.getByRole("button", { name: "close" }), tokens), ground)).toBeGreaterThanOrEqual(4.5);
     });
   });
 });

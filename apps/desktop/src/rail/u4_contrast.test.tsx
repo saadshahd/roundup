@@ -27,8 +27,8 @@ describe("u4 ink contrast: Rail", () => {
   });
 
   it.each([
-    ["working", "○"],
-    ["idle", "·"],
+    ["working", "working"],
+    ["idle", "idle"],
   ] as const)("u4_the_%s_glyph_keeps_3_to_1_on_both_backgrounds", async (kind, mark) => {
     const { tokens, ground, selected } = loadTokens();
 
@@ -36,7 +36,7 @@ describe("u4 ink contrast: Rail", () => {
       const { rail } = await mountRail([agent("a", kind, "busy")]);
       const glyphEl = () => rowOf("a").querySelector(".glyph");
 
-      expect(glyphEl()?.textContent).toBe(mark);
+      expect(glyphEl()?.getAttribute("aria-label")).toBe(mark);
       expect(contrastRatio(colourOf(glyphEl()!, tokens), ground)).toBeGreaterThanOrEqual(3);
 
       rail.select("a");

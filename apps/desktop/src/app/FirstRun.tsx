@@ -1,3 +1,4 @@
+import { Icon } from "../ink/Icon";
 import { Show } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 
@@ -27,7 +28,7 @@ export const EmptyShelf = () => (
     <p>agents add them as they</p>
     <p>plan; so can you</p>
     <p>pads</p>
-    <p>◈ agent notes</p>
-    <p>◇ yours</p>
+    <p><Icon name="owned" /> agent notes</p>
+    <p><Icon name="diamond" /> yours</p>
   </>
 );

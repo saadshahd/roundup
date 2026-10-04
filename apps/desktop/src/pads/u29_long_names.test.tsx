@@ -26,7 +26,7 @@ describe("u29 long names", () => {
     const row = name.closest("p");
 
     expect(row && getComputedStyle(row).display).toBe("flex");
-    expect(row?.contains(screen.getByText("◇"))).toBe(true);
+    expect(row?.contains(screen.getByRole("img", { name: "user owned" }))).toBe(true);
     expect(cut(name)).toEqual(["0px", "hidden", "ellipsis", "nowrap", LONG]);
   });
 

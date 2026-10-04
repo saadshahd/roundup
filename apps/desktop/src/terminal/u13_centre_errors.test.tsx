@@ -27,6 +27,7 @@ describe("u13 the centre's error lines never move the screen", () => {
 
     app.emit({ actor: { kind: "user", id: "you", parent: null }, name: "rail.changed" });
 
-    expect((await screen.findByText("✕ daemon is gone")).closest(".pane-failure")).not.toBeNull();
+    expect((await screen.findByRole("alert", { name: "daemon is gone" })).closest(".pane-failure")).not.toBeNull();
+    expect(screen.getByRole("alert").querySelector('svg.lucide-x[aria-hidden="true"]')).not.toBeNull();
   });
 });

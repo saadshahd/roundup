@@ -150,9 +150,9 @@ describe("u33 spawn with a prompt", () => {
     chord("n");
     fireEvent.input(field(), { target: { value: "fix the thing" } });
     fireEvent.keyDown(field(), { key: "Enter" });
-    const shown = await screen.findByText("✕ no room");
+    const shown = await screen.findByText("no room");
 
-    expect([shown.textContent, field().value]).toEqual(["✕ no room", "fix the thing"]);
+    expect([shown.textContent, field().value]).toEqual(["no room", "fix the thing"]);
   });
 
   it("u33_cmd_n_still_spawns_with_no_prompt_and_no_field", async () => {
@@ -305,9 +305,9 @@ describe("u33 spawn with a prompt", () => {
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
-    screen.getByText("+ group").focus();
+    screen.getByText("group").focus();
 
-    fireEvent.click(screen.getByText("+ agent"));
+    fireEvent.click(screen.getByText("agent"));
 
     expect(document.activeElement).toBe(field());
     expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([]);
@@ -320,7 +320,7 @@ describe("u33 spawn with a prompt", () => {
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
-    fireEvent.click(screen.getByText("+ terminal"));
+    fireEvent.click(screen.getByText("terminal"));
 
     await waitFor(() =>
       expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]),
@@ -334,7 +334,7 @@ describe("u33 spawn with a prompt", () => {
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
-    fireEvent.click(screen.getByText("+ group"));
+    fireEvent.click(screen.getByText("group"));
 
     await waitFor(() =>
       expect(railCallsTo(mounted.app, "rail.createGroup")).toEqual([{ name: "group", parent: null }]),

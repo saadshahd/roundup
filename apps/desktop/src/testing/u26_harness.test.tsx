@@ -54,7 +54,10 @@ describe("u26 the harness seeds", () => {
   it("u26_daemon_exits_shows_the_exit_in_the_centre", async () => {
     mount("daemon-exits");
 
-    await screen.findByText("✕ daemon exited 1");
+    const line = await screen.findByRole("alert");
+
+    expect(line.textContent).toBe("daemon exited 1");
+    expect(line.querySelector("svg.lucide-x")).not.toBeNull();
   });
 
   it("u26_conflict_fails_the_next_call_with_conflict_and_the_one_after_succeeds", async () => {

@@ -1,3 +1,4 @@
+import { Icon } from "../ink/Icon";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -155,6 +156,7 @@ export const Todos = () => {
         todos{" "}
         <button
           type="button"
+          aria-label="add todo"
           class="word"
           ref={(button) => (plusButton = button)}
           onClick={() => {
@@ -162,7 +164,7 @@ export const Todos = () => {
             setTyping(true);
           }}
         >
-          +
+          <Icon name="plus" />
         </button>
       </p>
       <Show when={todos.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
@@ -199,7 +201,7 @@ export const Todos = () => {
       </For>
       <Show when={done().length > 0}>
         <RowButton onClick={() => setUnfolded(!unfolded())}>
-          <KindGlyph kind="done" /> {done().length} done
+          <KindGlyph kind="done" decorative /> {done().length} done
         </RowButton>
         <Show when={unfolded()}>
           <For each={done()}>

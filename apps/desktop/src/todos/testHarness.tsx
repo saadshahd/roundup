@@ -1,4 +1,5 @@
-import { render } from "@solidjs/testing-library";
+import { expect } from "vitest";
+import { within, render } from "@solidjs/testing-library";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { Todo } from "@contracts/todo/Todo";
 import { Layout } from "../app/Layout";
@@ -56,4 +57,13 @@ export const todoRowOf = (id: number): HTMLElement => {
   if (!found) throw new Error(`no row for #${id}`);
 
   return found;
+};
+
+export const assertKind = (row: HTMLElement, kind: "idle" | "blocked" | "done", icon: "dot" | "pause" | "check") => {
+  const mark = within(row).getByRole("img", { name: kind });
+
+  expect(within(row).getAllByRole("img")).toEqual([mark]);
+  expect(mark.querySelectorAll("svg")).toHaveLength(1);
+  expect(mark.querySelector(`svg.lucide-${icon}`)?.getAttribute("aria-hidden")).toBe("true");
+  expect(mark.textContent).toBe("");
 };

@@ -54,7 +54,7 @@ describe("u138 focus already moved elsewhere is never reclaimed", () => {
     fireEvent.click(await screen.findByRole("button", { name: "complete" }));
     await waitFor(() => expect(todoCallsTo(mounted.app, "todo.complete")).toHaveLength(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: "add todo" }));
     const input = await screen.findByLabelText("new todo title");
     input.focus();
 
@@ -108,7 +108,7 @@ describe("u138 the target is fixed at press time, not recomputed after the wait"
     mounted.app.emit(todoEvent("todo.updated", { ...mounted.store.todos.find((candidate) => candidate.id === 2)! }));
 
     await waitFor(() => expect(screen.queryByText(/#2 /)).toBeNull());
-    expect(document.activeElement).toBe(await screen.findByRole("button", { name: "+" }));
+    expect(document.activeElement).toBe(await screen.findByRole("button", { name: "add todo" }));
   });
 });
 
@@ -130,6 +130,6 @@ describe("u138 two rows leaving together fall back when each named the other as 
 
     await waitFor(() => expect(screen.queryByText(/#1 /)).toBeNull());
     await waitFor(() => expect(screen.queryByText(/#2 /)).toBeNull());
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "+" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "add todo" }));
   });
 });

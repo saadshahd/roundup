@@ -6,7 +6,7 @@ import { USER } from "../testing/nodes";
 afterEach(cleanup);
 
 const typeName = async (name: string) => {
-  fireEvent.click(await screen.findByText("+"));
+  fireEvent.click(await screen.findByRole("button", { name: "add pad" }));
   const field = await screen.findByLabelText<HTMLInputElement>("pad name");
   fireEvent.input(field, { target: { value: name } });
   fireEvent.keyDown(field, { key: "Enter" });
@@ -18,14 +18,14 @@ describe("u19 create", () => {
   it("u19_clicking_plus_opens_an_inline_name_field", async () => {
     await openShelf([]);
 
-    fireEvent.click(await screen.findByText("+"));
+    fireEvent.click(await screen.findByRole("button", { name: "add pad" }));
 
     expect(await screen.findByLabelText("pad name")).toBeTruthy();
   });
 
   it("u19_escape_closes_the_name_field_and_calls_nothing", async () => {
     const { calls } = await openShelf([]);
-    fireEvent.click(await screen.findByText("+"));
+    fireEvent.click(await screen.findByRole("button", { name: "add pad" }));
 
     fireEvent.keyDown(await screen.findByLabelText("pad name"), {
       key: "Escape",
@@ -42,7 +42,7 @@ describe("u19 create", () => {
     app.handlers["pad.create"] = ({ name }) => padOf(name, USER);
 
     await typeName("notes");
-    await screen.findByText("+");
+    await screen.findByRole("button", { name: "add pad" });
 
     expect(app.calls.filter((call) => call.method === "pad.create")).toEqual([
       { method: "pad.create", params: { name: "notes", text: null } },
@@ -59,7 +59,7 @@ describe("u19 create", () => {
     await typeName("Notes");
 
     expect((await screen.findByText(/exists/)).textContent).toBe(
-      "✕ pad notes exists",
+      "pad notes exists",
     );
     expect(screen.queryByLabelText("pad name")).toBeNull();
   });
@@ -73,7 +73,7 @@ describe("u19 create", () => {
     await typeName("a/b");
 
     expect((await screen.findByText(/must not contain/)).textContent).toBe(
-      "✕ name must not contain /",
+      "name must not contain /",
     );
     expect(screen.queryByLabelText("pad name")).toBeNull();
   });
@@ -87,7 +87,7 @@ describe("u19 create", () => {
     await typeName("notes");
     await screen.findByText(/exists/);
 
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(screen.getByRole("button", { name: "add pad" }));
 
     expect(
       [

@@ -1,3 +1,4 @@
+import { Icon } from "../ink/Icon";
 import { createEffect, createSignal, For, on, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -101,7 +102,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                 </Show>
                 <p>
                   <button type="button" class="word" onClick={() => setOffering(!offering())}>
-                    + blocker
+                    <Icon name="plus" /> blocker
                   </button>
                 </p>
                 <Show when={offering()}>

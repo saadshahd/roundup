@@ -57,10 +57,11 @@ describe("u11 one emulator per Terminal", () => {
     app.emit(event({ name: "terminal.output", data: { id: "t-a", offset: 0, data: "***" } }));
     app.emit(output("t-a", "after"));
 
-    await vi.waitFor(() => expect([screen.getByText(/^✕ terminal\.output:/).tagName, decoded(emulators.get("t-a")?.written ?? [])]).toEqual([
+    await vi.waitFor(() => expect([screen.getByRole("alert", { name: /^terminal\.output:/ }).tagName, decoded(emulators.get("t-a")?.written ?? [])]).toEqual([
       "P",
       ["after"],
     ]));
+    expect(screen.getByRole("alert").querySelector('svg.lucide-x[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("u11_closing_the_pane_disposes_every_emulator", async () => {

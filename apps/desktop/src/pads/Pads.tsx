@@ -1,3 +1,5 @@
+import { OwnerMark } from "../ink/OwnerMark";
+import { Icon } from "../ink/Icon";
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Pad } from "@contracts/pad/Pad";
@@ -6,7 +8,7 @@ import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
 import { PadDrawer } from "./PadDrawer";
 import { cutName, markedLine, wholeWord } from "./nameLine";
-import { ownerMark, USER } from "./owner";
+import { USER } from "./owner";
 
 /** The Shelf's `pads` list; `pad.list` logs no Touch, so refetching it on every `pad.changed` leaves no trace in Provenance. One fetch serves the list and any open Drawer. */
 export const Pads = () => {
@@ -71,13 +73,14 @@ export const Pads = () => {
         <span class="light">pads</span>{" "}
         <button
           type="button"
+          aria-label="add pad"
           class="word"
           onClick={() => {
             failure.clear();
             setNaming(true);
           }}
         >
-          +
+          <Icon name="plus" />
         </button>
       </p>
       <Show
@@ -126,12 +129,12 @@ const PadRows = (props: {
                 aria-label={`make ${pad.name} yours`}
                 onClick={() => props.onMakeYours(pad.name)}
               >
-                {ownerMark(pad.owner)}
+                <OwnerMark owner={pad.owner} />
               </button>
             }
           >
             <span class="light" style={wholeWord}>
-              {ownerMark(pad.owner)}
+              <OwnerMark owner={pad.owner} />
             </span>
           </Show>
           <button

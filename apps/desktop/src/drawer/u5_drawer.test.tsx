@@ -66,7 +66,7 @@ describe("u5 Drawer and last touch", () => {
     const { drawer } = drawerSetup();
     drawer.open(() => <p>detail</p>);
 
-    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
 
     expect(drawer.content()).toBeNull();
   });
@@ -211,7 +211,7 @@ describe("u5 Drawer and last touch", () => {
       </button>
     ));
 
-    const positions = [screen.getByText("close"), screen.getByText("export .md")].map(
+    const positions = [screen.getByRole("button", { name: "close" }), screen.getByText("export .md")].map(
       (word) => getComputedStyle(word).position,
     );
 
@@ -234,7 +234,7 @@ describe("u5 Drawer and last touch", () => {
       </ConnectedProjectContext.Provider>
     ));
 
-    expect([(await screen.findByText("✕ no todo 3")).className, screen.getByText("window").textContent]).toEqual([
+    expect([(await screen.findByText("no todo 3")).className, screen.getByText("window").textContent]).toEqual([
       "ink",
       "window",
     ]);
@@ -244,7 +244,7 @@ describe("u5 Drawer and last touch", () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     const { panel } = drawerSetup();
-    const close = screen.getByText("close");
+    const close = screen.getByRole("button", { name: "close" });
     const [color, padding] = [getComputedStyle(close).color, getComputedStyle(panel).paddingRight];
     sheet.remove();
 

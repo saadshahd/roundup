@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
+import { assertKind, mountTodos, todo, todoCallsTo as callsTo, todoEvent, todoRowOf } from "./testHarness";
 import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
 
-const rows = () => within(screen.getByRole("region", { name: "todos" })).getAllByRole("button").map((row) => row.textContent);
+const rows = () => within(screen.getByRole("region", { name: "todos" })).getAllByRole("button").map((row) => row.textContent?.trim());
 
 describe("u15 Todo list", () => {
   it("u15_open_todos_are_listed_in_id_order_as_glyph_hash_id_title", async () => {
@@ -13,7 +13,8 @@ describe("u15 Todo list", () => {
 
     await screen.findByText(/refresh tokens/);
 
-    expect(rows()).toEqual(["+", "· #3 refresh tokens", "· #7 split checkout flow"]);
+    expect(rows()).toEqual(["", "#3 refresh tokens", "#7 split checkout flow"]);
+    assertKind(screen.getByRole("button", { name: "idle #3 refresh tokens" }), "idle", "dot");
   });
 
   it("u15_a_blocked_todo_has_the_pause_glyph_and_a_second_line_naming_its_open_blockers_in_id_order", async () => {
@@ -25,7 +26,8 @@ describe("u15 Todo list", () => {
 
     await screen.findByText(/session store/);
 
-    expect([rows()[2], screen.getByText(/^waits on/).textContent]).toEqual(["⏸ #5 session store", "waits on #4, #6"]);
+    assertKind(screen.getByRole("button", { name: "blocked #5 session store" }), "blocked", "pause");
+    expect([rows()[2], screen.getByText(/^waits on/).textContent]).toEqual(["#5 session store", "waits on #4, #6"]);
   });
 
   it("u15_a_done_blocker_is_not_named_on_the_blocked_todos_second_line", async () => {
@@ -43,17 +45,21 @@ describe("u15 Todo list", () => {
   it("u15_done_todos_fold_into_one_line_counting_them", async () => {
     await mountTodos([todo(1, { done: true, title: "old one" }), todo(2, { done: true }), todo(3)]);
 
-    await screen.findByRole("button", { name: "✓ 2 done" });
+    const summary = await screen.findByRole("button", { name: "2 done" });
 
-    expect([rows(), screen.queryByText(/old one/)]).toEqual([["+", "· #3 todo 3", "✓ 2 done"], null]);
+    expect(summary.querySelectorAll("svg")).toHaveLength(1);
+    expect(summary.querySelector("svg.lucide-check")?.getAttribute("aria-hidden")).toBe("true");
+
+    expect([rows(), screen.queryByText(/old one/)]).toEqual([["", "#3 todo 3", "2 done"], null]);
   });
 
   it("u15_clicking_the_done_line_unfolds_the_done_todos", async () => {
     await mountTodos([todo(1, { done: true, title: "old one" })]);
 
-    fireEvent.click(await screen.findByRole("button", { name: "✓ 1 done" }));
+    fireEvent.click(await screen.findByRole("button", { name: "1 done" }));
 
-    expect(rows()).toEqual(["+", "✓ 1 done", "✓ #1 old one"]);
+    expect(rows()).toEqual(["", "1 done", "#1 old one"]);
+    assertKind(screen.getByRole("button", { name: "done #1 old one" }), "done", "check");
   });
 
   it("u15_no_done_todos_show_no_done_line", async () => {
@@ -139,7 +145,7 @@ describe("u15 Todo list", () => {
 
     app.emit(todoEvent("todo.updated", todo(1)));
 
-    expect((await screen.findByText(/daemon says no/)).textContent).toBe("✕ daemon says no");
+    expect((await screen.findByText(/daemon says no/)).textContent).toBe("daemon says no");
   });
 
   it("u15_a_refetch_that_changes_one_todo_leaves_every_other_row_in_place", async () => {
@@ -175,7 +181,7 @@ describe("u15 Todo list", () => {
     };
 
     await mountTodos(Array.from({ length: count }, (_, index) => counted(index + 1)));
-    await screen.findByRole("button", { name: /#120 todo 120/ });
+    await waitFor(() => expect(within(todoRowOf(count)).getByRole("button", { name: /#120 todo 120/ })).toBeTruthy());
 
     expect(reads).toBeLessThan(count * 40);
   });
@@ -185,7 +191,7 @@ describe("u15 Todo list", () => {
 
     const row = await screen.findByRole("button", { name: /#3/ });
 
-    expect([row.style.paddingLeft, row.style.textIndent]).toEqual(["2ch", "-2ch"]);
+    expect([row.style.paddingLeft, row.style.textIndent]).toEqual(["var(--todo-row-indent)", "calc(-1 * var(--todo-row-indent))"]);
   });
 
   it("u15_a_list_that_is_gone_stops_listening_to_events", async () => {
