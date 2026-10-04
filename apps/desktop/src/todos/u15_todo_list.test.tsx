@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertKind, mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
+import { assertKind, mountTodos, todo, todoCallsTo as callsTo, todoEvent, todoRowOf } from "./testHarness";
 import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -181,7 +181,7 @@ describe("u15 Todo list", () => {
     };
 
     await mountTodos(Array.from({ length: count }, (_, index) => counted(index + 1)));
-    await screen.findByRole("button", { name: /#120 todo 120/ });
+    await waitFor(() => expect(within(todoRowOf(count)).getByRole("button", { name: /#120 todo 120/ })).toBeTruthy());
 
     expect(reads).toBeLessThan(count * 40);
   });
