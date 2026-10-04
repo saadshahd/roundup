@@ -39,6 +39,19 @@ function detail(result: CommandResult): string | null {
   return result.kind === "ok" ? null : `${result.kind}: ${result.detail}`;
 }
 
+async function copyOutput(state: State, edge: Edge, output: string): Promise<void> {
+  const copied = await edge.command(["boxd", "machine", "cp", `${vm}:/tmp/roundup-qa-output.tgz`, `${output}/sweep.tgz`], 30_000, `${output}/copy.log`);
+  const copyError = detail(copied);
+
+  if (copyError) state.failure = `${state.failure ?? ""} Output copy ${copyError}. ${action}`;
+  else {
+    const outputCheck = await edge.command(["test", "-s", `${output}/sweep.tgz`], 5000, `${output}/output.log`);
+    const outputError = detail(outputCheck);
+
+    if (outputError) state.failure = `${state.failure ?? ""} Missing sweep archive ${outputError}. ${action}`;
+  }
+}
+
 export async function coordinate(state: State, edge: Edge, repo: string, out: string, maxVMs = 12): Promise<void> {
   const now = edge.now();
   const problem = inspect(state, now);
@@ -51,7 +64,9 @@ export async function coordinate(state: State, edge: Edge, repo: string, out: st
     state.failure = problem;
 
     if (state.lease !== null && now - state.lease > leaseLimit) {
-      const removed = await edge.command(["boxd", "machine", "remove", vm, "--confirm", "--json"], 30_000, `${out}/cleanup.log`);
+      const output = state.latest?.output ?? out;
+      await copyOutput(state, edge, output);
+      const removed = await edge.command(["boxd", "machine", "remove", vm, "--confirm", "--json"], 30_000, `${output}/cleanup.log`);
       const cleanup = removed.kind === "ok" ? "removed" : "unknown";
 
       if (state.latest) state.latest = { ...state.latest, ended: new Date(edge.now()).toISOString(), status: "failed", cleanup };
@@ -115,12 +130,12 @@ export async function coordinate(state: State, edge: Edge, repo: string, out: st
       return;
     }
 
-    // Creation may succeed remotely after the CLI loses its reply, so cleanup starts before new.
+    // Creation may succeed remotely after the SDK loses its reply, so cleanup starts before creation.
     record = { ...record, cleanup: "pending" };
     state.latest = record;
     edge.record(state);
 
-    if (hasFailed(await command(["boxd", "machine", "new", vm, "--from-snapshot", "ru-toolchain", "--isolated", "--auto-destroy-timeout", "540", "--auto-suspend-timeout", "0", "--json"]))) return;
+    if (hasFailed(await command(["bun", `${import.meta.dir}/qa-coordinator.run.ts`, "create"]))) return;
 
     const script = `set -eu
 . "$HOME/.cargo/env"
@@ -137,16 +152,7 @@ QA_SWEEP_PORT=5199 QA_SWEEP_OUT=/tmp/roundup-qa-output bash loop/qa-sweep.sh
 find /tmp/roundup-qa-output -name 'sweep-*.json' | grep -q .`;
 
     hasFailed(await command(["boxd", "machine", "exec", vm, "--timeout", "420", "--", script]));
-    const copied = await edge.command(["boxd", "machine", "cp", `${vm}:/tmp/roundup-qa-output.tgz`, `${output}/sweep.tgz`], 30_000, `${output}/copy.log`);
-    const copyError = detail(copied);
-
-    if (copyError) state.failure = `${state.failure ?? ""} Output copy ${copyError}. ${action}`;
-    else {
-      const outputCheck = await edge.command(["test", "-s", `${output}/sweep.tgz`], 5000, `${output}/output.log`);
-      const outputError = detail(outputCheck);
-
-      if (outputError) state.failure = `${state.failure ?? ""} Missing sweep archive ${outputError}. ${action}`;
-    }
+    await copyOutput(state, edge, output);
   } catch (error) {
     state.failure = `QA boundary failed: ${String(error)}. ${action}`;
   } finally {

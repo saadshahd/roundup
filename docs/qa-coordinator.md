@@ -2,15 +2,18 @@
 
 The coordinator serves P2 and P5: a disposable isolated VM checks only public
 trusted main, and never writes a branch. Install only the reviewed coordinator
-files after they merge to trusted main, on one normal VM; do not run a Builder checkout there. The Builder snapshot
-has no Run installation and must not register this job. This implementation is
-fake-CLI tested; standby wake and the in-VM CLI integration still need a normal-VM
-observation before claiming live verification.
+files after they merge to trusted main, on one normal VM; do not run a Builder
+checkout there. The Builder snapshot has no Run installation and must not
+register this job. The creation path uses the SDK verified by the Driver on
+2026-10-04;
+registration, an end-to-end sweep and standby wake still need normal-VM proof.
 
 Run's platform schedule wakes an auto-suspended coordinator. The only Run SDK
-imports are `every` and `object`; VM operations use `Bun.spawn` and the installed
-`boxd machine` CLI. The coordinator needs Bun, GNU timeout, bash, jq, curl, boxd
-and Run. Fallow lists `loop/*.run.ts` as entrypoints and excludes the
+imports are `every` and `object`. Creation uses the pinned official
+`@boxd-sh/sdk@0.2.9` dependency in a one-shot Bun child; other VM operations use
+`Bun.spawn` and the installed `boxd machine` CLI. The SDK uses automatic in-VM
+authentication; no authentication value is read, printed or copied by coordinator
+code. The coordinator needs Bun, GNU timeout, bash, jq, curl, boxd and Run. Fallow lists `loop/*.run.ts` as entrypoints and excludes the
 platform-provided `@boxd/run` from dependency accounting; it is not an npm
 dependency shipped with roundup. The QA snapshot needs git, pnpm, just, python3, jq, curl and agent-browser.
 The remote command sources the snapshot’s `~/.cargo/env` to put just on PATH.
@@ -25,13 +28,14 @@ From the reviewed, merged main checkout on the normal VM, set the actual trusted
 ```sh
 cd ~/roundup
 export ROUNDUP_QA_REPO='<owner>/roundup'
+pnpm install --frozen-lockfile
 TMPDIR=/tmp bun loop/qa-coordinator.run.ts dry-run
 run loop/qa-coordinator.run.ts
 run jobs --json
 ```
 
-The dry run executes L66's fake command tests with no VM, network call, durable
-state change or registration. Registration is exactly the same file path on
+The dry run executes L66's injected SDK and fake command tests with no VM,
+network call, durable state change or registration. Registration is exactly the same file path on
 every deploy: Run replaces that path's job. Keep only one coordinator VM and
 one registration. `object(name)` provides persistence, not distributed compare
 and swap; the directory lease additionally fences overlapping replacement jobs
@@ -65,7 +69,12 @@ SHA before L52's guard runs. No PR ref, credential file, GitHub login or SDK
 credential is copied in. VM counts respect `BOXD_MAX_VMS` (default 12) and
 `loop/out/PAUSED`. Work gets 420 seconds, output copy 30 seconds, removal 30
 seconds, and GNU timeout allows two seconds for forced termination per command.
-The VM has a 540-second auto-destroy guard. Remote timeouts are unknown outcomes;
+The VM has a platform 540-second auto-destroy inactivity guard, with auto-suspend
+disabled. This is not a promised wall-clock expiry. The SDK child uses the same
+remaining work deadline through GNU timeout, covering authentication and creation,
+and disables SDK retries. A nonzero creation exit or timeout is unknown; SDK
+errors are replaced with a fixed message to keep authentication details out of logs.
+Remote timeouts are unknown outcomes;
 creation is followed by removal even when its reply was lost. Failed cleanup
 retains the lease and retries removal after it becomes stale, without creating
 another VM. All failures latch red until explicit recovery.
@@ -97,26 +106,37 @@ wake in Run logs. Test stop/recovery and delayed-wake red status. Record the
 actual outputs before calling the automation live-verified. This does not
 replace macOS CI or WKWebView proof.
 
-## Command validation
+## Verified SDK creation and deployment gates (2026-10-04)
 
-The official [in-VM CLI guide](https://docs.boxd.sh/guides/vm-to-vm)
-and [command reference](https://docs.boxd.sh/cli/commands) document `machine
-new`, `list`, `exec --timeout`, `cp` and `remove --confirm`. The snapshot,
-isolation and destroy-timer arguments also match `loop/boxd.sh` and the measured
-recipes in `docs/boxd.md`. The [Run scripts reference](https://docs.boxd.sh/guides/automations/scripts)
-documents `every` and top-level assignments on `object`; the coordinator uses no
-machine SDK methods. [Bun's subprocess reference](https://bun.sh/docs/runtime/child-process)
-documents argv arrays, environment passing, streams, file descriptors and
-`exited`. The fake-CLI test exercises that Bun boundary, including inherited
-PATH, jq capacity parsing, archive copy and removal.
+The normal VM's CLI has no `--auto-destroy-timeout`; creation therefore uses
+`new Boxd().machines.create` from the official SDK, with these exact settings:
 
-The Builder VM has neither `boxd` nor `run` installed: `command -v` and attempts
-to read `boxd machine ... --help` confirmed this on 2026-10-03. CLI signatures
-are documentation-checked, not live-verified here. Before registration the Driver
-must compare the normal VM's installed `--help` for `new`, `exec`, `cp`, `list`
-and `remove` against these arguments and record one disposable isolated sweep.
-No VM was created by this Builder; it cannot run `boxd machine list` here to
-attest to the account's other VMs.
+```ts
+await boxd.machines.create({
+  name: "ru-qa-scheduled",
+  fromSnapshot: "ru-toolchain",
+  isolated: true,
+  config: { autoDestroyTimeout: 540, autoSuspendTimeout: 0 },
+});
+```
+
+The Driver's live probe used installed `@boxd-sh/sdk@0.2.9` with automatic in-VM
+authentication to create `ru-sdk-ttl-probe` from `ru-toolchain`, isolated, with a
+300-second destroy timer and auto-suspend zero. External `boxd machine get`
+confirmed isolation, snapshot, auto-destroy 300 seconds and auto-suspend off.
+The probe was removed. This verifies that creation path and configuration
+mapping; it does not demonstrate actual expiry or a complete coordinator tick.
+The coordinator retains L66's 540-second setting, proven at the injected SDK boundary.
+
+The one-shot `create` mode never imports Run or registers a job. It runs only
+inside the existing bounded command wrapper during a tick. Cleanup is persisted
+as pending before launching it, and any failure or lost reply still leads to
+removal by the reserved VM name. The rest of the CLI workflow is unchanged.
+
+Deployment still requires independent review and reviewed main, locked dependency
+installation, registration on the normal coordinator VM, exact-SHA sweep and
+cleanup evidence, and standby-wake proof. Follow the Driver steps above, including
+stop/recovery and delayed-wake checks. Do not register from a Builder checkout.
 
 ## Builder proof
 
@@ -138,3 +158,47 @@ full run: 636 Rust tests and 947 desktop tests passed (one existing todo),
 along with lint, typecheck and slop. No test failed, so no isolated flake rerun was needed. This is
 local Linux evidence, not CI or macOS approval. No registration, push or GitHub
 credential use occurred.
+
+## L66 review-fix proof
+
+The stale-restart copy and automated-check regression tests failed against the
+reviewed implementation. Cleanup now attempts the bounded archive copy into the
+recorded output directory before removal, retains the stale failure, records
+copy errors, and removes even when copying fails or times out. A fake CLI also
+proves the archive reaches disk before removal after a restart. Both L66 suites
+run in `just check`; macOS CI installs Bun, jq and GNU timeout first.
+
+Proof logs are under `loop/out/l66-fix-proof/` (ignored); the Driver must attach
+them to #281. These changes serve P2 and P5: neither shares a working directory
+nor writes a shared branch. Deployment remains subject to the gates above.
+
+On 2026-10-04, `TMPDIR=/tmp/roundup-qa-check just check` exited 0: 636 Rust
+tests, 31 L66 tests and 950 desktop tests passed (one existing todo). Lint had
+only the existing desktop `EmulatorFactory` warning; slop found no dead code or
+duplication. The L52 fake-browser sweep, strict standalone coordinator typecheck,
+vocabulary and diff whitespace checks also passed. Size printed only its advisory.
+Self-review is in the proof directory; it is not independent approval. macOS CI
+has not run for this new head. The full check waited on another build's Cargo
+lock and finished without interrupting it.
+
+## SDK continuation proof (2026-10-04)
+
+The new SDK parameter test failed before implementation while all 31 existing
+L66 tests passed. After replacing creation, both suites pass 35 tests, including
+the exact 540/0 timers and isolation, remaining deadline and persisted cleanup
+ordering, and rejected/hanging SDK child outcomes. The dependency is pinned to
+the Driver-probed `@boxd-sh/sdk@0.2.9`; SDK retries are disabled.
+
+Proof and self-review are in `loop/out/l66-sdk-proof/` (ignored), for the Driver
+to attach to #281. Locked installation, root typecheck, strict core typecheck,
+slop, vocabulary and whitespace checks pass. Lint has only the existing desktop
+`EmulatorFactory` warning. An additional strict runner/test typecheck is limited
+by existing Bun stdout union typing and missing platform `@boxd/run` declarations;
+its output is retained. No job was registered, no authentication value was
+printed or moved, and no GitHub write or live VM operation was performed here.
+Independent approval and deployment proof remain outstanding.
+
+`TMPDIR=/tmp/roundup-qa-check just check` exited 0: 636 Rust tests, 35 L66 tests,
+and 950 desktop tests passed (one existing todo). One A14 Rust test took 168
+seconds but passed in the original full run; no test failure needed a retry.
+This is Linux proof, not exact-head CI or macOS approval.

@@ -1,3 +1,4 @@
+import { Boxd } from "@boxd-sh/sdk";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { coordinate, inspect, interval, type CommandResult, type State } from "./qa-coordinator";
@@ -25,12 +26,21 @@ export async function command(args: string[], timeoutMs: number, output: string)
 
     if (code === 0) return { kind: "ok", output: text };
 
-    return { kind: code === 124 || code === 137 ? "unknown" : "failed", detail: `${args.slice(0, 3).join(" ")} exit ${code}; see ${output}` };
+    return { kind: code === 124 || code === 137 || (args[0] === "bun" && args[2] === "create") ? "unknown" : "failed", detail: `${args.slice(0, 3).join(" ")} exit ${code}; see ${output}` };
   } catch (error) {
     return { kind: "unknown", detail: `${args.slice(0, 3).join(" ")}: ${String(error)}; see ${output}` };
   } finally {
     if (fd !== null) closeSync(fd);
   }
+}
+
+export async function create<T>(machines: { create(params: Parameters<Boxd["machines"]["create"]>[0]): Promise<T> }): Promise<void> {
+  await machines.create({
+    name: "ru-qa-scheduled",
+    fromSnapshot: "ru-toolchain",
+    isolated: true,
+    config: { autoDestroyTimeout: 540, autoSuspendTimeout: 0 },
+  });
 }
 
 function record(state: State): void {
@@ -91,6 +101,19 @@ export async function check(out: string, now: number): Promise<CommandResult> {
 
 async function main(): Promise<void> {
   const mode = Bun.argv[2] ?? Bun.env.ROUNDUP_QA_MODE ?? "register";
+
+  if (mode === "create") {
+    try {
+      await using boxd = new Boxd({ timeout: 420_000, maxRetries: 0 });
+      await create(boxd.machines);
+    } catch {
+      // SDK errors can contain authentication details; the parent records an unknown outcome.
+      console.error("SDK creation outcome unknown; cleanup required");
+      process.exitCode = 1;
+    }
+
+    return;
+  }
 
   if (mode === "dry-run") {
     const child = Bun.spawn(["bun", "test", `${import.meta.dir}/qa-coordinator.test.ts`, `${import.meta.dir}/qa-command.test.ts`], { stdout: "inherit", stderr: "inherit" });
