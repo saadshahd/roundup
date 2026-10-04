@@ -438,6 +438,31 @@ gate_set 'del(.base) | .body="Scenarios: L46"'
 expect_exit 1 'L53 missing shape and proof fail' gate proof 12
 expect_exit 1 'L46 block requires proof' gate merge-ready 12
 
+for merge_trailer in missing authored self-review approval invalid-id; do
+  gate_repo
+  git checkout -q main
+  printf 'main update\n' >docs/main.md
+  commit main-update
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q work
+  want=1
+  case $merge_trailer in
+    missing) trailer='' ;;
+    authored) trailer='Author-Agent: builder'; want=0 ;;
+    self-review) trailer='Author-Agent: reviewer' ;;
+    approval) trailer='Reviewed-by-Agent: reviewer' ;;
+    invalid-id) trailer='Author-Agent: invalid id' ;;
+  esac
+  git merge -q --no-ff main -m 'merge main' -m "$trailer"
+  git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+  expect_exit "$want" "L2 local trailers check $merge_trailer merge" rules trailers
+  expect_exit "$want" "L2 CI trailers check $merge_trailer merge" gate ci-trailers 12
+  if [ "$merge_trailer" = authored ]; then
+    gate_set '.failure=true'
+    expect_exit 0 'L2 local trailers need no GitHub' rules trailers
+  fi
+done
+
 gate_repo
 git checkout -q main
 printf 'main update\n' >docs/main.md
@@ -446,6 +471,7 @@ git update-ref refs/remotes/origin/main HEAD
 git checkout -q work
 git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 expect_output "ready $(git rev-parse HEAD)" 'L46 L54-carried approval passes' gate merge-ready 12
+expect_exit 1 'L2 local approval requires newest commit even when L54 carries remotely' rules trailers
 
 gate_repo
 git reset -q --hard HEAD^
