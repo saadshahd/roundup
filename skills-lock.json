@@ -7,6 +7,30 @@
       "skillPath": "hope/skills/anchor/SKILL.md",
       "computedHash": "c33ac15eafa288713f794f43bbc51c1bc1a3eeee3970c20db1cad0b7422ca2c4"
     },
+    "animate": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animate/SKILL.md",
+      "computedHash": "7598d33e7f60dd5c24531eaaa897621cc3bdb48e8050324211627973bc59c4ce"
+    },
+    "animation-vocabulary": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animation-vocabulary/SKILL.md",
+      "computedHash": "0058036865ecbb864fd0c4132efcc62425355d6e99c7e6ef6a936742d62a5dea"
+    },
+    "apple-design": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/apple-design/SKILL.md",
+      "computedHash": "0190417d092a0df447b000154e39733ea6d97efad6d3bec8a6ce3845aeb88914"
+    },
+    "break-ui": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/break-ui/SKILL.md",
+      "computedHash": "60ada67662925f4df5e3c6ff41cac3ab241b66f8898100a5ffcd7ba7196cb868"
+    },
     "clarify": {
       "source": "saadshahd/moo.md",
       "sourceType": "github",
@@ -37,11 +61,23 @@
       "skillPath": "hope/skills/elicit/SKILL.md",
       "computedHash": "e61b87339fe8d4f57cc1f30166465801408ff391319d52380cbaf0763845884e"
     },
+    "emil-design-eng": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/emil-design-eng/SKILL.md",
+      "computedHash": "51f2537e04d15911b41d78e2de24c36a0e26d41beae15e82a954fe5496a5eda9"
+    },
     "explain": {
       "source": "saadshahd/moo.md",
       "sourceType": "github",
       "skillPath": "hope/skills/explain/SKILL.md",
       "computedHash": "7a8ebc661ddac5652af542cb38f4f669b57db99c060dbce352ef5fb2a62b0b03"
+    },
+    "find-animation-opportunities": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-animation-opportunities/SKILL.md",
+      "computedHash": "465d087c41768e4f14ed640dd049036009f613feb55baaa5831b68b33178f9d2"
     },
     "fly": {
       "source": "saadshahd/moo.md",
@@ -66,6 +102,12 @@
       "sourceType": "github",
       "skillPath": "hunch/skills/harvest/SKILL.md",
       "computedHash": "85446004050985668960155206daf68ec5b293a89cad93d5146ead00035d2093"
+    },
+    "improve-animations": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/improve-animations/SKILL.md",
+      "computedHash": "524ea241e41d58bbdd8e288700fe24f5725e2a2f3ae7186ad7cebf9055058356"
     },
     "intent": {
       "source": "saadshahd/moo.md",
@@ -103,11 +145,23 @@
       "skillPath": "hold/skills/learn/SKILL.md",
       "computedHash": "77ff08e2f419fa373739f07b785637da5c2682cd7d3f23e3e305e57597922dee"
     },
+    "pick-ui-library": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/pick-ui-library/SKILL.md",
+      "computedHash": "5d2a77bf0ecafbda85aa95fb49999b6d77945d9066ec83d970b62e5b388cd686"
+    },
     "prime": {
       "source": "saadshahd/moo.md",
       "sourceType": "github",
       "skillPath": "sound/skills/prime/SKILL.md",
       "computedHash": "1497293637e8a80d49dfbec4c32e399d1b6feadc90fc9dd3c0fd63dc041f4db5"
+    },
+    "prototype": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/prototype/SKILL.md",
+      "computedHash": "77be567d8c946608fdd15e61b62ab383cdf289a194dce2479828b7eda860d3ba"
     },
     "provocation": {
       "source": "saadshahd/moo.md",
@@ -132,6 +186,12 @@
       "sourceType": "github",
       "skillPath": "sound/skills/review/SKILL.md",
       "computedHash": "f907a168e33dac46555954c364df654b5fd96a69e8bb2dc985d837c15a8b05db"
+    },
+    "review-animations": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/review-animations/SKILL.md",
+      "computedHash": "b4e5f0f4fe3e2743c85bf7354108f48a0b9d502cb20ef5c4a9c195da91f93736"
     },
     "router": {
       "source": "saadshahd/moo.md",
