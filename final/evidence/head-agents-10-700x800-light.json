@@ -1,0 +1,275 @@
+{
+  "url": "http://127.0.0.1:5151/harness.html?seed=agents-10",
+  "viewport": [
+    700,
+    800
+  ],
+  "dark": false,
+  "colorScheme": "normal",
+  "tokens": {
+    "--ground": "#ffffff",
+    "--sunken": "#f5f5f7",
+    "--text": "#1d1d1f",
+    "--grey": "#6e6e73",
+    "--accent": "#0a60d8",
+    "--red": "#c4262e",
+    "--amber": "#9a5b00"
+  },
+  "bodyText": "roundup   harness   4 need you\n\nagent-1\nerror label 1\n1m\n\nagent-2\nneeds-you label 2\n4m\n\nagent-3\nblocked label 3\n7m\n\nagent-4\n\nagent-5\n\nagent-7\nerror label 7\n19m\n\nagent-8\nneeds-you label 8\n22m\n\nagent-9\nblocked label 9\n25m\n\nagent-10\n\n1 done\nagent\nterminal\ngroup\n\nselect an agent or a terminal\n\ntodos \n\nno todos yet\n\npads \n\nno pads yet",
+  "alerts": [],
+  "fixtureNodes": 10,
+  "rpcFailure": null,
+  "regions": [
+    {
+      "name": "rail",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.03125,
+      "y": 31.0625,
+      "width": 252,
+      "height": 499.84375
+    },
+    {
+      "name": "centre",
+      "background": "rgb(255, 255, 255)",
+      "x": 251.96875,
+      "y": 31.0625,
+      "width": 448,
+      "height": 769
+    },
+    {
+      "name": "shelf",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.03125,
+      "y": 530.90625,
+      "width": 252,
+      "height": 269.15625
+    },
+    {
+      "name": "todos",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 15.96875,
+      "y": 530.90625,
+      "width": 220,
+      "height": 39
+    },
+    {
+      "name": "pads",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 15.96875,
+      "y": 569.90625,
+      "width": 220,
+      "height": 39
+    },
+    {
+      "name": "drawer",
+      "background": "rgb(255, 255, 255)",
+      "x": 699.96875,
+      "y": 31.0625,
+      "width": 448,
+      "height": 769
+    }
+  ],
+  "icons": [
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 37.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 65.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 93.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 121.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 149.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 177.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 205.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 233.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 261.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-check lucide-icon icon",
+      "label": null,
+      "x": 15.96875,
+      "y": 287.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 15.71875,
+      "y": 323.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 88.71875,
+      "y": 323.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 178.453125,
+      "y": 323.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 66.9375,
+      "y": 534.90625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 59.109375,
+      "y": 573.90625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 1111.96875,
+      "y": 43.0625,
+      "width": 16,
+      "height": 16
+    }
+  ],
+  "buttons": [
+    {
+      "name": "4 need you",
+      "color": "rgb(110, 110, 115)",
+      "x": 172.515625,
+      "y": 8.0625,
+      "width": 78.28125,
+      "height": 15
+    },
+    {
+      "name": " 1 done",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.96875,
+      "y": 283.0625,
+      "width": 64.859375,
+      "height": 24
+    },
+    {
+      "name": " agent",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.96875,
+      "y": 319.0625,
+      "width": 57.0625,
+      "height": 24
+    },
+    {
+      "name": " terminal",
+      "color": "rgb(110, 110, 115)",
+      "x": 89.03125,
+      "y": 319.0625,
+      "width": 73.671875,
+      "height": 24
+    },
+    {
+      "name": " group",
+      "color": "rgb(110, 110, 115)",
+      "x": 178.703125,
+      "y": 319.0625,
+      "width": 57.265625,
+      "height": 24
+    },
+    {
+      "name": "add todo",
+      "color": "rgb(110, 110, 115)",
+      "x": 62.9375,
+      "y": 530.90625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": "add pad",
+      "color": "rgb(110, 110, 115)",
+      "x": 55.109375,
+      "y": 569.90625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": "close",
+      "color": "rgb(110, 110, 115)",
+      "x": 1107.96875,
+      "y": 39.0625,
+      "width": 24,
+      "height": 24
+    }
+  ],
+  "commit": "69108b822a5e21d8f94906585ab491f668ef0778",
+  "revision": "head",
+  "seed": "agents-10",
+  "requestedTheme": "light",
+  "darkPaletteValid": false,
+  "png": "/tmp/u86-final-proof-69108b8/png/head-agents-10-700x800-light.png",
+  "sha256": "a21dbfa665eda308ed05d2b4aa874cff47a11bb4fc53f7589e7ccf265cf6101b"
+}

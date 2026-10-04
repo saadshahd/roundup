@@ -1,0 +1,27 @@
+
+ RUN  v5.0.3 /private/tmp/roundup-delivery-u86/apps/desktop
+
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_open_todos_are_listed_in_id_order_as_glyph_hash_id_title 106ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_blocked_todo_has_the_pause_glyph_and_a_second_line_naming_its_open_blockers_in_id_order 29ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_done_blocker_is_not_named_on_the_blocked_todos_second_line 6ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_done_todos_fold_into_one_line_counting_them 18ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_clicking_the_done_line_unfolds_the_done_todos 20ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_no_done_todos_show_no_done_line 4ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_todo.created_refetches_todo_list 5ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_todo.updated_refetches_todo_list 6ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_todo.unblocked_refetches_todo_list 7ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_todo.deleted_refetches_todo_list 6ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_an_event_that_is_not_about_a_todo_does_not_refetch 3ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_the_list_never_calls_todo_get 4ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_slow_older_answer_never_overwrites_a_newer_one 5ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_failed_todo_list_shows_its_message_in_ink 2ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_refetch_that_changes_one_todo_leaves_every_other_row_in_place 18ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_listing_blocked_todos_does_a_constant_amount_of_work_per_todo 79ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_row_wraps_under_its_id_not_under_its_glyph 9ms
+ ✓ src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_list_that_is_gone_stops_listening_to_events 3ms
+
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+   Start at  02:30:51
+   Duration  1.31s (environment 33%, transform 31%, tests 27%, import 8%)
+

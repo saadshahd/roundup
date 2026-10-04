@@ -1,0 +1,12 @@
+
+ RUN  v5.0.3 /private/tmp/roundup-delivery-u86/apps/desktop
+
+
+ Test Files  2 passed (2)
+      Tests  24 passed (24)
+   Start at  02:25:47
+   Duration  4.85s (tests 68%, environment 17%, transform 10%, import 4%)
+
+    Isolate  2 workers spawned · ~468ms startup each (spawn + environment, per file)
+             at least ~468ms faster with isolate: false — reuses workers across files instead of one per file
+

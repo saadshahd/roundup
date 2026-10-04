@@ -1,0 +1,39 @@
+
+> desktop@ test /home/boxd/workspaces/u86-hit-area/apps/desktop
+> vitest run src/todos/u86_hit_area.test.tsx
+
+
+ RUN  v5.0.3 /home/boxd/workspaces/u86-hit-area/apps/desktop
+
+ ❯ src/todos/u86_hit_area.test.tsx (2 tests | 1 failed) 193ms
+   × u86_todo_rows_allow_a_visible_focus_outline_after_the_button_reset 31ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/todos/u86_hit_area.test.tsx > u86_todo_rows_allow_a_visible_focus_outline_after_the_button_reset
+AssertionError: expected 'unset' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ unset
+
+ ❯ src/todos/u86_hit_area.test.tsx:43:27
+     41|     expect(getComputedStyle(row).outline).toBe("calc(var(--space-1) / …
+     42|     expect(getComputedStyle(row).outlineOffset).toBe("calc(var(--space…
+     43|     expect(row.style.all).toBe("");
+       |                           ^
+     44|   }
+     45| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  01:06:56
+   Duration  1.58s (environment 43%, transform 36%, tests 13%, import 8%, setup 1%)
+
+/home/boxd/workspaces/u86-hit-area/apps/desktop:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  desktop@ test: `vitest run src/todos/u86_hit_area.test.tsx`
+Exit status 1

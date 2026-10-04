@@ -1,0 +1,66 @@
+{
+  "url": "http://127.0.0.1:5152/harness.html?seed=first-run",
+  "viewport": [
+    1280,
+    800
+  ],
+  "dark": true,
+  "colorScheme": "normal",
+  "tokens": {
+    "--ground": "#ffffff",
+    "--sunken": "#f5f5f7",
+    "--text": "#1d1d1f",
+    "--grey": "#6e6e73",
+    "--accent": "#0a60d8",
+    "--red": "#c4262e",
+    "--amber": "#9a5b00"
+  },
+  "bodyText": "roundup\n\nagents and terminals\n\nappear here, one per row,\n\nnested by indent\n\nopen a folder to start\n\nchoose folder\u2026\n\ntodos\n\nagents add them as they\n\nplan; so can you\n\npads\n\n\u25c8 agent notes\n\n\u25c7 yours",
+  "alerts": [],
+  "fixtureNodes": 0,
+  "rpcFailure": null,
+  "regions": [
+    {
+      "name": "rail",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.015625,
+      "y": 31.0625,
+      "width": 256,
+      "height": 769
+    },
+    {
+      "name": "centre",
+      "background": "rgb(255, 255, 255)",
+      "x": 255.984375,
+      "y": 31.0625,
+      "width": 844.8125,
+      "height": 769
+    },
+    {
+      "name": "shelf",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1100.796875,
+      "y": 31.0625,
+      "width": 179.1875,
+      "height": 769
+    }
+  ],
+  "icons": [],
+  "buttons": [
+    {
+      "name": "choose folder\u2026",
+      "color": "rgb(110, 110, 115)",
+      "x": 271.984375,
+      "y": 46.0625,
+      "width": 109.578125,
+      "height": 15
+    }
+  ],
+  "commit": "a1f4d5eae322470951bb4906b31412af564bed15",
+  "revision": "base",
+  "seed": "first-run",
+  "requestedTheme": "dark",
+  "darkPaletteValid": false,
+  "png": "/tmp/u86-final-proof-69108b8/png/base-first-run-1280x800-dark-preference-BLOCKED-light-rendering.png",
+  "sha256": "6447e9d3a389bda3c3dcb9badde9760b681c82c8033ce64c7b33bac3e0f383a8"
+}

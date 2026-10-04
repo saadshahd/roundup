@@ -1,0 +1,21 @@
+{
+  "method": "WCAG sRGB luminance; measured head glyph colors over white and existing rgba(0,0,0,.05) selected band",
+  "ratios": {
+    "accent": {
+      "white": 5.71,
+      "selected": 5.11
+    },
+    "grey": {
+      "white": 5.07,
+      "selected": 4.54
+    },
+    "amber": {
+      "white": 5.43,
+      "selected": 4.86
+    },
+    "red": {
+      "white": 5.73,
+      "selected": 5.13
+    }
+  }
+}

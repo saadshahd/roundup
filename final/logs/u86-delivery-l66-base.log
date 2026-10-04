@@ -1,0 +1,20 @@
+bun test v1.3.14 (0d9b296a)
+
+loop/qa-command.test.ts:
+(pass) l66_bun_spawn_captures_failed_cli_output [7.14ms]
+(pass) l66_bun_spawn_bounds_hanging_cli_as_unknown [28.23ms]
+(pass) l66_fake_cli_sweep_copies_evidence_before_removal [571.98ms]
+(pass) l66_fake_cli_stale_restart_copies_evidence_before_removal [185.88ms]
+(pass) l66_disk_check_healthy [7.90ms]
+(pass) l66_disk_check_missed [6.88ms]
+(pass) l66_disk_check_stale [7.58ms]
+(pass) l66_disk_check_latched [7.45ms]
+(pass) l66_disk_check_malformed [6.82ms]
+(pass) l66_disk_check_empty [7.15ms]
+(pass) l66_sdk_child_rejected_is_unknown [39.16ms]
+(pass) l66_sdk_child_hanging_is_unknown [109.40ms]
+
+ 12 pass
+ 0 fail
+ 20 expect() calls
+Ran 12 tests across 1 file. [1057.00ms]

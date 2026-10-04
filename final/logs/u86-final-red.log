@@ -1,0 +1,39 @@
+
+> desktop@ test /home/boxd/workspaces/u86-hit-area/apps/desktop
+> vitest run src/todos/u86_hit_area.test.tsx
+
+
+ RUN  v5.0.3 /home/boxd/workspaces/u86-hit-area/apps/desktop
+
+ ❯ src/todos/u86_hit_area.test.tsx (2 tests | 1 failed) 285ms
+   × u86_todo_rows_allow_a_visible_focus_outline_after_the_button_reset 27ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/todos/u86_hit_area.test.tsx > u86_todo_rows_allow_a_visible_focus_outline_after_the_button_reset
+AssertionError: expected '' to be 'calc(var(--space-1) / 2) solid var(--…' // Object.is equality
+
+- Expected
++ Received
+
+- calc(var(--space-1) / 2) solid var(--accent)
+
+ ❯ src/todos/u86_hit_area.test.tsx:31:43
+     29|   ]) {
+     30|     row.focus();
+     31|     expect(getComputedStyle(row).outline).toBe("calc(var(--space-1) / …
+       |                                           ^
+     32|     expect(getComputedStyle(row).outlineOffset).toBe("calc(var(--space…
+     33|     expect(row.style.all).toBe("");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  01:05:04
+   Duration  2.23s (environment 44%, transform 34%, tests 14%, import 7%)
+
+/home/boxd/workspaces/u86-hit-area/apps/desktop:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  desktop@ test: `vitest run src/todos/u86_hit_area.test.tsx`
+Exit status 1

@@ -1,0 +1,731 @@
+{
+  "url": "http://127.0.0.1:5151/harness.html?seed=tree-40",
+  "viewport": [
+    1280,
+    800
+  ],
+  "dark": false,
+  "colorScheme": "normal",
+  "tokens": {
+    "--ground": "#ffffff",
+    "--sunken": "#f5f5f7",
+    "--text": "#1d1d1f",
+    "--grey": "#6e6e73",
+    "--accent": "#0a60d8",
+    "--red": "#c4262e",
+    "--amber": "#9a5b00"
+  },
+  "bodyText": "roundup   harness   13 need you\n\nbackend\n\nauth-refactor\n\ntoken-rotation\n\nlogin-store\ntests failed: 3\n1m\n\n1 done\n\nmigrate-db\nasks: keep v1 routes? and a long label that should truncate in the live line\n4m\n\nzsh\n\npayments meta-agent with a very long name that overflows the rail\n\nagent-1\nerror label 1\n1m\n\nagent-4\n\nagent-7\nerror label 7\n19m\n\nagent-10\n\nagent-13\nerror label 13\n37m\n\nagent-16\n\nagent-19\nerror label 19\n55m\n\nagent-22\n\nagent-25\nerror label 25\n1h\n\nagent-28\n\nagent-31\nerror label 31\n1h\n\nagent-2\nneeds-you label 2\n4m\n\nzsh\n\nagent-3\nblocked label 3\n7m\n\nagent-5\n\nagent-8\nneeds-you label 8\n22m\n\nagent-9\nblocked label 9\n25m\n\nagent-11\n\nagent-14\nneeds-you label 14\n40m\n\nagent-15\nblocked label 15\n43m\n\nagent-17\n\nagent-20\nneeds-you label 20\n58m\n\nagent-21\nblocked label 21\n1h\n\nagent-23\n\nagent-26\nneeds-you label 26\n1h\n\nagent-27\nblocked label 27\n1h\n\nagent-29\n\n5 done\nagent\nterminal\ngroup\n\nselect an agent or a terminal\n\ntodos \n\n #1 todo 1\n #2 todo 2\n #3 a very long todo title that goes on and on past the width of the shelf column\n #4 todo 4\n\nwaits on #3, #5\n\n #5 todo 5\n #6 todo 6\n #8 todo 8\n 1 done\n\npads \n\npad-0\n\na-pad-with-a-very-long-name-here\n\npad-2\n\npad-3",
+  "alerts": [],
+  "fixtureNodes": 40,
+  "rpcFailure": null,
+  "regions": [
+    {
+      "name": "rail",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.03125,
+      "y": 31.0625,
+      "width": 256,
+      "height": 769
+    },
+    {
+      "name": "centre",
+      "background": "rgb(255, 255, 255)",
+      "x": 255.96875,
+      "y": 31.0625,
+      "width": 844.8125,
+      "height": 769
+    },
+    {
+      "name": "shelf",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1100.78125,
+      "y": 31.0625,
+      "width": 179.1875,
+      "height": 769
+    },
+    {
+      "name": "todos",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1116.78125,
+      "y": 31.0625,
+      "width": 147.1875,
+      "height": 298.5
+    },
+    {
+      "name": "pads",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1116.78125,
+      "y": 329.5625,
+      "width": 147.1875,
+      "height": 105
+    },
+    {
+      "name": "drawer",
+      "background": "rgb(255, 255, 255)",
+      "x": 1279.96875,
+      "y": 31.0625,
+      "width": 560,
+      "height": 769
+    }
+  ],
+  "icons": [
+    {
+      "class": "lucide lucide-chevron-down lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 37.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-chevron-down lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 65.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 53.046875,
+      "y": 93.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 53.046875,
+      "y": 121.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-check lucide-icon icon",
+      "label": null,
+      "x": 49.046875,
+      "y": 147.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 177.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 205.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 233.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 261.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 289.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 317.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 345.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 373.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 401.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 429.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 457.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 485.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 513.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 36.5,
+      "y": 541.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 569.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 597.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 625.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 653.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 681.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 709.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 737.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 765.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 793.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 821.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 849.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 877.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 905.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-circle lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 933.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 961.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 19.96875,
+      "y": 989.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-check lucide-icon icon",
+      "label": null,
+      "x": 15.96875,
+      "y": 1015.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 14.046875,
+      "y": 772.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 83.21875,
+      "y": 772.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 169.125,
+      "y": 772.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 1167.75,
+      "y": 35.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 59.3125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 83.3125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 103.5625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-pause lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 198.8125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 237.8125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 261.8125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-dot lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 285.8125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-check lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 309.8125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-plus lucide-icon icon",
+      "label": null,
+      "x": 1159.921875,
+      "y": 333.5625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-diamond-plus lucide-icon icon",
+      "label": null,
+      "x": 1120.78125,
+      "y": 357.8125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-diamond lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 378.0625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-diamond-plus lucide-icon icon",
+      "label": null,
+      "x": 1120.78125,
+      "y": 398.3125,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-diamond lucide-icon icon",
+      "label": null,
+      "x": 1116.78125,
+      "y": 418.5625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-x lucide-icon icon",
+      "label": null,
+      "x": 1803.96875,
+      "y": 43.0625,
+      "width": 16,
+      "height": 16
+    }
+  ],
+  "buttons": [
+    {
+      "name": "13 need you",
+      "color": "rgb(110, 110, 115)",
+      "x": 172.515625,
+      "y": 8.0625,
+      "width": 86.09375,
+      "height": 15
+    },
+    {
+      "name": "collapse",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.96875,
+      "y": 33.0625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": "collapse",
+      "color": "rgb(110, 110, 115)",
+      "x": 32.5,
+      "y": 61.0625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": " 1 done",
+      "color": "rgb(110, 110, 115)",
+      "x": 49.046875,
+      "y": 143.0625,
+      "width": 64.859375,
+      "height": 24
+    },
+    {
+      "name": " 5 done",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.96875,
+      "y": 1011.0625,
+      "width": 64.859375,
+      "height": 24
+    },
+    {
+      "name": " agent",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.96875,
+      "y": 768.0625,
+      "width": 53.71875,
+      "height": 24
+    },
+    {
+      "name": " terminal",
+      "color": "rgb(110, 110, 115)",
+      "x": 85.6875,
+      "y": 768.0625,
+      "width": 69.359375,
+      "height": 24
+    },
+    {
+      "name": " group",
+      "color": "rgb(110, 110, 115)",
+      "x": 171.046875,
+      "y": 768.0625,
+      "width": 53.921875,
+      "height": 24
+    },
+    {
+      "name": "add todo",
+      "color": "rgb(110, 110, 115)",
+      "x": 1163.75,
+      "y": 31.0625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": " #1 todo 1",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 55.0625,
+      "width": 94.28125,
+      "height": 24
+    },
+    {
+      "name": " #2 todo 2",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 79.0625,
+      "width": 94.28125,
+      "height": 24
+    },
+    {
+      "name": " #3 a very long todo title that goes on and on past the width of the shelf column",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 103.0625,
+      "width": 147.1875,
+      "height": 91.5
+    },
+    {
+      "name": " #4 todo 4",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 194.5625,
+      "width": 94.28125,
+      "height": 24
+    },
+    {
+      "name": "#3",
+      "color": "rgb(110, 110, 115)",
+      "x": 1202.875,
+      "y": 218.5625,
+      "width": 15.65625,
+      "height": 15
+    },
+    {
+      "name": "#5",
+      "color": "rgb(110, 110, 115)",
+      "x": 1234.1875,
+      "y": 218.5625,
+      "width": 15.65625,
+      "height": 15
+    },
+    {
+      "name": " #5 todo 5",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 233.5625,
+      "width": 94.28125,
+      "height": 24
+    },
+    {
+      "name": " #6 todo 6",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 257.5625,
+      "width": 94.28125,
+      "height": 24
+    },
+    {
+      "name": " #8 todo 8",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 281.5625,
+      "width": 94.28125,
+      "height": 24
+    },
+    {
+      "name": " 1 done",
+      "color": "rgb(29, 29, 31)",
+      "x": 1116.78125,
+      "y": 305.5625,
+      "width": 70.796875,
+      "height": 24
+    },
+    {
+      "name": "add pad",
+      "color": "rgb(110, 110, 115)",
+      "x": 1155.921875,
+      "y": 329.5625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": "make pad-0 yours",
+      "color": "rgb(110, 110, 115)",
+      "x": 1116.78125,
+      "y": 353.5625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": "pad-0",
+      "color": "rgb(29, 29, 31)",
+      "x": 1148.59375,
+      "y": 353.5625,
+      "width": 39.140625,
+      "height": 24
+    },
+    {
+      "name": "a-pad-with-a-very-long-name-here",
+      "color": "rgb(29, 29, 31)",
+      "x": 1140.59375,
+      "y": 377.5625,
+      "width": 123.375,
+      "height": 16.5
+    },
+    {
+      "name": "make pad-2 yours",
+      "color": "rgb(110, 110, 115)",
+      "x": 1116.78125,
+      "y": 394.0625,
+      "width": 24,
+      "height": 24
+    },
+    {
+      "name": "pad-2",
+      "color": "rgb(29, 29, 31)",
+      "x": 1148.59375,
+      "y": 394.0625,
+      "width": 39.140625,
+      "height": 24
+    },
+    {
+      "name": "pad-3",
+      "color": "rgb(29, 29, 31)",
+      "x": 1140.59375,
+      "y": 418.0625,
+      "width": 39.140625,
+      "height": 16.5
+    },
+    {
+      "name": "close",
+      "color": "rgb(110, 110, 115)",
+      "x": 1799.96875,
+      "y": 39.0625,
+      "width": 24,
+      "height": 24
+    }
+  ],
+  "commit": "69108b822a5e21d8f94906585ab491f668ef0778",
+  "revision": "head",
+  "seed": "tree-40",
+  "requestedTheme": "light",
+  "darkPaletteValid": false,
+  "png": "/tmp/u86-final-proof-69108b8/png/head-tree-40-1280x800-light.png",
+  "sha256": "1a351f5849b020d0d737351eacf8fb3153aa8919fceb0893abf61bc7af8baace"
+}

@@ -1,0 +1,13 @@
+
+> desktop@ test /home/boxd/workspaces/u86-hit-area/apps/desktop
+> vitest run src/todos/u86_hit_area.test.tsx
+
+
+ RUN  v5.0.3 /home/boxd/workspaces/u86-hit-area/apps/desktop
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  01:08:04
+   Duration  1.71s (environment 40%, transform 36%, tests 15%, import 8%, worker 1%, setup 1%)
+

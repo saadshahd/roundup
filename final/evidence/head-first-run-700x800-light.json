@@ -1,0 +1,83 @@
+{
+  "url": "http://127.0.0.1:5151/harness.html?seed=first-run",
+  "viewport": [
+    700,
+    800
+  ],
+  "dark": false,
+  "colorScheme": "normal",
+  "tokens": {
+    "--ground": "#ffffff",
+    "--sunken": "#f5f5f7",
+    "--text": "#1d1d1f",
+    "--grey": "#6e6e73",
+    "--accent": "#0a60d8",
+    "--red": "#c4262e",
+    "--amber": "#9a5b00"
+  },
+  "bodyText": "roundup\n\nagents and terminals\n\nappear here, one per row,\n\nnested by indent\n\nopen a folder to start\n\nchoose folder\u2026\n\ntodos\n\nagents add them as they\n\nplan; so can you\n\npads\n\n agent notes\n\n yours",
+  "alerts": [],
+  "fixtureNodes": 0,
+  "rpcFailure": null,
+  "regions": [
+    {
+      "name": "rail",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.03125,
+      "y": 31.0625,
+      "width": 252,
+      "height": 499.84375
+    },
+    {
+      "name": "centre",
+      "background": "rgb(255, 255, 255)",
+      "x": 251.96875,
+      "y": 31.0625,
+      "width": 448,
+      "height": 769
+    },
+    {
+      "name": "shelf",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.03125,
+      "y": 530.90625,
+      "width": 252,
+      "height": 269.15625
+    }
+  ],
+  "icons": [
+    {
+      "class": "lucide lucide-diamond-plus lucide-icon icon",
+      "label": null,
+      "x": 15.96875,
+      "y": 591.40625,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "class": "lucide lucide-diamond lucide-icon icon",
+      "label": null,
+      "x": 15.96875,
+      "y": 607.90625,
+      "width": 16,
+      "height": 16
+    }
+  ],
+  "buttons": [
+    {
+      "name": "choose folder\u2026",
+      "color": "rgb(110, 110, 115)",
+      "x": 267.96875,
+      "y": 46.0625,
+      "width": 109.578125,
+      "height": 15
+    }
+  ],
+  "commit": "69108b822a5e21d8f94906585ab491f668ef0778",
+  "revision": "head",
+  "seed": "first-run",
+  "requestedTheme": "light",
+  "darkPaletteValid": false,
+  "png": "/tmp/u86-final-proof-69108b8/png/head-first-run-700x800-light.png",
+  "sha256": "9c540f97edbd234218bb052152bc6ab44feab8e8b3b7ef58afa384578c637f2a"
+}

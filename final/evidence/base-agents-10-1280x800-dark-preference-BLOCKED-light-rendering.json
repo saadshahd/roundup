@@ -1,0 +1,146 @@
+{
+  "url": "http://127.0.0.1:5152/harness.html?seed=agents-10",
+  "viewport": [
+    1280,
+    800
+  ],
+  "dark": true,
+  "colorScheme": "normal",
+  "tokens": {
+    "--ground": "#ffffff",
+    "--sunken": "#f5f5f7",
+    "--text": "#1d1d1f",
+    "--grey": "#6e6e73",
+    "--accent": "#0a60d8",
+    "--red": "#c4262e",
+    "--amber": "#9a5b00"
+  },
+  "bodyText": "roundup   harness   4 need you\n\n\u2715\nagent-1\nerror label 1\n1m\n\n\u25cf\nagent-2\nneeds-you label 2\n4m\n\n\u23f8\nagent-3\nblocked label 3\n7m\n\n\u25cb\nagent-4\n\n\u00b7\nagent-5\n\n\u2715\nagent-7\nerror label 7\n19m\n\n\u25cf\nagent-8\nneeds-you label 8\n22m\n\n\u23f8\nagent-9\nblocked label 9\n25m\n\n\u25cb\nagent-10\n\n\u2713 1 done\n+ agent\n+ terminal\n+ group\n\nselect an agent or a terminal\n\ntodos +\n\nno todos yet\n\npads +\n\nno pads yet\n\nclose",
+  "alerts": [],
+  "fixtureNodes": 10,
+  "rpcFailure": null,
+  "regions": [
+    {
+      "name": "rail",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": -0.015625,
+      "y": 31.0625,
+      "width": 256,
+      "height": 769
+    },
+    {
+      "name": "centre",
+      "background": "rgb(255, 255, 255)",
+      "x": 255.984375,
+      "y": 31.0625,
+      "width": 844.8125,
+      "height": 769
+    },
+    {
+      "name": "shelf",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1100.796875,
+      "y": 31.0625,
+      "width": 179.1875,
+      "height": 769
+    },
+    {
+      "name": "todos",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1116.796875,
+      "y": 31.0625,
+      "width": 147.1875,
+      "height": 30
+    },
+    {
+      "name": "pads",
+      "background": "rgba(0, 0, 0, 0)",
+      "x": 1116.796875,
+      "y": 61.0625,
+      "width": 147.1875,
+      "height": 30
+    },
+    {
+      "name": "drawer",
+      "background": "rgb(255, 255, 255)",
+      "x": 1279.984375,
+      "y": 31.0625,
+      "width": 560,
+      "height": 769
+    }
+  ],
+  "icons": [],
+  "buttons": [
+    {
+      "name": "4 need you",
+      "color": "rgb(110, 110, 115)",
+      "x": 172.53125,
+      "y": 8.0625,
+      "width": 78.28125,
+      "height": 15
+    },
+    {
+      "name": "\u2713 1 done",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.984375,
+      "y": 283.0625,
+      "width": 59.875,
+      "height": 15
+    },
+    {
+      "name": "+ agent",
+      "color": "rgb(110, 110, 115)",
+      "x": 15.984375,
+      "y": 323.5625,
+      "width": 52.578125,
+      "height": 15
+    },
+    {
+      "name": "+ terminal",
+      "color": "rgb(110, 110, 115)",
+      "x": 84.5625,
+      "y": 323.5625,
+      "width": 69.34375,
+      "height": 15
+    },
+    {
+      "name": "+ group",
+      "color": "rgb(110, 110, 115)",
+      "x": 169.90625,
+      "y": 323.5625,
+      "width": 52.78125,
+      "height": 15
+    },
+    {
+      "name": "+",
+      "color": "rgb(110, 110, 115)",
+      "x": 1163.765625,
+      "y": 31.0625,
+      "width": 7.828125,
+      "height": 15
+    },
+    {
+      "name": "+",
+      "color": "rgb(110, 110, 115)",
+      "x": 1155.9375,
+      "y": 61.0625,
+      "width": 7.828125,
+      "height": 15
+    },
+    {
+      "name": "close",
+      "color": "rgb(110, 110, 115)",
+      "x": 1784.84375,
+      "y": 39.0625,
+      "width": 39.140625,
+      "height": 15
+    }
+  ],
+  "commit": "a1f4d5eae322470951bb4906b31412af564bed15",
+  "revision": "base",
+  "seed": "agents-10",
+  "requestedTheme": "dark",
+  "darkPaletteValid": false,
+  "png": "/tmp/u86-final-proof-69108b8/png/base-agents-10-1280x800-dark-preference-BLOCKED-light-rendering.png",
+  "sha256": "13689d00ee156ea61de19fcc1db71acc02978542ffdda5a24eaac76beb898aa7"
+}
