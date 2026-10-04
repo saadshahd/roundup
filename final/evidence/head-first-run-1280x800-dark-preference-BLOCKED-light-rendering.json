@@ -23,24 +23,24 @@
     {
       "name": "rail",
       "background": "rgba(0, 0, 0, 0)",
-      "x": -0.03125,
-      "y": 31.0625,
+      "x": 0.03125,
+      "y": 30.984375,
       "width": 256,
       "height": 769
     },
     {
       "name": "centre",
       "background": "rgb(255, 255, 255)",
-      "x": 255.96875,
-      "y": 31.0625,
+      "x": 256.03125,
+      "y": 30.984375,
       "width": 844.8125,
       "height": 769
     },
     {
       "name": "shelf",
       "background": "rgba(0, 0, 0, 0)",
-      "x": 1100.78125,
-      "y": 31.0625,
+      "x": 1100.84375,
+      "y": 30.984375,
       "width": 179.1875,
       "height": 769
     }
@@ -49,16 +49,16 @@
     {
       "class": "lucide lucide-diamond-plus lucide-icon icon",
       "label": null,
-      "x": 1116.78125,
-      "y": 106.5625,
+      "x": 1116.84375,
+      "y": 106.484375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-diamond lucide-icon icon",
       "label": null,
-      "x": 1116.78125,
-      "y": 123.0625,
+      "x": 1116.84375,
+      "y": 122.984375,
       "width": 16,
       "height": 16
     }
@@ -67,17 +67,17 @@
     {
       "name": "choose folder\u2026",
       "color": "rgb(110, 110, 115)",
-      "x": 271.96875,
-      "y": 46.0625,
+      "x": 272.03125,
+      "y": 45.984375,
       "width": 109.578125,
       "height": 15
     }
   ],
-  "commit": "69108b822a5e21d8f94906585ab491f668ef0778",
+  "commit": "99f9b338e25d124aa3a796a105ccc0feaf14d670",
   "revision": "head",
   "seed": "first-run",
   "requestedTheme": "dark",
   "darkPaletteValid": false,
-  "png": "/tmp/u86-final-proof-69108b8/png/head-first-run-1280x800-dark-preference-BLOCKED-light-rendering.png",
+  "png": "/tmp/u86-wrap/final-proof/png/head-first-run-1280x800-dark-preference-BLOCKED-light-rendering.png",
   "sha256": "0f1b63ba78d85a3d5179ce0393831a19cfa13f8a8805c24ac944216ebd73f8a5"
 }

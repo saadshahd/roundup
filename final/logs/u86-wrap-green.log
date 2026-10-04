@@ -1,0 +1,9 @@
+
+ RUN  v5.0.3 /private/tmp/roundup-delivery-u86/apps/desktop
+
+
+ Test Files  2 passed (2)
+      Tests  20 passed (20)
+   Start at  02:45:18
+   Duration  1.28s (environment 35%, transform 34%, tests 22%, import 9%)
+

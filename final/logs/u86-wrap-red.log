@@ -1,0 +1,41 @@
+
+ RUN  v5.0.3 /private/tmp/roundup-delivery-u86/apps/desktop
+
+ ❯ src/todos/u15_todo_list.test.tsx (18 tests | 1 failed | 17 skipped) 107ms
+   ❯ u15 Todo list (18)
+     × u15_a_row_wraps_under_its_id_not_under_its_glyph 105ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/todos/u15_todo_list.test.tsx > u15 Todo list > u15_a_row_wraps_under_its_id_not_under_its_glyph
+AssertionError: expected [ '2ch', '-2ch' ] to deeply equal [ 'var(--todo-row-indent)', …(1) ]
+
+- Expected
++ Received
+
+  [
+-   "var(--todo-row-indent)",
+-   "calc(-1 * var(--todo-row-indent))",
++   "2ch",
++   "-2ch",
+  ]
+
+ ❯ src/todos/u15_todo_list.test.tsx:194:59
+    192|     const row = await screen.findByRole("button", { name: /#3/ });
+    193|
+    194|     expect([row.style.paddingLeft, row.style.textIndent]).toEqual(["va…
+       |                                                           ^
+    195|   });
+    196|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  02:44:57
+   Duration  1.08s (transform 40%, environment 39%, tests 11%, import 9%, setup 1%)
+
+undefined
+/private/tmp/roundup-delivery-u86/apps/desktop:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/todos/u15_todo_list.test.tsx -t u15_a_row_wraps

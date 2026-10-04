@@ -1,33 +1,32 @@
-# U86 browser proof
+# U86 final browser and test proof
 
-Captured code: 69108b822a5e21d8f94906585ab491f668ef0778
-Final code: 5668d3299009fa2040faba5f0c814be8d3fc2874
+Final source: `99f9b338e25d124aa3a796a105ccc0feaf14d670`.
+Before source: `a1f4d5eae322470951bb4906b31412af564bed15`.
+Linux Chromium, driven only by agent-browser. This does not claim macOS WKWebView verification.
 
-The final commit changes only `apps/desktop/src/todos/u15_todo_list.test.tsx`: a scoped query using the existing row helper, with unchanged button role/name, count and work threshold. The production tree is identical to the captured code.
-Base: a1f4d5eae322470951bb4906b31412af564bed15
-Platform: Linux Chromium through agent-browser. These are not WKWebView captures.
+`manifest.json` records 32 before/after captures: four U86 screens × two window sizes × light/dark system preference. Every image has a hash, immutable source SHA, viewport, fixture population and computed colors. Final head captures were refreshed after the wrap fix. The original baseline captures remain bound to unchanged main source.
 
-`manifest.json` records all 32 base/head × four screens × two sizes × system-preference captures, immutable code SHAs, PNG hashes, viewport, fixture population, computed colors and the observed conflict RPC. The `conflict` step clicks the Group action and observes `rail.createGroup` failing with -32003 and `name already taken`; navigation alone is not conflict proof.
-
-Dark preference is recorded honestly: both revisions render the light palette. The 16 filenames containing `dark-preference-BLOCKED-light-rendering` are diagnostics, not proof of an implemented dark theme. No theme styles were injected.
-
-`checks.json` and four additional `todo-focus` PNGs record actual keyboard Tab focus at both sizes. Base Todo hit height15px and no outline become24px and a2px accent outline, offset1px. Head SVGs measure16×16; head buttons containing migrated SVGs measure at least24px. Existing text-only controls are not claimed to satisfy all of D6. No complete-app polish claim is made.
-
-Validation at unchanged code69108b8:
-- Initial macOS `just check` exited1 at inherited L66 timeouts. Quiet focused base/head L66 runs each passed12/12.
-- Remaining desktop suite passed967 tests; U67 Editor readiness and U15 constant-work timed out. Their quiet focused rerun passed24/24.
-- One quiet full `just check` retry exited1. Rust637, L6635, lint, type checks, fallow passed; desktop968 passed,1 todo,1 failed. The sole failure is `u15_listing_blocked_todos_does_a_constant_amount_of_work_per_todo` at5000ms.
-- The independent reviewer confirmed that U15’s global accessible-name search was incidental to the constant-work assertion. The final test-only commit scopes that same role/name lookup to Todo120, preserving readiness and reads<4800. Focused U15 passed18/18; the constant-work test completed in79ms. Required full final-head check is recorded separately below.
-
-The full logs and recovered red/mutation/green regression evidence are in `logs/`. `capture.py` and `measure.py` preserve the actual browser procedure. Capture uses the harness clock; it does not inject a shared fixed clock. The final check and review status below decide delivery, not the earlier focused reruns.
+`conflict` clicks the Group action and verifies `rail.createGroup` failing with -32003 and visible `name already taken`. Navigation alone is not conflict proof. Both theme preferences render the existing light palette; the16 filenames containing `dark-preference-BLOCKED-light-rendering` are diagnostics, not genuine dark-theme proof. No palette was injected.
 
 ## Measured Checks
 
-- D2: every captured head SVG16×16; Rail rows28px in both revisions and both sizes.
-- D4: glyph colors match the design-system accent, grey, amber and red; stable shapes checked by U86.
-- D5: `contrast-summary.json` derives minimum4.54:1 over the existing selected band and minimum5.07:1 over white for measured head glyph tones. This does not claim genuine dark contrast.
-- D6: migrated vector buttons>=24px; actual Todo Tab-focus ring2px, offset1px. Existing text-only controls and inherited missing hover surfaces are not claimed to pass all D6 states.
+- D2: head SVGs16×16; Rail rows28px at both sizes in both revisions.
+- D4: measured head glyph colors match the existing design-system accent, grey, amber and red. U86 tests distinguish each shape without hue.
+- D5: `contrast-summary.json` derives minimum4.54:1 against the existing selected band and minimum5.07:1 over white for measured head glyph tones; genuine dark contrast remains unavailable.
+- D6: migrated SVG buttons>=24px; actual keyboard Tab-focus on Todo rows produces2px accent outline, offset1px. Existing text-only targets and inherited absent hover states are not claimed to satisfy every D6 requirement.
 
-## Final local check
+`checks.json` accompanies four Todo keyboard-focus captures. Baseline Todo hit15px/no outline becomes24px/2px outline. Final focus captures use the final source.
 
-`just check` on macOS at5668d3299009fa2040faba5f0c814be8d3fc2874 exited0: Rust637, L6635, desktop969 passed plus1 todo, lint/typecheck/fallow green. `git diff --check` and size gate exit0. CI and independent review follow on the pushed head.
+## Copilot finding and repair
+
+The one Copilot review identified a real wrap regression: keeping the old2ch indent after a16px SVG made continuation text start8.171875px left of the `#`. One local derived CSS property now combines the existing icon width with its monospace separator; padding and inverse text indent share it.
+
+`wrap-checks.json` and four `*-wrap-*.png` images compare the previous approved source `e624c79015d02bd64fcbfc3bf0c6bd3871e60466` with final source99f9b33. Real Range coordinates show first-# and first-continuation xdelta -8.171875px→0px at1280×800 and700×800. Long row heights remain91.5px and61.5px. The pinning assertion failed before the change; U15+U86 passed20/20 after it.
+
+## Validation
+
+Final macOS `just check` on99f9b33 exited0: Rust637, coordinator35, desktop969 passed plus1 todo; lint, type checks and fallow green. See `logs/u86-wrap-check-final.log`. `git diff --check` and size gate exited0.
+
+Earlier failed checks remain in `logs/`. A U15 full-suite timeout was repaired by scoping the same role/name readiness query to its existing row helper, retaining120 Todos and reads<4800; no timeout or threshold changed. Its focused run completed in79ms and final full checks passed.
+
+The final QA-only VM had no agent or authentication; it was destroyed immediately after verified local collection, and `boxd machine list --json` returned an empty list. Capture scripts and raw observations are retained. The harness clock was not replaced with an injected shared clock; status ages were stable in these observations.

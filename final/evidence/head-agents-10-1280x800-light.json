@@ -23,48 +23,48 @@
     {
       "name": "rail",
       "background": "rgba(0, 0, 0, 0)",
-      "x": -0.03125,
-      "y": 31.0625,
+      "x": 0.03125,
+      "y": 30.984375,
       "width": 256,
       "height": 769
     },
     {
       "name": "centre",
       "background": "rgb(255, 255, 255)",
-      "x": 255.96875,
-      "y": 31.0625,
+      "x": 256.03125,
+      "y": 30.984375,
       "width": 844.8125,
       "height": 769
     },
     {
       "name": "shelf",
       "background": "rgba(0, 0, 0, 0)",
-      "x": 1100.78125,
-      "y": 31.0625,
+      "x": 1100.84375,
+      "y": 30.984375,
       "width": 179.1875,
       "height": 769
     },
     {
       "name": "todos",
       "background": "rgba(0, 0, 0, 0)",
-      "x": 1116.78125,
-      "y": 31.0625,
+      "x": 1116.84375,
+      "y": 30.984375,
       "width": 147.1875,
       "height": 39
     },
     {
       "name": "pads",
       "background": "rgba(0, 0, 0, 0)",
-      "x": 1116.78125,
-      "y": 70.0625,
+      "x": 1116.84375,
+      "y": 69.984375,
       "width": 147.1875,
       "height": 39
     },
     {
       "name": "drawer",
       "background": "rgb(255, 255, 255)",
-      "x": 1279.96875,
-      "y": 31.0625,
+      "x": 1280.03125,
+      "y": 30.984375,
       "width": 560,
       "height": 769
     }
@@ -73,128 +73,128 @@
     {
       "class": "lucide lucide-x lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 37.0625,
+      "x": 20.03125,
+      "y": 36.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-circle lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 65.0625,
+      "x": 20.03125,
+      "y": 64.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-pause lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 93.0625,
+      "x": 20.03125,
+      "y": 92.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-circle lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 121.0625,
+      "x": 20.03125,
+      "y": 120.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-dot lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 149.0625,
+      "x": 20.03125,
+      "y": 148.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-x lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 177.0625,
+      "x": 20.03125,
+      "y": 176.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-circle lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 205.0625,
+      "x": 20.03125,
+      "y": 204.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-pause lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 233.0625,
+      "x": 20.03125,
+      "y": 232.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-circle lucide-icon icon",
       "label": null,
-      "x": 19.96875,
-      "y": 261.0625,
+      "x": 20.03125,
+      "y": 260.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-check lucide-icon icon",
       "label": null,
-      "x": 15.96875,
-      "y": 287.0625,
+      "x": 16.03125,
+      "y": 286.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-plus lucide-icon icon",
       "label": null,
-      "x": 15.96875,
-      "y": 323.0625,
+      "x": 16.03125,
+      "y": 322.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-plus lucide-icon icon",
       "label": null,
-      "x": 89.53125,
-      "y": 323.0625,
+      "x": 89.59375,
+      "y": 322.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-plus lucide-icon icon",
       "label": null,
-      "x": 179.84375,
-      "y": 323.0625,
+      "x": 179.90625,
+      "y": 322.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-plus lucide-icon icon",
       "label": null,
-      "x": 1167.75,
-      "y": 35.0625,
+      "x": 1167.8125,
+      "y": 34.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-plus lucide-icon icon",
       "label": null,
-      "x": 1159.921875,
-      "y": 74.0625,
+      "x": 1159.984375,
+      "y": 73.984375,
       "width": 16,
       "height": 16
     },
     {
       "class": "lucide lucide-x lucide-icon icon",
       "label": null,
-      "x": 1803.96875,
-      "y": 43.0625,
+      "x": 1804.03125,
+      "y": 42.984375,
       "width": 16,
       "height": 16
     }
@@ -203,73 +203,73 @@
     {
       "name": "4 need you",
       "color": "rgb(110, 110, 115)",
-      "x": 172.515625,
-      "y": 8.0625,
+      "x": 172.578125,
+      "y": 7.984375,
       "width": 78.28125,
       "height": 15
     },
     {
       "name": " 1 done",
       "color": "rgb(110, 110, 115)",
-      "x": 15.96875,
-      "y": 283.0625,
+      "x": 16.03125,
+      "y": 282.984375,
       "width": 64.859375,
       "height": 24
     },
     {
       "name": " agent",
       "color": "rgb(110, 110, 115)",
-      "x": 15.96875,
-      "y": 319.0625,
+      "x": 16.03125,
+      "y": 318.984375,
       "width": 57.5625,
       "height": 24
     },
     {
       "name": " terminal",
       "color": "rgb(110, 110, 115)",
-      "x": 89.53125,
-      "y": 319.0625,
+      "x": 89.59375,
+      "y": 318.984375,
       "width": 74.3125,
       "height": 24
     },
     {
       "name": " group",
       "color": "rgb(110, 110, 115)",
-      "x": 179.84375,
-      "y": 319.0625,
+      "x": 179.90625,
+      "y": 318.984375,
       "width": 57.765625,
       "height": 24
     },
     {
       "name": "add todo",
       "color": "rgb(110, 110, 115)",
-      "x": 1163.75,
-      "y": 31.0625,
+      "x": 1163.8125,
+      "y": 30.984375,
       "width": 24,
       "height": 24
     },
     {
       "name": "add pad",
       "color": "rgb(110, 110, 115)",
-      "x": 1155.921875,
-      "y": 70.0625,
+      "x": 1155.984375,
+      "y": 69.984375,
       "width": 24,
       "height": 24
     },
     {
       "name": "close",
       "color": "rgb(110, 110, 115)",
-      "x": 1799.96875,
-      "y": 39.0625,
+      "x": 1800.03125,
+      "y": 38.984375,
       "width": 24,
       "height": 24
     }
   ],
-  "commit": "69108b822a5e21d8f94906585ab491f668ef0778",
+  "commit": "99f9b338e25d124aa3a796a105ccc0feaf14d670",
   "revision": "head",
   "seed": "agents-10",
   "requestedTheme": "light",
   "darkPaletteValid": false,
-  "png": "/tmp/u86-final-proof-69108b8/png/head-agents-10-1280x800-light.png",
+  "png": "/tmp/u86-wrap/final-proof/png/head-agents-10-1280x800-light.png",
   "sha256": "343e47abd1859a989a12e0a1935a5981f3fa1da1fb1413c1c16040a36f32685a"
 }
