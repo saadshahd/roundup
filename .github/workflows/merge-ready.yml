@@ -51,7 +51,10 @@ jobs:
           }
           paths=$(gh pr diff "$pr" --name-only) || fail "merge-ready: cannot read the PR diff"
           if printf '%s\n' "$paths" | grep -q '^\.github/'; then
-            gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a .github/ PR"
+            auto_merge=$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null') || fail "merge-ready: cannot read auto-merge on a .github/ PR"
+            if [ "$auto_merge" = true ]; then
+              gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a .github/ PR"
+            fi
           fi
           set +e
           out=$(loop/rules.sh merge-ready "$pr" 2>&1)
