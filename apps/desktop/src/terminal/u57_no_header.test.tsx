@@ -43,7 +43,7 @@ describe("u57 no pane header", () => {
     const { connected, container, app } = await mountPane([node("a")], [info("t-a")]);
 
     connected.rail.select("a");
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "a", status: { kind: "needs-you", label: "asks", since: 0 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: { kind: "needs-you", label: "asks", since: 0 } } }));
 
     expect(container.querySelector(".pane")?.textContent).toBe("t-a");
     expect(callsTo(app, "terminal.resize")).toHaveLength(1);

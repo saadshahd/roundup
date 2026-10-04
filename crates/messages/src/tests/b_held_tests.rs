@@ -141,6 +141,7 @@ impl Held2 {
             label: "x".into(),
             since: 0,
         };
+        let mut revision = "1".to_owned();
         for node in self
             .rail
             .0
@@ -150,10 +151,20 @@ impl Held2 {
             .filter(|n| n.id == id)
         {
             node.status = Some(status.clone());
+            revision = (node
+                .status_revision
+                .as_deref()
+                .unwrap()
+                .parse::<i64>()
+                .unwrap()
+                + 1)
+            .to_string();
+            node.status_revision = Some(revision.clone());
         }
         let data = EventData::AgentStatus(StatusEvent {
             id: id.into(),
             incarnation: "1".into(),
+            status_revision: revision,
             status,
         });
         self.bus.emit(Actor::daemon(), data);
@@ -781,6 +792,7 @@ async fn b9_a_done_lost_to_lag_still_drops_pending() {
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
                 incarnation: "1".into(),
+                status_revision: "1".into(),
                 status: Status {
                     kind: Kind::Working,
                     label: "x".into(),
@@ -897,6 +909,7 @@ async fn b9_a_lag_drops_nothing_for_a_live_agent() {
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
                 incarnation: "1".into(),
+                status_revision: "1".into(),
                 status: Status {
                     kind: Kind::Working,
                     label: "x".into(),
@@ -1055,6 +1068,7 @@ fn status_flood(h: &Held2) {
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
                 incarnation: "1".into(),
+                status_revision: "1".into(),
                 status: Status {
                     kind: Kind::Working,
                     label: "x".into(),
@@ -1097,7 +1111,14 @@ async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
     let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
     let old_node = h.rail.0.lock().unwrap()[0].clone();
     let old = h.send_as(agent("a"), "b", "old").await;
-    super::super::on_ended(&h.messages.inner, "b", 1);
+    super::super::on_status(
+        &h.messages.inner,
+        "b",
+        "1",
+        "9223372036854775807",
+        Kind::Done,
+    )
+    .await;
     assert_eq!(
         h.get(old["id"].as_u64().unwrap() as u32).await["status"],
         "dropped"
@@ -1108,8 +1129,8 @@ async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
         .await
         .unwrap();
     let held = h.send_as(agent("a"), "b", "new held").await;
-    super::super::on_status(&h.messages.inner, "b", "1", Kind::Done).await;
-    super::super::on_status(&h.messages.inner, "b", "1", Kind::Idle).await;
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Done).await;
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Idle).await;
     assert!(h.calls.lock().unwrap().is_empty());
     let mut store = h.messages.store().unwrap();
     assert_eq!(
@@ -1143,4 +1164,96 @@ async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
             .status,
         MessageStatus::Dropped
     );
+}
+
+#[tokio::test]
+async fn b9_recovered_live_incarnation_accepts_new_work_without_reviving_finals() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
+    h.rail.0.lock().unwrap()[0].terminal_id = Some("live-terminal".into());
+    let stale = h.rail.0.lock().unwrap()[0].clone();
+    let old = h.send_as(agent("a"), "b", "old").await;
+    h.rail.0.lock().unwrap()[0].status.as_mut().unwrap().kind = Kind::Error;
+    h.rail.0.lock().unwrap()[0].status_revision = Some("2".into());
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Error).await;
+    {
+        let mut store = h.messages.store().unwrap();
+        assert_eq!(
+            super::super::accept_receiver(&h.messages.inner, &mut store, &stale)
+                .unwrap_err()
+                .code,
+            code::CONFLICT
+        );
+    }
+    h.rail.0.lock().unwrap()[0].status.as_mut().unwrap().kind = Kind::Working;
+    h.rail.0.lock().unwrap()[0].status_revision = Some("3".into());
+    super::super::on_status(&h.messages.inner, "b", "1", "3", Kind::Working).await;
+    let new = h.send_as(Actor::user(), "b", "new").await;
+    h.call("takeover.begin", json!({"agent":"b"}))
+        .await
+        .unwrap();
+    assert_eq!(new["status"], "pending");
+    assert_eq!(
+        h.get(old["id"].as_u64().unwrap() as u32).await["status"],
+        "dropped"
+    );
+}
+
+#[tokio::test]
+async fn b9_old_active_status_cannot_reopen_a_stopped_incarnation() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
+    h.send_as(agent("a"), "b", "old").await;
+    {
+        let mut nodes = h.rail.0.lock().unwrap();
+        nodes[0].terminal_id = None;
+        nodes[0].status.as_mut().unwrap().kind = Kind::Done;
+    }
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Done).await;
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Working).await;
+    assert_eq!(
+        h.call("message.send", json!({"to":"b","kind":"note","body":"new"}))
+            .await
+            .unwrap_err()
+            .code,
+        code::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn b9_queued_error_cannot_drop_work_accepted_after_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
+    let old = h.send_as(agent("a"), "b", "old").await;
+    h.rail.0.lock().unwrap()[0].status_revision = Some("3".into());
+    let new = h.send_as(Actor::user(), "b", "new").await;
+    h.call("takeover.begin", json!({"agent":"b"}))
+        .await
+        .unwrap();
+    let held = h.send_as(agent("a"), "b", "new held").await;
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Error).await;
+    for (message, expected) in [(&old, "dropped"), (&new, "pending"), (&held, "held")] {
+        assert_eq!(
+            h.get(message["id"].as_u64().unwrap() as u32).await["status"],
+            expected
+        );
+    }
+    assert!(h.messages.store().unwrap().is_takeover_active("b"));
+}
+
+#[tokio::test]
+async fn b2_queued_idle_cannot_deliver_work_accepted_after_it_was_published() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+    h.rail.0.lock().unwrap()[0].status_revision = Some("2".into());
+    let new = h.send_as(agent("a"), "b", "new").await;
+    super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Idle).await;
+    assert!(h.calls.lock().unwrap().is_empty());
+    assert_eq!(
+        h.get(new["id"].as_u64().unwrap() as u32).await["status"],
+        "pending"
+    );
+    h.rail.0.lock().unwrap()[0].status_revision = Some("4".into());
+    super::super::on_status(&h.messages.inner, "b", "1", "4", Kind::Idle).await;
+    assert_eq!(h.typed(1).await, ["[from a, note] new"]);
 }

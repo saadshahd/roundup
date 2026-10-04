@@ -143,6 +143,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
         EventData::AgentStatus(StatusEvent {
             id: id.into(),
             incarnation: "1".into(),
+            status_revision: "1".into(),
             status: Status {
                 kind: Kind::Done,
                 label: "old exit".into(),

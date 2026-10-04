@@ -199,7 +199,7 @@ it("u100_later_selection_reveals_ancestors_and_saves_each_change", async () => {
   expect(read()).toEqual({ selected: "tokens", collapsed: [] });
   collapse("auth");
   expect(read()).toEqual({ selected: "tokens", collapsed: ["auth"] });
-  app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "logins", status: { kind: "error", label: "failed", since: 0 } } }));
+  app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "logins", status: { kind: "error", label: "failed", since: 0 } } }));
   fireEvent.keyDown(document, { key: "j", metaKey: true });
   expect(row("logins")?.getAttribute("aria-selected")).toBe("true");
   expect(read()).toEqual({ selected: "logins", collapsed: [] });

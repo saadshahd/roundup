@@ -22,6 +22,7 @@ export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   order: 0,
   status: { kind: "working", label: "starting", since: 0 },
   incarnation: "1",
+  status_revision: "1",
   terminal_id: `t-${id}`,
   worktree: null,
   ...over,
@@ -31,11 +32,11 @@ export const agent = (id: string, kind: Kind, label: string, over: Partial<RailN
   node(id, { status: { kind, label, since: NOW }, ...over });
 
 export const room = (id: string, over: Partial<RailNode> = {}): RailNode =>
-  node(id, { kind: "room", status: { kind: "done", label: "terminal gone", since: NOW }, incarnation: null, terminal_id: null, ...over });
+  node(id, { kind: "room", status: { kind: "done", label: "terminal gone", since: NOW }, incarnation: null, status_revision: null, terminal_id: null, ...over });
 
 /** A Door as the Daemon sends it: a Room with a live Agent sitting at it. */
 export const door = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
-  room(id, { incarnation: "1", status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
+  room(id, { incarnation: "1", status_revision: "1", status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
 
 export const terminal = (id: string, over: Partial<RailNode> = {}): RailNode =>
   node(id, { kind: "terminal", status: null, ...over });

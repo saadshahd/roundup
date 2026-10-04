@@ -4,8 +4,9 @@
 //! `git2` is rejected there: a native dependency whose rebase reports conflicts differently.
 
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use rpc::{RpcError, code};
@@ -17,6 +18,23 @@ pub struct Worktree {
     pub path: PathBuf,
     pub branch: String,
     pub base: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Provision {
+    pub worktree: Worktree,
+    pub commit: String,
+    pub owner: String,
+}
+
+impl From<&contracts::agent::Worktree> for Worktree {
+    fn from(record: &contracts::agent::Worktree) -> Self {
+        Self {
+            path: PathBuf::from(&record.path),
+            branch: record.branch.clone(),
+            base: record.base.clone(),
+        }
+    }
 }
 
 /// Runs one Project's `git`, one command at a time: `git worktree add` and the rest take the
@@ -63,75 +81,232 @@ impl Git {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
     }
 
-    /// Branch `roundup/agent-<id>` at `project`'s current commit, and a worktree for it at
-    /// `<project>/.roundup/worktrees/agent-<id>`; `.roundup/` is added to `.git/info/exclude`
-    /// if it is not there. Every step is undone on any failure, so `git worktree list` and
-    /// `git branch` are left as they were before the call.
-    pub fn provision(&self, project: &Path, id: &str) -> Result<Worktree, RpcError> {
-        let commit = self.run(project, &["rev-parse", "HEAD"]).map_err(|_| {
-            invalid(
-                "not_a_git_project",
-                format!("{} is not a git project with a commit", project.display()),
-            )
-        })?;
+    pub fn plan(&self, project: &Path, id: &str, incarnation: &str) -> Result<Provision, RpcError> {
+        let commit = self
+            .run(project, &["rev-parse", "HEAD"])
+            .map_err(|_| invalid("not_a_git_project", project.display()))?;
         let base = self
             .run(project, &["symbolic-ref", "--short", "HEAD"])
             .map_err(|_| invalid("no_base", "HEAD is detached"))?;
-        let branch = format!("roundup/agent-{id}");
-        let path = worktree_path(project, id);
-
-        self.run(project, &["branch", &branch, &commit])
-            .map_err(failed)?;
-        let path_str = path.to_string_lossy().into_owned();
-        if let Err(err) = self.run(project, &["worktree", "add", &path_str, &branch]) {
-            self.undo_branch(project, &branch);
-            return Err(failed(err));
-        }
-        // `git rev-parse --git-path` resolves to the real `.git` dir even when `project/.git`
-        // is a file pointing elsewhere (a submodule, or a Project that is itself a worktree).
-        let exclude = match self.run(project, &["rev-parse", "--git-path", "info/exclude"]) {
-            Ok(relative) => project.join(relative),
-            Err(err) => {
-                self.undo(project, &path, &branch);
-                return Err(failed(err));
-            }
+        let worktree = Worktree {
+            path: worktree_path(project, id),
+            branch: format!("roundup/agent-{id}"),
+            base,
         };
-        if let Err(err) = exclude_worktrees(&exclude) {
-            self.undo(project, &path, &branch);
-            return Err(failed(err.to_string()));
+        if worktree.path.exists()
+            || self
+                .reference(project, &format!("refs/heads/{}", worktree.branch))?
+                .is_some()
+        {
+            return Err(failed("provisioning destination already exists"));
         }
-        Ok(Worktree { path, branch, base })
+        Ok(Provision {
+            worktree,
+            commit,
+            owner: format!("refs/roundup/provisioning/{id}/{incarnation}"),
+        })
     }
 
-    /// Undo a successful `provision`: remove the worktree directory and its branch, so
-    /// `git worktree list` and `git branch` go back to what they were before it ran.
-    pub fn discard(&self, project: &Path, worktree: &Worktree) {
-        self.undo(project, &worktree.path, &worktree.branch);
+    pub fn provision(&self, project: &Path, plan: &Provision) -> Result<Worktree, RpcError> {
+        let input = format!(
+            "start\ncreate refs/heads/{} {}\ncreate {} {}\nprepare\ncommit\n",
+            plan.worktree.branch, plan.commit, plan.owner, plan.commit
+        );
+        self.update_refs(project, &input)?;
+        let result = (|| {
+            self.run(
+                project,
+                &[
+                    "worktree",
+                    "add",
+                    &plan.worktree.path.to_string_lossy(),
+                    &plan.worktree.branch,
+                ],
+            )
+            .map_err(failed)?;
+            let exclude = self
+                .run(project, &["rev-parse", "--git-path", "info/exclude"])
+                .map_err(failed)?;
+            exclude_worktrees(&project.join(exclude)).map_err(failed)?;
+            Ok(plan.worktree.clone())
+        })();
+        if result.is_err() {
+            self.recover(project, plan)?;
+        }
+        result
     }
 
-    fn undo(&self, project: &Path, path: &Path, branch: &str) {
-        self.undo_worktree(project, path);
-        self.undo_branch(project, branch);
+    fn reference(&self, project: &Path, reference: &str) -> Result<Option<String>, RpcError> {
+        let output = {
+            let _hold = self.lock.lock().expect("git lock");
+            Command::new("git")
+                .current_dir(project)
+                .env("PATH", &self.path)
+                .args(["show-ref", "--verify", "--hash", reference])
+                .output()
+                .map_err(failed)?
+        };
+        if output.status.success() {
+            return Ok(Some(String::from_utf8_lossy(&output.stdout).trim().into()));
+        }
+        if output.status.code() == Some(1) {
+            return Ok(None);
+        }
+        // show-ref reports an absent exact ref as 128 on older Git versions.
+        if !self
+            .run(project, &["for-each-ref", "--format=%(refname)", reference])
+            .map_err(failed)?
+            .lines()
+            .any(|line| line == reference)
+        {
+            return Ok(None);
+        }
+        Err(failed(String::from_utf8_lossy(&output.stderr)))
     }
 
-    fn undo_worktree(&self, project: &Path, path: &Path) {
-        let path_str = path.to_string_lossy().into_owned();
-        if let Err(err) = self.run(project, &["worktree", "remove", "--force", &path_str]) {
-            eprintln!(
-                "agents: could not remove worktree {}: {err}",
-                path.display()
-            );
-            let _ = std::fs::remove_dir_all(path);
-            if let Err(err) = self.run(project, &["worktree", "prune"]) {
-                eprintln!("agents: could not prune worktrees: {err}");
+    fn update_refs(&self, project: &Path, input: &str) -> Result<(), RpcError> {
+        let _hold = self.lock.lock().expect("git lock");
+        let mut child = Command::new("git")
+            .current_dir(project)
+            .env("PATH", &self.path)
+            .args(["update-ref", "--stdin"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(failed)?;
+        child
+            .stdin
+            .take()
+            .expect("piped stdin")
+            .write_all(input.as_bytes())
+            .map_err(failed)?;
+        let output = child.wait_with_output().map_err(failed)?;
+        if !output.status.success() {
+            return Err(failed(String::from_utf8_lossy(&output.stderr)));
+        }
+        Ok(())
+    }
+
+    pub fn finish(&self, project: &Path, plan: &Provision) -> Result<(), RpcError> {
+        if let Some(owner) = self.reference(project, &plan.owner)? {
+            if owner != plan.commit {
+                return Err(failed("provisioning ownership changed"));
+            }
+            self.run(project, &["update-ref", "-d", &plan.owner, &plan.commit])
+                .map_err(failed)?;
+        }
+        Ok(())
+    }
+
+    pub fn recover(&self, project: &Path, plan: &Provision) -> Result<(), RpcError> {
+        let branch_ref = format!("refs/heads/{}", plan.worktree.branch);
+        let branch = self.reference(project, &branch_ref)?;
+        let owner = self.reference(project, &plan.owner)?;
+        if owner.is_none() {
+            if branch.is_some() || plan.worktree.path.exists() {
+                return Err(failed("unowned provisioning destination; preserving it"));
+            }
+            return Ok(());
+        }
+        if owner.as_deref() != Some(&plan.commit)
+            || branch.as_ref().is_some_and(|head| head != &plan.commit)
+        {
+            return Err(failed(
+                "provisioning ownership or branch changed; preserving it",
+            ));
+        }
+        let listing = self
+            .run(project, &["worktree", "list", "--porcelain", "-z"])
+            .map_err(failed)?;
+        let expected_path = plan
+            .worktree
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| plan.worktree.path.clone());
+        let mut registered = false;
+        for record in listing.split("\0\0") {
+            let path = record.split('\0').find_map(|v| v.strip_prefix("worktree "));
+            let reference = record.split('\0').find_map(|v| v.strip_prefix("branch "));
+            if let Some(path) = path {
+                let path = Path::new(path)
+                    .canonicalize()
+                    .unwrap_or_else(|_| PathBuf::from(path));
+                if path == expected_path {
+                    if reference != Some(&branch_ref) {
+                        return Err(failed("provisioning path belongs to another branch"));
+                    }
+                    registered = true;
+                } else if reference == Some(&branch_ref) {
+                    return Err(failed("provisioning branch belongs to another path"));
+                }
             }
         }
+        if plan.worktree.path.exists() {
+            if !registered {
+                return Err(failed("provisioning path is not its registered Worktree"));
+            }
+            if !self
+                .run(&plan.worktree.path, &["status", "--porcelain"])
+                .map_err(failed)?
+                .is_empty()
+            {
+                return Err(failed("unfinished Worktree has edits; preserving it"));
+            }
+        }
+        if registered {
+            self.run(
+                project,
+                &["worktree", "remove", &plan.worktree.path.to_string_lossy()],
+            )
+            .map_err(failed)?;
+        }
+        if branch.is_some() {
+            self.run(project, &["update-ref", "-d", &branch_ref, &plan.commit])
+                .map_err(failed)?;
+        }
+        self.finish(project, plan)
     }
 
-    fn undo_branch(&self, project: &Path, branch: &str) {
-        if let Err(err) = self.run(project, &["branch", "-D", branch]) {
-            eprintln!("agents: could not remove branch {branch}: {err}");
+    pub fn require_landed(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {
+        let dirty = if worktree.path.exists() {
+            self.run(
+                &worktree.path,
+                &["status", "--porcelain", "-z", "--untracked-files=all"],
+            )
+            .map_err(failed)?
+            .split('\0')
+            .filter(|entry| !entry.is_empty())
+            .count()
+        } else {
+            0
+        };
+        let range = format!("{}..{}", worktree.base, worktree.branch);
+        let ahead = self
+            .run(project, &["rev-list", "--count", &range])
+            .map_err(failed)?;
+        if dirty != 0 || ahead != "0" {
+            return Err(RpcError::conflict(format!(
+                "worktree_unlanded: dirty {dirty}, ahead {ahead}"
+            )));
         }
+        Ok(())
+    }
+
+    pub fn remove_landed(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {
+        self.require_landed(project, worktree)?;
+        let reference = format!("refs/heads/{}", worktree.branch);
+        let expected = self
+            .run(project, &["rev-parse", &reference])
+            .map_err(failed)?;
+        self.run(
+            project,
+            &["worktree", "remove", &worktree.path.to_string_lossy()],
+        )
+        .map_err(failed)?;
+        self.run(project, &["update-ref", "-d", &reference, &expected])
+            .map_err(failed)?;
+        Ok(())
     }
 }
 

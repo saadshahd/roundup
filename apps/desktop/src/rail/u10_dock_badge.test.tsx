@@ -32,10 +32,10 @@ describe("u10 Dock badge", () => {
   it("u10_the_badge_follows_agent_status_events", async () => {
     const { app, rail } = await mountRail([agent("a", "working", "x"), agent("b", "working", "x")]);
 
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "a", status: { kind: "needs-you", label: "?", since: 1 } } }));
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "b", status: { kind: "error", label: "!", since: 1 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: { kind: "needs-you", label: "?", since: 1 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "b", status: { kind: "error", label: "!", since: 1 } } }));
     await rail.settled();
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "a", status: { kind: "working", label: "w", since: 2 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: { kind: "working", label: "w", since: 2 } } }));
     await rail.settled();
 
     expect(app.badges).toEqual([0, 1, 2, 1]);
@@ -44,7 +44,7 @@ describe("u10 Dock badge", () => {
   it("u10_the_badge_is_not_resent_when_the_count_is_unchanged", async () => {
     const { app, rail } = await mountRail([agent("a", "needs-you", "x")]);
 
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "a", status: { kind: "error", label: "!", since: 1 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: { kind: "error", label: "!", since: 1 } } }));
     await rail.settled();
 
     expect(app.badges).toEqual([1]);

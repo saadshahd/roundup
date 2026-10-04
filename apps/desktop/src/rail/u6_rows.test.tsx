@@ -79,7 +79,7 @@ describe("u6 rows", () => {
       agent("b", "working", "w", { order: 1 }),
     ]);
 
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "b", status: { kind: "error", label: "x", since: 2 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "b", status: { kind: "error", label: "x", since: 2 } } }));
     await rail.settled();
 
     expect([rowNames(), glyphOf("b").getAttribute("aria-label")]).toEqual([["a", "b"], "error"]);

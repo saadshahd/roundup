@@ -1,6 +1,6 @@
 //! SQLite persistence for Messages and Routes. `<dir>/messages.db` (ADR 0004, WAL).
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::Path;
 
 use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Reason, Route};
@@ -11,11 +11,21 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+pub(crate) type Binding = (i64, i64);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ReceiverState {
+    pub incarnation: i64,
+    pub revision: i64,
+    pub closed_revision: i64,
+    pub closed: bool,
+}
+
 pub(crate) struct Store {
     db: Connection,
     /// Agents under a Takeover. Held in memory only (B6): never persisted, so a restarted
     /// Daemon has none.
-    active_takeovers: HashSet<String>,
+    active_takeovers: HashMap<String, Binding>,
 }
 
 impl Store {
@@ -59,9 +69,37 @@ impl Store {
             )?;
         }
         db.execute_batch("CREATE TABLE IF NOT EXISTS receiver_generations (id TEXT PRIMARY KEY, incarnation INTEGER NOT NULL, closed INTEGER NOT NULL);")?;
+        for (table, column, declaration) in [
+            (
+                "messages",
+                "receiver_revision",
+                "INTEGER NOT NULL DEFAULT 0",
+            ),
+            (
+                "receiver_generations",
+                "revision",
+                "INTEGER NOT NULL DEFAULT 0",
+            ),
+            (
+                "receiver_generations",
+                "closed_revision",
+                "INTEGER NOT NULL DEFAULT -1",
+            ),
+        ] {
+            let exists = db
+                .prepare(&format!(
+                    "SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?"
+                ))?
+                .exists([column])?;
+            if !exists {
+                db.execute_batch(&format!(
+                    "ALTER TABLE {table} ADD COLUMN {column} {declaration}"
+                ))?;
+            }
+        }
         let mut store = Self {
             db,
-            active_takeovers: HashSet::new(),
+            active_takeovers: HashMap::new(),
         };
         store.release_stale_takeovers()?;
         Ok(store)
@@ -71,54 +109,48 @@ impl Store {
         self.db.prepare("SELECT id FROM receiver_generations UNION SELECT to_id FROM messages WHERE to_id != 'you'").and_then(|mut q| q.query_map([], |r| r.get(0))?.collect()).map_err(RpcError::internal)
     }
 
-    pub(crate) fn generation(&self, agent: &str) -> Result<Option<(i64, bool)>, RpcError> {
-        self.db
-            .query_row(
-                "SELECT incarnation, closed FROM receiver_generations WHERE id = ?",
-                [agent],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()
-            .map_err(RpcError::internal)
+    pub(crate) fn generation(&self, agent: &str) -> Result<Option<ReceiverState>, RpcError> {
+        self.db.query_row("SELECT incarnation, revision, closed_revision, closed FROM receiver_generations WHERE id=?", [agent], |r| Ok(ReceiverState { incarnation:r.get(0)?, revision:r.get(1)?, closed_revision:r.get(2)?, closed:r.get(3)? })).optional().map_err(RpcError::internal)
     }
 
-    pub(crate) fn set_generation(
-        &self,
-        agent: &str,
-        incarnation: i64,
-        closed: bool,
-    ) -> Result<(), RpcError> {
-        self.db.execute("INSERT INTO receiver_generations VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET incarnation=excluded.incarnation, closed=excluded.closed", params![agent, incarnation, closed]).map_err(RpcError::internal)?;
+    pub(crate) fn set_generation(&self, agent: &str, state: ReceiverState) -> Result<(), RpcError> {
+        self.db.execute("INSERT INTO receiver_generations (id,incarnation,revision,closed_revision,closed) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET incarnation=excluded.incarnation,revision=excluded.revision,closed_revision=excluded.closed_revision,closed=excluded.closed", params![agent,state.incarnation,state.revision,state.closed_revision,state.closed]).map_err(RpcError::internal)?;
         Ok(())
     }
 
-    pub(crate) fn require_generation(&self, agent: &str, incarnation: i64) -> Result<(), RpcError> {
-        if self.generation(agent)? == Some((incarnation, false)) {
+    pub(crate) fn require_generation(&self, agent: &str, binding: Binding) -> Result<(), RpcError> {
+        if self.generation(agent)?.is_some_and(|state| {
+            state.incarnation == binding.0 && !state.closed && binding.1 > state.closed_revision
+        }) {
             return Ok(());
         }
         Err(RpcError::conflict(format!(
-            "{agent}: stale or stopped Incarnation"
+            "{agent}: stale or stopped Status revision"
         )))
     }
 
-    pub(crate) fn bind(&self, id: u32, incarnation: i64) -> Result<(), RpcError> {
+    pub(crate) fn bind(&self, id: u32, binding: Binding) -> Result<(), RpcError> {
         self.db
             .execute(
-                "UPDATE messages SET receiver_incarnation = ? WHERE id = ?",
-                params![incarnation, id],
+                "UPDATE messages SET receiver_incarnation=?,receiver_revision=? WHERE id=?",
+                params![binding.0, binding.1, id],
             )
             .map_err(RpcError::internal)?;
         Ok(())
     }
 
-    pub(crate) fn bound(&self, id: u32) -> Result<i64, RpcError> {
+    pub(crate) fn bound(&self, id: u32) -> Result<Binding, RpcError> {
         self.db
             .query_row(
-                "SELECT receiver_incarnation FROM messages WHERE id = ?",
+                "SELECT receiver_incarnation,receiver_revision FROM messages WHERE id=?",
                 [id],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(RpcError::internal)
+    }
+
+    pub(crate) fn takeover_bound(&self, agent: &str) -> Option<Binding> {
+        self.active_takeovers.get(agent).copied()
     }
 
     /// B6: no Takeover survives a restart, so a Message left `held` for the reason `takeover` by
@@ -153,12 +185,12 @@ impl Store {
         status: MessageStatus,
         reason: Option<Reason>,
         at: i64,
-        incarnation: i64,
+        binding: Binding,
     ) -> Result<Message, RpcError> {
         self.db
             .execute(
-                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, receiver_incarnation, rank)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, receiver_incarnation, receiver_revision, rank)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                      CASE WHEN ?6 = 'pending' THEN (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages) ELSE 0 END)",
                 params![
                     actor_json(from),
@@ -169,7 +201,7 @@ impl Store {
                     text_of(status),
                     reason.map(text_of),
                     at,
-                    incarnation
+                    binding.0, binding.1
                 ],
             )
             .map_err(RpcError::internal)?;
@@ -223,13 +255,17 @@ impl Store {
 
     /// The oldest `pending` Message to `to`, by the order it became deliverable (B7): its `rank`,
     /// ties by id.
-    pub(crate) fn next_pending(&self, to: &str) -> Result<Option<Message>, RpcError> {
+    pub(crate) fn next_pending(
+        &self,
+        to: &str,
+        before: Binding,
+    ) -> Result<Option<Message>, RpcError> {
         self.db
             .query_row(
                 "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at
-                 FROM messages WHERE to_id = ?1 AND status = 'pending'
+                 FROM messages WHERE to_id = ?1 AND status = 'pending' AND receiver_incarnation = ?2 AND receiver_revision < ?3
                  ORDER BY rank ASC, id ASC LIMIT 1",
-                [to],
+                params![to, before.0, before.1],
                 row_to_message,
             )
             .optional()
@@ -306,7 +342,7 @@ impl Store {
     }
 
     pub(crate) fn is_takeover_active(&self, agent: &str) -> bool {
-        self.active_takeovers.contains(agent)
+        self.active_takeovers.contains_key(agent)
     }
 
     /// Begins a Takeover of `agent`: every Message to it that is `pending` and not from the user
@@ -314,7 +350,14 @@ impl Store {
     /// already active (a repeated `begin` changes nothing); `Some` with the newly held Messages
     /// otherwise, even when that list is empty.
     pub(crate) fn begin_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
-        if !self.active_takeovers.insert(agent.to_owned()) {
+        let binding = self
+            .generation(agent)?
+            .map_or((0, 0), |state| (state.incarnation, state.revision));
+        if self
+            .active_takeovers
+            .insert(agent.to_owned(), binding)
+            .is_some()
+        {
             return Ok(None);
         }
         let mut held = Vec::new();
@@ -341,7 +384,7 @@ impl Store {
     /// in id order (B6). `None` when no Takeover was active (a repeated `end` changes nothing);
     /// `Some` with the newly pending Messages otherwise, even when that list is empty.
     pub(crate) fn end_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
-        if !self.active_takeovers.remove(agent) {
+        if self.active_takeovers.remove(agent).is_none() {
             return Ok(None);
         }
         let mut pending = Vec::new();
@@ -367,14 +410,22 @@ impl Store {
         &mut self,
         to: &str,
         reason: Reason,
+        through: Binding,
     ) -> Result<Vec<Message>, RpcError> {
         let mut dropped = Vec::new();
-        for message in self.list_pending_to(to)? {
+        for message in self
+            .list_pending_to(to)?
+            .into_iter()
+            .chain(self.list_takeover_held_to(to)?)
+        {
+            if self.bound(message.id)? > through {
+                continue;
+            }
             let changed = self
                 .db
                 .execute(
                     "UPDATE messages SET status = 'dropped', reason = ?2
-                     WHERE id = ?1 AND status = 'pending'",
+                     WHERE id = ?1 AND (status = 'pending' OR (status = 'held' AND reason = 'takeover'))",
                     params![message.id, text_of(reason)],
                 )
                 .map_err(RpcError::internal)?;
@@ -509,7 +560,7 @@ mod tests {
                 status,
                 reason,
                 1,
-                1,
+                (1, 1),
             )
             .unwrap()
             .id
@@ -623,7 +674,10 @@ mod tests {
         let store = open(dir.path());
         let new = put(&store, MessageStatus::Pending, None);
 
-        assert_eq!(store.next_pending("b").unwrap().unwrap().id, 1);
+        assert_eq!(
+            store.next_pending("b", (0, i64::MAX)).unwrap().unwrap().id,
+            1
+        );
         assert_eq!(new, 2);
     }
 
@@ -632,7 +686,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut store = open(dir.path());
         let id = put(&store, MessageStatus::Pending, None);
-        assert_eq!(store.next_pending("b").unwrap().unwrap().id, id);
+        assert_eq!(
+            store.next_pending("b", (1, i64::MAX)).unwrap().unwrap().id,
+            id
+        );
 
         store.begin_takeover("b").unwrap();
 

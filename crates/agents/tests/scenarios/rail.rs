@@ -177,6 +177,7 @@ async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
     let node = &f.tree().await[0];
     assert_eq!(node.terminal_id, None);
     assert_eq!(node.incarnation.as_deref(), Some("1"));
+    assert_eq!(node.status_revision, None);
     let next = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
     assert_eq!(first["terminal_id"], next["terminal_id"]);
     assert_eq!(next["incarnation"], "2");

@@ -53,7 +53,7 @@ describe("u3 Rail state", () => {
   it("u3_agent_status_replaces_one_nodes_status", async () => {
     const { app, rail } = await open([node("a"), node("b")]);
 
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "b", status: status("editing") } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "b", status: status("editing") } }));
 
     expect(rail.nodes.map((each) => each.status?.label)).toEqual(["starting", "editing"]);
   });
@@ -108,7 +108,7 @@ describe("u3 Rail state", () => {
     const events = await connectEvents(app);
     const rail = createRailState(app, events);
 
-    app.emit(event({ name: "agent.status", data: { incarnation: "1", id: "a", status: status("early") } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: status("early") } }));
     pending.resolve([node("a")]);
     await rail.settled();
 
@@ -205,8 +205,17 @@ describe("u3 Rail state", () => {
 it("u62_old_status_cannot_overwrite_a_restarted_door", async () => {
   const current = node("room", { kind: "room", incarnation: "2", terminal_id: "new" });
   const { app, rail } = await open([current]);
-  app.emit(event({ name: "agent.status", data: { id: "room", incarnation: "1", status: { kind: "done", label: "old exit", since: 1 } } }));
+  app.emit(event({ name: "agent.status", data: { status_revision: "2", id: "room", incarnation: "1", status: { kind: "done", label: "old exit", since: 1 } } }));
   expect(rail.nodes[0]).toEqual(current);
-  app.emit(event({ name: "agent.status", data: { id: "room", incarnation: "2", status: status("new work") } }));
+  app.emit(event({ name: "agent.status", data: { status_revision: "2", id: "room", incarnation: "2", status: status("new work") } }));
+  expect(rail.nodes[0]?.status?.label).toBe("new work");
+});
+
+it("a7_delayed_same_incarnation_status_cannot_replace_a_later_revision", async () => {
+  const current = node("door", { kind: "room", incarnation: "1", status_revision: "3", status: status("recovered") });
+  const { app, rail } = await open([current]);
+  app.emit(event({ name: "agent.status", data: { id: "door", incarnation: "1", status_revision: "2", status: { kind: "error", label: "old failure", since: 0 } } }));
+  expect(rail.nodes[0]?.status?.label).toBe("recovered");
+  app.emit(event({ name: "agent.status", data: { id: "door", incarnation: "1", status_revision: "4", status: status("new work") } }));
   expect(rail.nodes[0]?.status?.label).toBe("new work");
 });

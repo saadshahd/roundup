@@ -6,6 +6,14 @@ use ts_rs::TS;
 
 use crate::common::Status;
 
+/// Parse the wire ordinal without accepting aliases such as leading zeroes or signs.
+pub fn parse_positive_ordinal(value: &str) -> Option<i64> {
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|n| *n > 0 && n.to_string() == value)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "agent/")]
@@ -38,6 +46,8 @@ pub struct RailNode {
     pub status: Option<Status>,
     /// Last allocated program attempt; present even after stop or reopen.
     pub incarnation: Option<String>,
+    /// Status transition within the current Incarnation; absent after reopen.
+    pub status_revision: Option<String>,
     /// The Terminal behind an Agent or Terminal node.
     pub terminal_id: Option<String>,
     /// `None` for a Terminal, or when the Project's `worktrees` setting was off.
@@ -104,5 +114,6 @@ pub struct RenameParams {
 pub struct StatusEvent {
     pub id: String,
     pub incarnation: String,
+    pub status_revision: String,
     pub status: Status,
 }

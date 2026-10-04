@@ -17,6 +17,10 @@ status: Status | null,
  */
 incarnation: string | null, 
 /**
+ * Status transition within the current Incarnation; absent after reopen.
+ */
+status_revision: string | null, 
+/**
  * The Terminal behind an Agent or Terminal node.
  */
 terminal_id: string | null, 

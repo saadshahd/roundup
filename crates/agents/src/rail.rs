@@ -40,6 +40,8 @@ impl Rail {
                 "incarnation",
                 "INTEGER NOT NULL DEFAULT 0 CHECK (incarnation >= 0)",
             ),
+            ("worktree_owner", "TEXT"),
+            ("worktree_commit", "TEXT"),
             ("worktree_path", "TEXT"),
             ("worktree_branch", "TEXT"),
             ("worktree_base", "TEXT"),
@@ -237,12 +239,53 @@ impl Rail {
         Ok(())
     }
 
-    /// Mark `id` as provisioning a Worktree, before `git` runs (G2, G6).
-    pub fn mark_worktree_provisioning(&mut self, id: &str) -> Result<(), RpcError> {
+    pub fn mark_worktree_provisioning(
+        &mut self,
+        id: &str,
+        plan: &super::worktree::Provision,
+    ) -> Result<(), RpcError> {
+        self.db.execute("UPDATE nodes SET worktree_state='provisioning', worktree_path=?, worktree_branch=?, worktree_base=?, worktree_owner=?, worktree_commit=? WHERE id=?", params![plan.worktree.path.to_string_lossy(), plan.worktree.branch, plan.worktree.base, plan.owner, plan.commit, id]).map_err(sql)?;
+        Ok(())
+    }
+
+    pub fn provisioning(
+        &self,
+    ) -> Result<Vec<(RailNode, super::worktree::Provision, bool)>, RpcError> {
+        let mut records = Vec::new();
+        for node in self.tree()? {
+            let (state, owner, commit): (Option<String>, Option<String>, Option<String>) = self
+                .db
+                .query_row(
+                    "SELECT worktree_state, worktree_owner, worktree_commit FROM nodes WHERE id=?",
+                    [&node.id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(sql)?;
+            if state.as_deref() == Some("provisioning") && owner.is_none() {
+                return Err(RpcError::internal(
+                    "worktree_failed: unfinished legacy provisioning has no ownership proof",
+                ));
+            }
+            if let (Some(owner), Some(commit), Some(worktree)) = (owner, commit, &node.worktree) {
+                records.push((
+                    node.clone(),
+                    super::worktree::Provision {
+                        worktree: super::worktree::Worktree::from(worktree),
+                        owner,
+                        commit,
+                    },
+                    state.as_deref() == Some("ready"),
+                ));
+            }
+        }
+        Ok(records)
+    }
+
+    pub fn clear_provisioning_owner(&mut self, id: &str) -> Result<(), RpcError> {
         self.db
             .execute(
-                "UPDATE nodes SET worktree_state = 'provisioning' WHERE id = ?",
-                params![id],
+                "UPDATE nodes SET worktree_owner=NULL, worktree_commit=NULL WHERE id=?",
+                [id],
             )
             .map_err(sql)?;
         Ok(())
@@ -267,7 +310,7 @@ impl Rail {
         self.db
             .execute(
                 "UPDATE nodes SET worktree_path = NULL, worktree_branch = NULL,
-                    worktree_base = NULL, worktree_state = NULL WHERE id = ?",
+                    worktree_base = NULL, worktree_state = NULL, worktree_owner=NULL, worktree_commit=NULL WHERE id = ?",
                 params![id],
             )
             .map_err(sql)?;
@@ -342,6 +385,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 parent: row.get::<_, Option<i64>>(3)?.map(|id| id.to_string()),
                 order: row.get(4)?,
                 status: None,
+                status_revision: None,
                 incarnation: match row.get::<_, i64>(5)? {
                     0 => None,
                     n => Some(n.to_string()),
@@ -381,7 +425,7 @@ fn descend(nodes: &[RailNode], parent: Option<&str>, out: &mut Vec<RailNode>) {
 fn check_parent(nodes: &[RailNode], parent: Option<&str>) -> Result<(), RpcError> {
     match parent.map(|id| find(nodes, id)).transpose()? {
         Some(node) if node.kind != NodeKind::Room => Err(RpcError::conflict(format!(
-            "{} is not a Group: only Rooms hold children",
+            "{} is not a Room: only Rooms hold children",
             node.id
         ))),
         _ => Ok(()),

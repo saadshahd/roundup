@@ -133,7 +133,7 @@ async fn a7_only_a_plain_room_can_be_start_doord() {
 }
 
 #[tokio::test]
-async fn a7_stopping_a_door_lifts_its_children_where_it_was_and_they_keep_running() {
+async fn a7_stopping_a_door_keeps_its_children_in_the_room_and_running() {
     let mut f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
     f.start_door(&team).await.unwrap();
@@ -345,7 +345,7 @@ async fn a7_stopping_an_agent_an_earlier_daemon_ran_leaves_it_done() {
 }
 
 #[tokio::test]
-async fn a7_stopping_a_door_an_earlier_daemon_ran_lifts_its_children() {
+async fn a7_stopping_a_door_an_earlier_daemon_ran_keeps_its_children() {
     let f = Fixture::running("sleep 30");
     let (team, _) = team(&f).await;
     f.start_door(&team).await.unwrap();

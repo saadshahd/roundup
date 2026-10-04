@@ -125,7 +125,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       } else if (event.name === "rail.changed") {
         fetching(fetchTree);
       } else if (event.name === "agent.status") {
-        setModel("tree", (node) => node.id === event.data.id && node.incarnation === event.data.incarnation, "status", event.data.status);
+        setModel("tree", (node) => node.id === event.data.id && node.incarnation === event.data.incarnation && node.status_revision !== null && BigInt(event.data.status_revision) > BigInt(node.status_revision), { status: event.data.status, status_revision: event.data.status_revision });
       } else if (event.name === "terminal.exited") {
         setModel("exited", event.data.id, event.data.code);
       }

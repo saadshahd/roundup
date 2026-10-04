@@ -163,7 +163,7 @@ impl Messages {
                 status,
                 reason,
                 now_ms(),
-                receiver_status.as_ref().map_or(0, ordinal),
+                receiver_status.as_ref().map_or((0, 0), binding),
             )?;
             message
         };
@@ -216,7 +216,7 @@ impl Messages {
                 return Err(RpcError::conflict("Message is not held"));
             }
             if let Some(node) = &receiver {
-                store.bind(p.id, ordinal(node))?;
+                store.bind(p.id, binding(node))?;
             }
         }
         ctx.touch(Verb::Wrote, &item(p.id))?;
@@ -473,7 +473,16 @@ fn spawn_status_listener(
                 Ok(contracts::Event {
                     data: EventData::AgentStatus(status),
                     ..
-                }) => on_status(&inner, &status.id, &status.incarnation, status.status.kind).await,
+                }) => {
+                    on_status(
+                        &inner,
+                        &status.id,
+                        &status.incarnation,
+                        &status.status_revision,
+                        status.status.kind,
+                    )
+                    .await
+                }
                 Ok(contracts::Event {
                     data: EventData::RailChanged,
                     ..
@@ -489,21 +498,30 @@ fn spawn_status_listener(
     });
 }
 
-async fn on_status(inner: &Arc<Inner>, agent: &str, incarnation: &str, kind: Kind) {
-    match kind {
-        Kind::Idle => on_idle(inner, agent, incarnation.parse().expect("wire Incarnation")).await,
-        Kind::Done | Kind::Error => {
-            on_ended(inner, agent, incarnation.parse().expect("wire Incarnation"))
-        }
-        Kind::Working | Kind::Blocked | Kind::NeedsYou => {}
+async fn on_status(inner: &Arc<Inner>, agent: &str, incarnation: &str, revision: &str, kind: Kind) {
+    let at = (
+        contracts::agent::parse_positive_ordinal(incarnation).expect("wire Incarnation"),
+        contracts::agent::parse_positive_ordinal(revision).expect("wire Status revision"),
+    );
+    {
+        let mut store = inner.store.lock().unwrap();
+        reconcile(
+            inner,
+            &mut store,
+            agent,
+            at,
+            matches!(kind, Kind::Done | Kind::Error),
+            false,
+        )
+        .expect("message store");
+    }
+    if kind == Kind::Idle {
+        on_idle(inner, agent, at).await;
     }
 }
 
-/// A receiver that lagged behind the bus may have missed a `done` or `error` `agent.status`; the
-/// Rail still has it, so re-read it and run `on_ended` for every Agent it now shows as ended.
-/// Idempotent: an Agent `on_ended` already handled has no `pending` Messages left to drop and no
-/// Takeover left to end. `false` when the Rail cannot answer, so the caller retries on its next
-/// event instead of losing the `done` it missed.
+/// Resync after bus lag or Rail changes so missed endings cannot leave Messages deliverable.
+/// A failed Rail read is retried on the next event; it never guesses that an Agent recovered.
 async fn resync(inner: &Arc<Inner>) -> bool {
     let known = {
         let store = inner.store.lock().unwrap();
@@ -525,13 +543,21 @@ async fn resync(inner: &Arc<Inner>) -> bool {
         if !nodes.iter().any(|node| node.id == id)
             && store.generation(&id).expect("message store") == generation
         {
-            let ordinal = generation.map_or(0, |(n, _)| n);
-            reconcile(inner, &mut store, &id, ordinal, true).expect("message store");
+            let incarnation = generation.map_or(0, |state| state.incarnation);
+            reconcile(inner, &mut store, &id, (incarnation, i64::MAX), true, true)
+                .expect("message store");
         }
     }
     for node in nodes {
-        reconcile(inner, &mut store, &node.id, ordinal(&node), ended(&node))
-            .expect("message store");
+        reconcile(
+            inner,
+            &mut store,
+            &node.id,
+            binding(&node),
+            ended(&node),
+            permanently_ended(&node),
+        )
+        .expect("message store");
     }
     true
 }
@@ -566,13 +592,13 @@ async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
 /// next one, so exactly one Message is typed per `idle`. It is recorded `delivered` in one
 /// conditional write before typing starts (B8), so a Takeover beginning while the prompt is being
 /// typed cannot hold a Message already in flight; a refusal reverts that record.
-async fn on_idle(inner: &Arc<Inner>, agent: &str, incarnation: i64) {
+async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
     let found = {
         let store = inner.store.lock().unwrap();
-        if store.require_generation(agent, incarnation).is_err() {
+        if store.require_generation(agent, at).is_err() {
             return;
         }
-        store.next_pending(agent).expect("message store")
+        store.next_pending(agent, at).expect("message store")
     };
     let Some(found) = found else {
         return;
@@ -584,8 +610,9 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, incarnation: i64) {
     };
     let recorded = {
         let store = inner.store.lock().unwrap();
-        if store.require_generation(agent, incarnation).is_err()
-            || store.bound(found.id).expect("message store") != incarnation
+        if store.require_generation(agent, at).is_err()
+            || (store.bound(found.id).expect("message store").0 != at.0
+                || store.bound(found.id).expect("message store").1 >= at.1)
         {
             return;
         }
@@ -619,17 +646,15 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, incarnation: i64) {
         .emit(Actor::daemon(), EventData::MessageDelivered(message));
 }
 
-/// B6, B9: an Agent that exits ends its Takeover, if any, then drops every Message still
-/// `pending` for it (which now includes any just promoted from a `takeover` hold).
-fn on_ended(inner: &Arc<Inner>, agent: &str, incarnation: i64) {
-    let mut store = inner.store.lock().unwrap();
-    reconcile(inner, &mut store, agent, incarnation, true).expect("message store");
-}
-
-fn ordinal(node: &RailNode) -> i64 {
-    node.incarnation
-        .as_deref()
-        .map_or(0, |n| n.parse().expect("Rail Incarnation"))
+fn binding(node: &RailNode) -> store::Binding {
+    (
+        node.incarnation.as_deref().map_or(0, |n| {
+            contracts::agent::parse_positive_ordinal(n).expect("Rail Incarnation")
+        }),
+        node.status_revision.as_deref().map_or(i64::MAX, |n| {
+            contracts::agent::parse_positive_ordinal(n).expect("Rail Status revision")
+        }),
+    )
 }
 
 fn ended(node: &RailNode) -> bool {
@@ -638,27 +663,46 @@ fn ended(node: &RailNode) -> bool {
         .is_none_or(|s| matches!(s.kind, Kind::Done | Kind::Error))
 }
 
+fn permanently_ended(node: &RailNode) -> bool {
+    node.status_revision.is_none() || (ended(node) && node.terminal_id.is_none())
+}
+
 fn accept_receiver(inner: &Inner, store: &mut Store, node: &RailNode) -> Result<(), RpcError> {
-    reconcile(inner, store, &node.id, ordinal(node), ended(node))?;
-    store.require_generation(&node.id, ordinal(node))
+    reconcile(
+        inner,
+        store,
+        &node.id,
+        binding(node),
+        ended(node),
+        permanently_ended(node),
+    )?;
+    store.require_generation(&node.id, binding(node))
 }
 
 fn reconcile(
     inner: &Inner,
     store: &mut Store,
     agent: &str,
-    incarnation: i64,
+    at: store::Binding,
     closed: bool,
+    permanent: bool,
 ) -> Result<(), RpcError> {
     let previous = store.generation(agent)?;
-    if previous.is_some_and(|(n, _)| n > incarnation) {
-        return Ok(());
-    }
-    if previous.is_some_and(|(n, closed)| n == incarnation && closed) {
-        return Ok(());
-    }
-    if closed || previous.is_none_or(|(n, _)| n < incarnation) {
-        if store.end_takeover(agent)?.is_some() {
+    let through = if permanent {
+        Some((at.0, i64::MAX))
+    } else if closed {
+        Some(at)
+    } else if previous.is_none_or(|state| state.incarnation < at.0) {
+        Some((at.0.saturating_sub(1), i64::MAX))
+    } else {
+        None
+    };
+    if let Some(through) = through {
+        if store
+            .takeover_bound(agent)
+            .is_some_and(|bound| bound <= through)
+            && store.end_takeover(agent)?.is_some()
+        {
             inner.bus.emit(
                 Actor::daemon(),
                 EventData::TakeoverChanged(TakeoverChanged {
@@ -667,13 +711,29 @@ fn reconcile(
                 }),
             );
         }
-        for message in store.drop_all_pending(agent, Reason::ReceiverGone)? {
+        for message in store.drop_all_pending(agent, Reason::ReceiverGone, through)? {
             inner
                 .bus
                 .emit(Actor::daemon(), EventData::MessageDropped(message));
         }
     }
-    store.set_generation(agent, incarnation, closed)
+    if previous.is_some_and(|state| state.incarnation > at.0) {
+        return Ok(());
+    }
+    let mut state = previous
+        .filter(|state| state.incarnation == at.0)
+        .unwrap_or(store::ReceiverState {
+            incarnation: at.0,
+            revision: at.1,
+            closed_revision: -1,
+            closed: false,
+        });
+    state.revision = state.revision.max(at.1);
+    if closed {
+        state.closed_revision = state.closed_revision.max(at.1);
+    }
+    state.closed |= permanent;
+    store.set_generation(agent, state)
 }
 
 /// B2's `<kind>`: `note` or `question` as on the wire, never Rust's `Debug` spelling.
@@ -740,6 +800,7 @@ mod tests {
             order: 0,
             status,
             incarnation: Some("1".into()),
+            status_revision: Some("1".into()),
             terminal_id: None,
             worktree: None,
         }

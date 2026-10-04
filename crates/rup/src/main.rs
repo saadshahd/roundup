@@ -67,10 +67,7 @@ async fn ping() -> Result<(), String> {
 async fn signal(agent_id: &str) -> Result<(), String> {
     let incarnation = std::env::var("ROUNDUP_AGENT_INCARNATION")
         .map_err(|_| "ROUNDUP_AGENT_INCARNATION is required".to_owned())?;
-    if !incarnation
-        .parse::<i64>()
-        .is_ok_and(|n| n > 0 && n.to_string() == incarnation)
-    {
+    if contracts::agent::parse_positive_ordinal(&incarnation).is_none() {
         return Err(
             "ROUNDUP_AGENT_INCARNATION must be a canonical positive signed 64-bit decimal".into(),
         );

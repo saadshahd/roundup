@@ -128,7 +128,19 @@ impl Fixture {
             .join("fake-claude")
             .to_string_lossy()
             .into_owned();
-        Self::over(dir, bus, &bin)
+        if dir.path().join(".roundup").is_dir() {
+            let events = bus.subscribe();
+            let (agents, terminals) = open_in(&dir.path().join(".roundup"), &bus, &bin);
+            Self {
+                dir,
+                bus,
+                events,
+                agents,
+                terminals,
+            }
+        } else {
+            Self::over(dir, bus, &bin)
+        }
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {

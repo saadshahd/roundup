@@ -26,7 +26,7 @@ describe("u7 exited wording", () => {
       parent: null,
       order,
       status: null,
-      incarnation: "1",
+      incarnation: "1", status_revision: null,
       terminal_id: id === "none" ? null : `t-${id}`,
       worktree: null,
     }));
