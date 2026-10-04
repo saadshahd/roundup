@@ -277,6 +277,12 @@
       "skillPath": "hope/skills/shift/SKILL.md",
       "computedHash": "c8efbb554b5074ef11abec7fa808a7daf3d7acff31d276da3875759210ee9dd1"
     },
+    "show-me": {
+      "source": "humanlayer/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
+      "computedHash": "43766f53afe7eb9feba0bb7716590c35cbb8d39d4a91eddef50e9566a6f6ae19"
+    },
     "target": {
       "source": "saadshahd/moo.md",
       "sourceType": "github",

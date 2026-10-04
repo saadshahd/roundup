@@ -18,6 +18,7 @@ Read `CONTEXT.md` and `PRINCIPLES.md` first; every identifier, RPC method and UI
 - No scenario, no work: a scenario in `scenarios/*.md`, written by its squad in its own ids (`docs/squads.md`).
 - Build in your own worktree and branch: invoke `sound:prime` (Codex: `prime`), then `tdd`. Name tests after their scenario (`fn t3_…` proves T3).
 - Review: invoke `sound:review` (Codex: `review`).
+- Everything a human reads (a PR body, a verdict, a report, a message to the user): invoke `reduce`, then lay it out as `.agents/skills/show-me/SKILL.md` says, the smallest tree, sequence, diff or table that makes the point.
 - Before pushing: `pnpm install`, then `just check`. Open the PR against `main`, naming its scenario ids.
 - Red main: revert; never fix forward.
 - `contracts/generated/` comes from `crates/contracts`; regenerate, never hand-edit.
