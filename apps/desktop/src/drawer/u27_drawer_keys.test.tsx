@@ -34,6 +34,7 @@ const mountPaneWithDrawer = async (selectAgent: boolean) => {
   const emulator: Emulator = {
     write: () => {},
     setSize: () => {},
+    setFontSize: () => {},
     reset: () => {},
     selection: () => "",
     paste: () => {},
@@ -76,6 +77,7 @@ const mountPaneWithFocusedTerminal = async () => {
   const emulator: Emulator = {
     write: () => {},
     setSize: () => {},
+    setFontSize: () => {},
     reset: () => {},
     selection: () => "",
     paste: () => {},
