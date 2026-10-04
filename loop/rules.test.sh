@@ -881,6 +881,28 @@ gate_specification_head
 expect_exit 1 'L53 bracket-named symlink cannot borrow the regular Todo file mode' gate proof 12
 
 gate_visible
+printf '**A7 backend lifecycle.** Given an Agent, when stopped, then its record remains.\n' >scenarios/agents.md
+commit backend 'Author-Agent: builder'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .body |= sub("Scenarios: U1"; "Scenarios: U1 A7") | .body |= sub("ok U1_visible"; "ok U1_visible\nok A7_lifecycle")'
+expect_exit 0 'L53 mixed proof requires backend tests but only visual images' gate proof 12
+gate_set '.body |= sub("ok A7_lifecycle"; "")'
+expect_exit 1 'L53 mixed proof still requires backend test output' gate proof 12
+gate_set '.body |= sub("Scenarios: U1 A7"; "Scenarios: A7") | .body |= sub("ok U1_visible"; "ok A7_lifecycle")'
+expect_exit 1 'L53 visible paths cannot name only backend scenarios' gate proof 12
+
+gate_visible
+printf '**U2 another view.** Given a 1280 by 800 window, when opened, then its content fits.\n' >>scenarios/ui.md
+commit second_view 'Author-Agent: builder'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .body |= sub("Scenarios: U1"; "Scenarios: U1 U2") | .body |= sub("ok U1_visible"; "ok U1_visible\nok U2_view")'
+expect_exit 1 'L53 every visual scenario needs images' gate proof 12
+
+gate_visible
+printf '**U1 a visible change.** Given a window, when opened, then a screenshot shows it.\n' >scenarios/ui.md
+commit missing_size 'Author-Agent: builder'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
+expect_exit 1 'L53 visual scenario without window dimensions fails' gate proof 12
+
+gate_visible
 expect_exit 0 'L53 visible before and after evidence passes' gate proof 12
 gate_set '.body |= sub("U1 before[^\n]*\n"; "")'
 expect_exit 1 'L53 missing before fails' gate proof 12
