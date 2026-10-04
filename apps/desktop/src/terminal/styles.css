@@ -57,7 +57,7 @@
   transition: 0s;
 }
 
-.pane-empty {
+.pane .pane-empty {
   position: absolute;
   top: 50%;
   left: 50%;
