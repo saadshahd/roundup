@@ -35,6 +35,7 @@ export default function PadRichEditor(props: {
 }) {
   let host: HTMLDivElement | undefined;
   let crepe: CrepeBuilder | undefined;
+  let created: ReturnType<CrepeBuilder["create"]> | undefined;
   let original = props.text;
   let applying = false;
   let closed = false;
@@ -82,7 +83,8 @@ export default function PadRichEditor(props: {
       });
     });
 
-    void crepe.create().then(() => {
+    created = crepe.create();
+    void created.then(() => {
       if (closed || !host || !crepe) return;
 
       const field = host.querySelector<HTMLElement>(".ProseMirror");
@@ -141,7 +143,12 @@ export default function PadRichEditor(props: {
   onCleanup(() => {
     closed = true;
 
-    if (crepe) void crepe.destroy();
+    // Destroying during create schedules a retry that can outlive the host's DOM environment.
+    if (crepe) void created?.then(
+      () => crepe!.destroy(),
+      // Creation failures already reach the failure line; destroy failures must still escape.
+      () => undefined,
+    );
   });
 
   return (

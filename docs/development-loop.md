@@ -144,3 +144,17 @@ The scenario text must name that window size. The proof branch contains only
 regular media files under `proof/`, within L53's size limits. Capture review
 and confirmation that a harness caption identifies its seed remain Reviewer
 checks; the gate checks references, dimensions, file metadata and captions.
+
+L76 (`scenarios/loop-proof.md`) lets a component code change with unchanged
+rendering use test proof without publishing a `proof/pr-<n>` branch. The independent
+Reviewer must post an approving verdict with the exact line `Visual: unchanged`,
+a full `Reviewed-head: <sha>` and one `Reviewed-by-Agent: <id>` distinct from every
+author. The newest verdict for the current tree must carry that attestation.
+The reviewed commit must be an ancestor with the same Git tree as the head;
+an empty approval commit preserves it, but a merge that changes the tree needs
+fresh review. Test proof still names the exact current head. The Driver can
+prepare test proof before review, then run `proof` after the verdict and refresh
+the exact-head test output after the approval commit. An author-only claim never
+waives image proof. The Reviewer judges visibility from the diff: an actual
+visible change still needs L53 before/after media at the scenario window size.
+L54 approval carry and the separate L57 label gate still apply.

@@ -399,19 +399,20 @@ def comments(authors, head, base, records):
             explicit = re.findall(r'^(?:Reviewed-head|Head): ([0-9a-f]{40})\s*$', body, re.M)
             named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
             if len(set(named)) == 1:
-                events.append((verdict[1], named[0] if named[0] in current_heads else None))
+                events.append((verdict[1], named[0] if named[0] in current_heads else None,
+                               'Visual: unchanged' in body.splitlines()))
             elif named and verdict[1] == 'reject':
                 target = next((candidate for candidate in reversed(ordered_heads) if candidate in named), None)
-                events.append(('reject', target))
+                events.append(('reject', target, False))
         pick = re.match(r'ARCHITECT: (split|amend|retire)\b', body)
         ids = re.findall(r'^Architect: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if pick and len(ids) == 1 and ids[0] in architects - authors:
-            events.append((pick[1], None))
+            events.append((pick[1], None, False))
     return events
 
 def rounds(events):
     count = 0
-    for event, _ in events:
+    for event, _, _ in events:
         require(event != 'retire', 'retired')
         if event in ('split', 'amend'):
             count = 0
@@ -487,7 +488,13 @@ def section(body, title):
 def fences(text):
     return re.findall(r'^```[^\n]*\n(.*?)^```[ \t]*$', text, re.M | re.S)
 
-def proof(pr, paths, head):
+def is_visual_unchanged(events, head):
+    for verdict, reviewed, unchanged in reversed(events):
+        if reviewed and ancestor(reviewed, head) and git('rev-parse', reviewed+'^{tree}') == git('rev-parse', head+'^{tree}'):
+            return verdict == 'approve' and unchanged
+    return False
+
+def proof(pr, paths, head, base, events=None):
     body = pr['body']
     require(isinstance(body, str), 'proof: missing body')
     missing = []
@@ -518,6 +525,11 @@ def proof(pr, paths, head):
     for id_ in sorted(ids):
         require(re.search(r'^.*\b'+id_+r'(?:\b|_).*\b(?:ok|passed)\b|^.*\b(?:ok|passed)\b.*\b'+id_+r'(?:\b|_)', output, re.M | re.I), 'proof: missing test output for '+id_)
     if not visible:
+        return
+    if events is None:
+        authors, records = history(base, head)
+        events = comments(authors, head, base, records)
+    if is_visual_unchanged(events, head):
         return
     require(re.search(r'^Shows: .+', evidence, re.M), 'proof: missing Shows:')
     captions = re.sub(r'^```[^\n]*\n.*?^```[ \t]*$', '', evidence, flags=re.M | re.S)
@@ -574,7 +586,7 @@ try:
     if command == 'class':
         print(lane_of(files, paths, base, head))
     elif command == 'proof':
-        proof(pr, paths, head)
+        proof(pr, paths, head, base)
     elif command == 'ci-trailers':
         authors, records = history(base, head)
         base_gate(pr)
@@ -595,7 +607,7 @@ try:
             gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
             gate(lambda: rounds(events))
             rejected = set()
-            for event, named_head in events:
+            for event, named_head, _ in events:
                 if named_head and event == 'reject':
                     rejected.add(named_head)
                 elif named_head and event == 'approve':
@@ -605,7 +617,7 @@ try:
             lane = lane_of(files, paths, base, head)
             gate(lambda: trailer_gate(records, authors, lane, head, base))
             if lane == 'block':
-                gate(lambda: proof(pr, paths, head))
+                gate(lambda: proof(pr, paths, head, base, events))
             latest = one(pull)
             gate(lambda: require(latest == pr, 'PR changed during merge-ready'))
             require(not errors, '\n'.join(errors))
