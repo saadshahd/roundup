@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "skills": {
+    "anchor": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/anchor/SKILL.md",
+      "computedHash": "c33ac15eafa288713f794f43bbc51c1bc1a3eeee3970c20db1cad0b7422ca2c4"
+    },
+    "clarify": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/clarify/SKILL.md",
+      "computedHash": "214bc32f3b142a0cc89be3715e85f122e4a0286b261960ca8cf45a2f6f1bdcc7"
+    },
+    "compose": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/compose/SKILL.md",
+      "computedHash": "7fc40bb358f6cb16bb0e3b6d21bf9500ba3fd0f48bf26f3216a89e40cebff250"
+    },
+    "consult": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/consult/SKILL.md",
+      "computedHash": "4d31c67c815fdfc60f5f7ff2de0fa03f9bebfbd3f7899076804ad5abbfd8a3dc"
+    },
+    "draft": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/draft/SKILL.md",
+      "computedHash": "d7546e0f0b333d236079200fadf2bdebd397cdb1aa9d103d3150c905864eaccb"
+    },
+    "elicit": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/elicit/SKILL.md",
+      "computedHash": "e61b87339fe8d4f57cc1f30166465801408ff391319d52380cbaf0763845884e"
+    },
+    "explain": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/explain/SKILL.md",
+      "computedHash": "7a8ebc661ddac5652af542cb38f4f669b57db99c060dbce352ef5fb2a62b0b03"
+    },
+    "fly": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hunch/skills/fly/SKILL.md",
+      "computedHash": "7f5a6b83bfe50f1591126397da8286fcf1db3d826291310c24bd06062cbfc3fb"
+    },
+    "freeze": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/freeze/SKILL.md",
+      "computedHash": "4f5b80f3126a48b6ef1e829ea7781260d4ed67b0a1ad4abd7cbd2c8a693acdec"
+    },
+    "grasp": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hold/skills/grasp/SKILL.md",
+      "computedHash": "a3fcd8ba3aecbbeb5082d668be199e54263563d1aae70bb85fe57a0c7347cce4"
+    },
+    "harvest": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hunch/skills/harvest/SKILL.md",
+      "computedHash": "85446004050985668960155206daf68ec5b293a89cad93d5146ead00035d2093"
+    },
+    "intent": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/intent/SKILL.md",
+      "computedHash": "9f301919ff174f609c014304123b0b52180bb3888c6a4db5b66e972228e14802"
+    },
+    "interrogate": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/interrogate/SKILL.md",
+      "computedHash": "790d06f492d4e246f1408985234be0521764cc27054339658f0c5522c1390822"
+    },
+    "inversion": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/inversion/SKILL.md",
+      "computedHash": "473fc2e90073e6feb9ea9d83b6d813d4d8b16d5facd948d24fe7165a7584341d"
+    },
+    "judge": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/judge/SKILL.md",
+      "computedHash": "598ad02257b38fbf215b00f358c0ae8f144702ade3d494f030d82083dfea6f01"
+    },
+    "land": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hold/skills/land/SKILL.md",
+      "computedHash": "d2bea34d0090b2544cd63bb107923c1759759df7fc5990d779ed7cbc0c4351c5"
+    },
+    "learn": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hold/skills/learn/SKILL.md",
+      "computedHash": "77ff08e2f419fa373739f07b785637da5c2682cd7d3f23e3e305e57597922dee"
+    },
+    "prime": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "sound/skills/prime/SKILL.md",
+      "computedHash": "1497293637e8a80d49dfbec4c32e399d1b6feadc90fc9dd3c0fd63dc041f4db5"
+    },
+    "provocation": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/provocation/SKILL.md",
+      "computedHash": "f5358a566c1fa7bd6c3499d1a31aed2d1299355b34966e28ac08a9959299144d"
+    },
+    "reduce": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/reduce/SKILL.md",
+      "computedHash": "47848d8f2a7afa3c3f4b6798434b891c23873ec50192a9b6a44cd0e9cb7e00b5"
+    },
+    "reframe": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/reframe/SKILL.md",
+      "computedHash": "aa6ea95411264689e465aa0d9acc113da833e209bf58b74031b59a152468b508"
+    },
+    "review": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "sound/skills/review/SKILL.md",
+      "computedHash": "f907a168e33dac46555954c364df654b5fd96a69e8bb2dc985d837c15a8b05db"
+    },
+    "router": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/router/SKILL.md",
+      "computedHash": "c3332c0a64d17e425e6fdfa8368324605bb864537af1918b678a06d27eb0e2e3"
+    },
+    "setup": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "sound/skills/setup/SKILL.md",
+      "computedHash": "e3c27045afbff98aa617904269297d6e28c4d626a523d4ee3ec7036a0d4a3b33"
+    },
+    "shape": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/shape/SKILL.md",
+      "computedHash": "8d67c277e9459af1b42c542f78ac8c3c40bb596e55eb97f0874adab453b544c1"
+    },
+    "shift": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/shift/SKILL.md",
+      "computedHash": "c8efbb554b5074ef11abec7fa808a7daf3d7acff31d276da3875759210ee9dd1"
+    },
+    "target": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/target/SKILL.md",
+      "computedHash": "21989bf211ef465fb93b70d92d48f9bd547746b313652d3bad9f62a08a36b2d4"
+    },
+    "toy": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hold/skills/toy/SKILL.md",
+      "computedHash": "db743882becb39029ebd06fae9f96d55f174eccde1bb839139480db7bf600126"
+    },
+    "widen": {
+      "source": "saadshahd/moo.md",
+      "sourceType": "github",
+      "skillPath": "hope/skills/widen/SKILL.md",
+      "computedHash": "f4b739b703a5b839dfa07d9cc599efd1afb0c527cba3a8863b2a9033b821830c"
+    }
+  }
+}
