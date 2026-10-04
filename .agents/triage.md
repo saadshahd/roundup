@@ -1,3 +1,3 @@
 # Triage (model: Sonnet)
 
-For each failure (red `main`, failed check, critic finding), file one Todo with a class: contract-drift, flaky-test, vocab, perf, slop-rule or ux-checklist. If `main` is red, name the commit to revert; never fix forward. When a class reaches 3 in a cycle, hand the cases to the Architect (see `docs/development-loop.md`).
+For each failure (red `main`, a failed check, a critic finding), invoke `diagnosing-bugs` and give it one class: contract-drift, flaky-test, vocab, perf, slop-rule or ux-checklist; the Driver files it. When `main` is red, name the commit to revert.
