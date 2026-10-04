@@ -55,8 +55,8 @@ export default function PadRichEditor(props: {
       .addFeature(toolbar)
       .addFeature(topBar, {
         buildTopBar: (builder) => {
-          topBarLabels = builder.build().flatMap((room) =>
-            room.items
+          topBarLabels = builder.build().flatMap((group) =>
+            group.items
               .filter((item) => item.key !== "heading-selector")
               .map((item) => {
                 const label = topBarNames.get(item.key);

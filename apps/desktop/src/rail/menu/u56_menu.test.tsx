@@ -72,7 +72,7 @@ describe("u56 remove from the Rail", () => {
     ]);
   });
 
-  it("u56_a_working_agent_asks_before_any_call_and_stops_before_removal", async () => {
+  it("u56_a_working_agent_asks_before_backend_checked_removal", async () => {
     const { app } = await mountRail([agent("a", "working", "busy")]);
     app.handlers["agent.stop"] = () => null;
     app.handlers["rail.remove"] = () => null;
@@ -85,7 +85,6 @@ describe("u56 remove from the Rail", () => {
 
     fireEvent.click(item("remove"));
     await waitFor(() => expect(app.calls.filter((call) => ["agent.stop", "rail.remove"].includes(call.method))).toEqual([
-      { method: "agent.stop", params: { id: "a" } },
       { method: "rail.remove", params: { id: "a" } },
     ]));
   });
@@ -101,7 +100,7 @@ describe("u56 remove from the Rail", () => {
     expect(app.calls.filter((call) => call.method === "rail.remove")).toEqual([]);
   });
 
-  it("u56_idle_agent_removal_goes_at_once_after_stop", async () => {
+  it("u56_idle_agent_removal_goes_at_once_to_the_backend", async () => {
     const { app } = await mountRail([agent("a", "idle", "idle")]);
     app.handlers["agent.stop"] = () => null;
     app.handlers["rail.remove"] = () => null;
@@ -110,12 +109,11 @@ describe("u56 remove from the Rail", () => {
     fireEvent.click(item("remove"));
 
     await waitFor(() => expect(app.calls.filter((call) => ["agent.stop", "rail.remove"].includes(call.method))).toEqual([
-      { method: "agent.stop", params: { id: "a" } },
       { method: "rail.remove", params: { id: "a" } },
     ]));
   });
 
-  it("u56_a_running_terminal_asks_before_kill_then_removes_its_row", async () => {
+  it("u56_a_running_terminal_asks_before_backend_checked_removal", async () => {
     const { app } = await mountRail([terminal("t")]);
     app.handlers["terminal.kill"] = () => null;
     app.handlers["rail.remove"] = () => null;
@@ -128,7 +126,6 @@ describe("u56 remove from the Rail", () => {
 
     fireEvent.click(item("remove"));
     await waitFor(() => expect(app.calls.filter((call) => ["terminal.kill", "rail.remove"].includes(call.method))).toEqual([
-      { method: "terminal.kill", params: { id: "t-t" } },
       { method: "rail.remove", params: { id: "t" } },
     ]));
   });
@@ -195,6 +192,21 @@ describe("u56 remove from the Rail", () => {
 
     await waitFor(() => expect(rail.nodes).toEqual([]));
     expect(screen.queryByText("gone")).toBeNull();
+  });
+
+  it("u56_unlanded_room_removal_leaves_the_live_door_running", async () => {
+    const { app, rail } = await mountRail([door("r", "working", "busy")]);
+    app.handlers["agent.stop"] = () => null;
+    app.handlers["rail.remove"] = () => Promise.reject(new RpcError(-32003, "worktree_unlanded: dirty 1, ahead 0"));
+    openAt("r");
+    fireEvent.click(item("remove"));
+    fireEvent.click(item("remove"));
+
+    await screen.findByText("worktree_unlanded: dirty 1, ahead 0");
+    expect(app.calls.filter((call) => ["agent.stop", "rail.remove"].includes(call.method))).toEqual([
+      { method: "rail.remove", params: { id: "r" } },
+    ]);
+    expect(rail.nodes[0]?.terminal_id).toBe("t-r");
   });
 
   it("u56_other_remove_error_uses_the_rail_failure_line", async () => {

@@ -227,8 +227,10 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   app.handlers["agent.stop"] = ({ id }) => {
     const node = find(id);
 
-    if (node.terminal_id) exit(node.terminal_id);
-    Object.assign(node, { terminal_id: null, status: statusAt(Date.now(), "done", "stopped", 0) });
+    if (node.terminal_id === null) return null;
+
+    exit(node.terminal_id);
+    Object.assign(node, { terminal_id: null, status: statusAt(Date.now(), "done", "stopped", 0), status_revision: String(BigInt(node.status_revision ?? "0") + 1n) });
 
     return changed(null);
   };

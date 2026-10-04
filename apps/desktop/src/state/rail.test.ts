@@ -5,7 +5,7 @@ import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { connectEvents } from "../app/events";
 import { RpcError } from "../app/seam";
 import { createFakeApp } from "../testing/fakeApp";
-import { event, info, node, USER } from "../testing/nodes";
+import { event, info, node, room, door, USER } from "../testing/nodes";
 import { createRailState } from "./rail";
 
 const status = (label: string): Status => ({ kind: "working", label, since: 1 });
@@ -218,4 +218,40 @@ it("a7_delayed_same_incarnation_status_cannot_replace_a_later_revision", async (
   expect(rail.nodes[0]?.status?.label).toBe("recovered");
   app.emit(event({ name: "agent.status", data: { id: "door", incarnation: "1", status_revision: "4", status: status("new work") } }));
   expect(rail.nodes[0]?.status?.label).toBe("new work");
+});
+
+
+describe("u62 Door launch failures", () => {
+  it("u62_external_start_clears_the_failed_attempt_but_ordinary_refresh_retains_it", async () => {
+    const { app, rail } = await open([room("r", { incarnation: "1", status_revision: "2" })]);
+    app.handlers["rail.startDoor"] = () => Promise.reject(new Error("launch failed"));
+    await rail.startDoor("r");
+    await rail.refresh();
+    expect(rail.doorFailure("r")).toBe("launch failed");
+    app.handlers["rail.tree"] = () => [door("r", "working", "ready", { incarnation: "2" })];
+    app.emit(event({ name: "rail.changed" }));
+    await rail.settled();
+    expect(rail.doorFailure("r")).toBeNull();
+  });
+
+  it("u62_a_newer_ended_incarnation_clears_the_obsolete_start_failure", async () => {
+    const { app, rail } = await open([room("r", { incarnation: "1" })]);
+    app.handlers["rail.startDoor"] = () => Promise.reject(new Error("launch failed"));
+    await rail.startDoor("r");
+    app.handlers["rail.tree"] = () => [room("r", { incarnation: "2" })];
+    await rail.refresh();
+    expect(rail.doorFailure("r")).toBeNull();
+  });
+
+  it("u62_a_late_start_rejection_does_not_cover_an_external_success", async () => {
+    const { app, rail } = await open([room("r")]);
+    let reject!: (error: Error) => void;
+    app.handlers["rail.startDoor"] = () => new Promise((_, fail) => { reject = fail; });
+    const starting = rail.startDoor("r");
+    app.handlers["rail.tree"] = () => [door("r", "working", "ready", { incarnation: "2" })];
+    await rail.refresh();
+    reject(new Error("old launch failed"));
+    await starting;
+    expect(rail.doorFailure("r")).toBeNull();
+  });
 });

@@ -220,6 +220,30 @@ describe("u26 the Daemon's rail methods", () => {
     expect([listed?.running, seen]).toEqual([false, [event({ name: "terminal.exited", data: { id: "t-shell", code: null } })]]);
   });
 
+  it("u26_plain_terminal_snapshots_have_no_agent_incarnation_or_revision", async () => {
+    const { app } = await daemon();
+    const terminals = (await app.rpc("rail.tree", null)).filter((node) => node.kind === "terminal");
+    expect(terminals.length).toBeGreaterThan(0);
+
+    for (const node of terminals) {
+      expect([node.status, node.incarnation, node.status_revision]).toEqual([null, null, null]);
+    }
+  });
+
+  it("u26_stop_advances_the_status_revision_once_and_repeated_stop_is_inert", async () => {
+    const { app, seen } = await daemon();
+    const before = (await app.rpc("rail.tree", null)).find((node) => node.id === "tokens")!;
+    await app.rpc("agent.stop", { id: "tokens" });
+    const stopped = (await app.rpc("rail.tree", null)).find((node) => node.id === "tokens")!;
+    expect(stopped.incarnation).toBe(before.incarnation);
+    expect(stopped.status_revision).toBe(String(BigInt(before.status_revision!) + 1n));
+    expect(stopped.status?.kind).toBe("done");
+    seen.length = 0;
+    await app.rpc("agent.stop", { id: "tokens" });
+    expect((await app.rpc("rail.tree", null)).find((node) => node.id === "tokens")).toEqual(stopped);
+    expect(seen).toEqual([]);
+  });
+
   it("u26_stopping_an_agent_exits_its_terminal", async () => {
     const { app } = await daemon();
 

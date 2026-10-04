@@ -69,8 +69,6 @@ export const createRailMenu = (app: AppSeam, rail: RailState, onFailure: (messag
     }
 
     void attempt(async () => {
-      if (isRunning(current.node, current.exit)) await stop(current.node);
-
       await app.rpc("rail.remove", { id: current.node.id });
     });
   };

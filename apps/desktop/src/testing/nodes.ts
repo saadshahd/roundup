@@ -39,7 +39,7 @@ export const door = (id: string, kind: Kind, label: string, over: Partial<RailNo
   room(id, { incarnation: "1", status_revision: "1", status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
 
 export const terminal = (id: string, over: Partial<RailNode> = {}): RailNode =>
-  node(id, { kind: "terminal", status: null, ...over });
+  node(id, { kind: "terminal", status: null, incarnation: null, status_revision: null, ...over });
 
 export const info = (id: string, over: Partial<TerminalInfo> = {}): TerminalInfo => ({
   id,
