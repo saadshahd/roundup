@@ -28,3 +28,11 @@ Scenario text is on main. The row starts when what it waits on has merged. A UI 
 | U60 | an Agent's Todos under it (Moves: D1, D2, D4) | `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
 | U41 | Meta-agent folding promised by U41 (Moves: D2, D6) | `apps/desktop/src/rail/layout.ts`, `RailRow.tsx`, `src/keys/**`; U100's saved layout should then accept Meta-agent ids | `u41_` Meta-agent keyboard and pointer cases, `u100_` reopen with a collapsed Meta-agent | now; coordinate with the U41 rename row in `RailRow.tsx` |
 | U132, U133 | visual pass 2, colour and click targets: Kind tones, `--accent`, hover, pressed and focus states, 24 px hit areas; Rail menu button font uses a D2 type step (review finding on #267) | `apps/desktop/src/rail/**`, `apps/desktop/src/drawer/**`, `apps/desktop/src/todos/**`, `apps/desktop/src/pads/**` | every test of those folders; computed Rail menu button font size | after U130, U137, U35 and U36 merge |
+
+## Ready after shared files are released
+
+This row becomes dispatchable when its scenario is on main and its dependency releases the named files. The Driver assigns one Builder before code starts.
+
+| Id | Item | Owner | Owns | Observer | Waits on |
+|---|---|---|---|---|---|
+| U142 | prevent browser text selection across the Rail while preserving rename editing (Moves: none; preserve D6, D7, D10; P6) | ui-rail Driver; QA: boxd-qa-rail-selection; Builder unclaimed | `apps/desktop/src/rail/styles.css`, `Rail.tsx`, `RailRow.tsx`, new `apps/desktop/src/rail/u142_*` tests only | `u142_` real-browser drags from labels and gaps leave empty selection at 1280 by 800 and 700 by 800; rename pointer/keyboard selection edits and commits once; row drop changes Home; accessible names and U6/U8/U9/U22/U31/U41/U86 stay green; `just check`; before/after proof and separate WKWebView result as U142 specifies | #280 U86 merged or its Rail ownership explicitly released; rebase and remeasure its accessible controls before writing the failing test; serialize with any other holder of these Rail files |
