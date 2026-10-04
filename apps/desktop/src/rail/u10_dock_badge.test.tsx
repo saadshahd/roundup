@@ -35,7 +35,7 @@ describe("u10 Dock badge", () => {
     app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: { kind: "needs-you", label: "?", since: 1 } } }));
     app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "b", status: { kind: "error", label: "!", since: 1 } } }));
     await rail.settled();
-    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "a", status: { kind: "working", label: "w", since: 2 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "3", incarnation: "1", id: "a", status: { kind: "working", label: "w", since: 2 } } }));
     await rail.settled();
 
     expect(app.badges).toEqual([0, 1, 2, 1]);

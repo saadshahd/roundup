@@ -206,6 +206,7 @@ export const Rail = () => {
     if (id !== null && rail.nodes.some((node) => node.id === id)) {
       rail.select(id);
       setWanted(null);
+
       if (wantedDoor() === id) {
         setWantedDoor(null);
         void rail.startDoor(id);

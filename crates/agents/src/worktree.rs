@@ -216,30 +216,16 @@ impl Git {
                 "provisioning ownership or branch changed; preserving it",
             ));
         }
-        let listing = self
-            .run(project, &["worktree", "list", "--porcelain", "-z"])
-            .map_err(failed)?;
-        let expected_path = plan
-            .worktree
-            .path
-            .canonicalize()
-            .unwrap_or_else(|_| plan.worktree.path.clone());
+        let expected_path = canonical_path(&plan.worktree.path);
         let mut registered = false;
-        for record in listing.split("\0\0") {
-            let path = record.split('\0').find_map(|v| v.strip_prefix("worktree "));
-            let reference = record.split('\0').find_map(|v| v.strip_prefix("branch "));
-            if let Some(path) = path {
-                let path = Path::new(path)
-                    .canonicalize()
-                    .unwrap_or_else(|_| PathBuf::from(path));
-                if path == expected_path {
-                    if reference != Some(&branch_ref) {
-                        return Err(failed("provisioning path belongs to another branch"));
-                    }
-                    registered = true;
-                } else if reference == Some(&branch_ref) {
-                    return Err(failed("provisioning branch belongs to another path"));
+        for (path, reference) in self.registered_worktrees(project)? {
+            if path == expected_path {
+                if reference.as_deref() != Some(&branch_ref) {
+                    return Err(failed("provisioning path belongs to another branch"));
                 }
+                registered = true;
+            } else if reference.as_deref() == Some(&branch_ref) {
+                return Err(failed("provisioning branch belongs to another path"));
             }
         }
         if plan.worktree.path.exists() {
@@ -281,10 +267,16 @@ impl Git {
         } else {
             0
         };
-        let range = format!("{}..{}", worktree.base, worktree.branch);
-        let ahead = self
-            .run(project, &["rev-list", "--count", &range])
-            .map_err(failed)?;
+        let ahead = match self.reference(project, &format!("refs/heads/{}", worktree.branch))? {
+            Some(head) => self
+                .run(
+                    project,
+                    &["rev-list", "--count", &format!("{}..{head}", worktree.base)],
+                )
+                .map_err(failed)?,
+            None if !worktree.path.exists() => "0".into(),
+            None => return Err(failed("recorded Worktree branch is missing")),
+        };
         if dirty != 0 || ahead != "0" {
             return Err(RpcError::conflict(format!(
                 "worktree_unlanded: dirty {dirty}, ahead {ahead}"
@@ -293,21 +285,61 @@ impl Git {
         Ok(())
     }
 
+    fn registered_worktrees(
+        &self,
+        project: &Path,
+    ) -> Result<Vec<(PathBuf, Option<String>)>, RpcError> {
+        let listing = self
+            .run(project, &["worktree", "list", "--porcelain", "-z"])
+            .map_err(failed)?;
+        Ok(listing
+            .split("\0\0")
+            .filter_map(|record| {
+                let path = record
+                    .split('\0')
+                    .find_map(|value| value.strip_prefix("worktree "))?;
+                let branch = record
+                    .split('\0')
+                    .find_map(|value| value.strip_prefix("branch "))
+                    .map(str::to_owned);
+                Some((canonical_path(Path::new(path)), branch))
+            })
+            .collect())
+    }
+
     pub fn remove_landed(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {
-        self.require_landed(project, worktree)?;
         let reference = format!("refs/heads/{}", worktree.branch);
-        let expected = self
-            .run(project, &["rev-parse", &reference])
-            .map_err(failed)?;
-        self.run(
-            project,
-            &["worktree", "remove", &worktree.path.to_string_lossy()],
-        )
-        .map_err(failed)?;
-        self.run(project, &["update-ref", "-d", &reference, &expected])
-            .map_err(failed)?;
+        let expected = self.reference(project, &reference)?;
+        self.require_landed(project, worktree)?;
+        let path = canonical_path(&worktree.path);
+        let registered = self
+            .registered_worktrees(project)?
+            .into_iter()
+            .find(|(entry, _)| *entry == path);
+        match registered {
+            Some((_, branch)) if expected.is_some() && branch.as_deref() == Some(&reference) => {
+                self.run(
+                    project,
+                    &["worktree", "remove", &worktree.path.to_string_lossy()],
+                )
+                .map_err(failed)?;
+            }
+            Some(_) => return Err(failed("recorded Worktree path belongs to another branch")),
+            None if worktree.path.exists() => {
+                return Err(failed("recorded Worktree path is unregistered"));
+            }
+            None => {}
+        }
+        if let Some(expected) = expected {
+            self.run(project, &["update-ref", "-d", &reference, &expected])
+                .map_err(failed)?;
+        }
         Ok(())
     }
+}
+
+fn canonical_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_owned())
 }
 
 fn worktree_path(project: &Path, id: &str) -> PathBuf {

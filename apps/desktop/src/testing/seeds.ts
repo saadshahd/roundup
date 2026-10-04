@@ -169,10 +169,13 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   app.handlers["rail.rename"] = ({ id, name }) => changed(Object.assign(find(id), { name }));
   app.handlers["rail.startDoor"] = ({ id }) => {
     const node = find(id);
+
     if (node.kind !== "room" || (node.terminal_id !== null && !exits.has(node.terminal_id))) throw new Error("Door is already active");
     const incarnation = String(BigInt(node.incarnation ?? "0") + 1n);
+
     return changed(Object.assign(node, { incarnation, status_revision: "1", terminal_id: `t-${id}-${incarnation}`, status: statusAt(Date.now(), "working", "starting", 0) }));
   };
+
   app.handlers["rail.move"] = ({ id, parent, index }) => {
     const moved = find(id);
     const siblings = nodes.filter((other) => other.parent === parent && other.id !== id).sort((left, right) => left.order - right.order);
@@ -223,8 +226,10 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
 
   app.handlers["agent.stop"] = ({ id }) => {
     const node = find(id);
+
     if (node.terminal_id) exit(node.terminal_id);
     Object.assign(node, { terminal_id: null, status: statusAt(Date.now(), "done", "stopped", 0) });
+
     return changed(null);
   };
 

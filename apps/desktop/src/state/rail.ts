@@ -143,6 +143,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     startDoor: async (id) => {
       if (doors[id]?.pending) return;
       setDoors(id, { pending: true, failure: null });
+
       try {
         await app.rpc("rail.startDoor", { id });
         fetching(fetchTree);

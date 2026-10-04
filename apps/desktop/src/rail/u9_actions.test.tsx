@@ -327,9 +327,12 @@ it("u62_failed_start_retries_the_same_room_and_focuses_its_terminal", async () =
     const created = room("actual");
     tree.push(created);
     mounted.app.emit(event({ name: "rail.changed" }));
+
     return created;
   };
+
   mounted.app.handlers["rail.startDoor"] = () => { throw new RpcError(-32003, "launch failed"); };
+
   fireEvent.click(screen.getByText("room"));
   await waitFor(() => expect(mounted.rail.selected()).toBe("actual"));
   await waitFor(() => expect(mounted.rail.doorFailure("actual")).toBe("launch failed"));

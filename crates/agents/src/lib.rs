@@ -399,9 +399,32 @@ impl Shared {
     }
 
     async fn end(&self, actor: Actor, id: &str, remove: bool) -> Result<(), RpcError> {
+        let checked_node = if remove {
+            Some(self.rail().node(id)?)
+        } else {
+            None
+        };
+        if let Some(worktree) = checked_node
+            .as_ref()
+            .and_then(|node| node.worktree.as_ref())
+        {
+            let git = self.git.clone();
+            let project = self.project_dir.clone();
+            let worktree = worktree::Worktree::from(worktree);
+            tokio::task::spawn_blocking(move || git.require_landed(&project, &worktree))
+                .await
+                .map_err(RpcError::internal)??;
+        }
         let (terminal_id, worktree) = {
             let rail = self.rail();
             let mut node = rail.node(id)?;
+            if checked_node.as_ref().is_some_and(|checked| {
+                checked.incarnation != node.incarnation || checked.worktree != node.worktree
+            }) {
+                return Err(RpcError::conflict(format!(
+                    "{id} changed during Worktree precheck"
+                )));
+            }
             if !remove && node.kind == NodeKind::Terminal {
                 return Err(RpcError::conflict(format!("{id} is not an Agent")));
             }
@@ -434,19 +457,6 @@ impl Shared {
             }
             (node.terminal_id, remove.then_some(node.worktree).flatten())
         };
-        if let Some(worktree) = &worktree {
-            let git = self.git.clone();
-            let project = self.project_dir.clone();
-            let worktree = worktree::Worktree::from(worktree);
-            let checked =
-                tokio::task::spawn_blocking(move || git.require_landed(&project, &worktree))
-                    .await
-                    .map_err(RpcError::internal)?;
-            if let Err(err) = checked {
-                self.release_closing(id, false);
-                return Err(err);
-            }
-        }
         if let Some(Slot::Running(run)) = self.runs().get_mut(id) {
             self.apply(None, run, id, &actor, Observation::Stopped, None)?;
         }
