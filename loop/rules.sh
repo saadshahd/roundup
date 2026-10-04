@@ -455,11 +455,11 @@ def section(body, title):
 def fences(text):
     return re.findall(r'^```[^\n]*\n(.*?)^```[ \t]*$', text, re.M | re.S)
 
-def is_visual_unchanged(events, head):
+def latest_tree_verdict(events, head):
     for verdict, reviewed, unchanged in reversed(events):
         if reviewed and ancestor(reviewed, head) and git('rev-parse', reviewed+'^{tree}') == git('rev-parse', head+'^{tree}'):
-            return verdict == 'approve' and unchanged
-    return False
+            return verdict, unchanged
+    return None, False
 
 def proof(pr, paths, head, base, events=None):
     body = pr['body']
@@ -477,6 +477,8 @@ def proof(pr, paths, head, base, events=None):
     named = re.search(r'^Scenarios:\s*(.+)$', body, re.M)
     ids = set(re.findall(r'\b[A-Z][0-9]+\b', named[1])) if named else set()
     require(ids, 'proof: no scenario ids')
+    scopes = re.findall(r'^Proof scope: (.*)$', body, re.M)
+    require(not scopes or scopes == ['specification'], 'proof: invalid or repeated Proof scope')
     visible = any(path.startswith(('apps/desktop/src/', 'crates/desktop/')) or path in ('docs/motion.md', 'docs/design-system.md') for path in paths)
     texts = {}
     for path in git('ls-tree', '-r', '--name-only', head, '--', 'scenarios').splitlines():
@@ -489,6 +491,33 @@ def proof(pr, paths, head, base, events=None):
     visible |= any(re.search(r'screenshot|motion', text, re.I) for id_, text in texts.items() if not id_.startswith('L'))
     output = '\n'.join(fences(evidence))
     require(head in evidence, 'proof: test output must name the head SHA')
+    if scopes:
+        excluded = {'daemon.md', 'rpc.md', 'control.md', 'README.md', 'AGENTS.md', 'CLAUDE.md'}
+        start = git('merge-base', base, head)
+        require(paths, 'proof: specification has no changed paths')
+        for path in paths:
+            name = PurePosixPath(path).name
+            product = (re.fullmatch(r'scenarios/[^/.][^/]*\.md', path) and
+                       name not in excluded and not name.startswith('loop'))
+            allowed = (product or path == 'docs/wireframes.md' or
+                       re.fullmatch(r'\.work/prompts/[^/.][^/]*\.md', path))
+            require(allowed and name not in {'AGENTS.md', 'CLAUDE.md'},
+                    'proof: specification scope cannot include '+path)
+            require(all(not entry or entry[0] == '100644'
+                        for entry in (tree_entry(start, path), tree_entry(head, path))),
+                    'proof: specification needs regular Markdown files: '+path)
+        require(re.search(r'^just check: exit 0$', output, re.M), 'proof: missing successful just check baseline')
+        require(re.search(r'^Specification consistency: \S.+$', evidence, re.M),
+                'proof: missing specification consistency review')
+        for id_ in sorted(ids):
+            require(re.search(r'^Pending '+id_+r': \S.+$', evidence, re.M),
+                    'proof: missing future observer for '+id_)
+        if events is None:
+            authors, records = history(base, head)
+            events = comments(authors, head, base, records)
+        require(latest_tree_verdict(events, head)[0] == 'approve',
+                'proof: specification needs an independent approval on this tree')
+        return
     for id_ in sorted(ids):
         require(re.search(r'^.*\b'+id_+r'(?:\b|_).*\b(?:ok|passed)\b|^.*\b(?:ok|passed)\b.*\b'+id_+r'(?:\b|_)', output, re.M | re.I), 'proof: missing test output for '+id_)
     if not visible:
@@ -496,7 +525,7 @@ def proof(pr, paths, head, base, events=None):
     if events is None:
         authors, records = history(base, head)
         events = comments(authors, head, base, records)
-    if is_visual_unchanged(events, head):
+    if latest_tree_verdict(events, head) == ('approve', True):
         return
     require(re.search(r'^Shows: .+', evidence, re.M), 'proof: missing Shows:')
     captions = re.sub(r'^```[^\n]*\n.*?^```[ \t]*$', '', evidence, flags=re.M | re.S)

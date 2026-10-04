@@ -795,6 +795,91 @@ git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
 expect_exit 0 'L76 same-tree carry retains attestation' gate merge-ready 12
 
+gate_specification_head() {
+  gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .comments=[[{id:1,created_at:"2026-10-04T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nReviewed-by-Agent: reviewer")}]]'
+}
+
+gate_specification() {
+  gate_repo
+  git reset -q --hard main
+  printf '**A7 a Room.** Given a Room, when opened, then its screenshot shows the Door at 1280×800.\n' >scenarios/agents.md
+  commit specification 'Author-Agent: builder'
+  git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+  gate_set --arg head "$(git rev-parse HEAD)" '.body="Scenarios: A7\nProof scope: specification\n## Shape\n```\nRoom -> Door\n```\n## Proof\nHead: "+$head+"\nSpecification consistency: lifecycle and failure clauses reviewed.\nPending A7: run the real Daemon lifecycle test and capture the stated viewport.\n```text\njust check: exit 0\nSummary: existing tests passed\n```"'
+  gate_specification_head
+}
+
+gate_specification
+expect_exit 0 'L53 specification baseline and future observer pass without invented scenario execution' gate proof 12
+expect_exit 0 'L53 specification still passes the ordinary merge gates' gate merge-ready 12
+gate_set '.body |= sub("just check: exit 0"; "checks planned")'
+expect_exit 1 'L53 specification missing baseline fails' gate proof 12
+gate_specification
+gate_set '.body |= sub("Pending A7:[^\n]*"; "")'
+expect_exit 1 'L53 specification missing future observer fails' gate proof 12
+gate_specification
+gate_set '.body |= sub("Specification consistency:[^\n]*"; "")'
+expect_exit 1 'L53 specification missing consistency review fails' gate proof 12
+gate_specification
+gate_set '.body |= sub("Proof scope: specification"; "Proof scope: implementation")'
+expect_exit 1 'L53 unknown explicit proof scope fails' gate proof 12
+for path in crates/change.rs AGENTS.md CONTEXT.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
+  gate_specification
+  printf 'changed\n' >>"$path"
+  commit mixed 'Author-Agent: builder'
+  git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+  gate_specification_head
+  expect_exit 1 "L53 specification cannot waive $path proof" gate proof 12
+done
+gate_specification
+git checkout -q main
+printf 'policy\n' >AGENTS.md
+commit policy
+git checkout -q work
+git merge -q --no-ff main -m base -m 'Author-Agent: builder'
+git mv AGENTS.md scenarios/awareness.md
+commit rename 'Author-Agent: builder'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+gate_specification_head
+expect_exit 1 'L53 specification rename cannot hide a policy source path' gate proof 12
+gate_specification
+ln -s ../crates/a.rs scenarios/todos.md
+commit symlink 'Author-Agent: builder'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+gate_specification_head
+expect_exit 1 'L53 specification refuses a symlink' gate proof 12
+
+gate_specification
+gate_set '.comments=[[]]'
+expect_exit 1 'L53 author consistency claim without independent review fails' gate proof 12
+gate_specification
+gate_set '.comments[0][0].body |= sub("reviewer"; "builder")'
+expect_exit 1 'L53 specification author cannot supply its independent review' gate proof 12
+gate_specification
+printf '**T1 a Todo.** Given a title, when created, then a Todo exists.\n' >scenarios/todos.md
+commit product-spec 'Author-Agent: builder'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+gate_set '.body |= sub("Scenarios: A7"; "Scenarios: A7 T1") | .body += "\nPending T1: run the Todo creation observer after implementation.\n"'
+gate_specification_head
+expect_exit 0 'L53 later Todo product specifications use the same proof scope' gate proof 12
+
+for path in docs/wireframes.md .work/prompts/product.md; do
+  gate_specification
+  mkdir -p "$(dirname "$path")"
+  printf 'Product observer specification\n' >"$path"
+  commit product-plan 'Author-Agent: builder'
+  git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+  gate_specification_head
+  expect_exit 0 "L53 specification accepts $path" gate proof 12
+done
+gate_specification
+printf '**T1 a Todo.** Given a title, when created, then a Todo exists.\n' >scenarios/todos.md
+ln -s ../crates/a.rs 'scenarios/[t]odos.md'
+commit bracket-link 'Author-Agent: builder'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+gate_specification_head
+expect_exit 1 'L53 bracket-named symlink cannot borrow the regular Todo file mode' gate proof 12
+
 gate_visible
 expect_exit 0 'L53 visible before and after evidence passes' gate proof 12
 gate_set '.body |= sub("U1 before[^\n]*\n"; "")'

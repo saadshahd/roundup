@@ -136,14 +136,25 @@ trailers on non-merge commits and both successful checks. The `loop` workflow ru
 `ci-trailers <pr>`, which applies the same lane-specific trailer rules. Labels (L57) and architect approval
 for contract changes remain separate gates for the Driver.
 
-In `## Proof`, name the full head SHA and include a fenced test-output block,
-with a passing line for each scenario id on its `Scenarios:` line. A visible PR also
+For implementation proof, in `## Proof` name the full head SHA and include a fenced
+test-output block with a passing line for each scenario id on its `Scenarios:` line. A visible PR also
 has a `Shows:` line and one line per scenario and before/after capture, such as
 `U1 before [image](https://github.com/OWNER/REPO/blob/proof/pr-12/proof/before.png) 1280×800`.
 The scenario text must name that window size. The proof branch contains only
 regular media files under `proof/`, within L53's size limits. Capture review
 and confirmation that a harness caption identifies its seed remain Reviewer
 checks; the gate checks references, dimensions, file metadata and captions.
+
+For a product-specification PR, L53 permits an explicit `Proof scope: specification`
+line instead. Its path restrictions exclude production, contracts, glossary and
+policy changes, including mixed changes and both sides of a rename. Keep Shape,
+the exact head and actual fenced baseline output containing `just check: exit 0`.
+Under `## Proof`, add `Specification consistency: <review>` and one
+`Pending <id>: <future executable observer>` line for every named scenario.
+The newest independent approval must cover this tree. This approves the
+specification only; scenario execution and native/visual proof remain obligations
+of its implementation. Normal lane, architect, approval, base and CI gates still
+apply. This is not permission to describe an unimplemented scenario as passed.
 
 L76 (`scenarios/loop-proof.md`) lets a component code change with unchanged
 rendering use test proof without publishing a `proof/pr-<n>` branch. The independent
