@@ -20,6 +20,7 @@ type FakeEmulator = Emulator & {
   /** What `show` and `fit` answer. */
   size: Size;
   fits: number;
+  fontSize: number;
   disposed: boolean;
   type(bytes: Uint8Array): void;
   selectedText: string;
@@ -44,6 +45,8 @@ export const fakeEmulators = () => {
       host: null,
       size: { cols: 100, rows: 30 },
       fits: 0,
+      fontSize: 13,
+      setFontSize: (size: number) => { emulator.fontSize = size; },
       disposed: false,
       selectedText: "",
       pasted: [],
