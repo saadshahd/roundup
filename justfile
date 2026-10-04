@@ -26,13 +26,14 @@ harness seed="tree-40" port="5199":
     @echo "http://localhost:{{port}}/harness.html?seed={{seed}}"
     pnpm --filter desktop exec vite --port {{port}} --strictPort
 
-# Builds rupd and rup, starts the webview dev server, waits until it answers, runs the App on a Project.
+# Opens the development App only after its imports transform; an HTML response alone can hide a Vite error.
 app project:
     #!/usr/bin/env bash
     set -euo pipefail
     path=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(project)}})
     # Anything already on :5173 would answer the wait below in place of our Vite and the window would open on the wrong webview.
-    ! curl -sf -o /dev/null http://localhost:5173 || { echo "something already answers on :5173; stop it first" >&2; exit 1; }
+    ! curl --max-time 1 -sf -o /dev/null http://localhost:5173 || { echo "something already answers on :5173; stop it first" >&2; exit 1; }
+    CI=true pnpm install --frozen-lockfile
     cargo build -p rupd -p rup
     set -m
     pnpm --filter "./apps/*" --if-present dev &
@@ -40,12 +41,14 @@ app project:
     set +m
     trap 'kill -- -"$dev" 2>/dev/null || true' EXIT
     # The window loads devUrl once and does not retry, so it must not open before Vite answers.
-    for _ in $(seq 150); do
+    deadline=$((SECONDS + 30))
+    while (( SECONDS < deadline )); do
         kill -0 "$dev" 2>/dev/null || { echo "dev server exited before answering on :5173" >&2; exit 1; }
-        curl -sf -o /dev/null http://localhost:5173 && break
+        curl --max-time 1 -sf -o /dev/null http://localhost:5173 && break
         sleep 0.2
     done
-    curl -sf -o /dev/null http://localhost:5173 || { echo "dev server did not answer on :5173 within 30 s" >&2; exit 1; }
+    (( SECONDS < deadline )) || { echo "dev server did not answer on :5173 within 30 s" >&2; exit 1; }
+    curl --max-time 30 --fail-with-body -sS http://localhost:5173/__roundup_ready || { echo "webview imports are not ready; App was not opened" >&2; exit 1; }
     cargo run -p desktop -- "$path"
 
 # Builds the webview files, then rupd, rup and the App (custom-protocol, serving apps/desktop/dist) in release mode, and runs the App on them with no dev server. No bundling or signing.

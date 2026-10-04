@@ -443,6 +443,64 @@ fn s4_just_app_refuses_to_start_when_something_already_answers_on_the_dev_port()
     assert!(stderr.contains("already answers on :5173"));
 }
 
+fn app_recipe(pnpm: &str, curl: &str) -> std::process::Output {
+    let dir = TempDir::new().unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    std::fs::copy(root.join("justfile"), dir.path().join("justfile")).unwrap();
+    for (name, body) in [
+        ("curl", curl),
+        ("pnpm", pnpm),
+        ("cargo", "echo cargo \"$*\" >&2"),
+    ] {
+        let path = dir.path().join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    Command::new("just")
+        .args(["app", "."])
+        .current_dir(dir.path())
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                dir.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env_remove("CI")
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn s4_just_app_installs_noninteractively_before_building() {
+    let output = app_recipe(
+        "[ \"$CI\" = true ] && [ \"$*\" = 'install --frozen-lockfile' ] || exit 0\necho 'dependency setup failed' >&2\nexit 17",
+        "exit 1",
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!output.status.success());
+    assert!(stderr.contains("dependency setup failed"), "{stderr}");
+    assert!(!stderr.contains("cargo build"), "{stderr}");
+}
+
+#[test]
+fn s4_just_app_does_not_open_the_window_when_imports_fail() {
+    let output = app_recipe(
+        "[ \"$1\" = install ] && exit 0\nexec sleep 30",
+        "case \"$*\" in *__roundup_ready*) echo 'missing-s4-dependency'; exit 22;; esac\n[ -f answered ] && exit 0\ntouch answered\nexit 1",
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!output.status.success());
+    assert!(stderr.contains("webview imports are not ready"), "{stderr}");
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("missing-s4-dependency")
+    );
+    assert!(!stderr.contains("cargo run"), "{stderr}");
+}
+
 #[test]
 fn s4_the_built_app_embeds_the_directory_vite_builds_into() {
     assert_eq!(
