@@ -8,7 +8,7 @@ export const RowButton = (props: { onClick: () => void; children: JSX.Element; r
     class="todo-row-button"
     ref={props.ref}
     onClick={() => props.onClick()}
-    style={{ display: "block", "min-height": "var(--space-5)", cursor: "pointer", "white-space": "pre-wrap", "padding-left": "2ch", "text-indent": "-2ch" }}
+    style={{ display: "block", "min-height": "var(--space-5)", cursor: "pointer", "white-space": "pre-wrap", "padding-left": "var(--todo-row-indent)", "text-indent": "calc(-1 * var(--todo-row-indent))" }}
   >
     {props.children}
   </button>

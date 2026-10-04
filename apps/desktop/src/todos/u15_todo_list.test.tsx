@@ -191,7 +191,7 @@ describe("u15 Todo list", () => {
 
     const row = await screen.findByRole("button", { name: /#3/ });
 
-    expect([row.style.paddingLeft, row.style.textIndent]).toEqual(["2ch", "-2ch"]);
+    expect([row.style.paddingLeft, row.style.textIndent]).toEqual(["var(--todo-row-indent)", "calc(-1 * var(--todo-row-indent))"]);
   });
 
   it("u15_a_list_that_is_gone_stops_listening_to_events", async () => {
