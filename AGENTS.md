@@ -1,6 +1,6 @@
 # AGENTS.md
 
-roundup is built by agents in a loop. Read `GLOSSARY.md` and `PRINCIPLES.md` first: every identifier, RPC method and UI string uses a glossary term, or adds one in the same PR.
+roundup is built by agents in a loop. Every identifier, RPC method and UI string uses a `GLOSSARY.md` term (read it when naming one), or adds one in the same PR.
 
 ## The loop
 
@@ -21,12 +21,12 @@ Claude names a moo skill `sound:prime`; Codex names it `prime`.
 
 ## Rules
 
-1. **Done**: `loop/rules.sh merge-ready <pr>` passes and `.agents/data/gates.md` holds.
+1. **Done**: `loop/rules.sh merge-ready <pr>` passes and `.agents/data/pr.md` and `.agents/data/gates.md` hold.
 2. **Slop** fails CI: `just check`, plus no public function without a test or caller.
 3. **PR size**: aim for one module directory and about 2000 changed lines; `loop/rules.sh size` only advises.
 4. **Contract change** (`contracts/`, a new RPC method, an App seam command, U4's tokens) needs a `docs/squads.md` architect other than the author. Change every caller in the same PR.
 5. **Reviewer input**: the diff, the scenario, this file, earlier `VERDICT:` comments and a checkout; never the author's rationale.
-6. **Vocabulary**: `GLOSSARY.md`'s _Avoid_ words stay out of public names, except under `crates/agents/claude_code/`.
+6. **Vocabulary**: `GLOSSARY.md`'s _Avoid_ words stay out of public names, except under `crates/agents/src/claude_code/`.
 7. **Perf**: cold start < 300 ms, keystroke-to-render < 16 ms p95, 10 idle agents < 150 MB extra RSS; `just perf` fails a regression above 10% (`docs/perf.md`).
 8. **Visual change** under `apps/desktop/src` names the `docs/design-system.md` Checks it moves, uses only Tokens, and breaks no Check passing on `main`.
 
@@ -38,13 +38,4 @@ Claude names a moo skill `sound:prime`; Codex names it `prime`.
 - Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
 - Only an architect pushes to `main`, and only `contracts/`, core crates and docs.
 - Everything a human reads (a PR body, a verdict, a report): `reduce`, then the `show-me` layout.
-
-## boxd
-
-Optional; facts in `.agents/data/boxd.md`.
-
-- Start Builders only with `loop/boxd.sh build`.
-- Keep every GitHub credential and the real `CLAUDE_CODE_OAUTH_TOKEN` off VMs; never widen the token's hosts.
-- A VM holding boxd's GitHub login runs no unreviewed code; it only publishes proof and reads or comments on PRs.
-- At most `BOXD_MAX_VMS` `ru-…` VMs; when `loop/out/PAUSED` exists, stop and tell the user; end with none left.
-- macOS behaviour comes from the laptop and CI, never a VM.
+- On a boxd VM (optional; `.agents/data/boxd.md`): keep every GitHub credential and the real `CLAUDE_CODE_OAUTH_TOKEN` off it and never widen the token's hosts; a VM holding boxd's GitHub login runs no unreviewed code, only publishing proof and reading or commenting on PRs.

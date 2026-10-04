@@ -1,6 +1,6 @@
 # boxd
 
-Data for the Driver and anyone starting a VM. Optional: nothing on the merge path needs it. Raw measurements: `spikes/boxd/REPORT.md`.
+Data for the Driver and anyone starting a VM; nothing on the merge path needs it. Raw measurements: `spikes/boxd/REPORT.md`.
 
 ## Uses
 
@@ -25,7 +25,7 @@ The Claude token is the boxd secret `CLAUDE_CODE_OAUTH_TOKEN`: a VM holds a `bxd
 
 ## Defaults
 
-- Name `ru-…`; at most `BOXD_MAX_VMS` (default 12, measured to 4).
+- Name `ru-…`; at most `BOXD_MAX_VMS` (default 12, measured to 4) at once.
 - `--auto-destroy-timeout 4200` (`bake`: 7200) and `--auto-suspend-timeout 0`; `BOXD_AGENT_TIMEOUT` ≤ 1800 s via GNU `timeout`; auto-hibernate after 14400 s without traffic.
 - From `ru-toolchain` (Rust, clippy, rustfmt, nextest, cargo-machete, just, pnpm, Node 24, WebKitGTK, warmed caches); rebake with `loop/boxd.sh bake` when `rust-toolchain.toml`, the pnpm pin or the lockfiles change a lot.
 - Reboot a snapshot VM before use (`boxd machine reboot`, then wait for `exec -- true`): otherwise native tsc hangs on `fanotify` and `exec` blocks.
@@ -35,4 +35,4 @@ The Claude token is the boxd secret `CLAUDE_CODE_OAUTH_TOKEN`: a VM holds a `bxd
 
 ## Cannot
 
-Run WKWebView, give macOS perf numbers, exercise darwin PTYs or anything native, compare against macOS screenshots (fonts differ), or raise the shared usage quota.
+Run WKWebView, give macOS perf numbers, exercise darwin PTYs or anything native, compare against macOS screenshots (fonts differ), or raise the shared usage quota: macOS behaviour comes from the laptop and CI.
