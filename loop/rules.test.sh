@@ -94,7 +94,7 @@ for decl in 'pub fn session_id() {}' 'pub const fn session_id() {}' 'pub struct 
   new_repo; printf '%b\n' "$decl" >crates/b.rs; commit x
   expect fail "L3 vocab: $decl" rules vocab
 done
-new_repo; mkdir -p crates/agents/claude_code; echo 'pub fn session_id() {}' >crates/agents/claude_code/a.rs; commit x
+new_repo; mkdir -p crates/agents/src/claude_code; echo 'pub fn session_id() {}' >crates/agents/src/claude_code/a.rs; commit x
 expect pass "L3 vocab: claude_code adapter is exempt" rules vocab
 new_repo; mkdir -p crates/other/claude_code; echo 'pub fn session_id() {}' >crates/other/claude_code/a.rs; commit x
 expect fail "L3 vocab: another claude_code dir is not exempt" rules vocab
@@ -631,15 +631,14 @@ expect_exit 1 'L46 approval with changed content fails' gate merge-ready 12
 
 gate_repo
 git reset -q --hard main
-mkdir -p .work/queue
-for path in docs/notes.md .work/queue/notes.md scenarios/notes.md; do
+for path in docs/notes.md scenarios/notes.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo 'plain prose' >"$path"
   commit prose 'Author-Agent: builder'
   expect_output post "L44 allowed $path is post" gate class 12
 done
-for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md scenarios/loop-rules.md .work/queue/.hidden.md; do
+for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md scenarios/loop-rules.md .work/queue.md .work/queue/notes.md .work/queue/.hidden.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo prose >"$path"
@@ -691,19 +690,6 @@ git branch -f main HEAD
 git mv docs/notes.md crates/notes.md
 commit rename 'Author-Agent: builder'
 expect_output block 'L44 rename out of docs blocks' gate class 12
-
-gate_repo
-git reset -q --hard main
-mkdir -p .work
-printf 'rows\n## Swarm protocol\nfixed\n' >.work/queue.md
-commit setup
-git branch -f main HEAD
-printf 'new rows\n## Swarm protocol\nfixed\n' >.work/queue.md
-commit rows 'Author-Agent: builder'
-expect_output post 'L44 queue rows above protocol are post' gate class 12
-printf 'new rows\n## Swarm protocol\nchanged\n' >.work/queue.md
-commit protocol 'Author-Agent: builder'
-expect_output block 'L44 protocol changes block' gate class 12
 
 gate_repo
 git reset -q --hard main

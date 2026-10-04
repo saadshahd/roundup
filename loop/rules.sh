@@ -62,7 +62,7 @@ public_names() {
   local dirs="" d
   for d in contracts apps ext; do [ ! -d "$d" ] || dirs="$dirs $d"; done
   {
-    find crates -path crates/agents/claude_code -prune -o -name '*.rs' -print0 |
+    find crates -path crates/agents/src/claude_code -prune -o -name '*.rs' -print0 |
       xargs -0 grep -hoE "$rust_pub|$rust_field" | tr -d ':' | awk '{ print $NF }'
     # shellcheck disable=SC2086 # $dirs is a word list on purpose
     if [ -n "$dirs" ]; then
@@ -406,13 +406,12 @@ def lane_of(files, paths, base, head):
     start = git('merge-base', base, head)
     for path in paths:
         parts = PurePosixPath(path).parts
-        queue = path == '.work/queue.md' or bool(re.fullmatch(r'\.work/queue/[^/]+\.md', path))
         if not parts or any(part in ('AGENTS.md', 'CLAUDE.md') for part in parts):
             return 'block'
-        if any(part.startswith('.') for part in (parts[1:] if queue else parts)):
+        if any(part.startswith('.') for part in parts):
             return 'block'
         scenario = bool(re.fullmatch(r'scenarios/[^/]+\.md', path))
-        if not (queue or path.startswith('docs/') or scenario):
+        if not (path.startswith('docs/') or scenario):
             return 'block'
         if path in {'docs/development-loop.md', 'docs/boxd.md', 'docs/squads.md', 'docs/design-system.md'} or path.startswith('docs/adr/'):
             return 'block'
@@ -433,17 +432,6 @@ def lane_of(files, paths, base, head):
                     lines.append(line[1:])
             folded = unicodedata.normalize('NFKC', '\n'.join(lines)).lower()
             if re.search(r'secret|token|credential|password|oauth|identity|impersonat|daemon|rupd|api key|auth|author-agent|reviewed-by|verdict|architect|approve|merger|rpc|seam|(?<!\w)(card|loop|key)(?!\w)', folded):
-                return 'block'
-        if path == '.work/queue.md':
-            for ref in (start, head):
-                entry = tree_entry(ref, path)
-                if not entry:
-                    return 'block'
-            old_text, new_text = (git('show', ref+':'+path) for ref in (start, head))
-            heading = '## Swarm protocol'
-            if heading not in old_text.splitlines() or heading not in new_text.splitlines():
-                return 'block'
-            if old_text[old_text.index(heading):] != new_text[new_text.index(heading):]:
                 return 'block'
     return 'post'
 

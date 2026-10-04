@@ -21,15 +21,15 @@ Module: `loop/rules.sh`. Each id's cases are its `L<n>` tests in `loop/rules.tes
 
 **L42 delta.** `delta <base-dir> <head-dir>` prints `<step> <id> fixed|regressed|still-failing|still-passing` per check and fails on any `regressed`; a check missing on one side is exit 2, never a pass.
 
-**L44 class.** `class <pr>` prints `post` only when every changed file is docs prose, a queue file or a scenario passing the content screen; anything else, or any doubt, is `block`.
+**L44 class.** `class <pr>` prints `post` only when every changed file is docs prose or a scenario passing the content screen; anything else, or any doubt, is `block`.
 
 **L45 rounds.** `rounds <pr>` fails at 3 independent rejects until an Architect picks `split` or `amend`; `retire` fails it for good.
 
 **L46 merge-ready.** `merge-ready <pr>` prints `ready <head SHA>` only when `base`, `rounds`, the lane's trailer rule and `proof` hold and `check` and `rules` passed on that exact head.
 
-**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/gates.md`, with images for a visible PR.
+**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`, with images for a visible PR.
 
-**L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that change nothing but union-merged queue lines.
+**L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict in no file (its queue-line allowance names files that no longer exist).
 
 **L76 unchanged rendering.** A visible-path PR needs no proof branch when the newest independent approve on the same tree carries `Visual: unchanged`.
 
