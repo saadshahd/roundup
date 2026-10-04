@@ -1094,7 +1094,10 @@ async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
     let mut title_received = false;
     let observed = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            if matches!(titles.recv().await.unwrap(), contracts::EventData::TerminalTitle(ref title) if title.title.starts_with('◐')) { break; }
+            if matches!(titles.recv().await.unwrap(), contracts::EventData::TerminalTitle(ref title) if title.title.starts_with('◐')) {
+                title_received = true;
+                break;
+            }
         }
         loop {
             if f.tree().await[0].status.as_ref().unwrap().kind == contracts::Kind::Working {
