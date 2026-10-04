@@ -8,7 +8,6 @@ cd "$(dirname "$0")/.."
 
 base=${2:-origin/main}
 size_guide=2000
-unit=$'\x1f'
 
 # grep that treats "no match" as success but a real error as failure.
 g() { grep "$@" || [ $? -eq 1 ]; }
@@ -44,38 +43,6 @@ size() {
   distinct=$(printf '%s' "$modules" | sort -u | g -c .)
   [ "$lines" -le "$size_guide" ] || echo "rule 3 size guide: $lines changed lines, guide is about $size_guide; not a failure, the Reviewer notes it" >&2
   [ "$distinct" -le 1 ] || { echo "rule 3 size guide: touches $distinct module directories: $(printf '%s' "$modules" | sort -u | tr '\n' ' '); not a failure, the Reviewer notes it" >&2; }
-}
-
-# Rule 1: every authored commit names its agent. An approval is an empty commit carrying only
-# Reviewed-by-Agent, it must be the newest commit (anything pushed after it needs a new approval),
-# and its id must differ from every author id. Both ids are self-asserted strings, not identities.
-trailers() {
-  local log authors="" reviewers="" bad="" hash author reviewer first=1 newest_is_approval=0
-  log=$(git log --no-merges --format="%h$unit%(trailers:key=Author-Agent,valueonly,separator=%x2C)$unit%(trailers:key=Reviewed-by-Agent,valueonly,separator=%x2C)" "$base"..HEAD)
-  while IFS="$unit" read -r hash author reviewer; do
-    [ -n "$hash" ] || continue
-    author=$(echo "$author" | tr -d '[:space:]')
-    reviewer=$(echo "$reviewer" | tr -d '[:space:]')
-    if [ -n "$reviewer" ]; then
-      if [ -n "$author" ] || [ -n "$(git diff-tree --no-commit-id --name-only -r "$hash")" ]; then
-        bad="$bad $hash"
-      else
-        reviewers="$reviewers$(echo "$reviewer" | tr ',' '\n')"$'\n'
-        [ "$first" -eq 0 ] || newest_is_approval=1
-      fi
-    elif [ -n "$author" ]; then
-      authors="$authors$(echo "$author" | tr ',' '\n')"$'\n'
-    else
-      bad="$bad $hash"
-    fi
-    first=0
-  done <<<"$log"
-  [ -z "$bad" ] || { echo "rule 1: commits that are neither authored nor a clean approval (an approval must be empty and carry only Reviewed-by-Agent):$bad" >&2; return 1; }
-  [ -n "$reviewers" ] || { echo "rule 1: no approval commit (Reviewed-by-Agent)" >&2; return 1; }
-  [ "$newest_is_approval" -eq 1 ] || { echo "rule 1: commits were pushed after the last approval" >&2; return 1; }
-  local overlap
-  overlap=$(comm -12 <(printf '%s' "$authors" | sort -u) <(printf '%s' "$reviewers" | sort -u))
-  [ -z "$overlap" ] || { echo "rule 1: reviewer is also author: $overlap" >&2; return 1; }
 }
 
 # Avoid words from CONTEXT.md, lowercased; a two-word term joins with `_`.
@@ -256,7 +223,7 @@ from pathlib import PurePosixPath
 from urllib.parse import unquote
 
 command, number = sys.argv[1:]
-if not re.fullmatch(r'[0-9]+', number):
+if command != 'trailers' and not re.fullmatch(r'[0-9]+', number):
     sys.exit(f'usage: loop/rules.sh {command} <pr>')
 
 class Refused(Exception):
@@ -574,6 +541,12 @@ def checks(head):
                 for run in matches), f'{name}: missing or not successful on head {head}')
 
 try:
+    if command == 'trailers':
+        head, base = git('rev-parse', 'HEAD'), git('rev-parse', '--verify', number+'^{commit}')
+        authors, records = history(base, head)
+        require(records[-1][3], 'trailers: newest commit is not an approval; use ci-trailers for L54 carry')
+        trailer_gate(records, authors, 'block', head, base)
+        sys.exit(0)
     pr = one(pull)
     if command == 'base':
         base_gate(pr)
@@ -636,7 +609,7 @@ case "${1:-}" in
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   size) size ;;
-  trailers) trailers ;;
+  trailers) pr_rule trailers "$base" ;;
   vocab) vocab ;;
   delta) delta "${2:-}" "${3:-}" ;;
   carry) carry "${2:-}" "${3:-origin/main}" ;;

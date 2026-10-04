@@ -377,8 +377,8 @@ norm_hashes() { sed -E 's/\b[0-9a-f]{7,40}\b/<hash>/g'; }
 # merges that advanced origin/main, the merge conflicts, and (unless no-fixup) dave's follow-up fixup commit (no
 # trailer of its own — the bug in finding 1) finishes it, then an empty approval commit (carol, Reviewed-by-Agent).
 # Bob's commit becomes the merge-base, so it is upstream of the range, same as any commit already on main before
-# the PR branched. Without the fixup commit the merge commit (excluded from trailers by --no-merges) is the only
-# place dave's resolution lands, so the range is clean: alice's trailer and carol's approval are all it checks.
+# the PR branched. Dave's merge names its author so only the optional fixup or omitted alice trailer makes
+# the range invalid; otherwise the fixture would lose its positive control for an authored merge.
 merge_trailers_repo() {
   local alice_trailer=$'\n\nAuthor-Agent: alice-agent' skip_fixup=0 arg
   for arg in "$@"; do
@@ -398,7 +398,7 @@ Author-Agent: bob-agent'
   git merge -q --no-edit main || true
   echo resolved >f
   git add f
-  git -c user.name=dave -c user.email=d@d commit -q --no-edit
+  git -c user.name=dave -c user.email=d@d commit -q -m 'Merge main' -m 'Author-Agent: dave-agent'
   if [ "$skip_fixup" -eq 0 ]; then
     echo more >>f
     git -c user.name=dave -c user.email=d@d commit -qam 'fixup after merge'
