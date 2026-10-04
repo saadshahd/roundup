@@ -44,7 +44,7 @@ it("u102_unreadable_storage_is_absent", () => {
   expect(fontSizeStorage("/p").read()).toBeNull();
 });
 
-it.each([[100, 93, 60], [93, 100, 90], [93, 100, 91]])("u102_rewrap_%s_to_%s_keeps_logical_line_at_row_%s", async (beforeCols, afterCols, row) => {
+it.each([[100, 93, 60], [93, 100, 90], [93, 100, 91], [101, 94, -1], [51, 47, -1]])("u102_rewrap_%s_to_%s_keeps_logical_line_at_row_%s", async (beforeCols, afterCols, row) => {
   const spy = vi.spyOn(xtermModule, "Terminal");
 
   const emulator = createXtermEmulators(undefined, () => ({
@@ -58,7 +58,8 @@ it.each([[100, 93, 60], [93, 100, 90], [93, 100, 91]])("u102_rewrap_%s_to_%s_kee
   terminal.resize(beforeCols, 24);
   const lines = Array.from({ length: 100 }, (_, index) => `${String(index).padStart(3, "0")} ${"x".repeat(190)}`).join("\r\n");
   await new Promise<void>((resolve) => emulator.write(new TextEncoder().encode(lines), resolve));
-  terminal.scrollToLine(row);
+
+  if (row >= 0) terminal.scrollToLine(row);
 
   const top = () => {
     const buffer = terminal.buffer.active;
@@ -69,10 +70,51 @@ it.each([[100, 93, 60], [93, 100, 90], [93, 100, 91]])("u102_rewrap_%s_to_%s_kee
     return buffer.getLine(line)?.translateToString(true);
   };
 
-  expect(top()).toMatch(/^030 /);
-  vi.spyOn(FitAddon.prototype, "fit").mockImplementation(() => terminal.resize(afterCols, 24));
+  const content = () => {
+    const buffer = terminal.buffer.active;
+    const lines: string[] = [];
+
+    for (let index = 0; index < buffer.length; index += 1) {
+      const line = buffer.getLine(index)!;
+      const text = line.translateToString(true);
+
+      if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text;
+      else lines.push(text);
+    }
+
+    return lines;
+  };
+
+  const before = content();
+  expect(before.at(-1)).toHaveLength(194);
+
+  if (row >= 0) expect(top()).toMatch(/^030 /);
+  else expect(emulator.isAtBottom()).toBe(true);
+  const fitPolicies: (boolean | undefined)[] = [];
+
+  const fit = vi.spyOn(FitAddon.prototype, "fit").mockImplementation(() => {
+    fitPolicies.push(terminal.options.reflowCursorLine);
+    terminal.resize(afterCols, 24);
+  });
+
   emulator.setFontSize(14);
   emulator.fit();
-  expect(top()).toMatch(/^030 /);
+
+  if (row >= 0) expect(top()).toMatch(/^030 /);
+  else expect(emulator.isAtBottom()).toBe(true);
+  expect(content()).toEqual(before);
+  fit.mockImplementation(() => {
+    fitPolicies.push(terminal.options.reflowCursorLine);
+    terminal.resize(beforeCols, 24);
+  });
+  emulator.setFontSize(13);
+  emulator.fit();
+  expect(content()).toEqual(before);
+
+  if (row >= 0) expect(top()).toMatch(/^030 /);
+  else expect(emulator.isAtBottom()).toBe(true);
+  emulator.fit();
+  expect(fitPolicies).toEqual([true, true, false]);
+  expect(terminal.options.reflowCursorLine).toBe(false);
   emulator.dispose();
 });

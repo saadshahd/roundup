@@ -94,6 +94,7 @@ export const createXtermEmulators = (
     const fitter = new FitAddon();
     const element = document.createElement("div");
     let opened = false;
+    let fontSizeChanged = false;
     let fontViewport: IMarker | null = null;
     let fontFrame: number | null = null;
     let loadedWebgl: RendererAddon | null = null;
@@ -118,7 +119,17 @@ export const createXtermEmulators = (
     };
 
     const size = (): Size => {
-      fitter.fit();
+      const reflowCursorLine = terminal.options.reflowCursorLine ?? false;
+
+      // Font resizing must retain unfinished output; ordinary shell resizing keeps xterm's policy.
+      if (fontSizeChanged) terminal.options.reflowCursorLine = true;
+
+      try {
+        fitter.fit();
+      } finally {
+        terminal.options.reflowCursorLine = reflowCursorLine;
+        fontSizeChanged = false;
+      }
 
       if (fontViewport !== null) {
         // xterm syncs viewport pixels in its render frame; scrolling before it uses the old cell height.
@@ -153,6 +164,7 @@ export const createXtermEmulators = (
         }
 
         terminal.options.fontSize = size;
+        fontSizeChanged = true;
       },
       reset: () => terminal.write("\x1bc"),
       onInput: (listener) => {
