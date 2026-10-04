@@ -1,7 +1,5 @@
-You are a Builder (`.agents/builder.md`). Build the Interrupt: scenarios H13 and H17 in `scenarios/control.md`, and nothing else. Read `AGENTS.md`, `GLOSSARY.md`, `PRINCIPLES.md`, `scenarios/control.md`, `docs/control-channel.md`, `spikes/hooks-permission/REPORT.md` (real strings and timings) and `.claude/sound/` first. Tests are named after their scenario and use the fake `claude` and an injected clock; none runs the real `claude`. Run `just check`; every commit carries `Author-Agent: <your id>`. Report the scenarios proven (one test name each) and anything you could not build.
+Builder. `/compose sound:prime to load the taste rules, tdd to land H13 and H17 red then green`
 
-Needs the Steer slice merged first (it adds the error codes and the contract entry shape); stop and say so if not.
+Scenarios H13, H17 in `scenarios/control.md`; owns and waits (the Steer, for its error codes) as its Work row says. Tests use the fake `claude` and an injected clock.
 
-Edit only: `crates/contracts/**` and generated files, `crates/agents/src/lib.rs`, `crates/agents/src/claude_code/**`, `crates/agents/tests/**`, `crates/rupd/src/**` (register the method).
-
-Build: RPC `agent.interrupt {id}` per H13 (writes `ESC` once, returns `null` when the title Observation changes spinner to star within the bound, else `NOT_ACKED` with nothing else written; `NOT_RUNNING` for idle, done or error with no byte written; an open Decision clears by H7(b)); H17's loud failure (one stderr line, Kind unchanged, no second Esc, a later star title still folded). The title is the only screen read: reuse the A2 title parser, add no second one. The new error codes are already defined by the Steer slice.
+- The title Observation is the only screen read: reuse A2's title parser, add none.
