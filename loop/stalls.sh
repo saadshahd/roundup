@@ -68,9 +68,11 @@ def failed_names(runs, required):
 
 
 def reviewed_head(body):
-    explicit = re.findall(r'^(?:Reviewed[- ]head|Head(?: reviewed)?): ([0-9a-f]{40})[ \t]*$', body, re.M)
+    explicit = re.findall(r'^(?:Reviewed[- ]head|Head(?: reviewed)?):([^\n]*)$', body, re.M)
     if explicit:
-        return explicit[0] if len(explicit) == 1 else None
+        if len(explicit) == 1 and re.fullmatch(r'[0-9a-f]{40}', explicit[0].strip()):
+            return explicit[0].strip()
+        return None
     for line in body.splitlines():
         if line.lstrip().startswith('Diff-base:'):
             continue
@@ -148,7 +150,6 @@ try:
         runs = check_runs(call('gh', 'api', f'repos/{repo}/commits/{pr["head"]["sha"]}/check-runs', '--paginate', '--slurp'))
         commit_ids = [(commit, commit_agent_ids(commit['commit']['message'])) for commit in commits]
         author_ids = [author for _, ids in commit_ids for author in ids['Author-Agent']]
-        known_heads = {pr['head']['sha']} | {commit['sha'] for commit in commits if 'sha' in commit}
         reviewable_heads = {pr['head']['sha']}
         commits_by_sha = {commit['sha']: commit for commit in commits if 'sha' in commit}
         approval = commits_by_sha.get(pr['head']['sha'])
@@ -159,7 +160,7 @@ try:
                 parent = commits_by_sha.get(parents[0]['sha'])
                 if parent and approval['commit']['tree']['sha'] == parent['commit']['tree']['sha']:
                     reviewable_heads.add(parents[0]['sha'])
-        pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], known_heads, reviewable_heads, failed_names(runs, required)))
+        pr_data.append((pr, comments, set(author_ids), author_ids[0] if author_ids else pr['user']['login'], reviewable_heads, failed_names(runs, required)))
     machines = call('boxd', 'machine', 'list', '--json')
     vm_count = sum(machine['name'].startswith('ru-') for machine in machines)
     verdict_files = [(path.read_text(), dt.datetime.fromtimestamp(path.stat().st_mtime, UTC))
@@ -167,9 +168,9 @@ try:
     desired = {}
     if failed_names(main_runs, required):
         record('a', 'main', 'Triage')
-    if pr_data and any(all(name in failed for _, _, _, _, _, _, failed in pr_data) for name in required):
+    if pr_data and any(all(name in failed for _, _, _, _, _, failed in pr_data) for name in required):
         record('a', 'all-prs', 'Triage')
-    for pr, comments, authors, author_id, known_heads, reviewable_heads, _ in pr_data:
+    for pr, comments, authors, author_id, reviewable_heads, _ in pr_data:
         number = pr['number']
         head = pr['head']['sha']
         valid = verdicts(comments, authors, reviewable_heads)
@@ -180,7 +181,7 @@ try:
             body = comment['body']
             if re.match(r'^VERDICT: reject\b', body):
                 reviewer = reviewer_id(body)
-                if reviewer and reviewer not in authors and reviewed_head(body) in known_heads:
+                if reviewer and reviewer not in authors and reviewed_head(body) is not None:
                     all_rejects += 1
         if all_rejects >= 3:
             record('c', number, 'Architect', author_id)
