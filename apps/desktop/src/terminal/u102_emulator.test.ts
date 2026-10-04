@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createXtermEmulators } from "./emulator";
 import { fontSizeStorage } from "./fontSize";
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear(); });
 
 it.each([false, true])("u102_xterm_keeps_scrollback_and_viewport_at_bottom_%s", async (bottom) => {
   const spy = vi.spyOn(xtermModule, "Terminal");
@@ -116,5 +116,39 @@ it.each([[100, 93, 60], [93, 100, 90], [93, 100, 91], [101, 94, -1], [51, 47, -1
   emulator.fit();
   expect(fitPolicies).toEqual([true, true, false]);
   expect(terminal.options.reflowCursorLine).toBe(false);
+  emulator.dispose();
+});
+
+it("u102_a_second_chord_before_restoration_keeps_the_reflow_anchor", async () => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+  const spy = vi.spyOn(xtermModule, "Terminal");
+
+  const emulator = createXtermEmulators(undefined, () => ({
+    activate() {}, dispose() {}, onContextLoss() { return { dispose() {} }; },
+  }))("t-a");
+
+  const terminal = spy.mock.instances[0];
+
+  if (!terminal) throw new Error("xterm was not created");
+  spy.mockRestore();
+  vi.spyOn(terminal, "open").mockImplementation(() => {});
+  vi.spyOn(terminal, "focus").mockImplementation(() => {});
+  let cols = 100;
+  vi.spyOn(FitAddon.prototype, "fit").mockImplementation(() => terminal.resize(cols, 24));
+  emulator.show(document.createElement("div"));
+  const lines = Array.from({ length: 100 }, (_, index) => `${String(index).padStart(3, "0")} ${"x".repeat(180)}`).join("\r\n");
+  await new Promise<void>((resolve) => emulator.write(new TextEncoder().encode(lines), resolve));
+  terminal.scrollToLine(60);
+  emulator.setFontSize(14);
+  cols = 93;
+  emulator.fit();
+  emulator.setFontSize(15);
+  cols = 87;
+  requestAnimationFrame(() => emulator.fit());
+  vi.advanceTimersToNextFrame();
+  vi.advanceTimersToNextFrame();
+  const buffer = terminal.buffer.active;
+  expect(buffer.getLine(buffer.viewportY)?.translateToString(true)).toMatch(/^030 /);
+  expect(terminal.markers).toHaveLength(0);
   emulator.dispose();
 });

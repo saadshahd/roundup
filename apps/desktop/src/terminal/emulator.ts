@@ -106,7 +106,7 @@ export const createXtermEmulators = (
     const restoreFontViewport = () => {
       fontFrame = null;
 
-      if (fontViewport === null) return;
+      if (fontViewport === null || fontSizeChanged) return;
 
       if (!fontViewport.isDisposed) {
         // xterm's pixel offset can disagree with viewportY after a font change; reset that origin first.
