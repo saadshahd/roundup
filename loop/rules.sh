@@ -488,7 +488,10 @@ def proof(pr, paths, head, base, events=None):
                 if match[1] in ids:
                     texts[match[1]] = match[0]
     require(ids <= texts.keys(), 'proof: unknown scenario ids: '+', '.join(sorted(ids - texts.keys())))
-    visible |= any(re.search(r'screenshot|motion', text, re.I) for id_, text in texts.items() if not id_.startswith('L'))
+    windows = {id_: set(re.findall(r'\b(\d+)\s*(?:×|by|x)\s*(\d+)\b', text)) for id_, text in texts.items()}
+    visual_ids = {id_ for id_, text in texts.items() if not id_.startswith('L') and
+                  (windows[id_] or re.search(r'screenshot|motion|viewport', text, re.I))}
+    visible |= bool(visual_ids)
     output = '\n'.join(fences(evidence))
     require(head in evidence, 'proof: test output must name the head SHA')
     if scopes:
@@ -527,6 +530,9 @@ def proof(pr, paths, head, base, events=None):
         events = comments(authors, head, base, records)
     if latest_tree_verdict(events, head) == ('approve', True):
         return
+    require(visual_ids, 'proof: visible PR needs a named visual scenario')
+    for id_ in sorted(visual_ids):
+        require(windows[id_], 'proof: visual scenario has no window size: '+id_)
     require(re.search(r'^Shows: .+', evidence, re.M), 'proof: missing Shows:')
     captions = re.sub(r'^```[^\n]*\n.*?^```[ \t]*$', '', evidence, flags=re.M | re.S)
     require(not re.search(r'/Users/|/home/|secret|token|credential|password|oauth', captions, re.I), 'proof: private path or secret word in caption')
@@ -545,7 +551,7 @@ def proof(pr, paths, head, base, events=None):
         require(0 < item['size'] <= 5*1024*1024, 'proof: file exceeds 5 MiB or is empty')
         blobs[item['path']] = item
     require(sum(item['size'] for item in blobs.values()) <= 20*1024*1024, 'proof: branch exceeds 20 MiB')
-    for id_ in sorted(ids):
+    for id_ in sorted(visual_ids):
         for when in ('before', 'after'):
             found = False
             for line in evidence.splitlines():
@@ -554,7 +560,7 @@ def proof(pr, paths, head, base, events=None):
                 link = re.search(r'https://github\.com/'+re.escape(repository)+r'/(?:blob|raw)/'+re.escape(branch)+r'/([^\s)]+)\)\s+(\d+)×(\d+)', line)
                 if link and unquote(link[1]) in blobs:
                     width, height = link.group(2, 3)
-                    require(re.search(width+r'\s*(?:×|by|x)\s*'+height, texts[id_]), 'proof: window size not in '+id_)
+                    require((width, height) in windows[id_], 'proof: window size not in '+id_)
                     found = True
             require(found, f'proof: missing {id_} {when} image/video and window size')
 
