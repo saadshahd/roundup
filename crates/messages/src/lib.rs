@@ -44,7 +44,7 @@ pub enum Refusal {
 struct Inner {
     store: Mutex<Store>,
     /// Answers `rail.tree`, the only thing `message.send` needs to know about a receiver: whether
-    /// it names an Agent (or a Meta-agent) at all, and that Agent's Kind.
+    /// it names an Agent (or a Door) at all, and that Agent's Kind.
     agents: Arc<dyn Module>,
     bus: Bus,
     deliver: Deliver,
@@ -105,18 +105,21 @@ impl Messages {
             ));
         }
         if let Some(status) = &receiver_status
-            && matches!(status.kind, Kind::Done | Kind::Error)
+            && ended(status)
         {
             return Err(RpcError::conflict(format!(
                 "{} cannot receive a Message: its Kind is {:?}",
-                p.to, status.kind
+                p.to, status.status
             )));
         }
         // The reply-to check, the bound check and the insert run while one lock is held, so a
         // second sender racing for the same receiver's last open slot cannot pass its own check
         // before this one's insert lands (B1).
         let message = {
-            let store = self.store()?;
+            let mut store = self.store()?;
+            if let Some(node) = &receiver_status {
+                accept_receiver(&self.inner, &mut store, node)?;
+            }
             if let Some(reply_to) = p.reply_to
                 && store.get(reply_to)?.is_none()
             {
@@ -151,7 +154,7 @@ impl Messages {
                     Delivery::Drop => (MessageStatus::Dropped, None),
                 }
             };
-            store.insert(
+            let message = store.insert(
                 &ctx.actor,
                 &p.to,
                 p.kind,
@@ -160,7 +163,9 @@ impl Messages {
                 status,
                 reason,
                 now_ms(),
-            )?
+                receiver_status.as_ref().map_or(0, ordinal),
+            )?;
+            message
         };
         ctx.touch(Verb::Wrote, &item(message.id))?;
         ctx.emit(EventData::MessageSent(message.clone()));
@@ -201,15 +206,19 @@ impl Messages {
     async fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "deliver a held Message")?;
         let message = self.get_or_not_found(p.id)?;
-        if let Some(status) = self.resolve_receiver(&message.to).await?
-            && matches!(status.kind, Kind::Done | Kind::Error)
+        let receiver = self.resolve_receiver(&message.to).await?;
         {
-            return Err(RpcError::conflict(format!(
-                "{} cannot receive a Message: its Kind is {:?}",
-                message.to, status.kind
-            )));
+            let mut store = self.store()?;
+            if let Some(node) = &receiver {
+                accept_receiver(&self.inner, &mut store, &node)?;
+            }
+            if !store.release_held(p.id, MessageStatus::Pending, None)? {
+                return Err(RpcError::conflict("Message is not held"));
+            }
+            if let Some(node) = &receiver {
+                store.bind(p.id, ordinal(node))?;
+            }
         }
-        self.release_held(p.id, MessageStatus::Pending, None)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
         reply(&self.get_or_not_found(p.id)?)
     }
@@ -256,12 +265,15 @@ impl Messages {
     async fn takeover_begin(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
         require_user(ctx, "begin a Takeover")?;
         let TakeoverParams { agent } = p;
-        if let Some(status) = self.resolve_takeover_target(&agent).await?
-            && matches!(status.kind, Kind::Done | Kind::Error)
-        {
-            return Err(RpcError::conflict(format!("{agent} has ended")));
-        }
-        let held = self.store()?.begin_takeover(&agent)?;
+        let node = self
+            .resolve_takeover_target(&agent)
+            .await?
+            .expect("Agent receiver");
+        let held = {
+            let mut store = self.store()?;
+            accept_receiver(&self.inner, &mut store, &node)?;
+            store.begin_takeover(&agent)?
+        };
         if let Some(held) = held {
             for message in &held {
                 ctx.emit(EventData::MessageHeld(message.clone()));
@@ -279,8 +291,15 @@ impl Messages {
     async fn takeover_end(&self, ctx: &Ctx, p: TakeoverParams) -> Result<Value, RpcError> {
         require_user(ctx, "end a Takeover")?;
         let TakeoverParams { agent } = p;
-        self.resolve_takeover_target(&agent).await?;
-        let promoted = self.store()?.end_takeover(&agent)?;
+        let node = self
+            .resolve_takeover_target(&agent)
+            .await?
+            .expect("Agent receiver");
+        let promoted = {
+            let mut store = self.store()?;
+            accept_receiver(&self.inner, &mut store, &node)?;
+            store.end_takeover(&agent)?
+        };
         if promoted.is_some() {
             ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
                 agent,
@@ -291,23 +310,20 @@ impl Messages {
     }
 
     /// `agent`'s Status for a Takeover call (B6): `NOT_FOUND` unless `agent` names an Agent node
-    /// on the Rail or a Meta-agent — never the user, a Terminal or a plain Group.
-    async fn resolve_takeover_target(
-        &self,
-        agent: &str,
-    ) -> Result<Option<contracts::Status>, RpcError> {
+    /// on the Rail or a Door — never the user, a Terminal or a plain Room.
+    async fn resolve_takeover_target(&self, agent: &str) -> Result<Option<RailNode>, RpcError> {
         let nodes = rail_nodes(&self.inner).await?;
         let node = nodes
             .into_iter()
-            .find(|node| node.id == agent && (node.kind == NodeKind::Agent || node.meta))
+            .find(|node| node.id == agent && (node.kind != NodeKind::Terminal))
             .ok_or_else(|| RpcError::not_found(format!("actor {agent}")))?;
-        Ok(node.status)
+        Ok(Some(node))
     }
 
-    /// `to`'s Status, when it names an Agent or a Meta-agent; `None` when it names the user.
+    /// `to`'s Status, when it names an Agent or a Door; `None` when it names the user.
     /// `NOT_FOUND` when it names no Actor; `INVALID_PARAMS` when it names a Terminal or a plain
-    /// Group, neither of which can receive a Message.
-    async fn resolve_receiver(&self, to: &str) -> Result<Option<contracts::Status>, RpcError> {
+    /// Room, neither of which can receive a Message.
+    async fn resolve_receiver(&self, to: &str) -> Result<Option<RailNode>, RpcError> {
         if to == Actor::user().id {
             return Ok(None);
         }
@@ -316,13 +332,13 @@ impl Messages {
             .into_iter()
             .find(|node| node.id == to)
             .ok_or_else(|| RpcError::not_found(format!("actor {to}")))?;
-        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
+        if node.kind == NodeKind::Terminal {
             return Err(RpcError::new(
                 code::INVALID_PARAMS,
                 format!("{to} cannot receive a Message: it is a {:?}", node.kind),
             ));
         }
-        Ok(node.status)
+        Ok(Some(node))
     }
 
     /// Moves a `held` Message to `status`, atomically with the check that it is still `held`
@@ -451,13 +467,17 @@ fn spawn_status_listener(
     mut events: tokio::sync::broadcast::Receiver<contracts::Event>,
 ) {
     tokio::spawn(async move {
-        let mut resync_due = false;
+        let mut resync_due = !resync(&inner).await;
         loop {
             match events.recv().await {
                 Ok(contracts::Event {
                     data: EventData::AgentStatus(status),
                     ..
-                }) => on_status(&inner, &status.id, status.status.kind).await,
+                }) => on_status(&inner, &status.id, &status.incarnation, status.status.kind).await,
+                Ok(contracts::Event {
+                    data: EventData::RailChanged,
+                    ..
+                }) => resync_due = true,
                 Ok(_) => {}
                 Err(RecvError::Lagged(_)) => resync_due = true,
                 Err(RecvError::Closed) => break,
@@ -469,10 +489,12 @@ fn spawn_status_listener(
     });
 }
 
-async fn on_status(inner: &Arc<Inner>, agent: &str, kind: Kind) {
+async fn on_status(inner: &Arc<Inner>, agent: &str, incarnation: &str, kind: Kind) {
     match kind {
-        Kind::Idle => on_idle(inner, agent).await,
-        Kind::Done | Kind::Error => on_ended(inner, agent),
+        Kind::Idle => on_idle(inner, agent, incarnation.parse().expect("wire Incarnation")).await,
+        Kind::Done | Kind::Error => {
+            on_ended(inner, agent, incarnation.parse().expect("wire Incarnation"))
+        }
         Kind::Working | Kind::Blocked | Kind::NeedsYou => {}
     }
 }
@@ -483,15 +505,33 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, kind: Kind) {
 /// Takeover left to end. `false` when the Rail cannot answer, so the caller retries on its next
 /// event instead of losing the `done` it missed.
 async fn resync(inner: &Arc<Inner>) -> bool {
+    let known = {
+        let store = inner.store.lock().unwrap();
+        store
+            .receivers()
+            .expect("message store")
+            .into_iter()
+            .map(|id| {
+                let generation = store.generation(&id).expect("message store");
+                (id, generation)
+            })
+            .collect::<Vec<_>>()
+    };
     let Ok(nodes) = rail_nodes(inner).await else {
         return false;
     };
-    for node in nodes {
-        if let Some(status) = node.status
-            && matches!(status.kind, Kind::Done | Kind::Error)
+    let mut store = inner.store.lock().unwrap();
+    for (id, generation) in known {
+        if !nodes.iter().any(|node| node.id == id)
+            && store.generation(&id).expect("message store") == generation
         {
-            on_ended(inner, &node.id);
+            let ordinal = generation.map_or(0, |(n, _)| n);
+            reconcile(inner, &mut store, &id, ordinal, true).expect("message store");
         }
+    }
+    for node in nodes {
+        reconcile(inner, &mut store, &node.id, ordinal(&node), ended(&node))
+            .expect("message store");
     }
     true
 }
@@ -526,13 +566,14 @@ async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
 /// next one, so exactly one Message is typed per `idle`. It is recorded `delivered` in one
 /// conditional write before typing starts (B8), so a Takeover beginning while the prompt is being
 /// typed cannot hold a Message already in flight; a refusal reverts that record.
-async fn on_idle(inner: &Arc<Inner>, agent: &str) {
-    let found = inner
-        .store
-        .lock()
-        .unwrap()
-        .next_pending(agent)
-        .expect("message store");
+async fn on_idle(inner: &Arc<Inner>, agent: &str, incarnation: i64) {
+    let found = {
+        let store = inner.store.lock().unwrap();
+        if store.require_generation(agent, incarnation).is_err() {
+            return;
+        }
+        store.next_pending(agent).expect("message store")
+    };
     let Some(found) = found else {
         return;
     };
@@ -541,12 +582,15 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str) {
     let Ok(from) = sender_name(inner, &found.from).await else {
         return;
     };
-    let recorded = inner
-        .store
-        .lock()
-        .unwrap()
-        .mark_delivered(found.id)
-        .expect("message store");
+    let recorded = {
+        let store = inner.store.lock().unwrap();
+        if store.require_generation(agent, incarnation).is_err()
+            || store.bound(found.id).expect("message store") != incarnation
+        {
+            return;
+        }
+        store.mark_delivered(found.id).expect("message store")
+    };
     let Some(message) = recorded else {
         return;
     };
@@ -577,33 +621,59 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str) {
 
 /// B6, B9: an Agent that exits ends its Takeover, if any, then drops every Message still
 /// `pending` for it (which now includes any just promoted from a `takeover` hold).
-fn on_ended(inner: &Arc<Inner>, agent: &str) {
-    let ended_takeover = inner
-        .store
-        .lock()
-        .unwrap()
-        .end_takeover(agent)
-        .expect("message store");
-    if ended_takeover.is_some() {
-        inner.bus.emit(
-            Actor::daemon(),
-            EventData::TakeoverChanged(TakeoverChanged {
-                agent: agent.to_owned(),
-                on: false,
-            }),
-        );
+fn on_ended(inner: &Arc<Inner>, agent: &str, incarnation: i64) {
+    let mut store = inner.store.lock().unwrap();
+    reconcile(inner, &mut store, agent, incarnation, true).expect("message store");
+}
+
+fn ordinal(node: &RailNode) -> i64 {
+    node.incarnation
+        .as_deref()
+        .map_or(0, |n| n.parse().expect("Rail Incarnation"))
+}
+
+fn ended(node: &RailNode) -> bool {
+    node.status
+        .as_ref()
+        .is_none_or(|s| matches!(s.kind, Kind::Done | Kind::Error))
+}
+
+fn accept_receiver(inner: &Inner, store: &mut Store, node: &RailNode) -> Result<(), RpcError> {
+    reconcile(inner, store, &node.id, ordinal(node), ended(node))?;
+    store.require_generation(&node.id, ordinal(node))
+}
+
+fn reconcile(
+    inner: &Inner,
+    store: &mut Store,
+    agent: &str,
+    incarnation: i64,
+    closed: bool,
+) -> Result<(), RpcError> {
+    let previous = store.generation(agent)?;
+    if previous.is_some_and(|(n, _)| n > incarnation) {
+        return Ok(());
     }
-    let dropped = inner
-        .store
-        .lock()
-        .unwrap()
-        .drop_all_pending(agent, Reason::ReceiverGone)
-        .expect("message store");
-    for message in dropped {
-        inner
-            .bus
-            .emit(Actor::daemon(), EventData::MessageDropped(message));
+    if previous.is_some_and(|(n, closed)| n == incarnation && closed) {
+        return Ok(());
     }
+    if closed || previous.is_none_or(|(n, _)| n < incarnation) {
+        if store.end_takeover(agent)?.is_some() {
+            inner.bus.emit(
+                Actor::daemon(),
+                EventData::TakeoverChanged(TakeoverChanged {
+                    agent: agent.to_owned(),
+                    on: false,
+                }),
+            );
+        }
+        for message in store.drop_all_pending(agent, Reason::ReceiverGone)? {
+            inner
+                .bus
+                .emit(Actor::daemon(), EventData::MessageDropped(message));
+        }
+    }
+    store.set_generation(agent, incarnation, closed)
 }
 
 /// B2's `<kind>`: `note` or `question` as on the wire, never Rust's `Debug` spelling.
@@ -661,7 +731,7 @@ mod tests {
         }
     }
 
-    fn node(id: &str, kind: NodeKind, meta: bool, status: Option<Status>) -> RailNode {
+    fn node(id: &str, kind: NodeKind, _door: bool, status: Option<Status>) -> RailNode {
         RailNode {
             id: id.into(),
             kind,
@@ -669,7 +739,7 @@ mod tests {
             parent: None,
             order: 0,
             status,
-            meta,
+            incarnation: Some("1".into()),
             terminal_id: None,
             worktree: None,
         }
@@ -841,7 +911,7 @@ mod tests {
             dir.path(),
             vec![
                 node("t", NodeKind::Terminal, false, None),
-                node("g", NodeKind::Group, false, None),
+                node("g", NodeKind::Room, false, None),
             ],
         );
 
@@ -854,7 +924,15 @@ mod tests {
                 )
                 .await
                 .unwrap_err();
-            assert_eq!(err.code, code::INVALID_PARAMS, "to {to}");
+            assert_eq!(
+                err.code,
+                if to == "g" {
+                    code::CONFLICT
+                } else {
+                    code::INVALID_PARAMS
+                },
+                "to {to}"
+            );
         }
     }
 
@@ -863,7 +941,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let meta = node(
             "m",
-            NodeKind::Group,
+            NodeKind::Room,
             true,
             Some(Status {
                 kind: Kind::Idle,

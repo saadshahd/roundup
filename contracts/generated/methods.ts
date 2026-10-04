@@ -1,5 +1,5 @@
 // Generated from crates/contracts/src/methods.rs. Do not edit.
-import type { CreateGroupParams as agent_CreateGroupParams } from "./agent/CreateGroupParams";
+import type { CreateRoomParams as agent_CreateRoomParams } from "./agent/CreateRoomParams";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
 import type { NodeId as agent_NodeId } from "./agent/NodeId";
 import type { RailNode as agent_RailNode } from "./agent/RailNode";
@@ -79,10 +79,10 @@ export type RpcMethods = {
   "decision.list": { params: null; result: decision_Decision[] };
   "decision.answer": { params: decision_AnswerParams; result: null };
   "rail.tree": { params: null; result: agent_RailNode[] };
-  "rail.createGroup": { params: agent_CreateGroupParams; result: agent_RailNode };
+  "rail.createRoom": { params: agent_CreateRoomParams; result: agent_RailNode };
   "rail.move": { params: agent_MoveParams; result: null };
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
-  "rail.promote": { params: agent_NodeId; result: agent_RailNode };
+  "rail.startDoor": { params: agent_NodeId; result: agent_RailNode };
   "rail.spawnTerminal": { params: agent_SpawnTerminalParams; result: agent_RailNode };
   "project.setWorktrees": { params: project_Worktrees; result: null };
   "project.get": { params: null; result: project_ProjectSettings };

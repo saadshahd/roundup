@@ -9,7 +9,7 @@ import type { Project } from "../app/seam";
 import { createFakeApp } from "./fakeApp";
 import { toBase64 } from "../terminal/base64";
 import type { FakeApp } from "./fakeApp";
-import { agent, group, MINUTE, metaAgent, terminal, USER } from "./nodes";
+import { agent, room, MINUTE, door, terminal, USER } from "./nodes";
 import { padHandlers, todoHandlers } from "./stores";
 
 const CONFLICT = -32003;
@@ -56,11 +56,11 @@ const cyclingAgents = (now: number, count: number, parentOf: (index: number) => 
     });
   });
 
-/** Groups nested two deep, a Meta-agent with children, long names and Terminals; 40 nodes in all. */
+/** Rooms nested two deep, a Door with children, long names and Terminals; 40 nodes in all. */
 const nestedTree = (now: number): RailNode[] => [
-  group("backend", { name: "backend" }),
-  group("auth", { name: "auth-refactor", parent: "backend" }),
-  metaAgent("payments", "working", "coordinating 3 children", {
+  room("backend", { name: "backend" }),
+  room("auth", { name: "auth-refactor", parent: "backend" }),
+  door("payments", "working", "coordinating 3 children", {
     name: "payments meta-agent with a very long name that overflows the rail",
     order: 1,
     status: statusAt(now, "working", "coordinating 3 children", 42),
@@ -160,18 +160,19 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   );
   app.handlers["rail.tree"] = () => structuredClone(nodes);
   app.handlers["terminal.list"] = () =>
-    nodes.flatMap((other) =>
-      other.terminal_id
-        ? [{ id: other.terminal_id, cwd: PROJECT.path, title: null, running: !exits.has(other.terminal_id), exit_code: exits.get(other.terminal_id) ?? null }]
-        : [],
-    );
+    [...new Set([...nodes.flatMap((node) => node.terminal_id ? [node.terminal_id] : []), ...exits.keys()])].map((id) =>
+      ({ id, cwd: PROJECT.path, title: null, running: !exits.has(id), exit_code: exits.get(id) ?? null }));
   app.handlers["agent.spawn"] = ({ parent }) =>
     append(parent, (id, order) => agent(id, "working", "starting", { name: "agent", parent, order, status: statusAt(Date.now(), "working", "starting", 0) }));
   app.handlers["rail.spawnTerminal"] = ({ parent }) => append(parent, (id, order) => terminal(id, { name: "zsh", parent, order }));
-  app.handlers["rail.createGroup"] = ({ name, parent }) => append(parent, (id, order) => group(id, { name, parent, order }));
+  app.handlers["rail.createRoom"] = ({ name, parent }) => append(parent, (id, order) => room(id, { name, parent, order }));
   app.handlers["rail.rename"] = ({ id, name }) => changed(Object.assign(find(id), { name }));
-  app.handlers["rail.promote"] = ({ id }) =>
-    changed(Object.assign(find(id), { meta: true, terminal_id: `t-${id}`, status: statusAt(Date.now(), "working", "starting", 0) }));
+  app.handlers["rail.startDoor"] = ({ id }) => {
+    const node = find(id);
+    if (node.kind !== "room" || (node.terminal_id !== null && !exits.has(node.terminal_id))) throw new Error("Door is already active");
+    const incarnation = String(BigInt(node.incarnation ?? "0") + 1n);
+    return changed(Object.assign(node, { incarnation, terminal_id: `t-${id}-${incarnation}`, status: statusAt(Date.now(), "working", "starting", 0) }));
+  };
   app.handlers["rail.move"] = ({ id, parent, index }) => {
     const moved = find(id);
     const siblings = nodes.filter((other) => other.parent === parent && other.id !== id).sort((left, right) => left.order - right.order);
@@ -184,7 +185,7 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   app.handlers["rail.remove"] = ({ id }) => {
     const node = find(id);
 
-    if (node.kind === "agent" || node.meta) exit(node.terminal_id ?? `t-${id}`);
+    if (node.kind !== "terminal") exit(node.terminal_id ?? `t-${id}`);
     else if (node.kind === "terminal" && node.terminal_id) exit(node.terminal_id);
 
     const siblings = nodes.filter((other) => other.parent === node.parent).sort((left, right) => left.order - right.order);
@@ -221,9 +222,10 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   };
 
   app.handlers["agent.stop"] = ({ id }) => {
-    exit(find(id).terminal_id ?? `t-${id}`);
-
-    return null;
+    const node = find(id);
+    if (node.terminal_id) exit(node.terminal_id);
+    Object.assign(node, { terminal_id: null, status: statusAt(Date.now(), "done", "stopped", 0) });
+    return changed(null);
   };
 
   let failure: RpcError | null = null;
@@ -244,7 +246,7 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
     setStatus: (id, kind, label) => {
       const status = statusAt(Date.now(), kind, label, 0);
       find(id).status = status;
-      send({ name: "agent.status", data: { id, status } });
+      send({ name: "agent.status", data: { incarnation: find(id).incarnation ?? "1", id, status } });
     },
     writeOutput: (terminalId, text) => {
       const bytes = new TextEncoder().encode(text);

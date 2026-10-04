@@ -22,6 +22,7 @@ async fn h15_a_failing_rup_signal_fails_the_metric() {
         &fake_rup(dir.path(), 1),
         &dir.path().join("s"),
         "1",
+        "1",
         &[&payload],
         3,
     )
@@ -40,6 +41,7 @@ async fn h15_calls_that_exit_0_report_their_wall_time() {
     let elapsed = hook_calls(
         &fake_rup(dir.path(), 0),
         &dir.path().join("s"),
+        "1",
         "1",
         &[&payload],
         3,
@@ -69,7 +71,7 @@ async fn h15_hook_calls_runs_exactly_the_calls_asked_for_cycling_the_payloads() 
     std::fs::write(&pre, "pre").unwrap();
     std::fs::write(&post, "post").unwrap();
 
-    hook_calls(&rup, &dir.path().join("s"), "1", &[&pre, &post], 5)
+    hook_calls(&rup, &dir.path().join("s"), "1", "1", &[&pre, &post], 5)
         .await
         .unwrap();
 

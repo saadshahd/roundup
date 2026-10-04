@@ -3,7 +3,7 @@ import { createStore, reconcile } from "solid-js/store";
 import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
-import { ancestorsOf, isPlainGroup } from "../rail/layout";
+import { ancestorsOf, isRoom } from "../rail/layout";
 import type { RailStorage } from "../rail/persist/storage";
 import type { Events } from "../app/events";
 import type { AppSeam } from "../app/seam";
@@ -14,8 +14,11 @@ export type ExitState = { kind: "code"; code: number } | { kind: "signal" } | { 
 export type RailState = {
   /** Rows in the Daemon's order; only a `rail.tree` call adds or removes one. */
   readonly nodes: readonly RailNode[];
-  /** `null` while the node's program runs, and for a plain Group (one with no program). */
+  /** `null` while the node's program runs, and for a Room (one with no program). */
   exitOf(node: RailNode): ExitState | null;
+  doorPending(id: string): boolean;
+  doorFailure(id: string): string | null;
+  startDoor(id: string): Promise<void>;
   selected(): string | null;
   restored(): boolean;
   collapsed(): ReadonlySet<string>;
@@ -38,6 +41,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     exited: {},
   });
 
+  const [doors, setDoors] = createStore<Record<string, { pending: boolean; failure: string | null }>>({});
   const [selected, setSelected] = createSignal<string | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
 
@@ -53,7 +57,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
     const above = new Set(ancestorsOf(model.tree, id));
 
-    setCollapsed((closed) => new Set([...closed].filter((group) => !above.has(group))));
+    setCollapsed((closed) => new Set([...closed].filter((room) => !above.has(room))));
   };
 
   let pending = 0;
@@ -72,7 +76,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
         if (saved) {
           setSelected(tree.some((node) => node.id === saved.selected) ? saved.selected : null);
-          setCollapsed(new Set(saved.collapsed.filter((id) => tree.some((node) => node.id === id && isPlainGroup(node)))));
+          setCollapsed(new Set(saved.collapsed.filter((id) => tree.some((node) => node.id === id && isRoom(node)))));
           reveal(selected());
           setRestored(selected() !== null);
           save();
@@ -121,7 +125,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       } else if (event.name === "rail.changed") {
         fetching(fetchTree);
       } else if (event.name === "agent.status") {
-        setModel("tree", (node) => node.id === event.data.id, "status", event.data.status);
+        setModel("tree", (node) => node.id === event.data.id && node.incarnation === event.data.incarnation, "status", event.data.status);
       } else if (event.name === "terminal.exited") {
         setModel("exited", event.data.id, event.data.code);
       }
@@ -134,12 +138,26 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
   });
 
   return {
+    doorPending: (id) => doors[id]?.pending ?? false,
+    doorFailure: (id) => doors[id]?.failure ?? null,
+    startDoor: async (id) => {
+      if (doors[id]?.pending) return;
+      setDoors(id, { pending: true, failure: null });
+      try {
+        await app.rpc("rail.startDoor", { id });
+        fetching(fetchTree);
+        await latest;
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        setDoors(id, "failure", error.message);
+      } finally {
+        setDoors(id, "pending", false);
+      }
+    },
     get nodes() {
       return model.tree;
     },
     exitOf: (node) => {
-      if (node.kind === "group" && !node.meta) return null;
-
       if (node.terminal_id === null) return { kind: "unknown" };
 
       if (!(node.terminal_id in model.exited)) return null;

@@ -339,3 +339,6 @@ mod tests {
         assert_eq!(reply["error"]["code"], code::PARSE_ERROR);
     }
 }
+
+#[cfg(test)]
+mod room_door;

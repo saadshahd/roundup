@@ -57,14 +57,14 @@ async fn a10_a_terminal_node_runs_the_login_shell_and_is_announced() {
 #[tokio::test]
 async fn a10_a_terminal_is_placed_last_under_its_parent() {
     let f = Fixture::running("sleep 30");
-    let group = f.group("team", None).await;
-    f.spawn(Some(&group), None).await.unwrap();
+    let room = f.room("team", None).await;
+    f.spawn(Some(&room), None).await.unwrap();
 
-    let node = f.spawn_terminal(Some(&group)).await.unwrap();
+    let node = f.spawn_terminal(Some(&room)).await.unwrap();
 
     assert_eq!(
         (node.parent.as_deref(), node.order),
-        (Some(group.as_str()), 1)
+        (Some(room.as_str()), 1)
     );
 }
 

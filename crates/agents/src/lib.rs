@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateGroupParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
+    CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
     SpawnParams, SpawnTerminalParams, StatusEvent,
 };
 use contracts::project::{ProjectSettings, Worktrees};
@@ -150,11 +150,12 @@ impl Shared {
         self.runs.lock().expect("runs lock")
     }
 
-    fn mark_starting(&self, id: &str) {
+    fn mark_starting(&self, id: &str, incarnation: String) {
         let since = (self.clock)();
         self.runs().insert(
             id.to_owned(),
             Slot::Starting {
+                incarnation,
                 since,
                 named: false,
                 held: VecDeque::new(),
@@ -162,11 +163,11 @@ impl Shared {
         );
     }
 
-    /// An Agent, or a Meta-agent, has a Status: its live one; `working` while it starts; else
+    /// An Agent, or a Door, has a Status: its live one; `working` while it starts; else
     /// `done`, because the Daemon that ran it is gone and its Terminal with it. Every node that
     /// leaves the module passes through here.
     fn present(&self, mut node: RailNode) -> RailNode {
-        if node.kind == NodeKind::Agent || node.meta {
+        if node.kind != NodeKind::Terminal {
             let live = match self.runs().get(&node.id) {
                 Some(Slot::Running(run)) => run.adapter.status().cloned(),
                 Some(Slot::Starting { since, .. }) => Some(Status {
@@ -174,7 +175,7 @@ impl Shared {
                     label: "starting".into(),
                     since: *since,
                 }),
-                None => None,
+                None | Some(Slot::Closing) => None,
             };
             node.status = Some(live.unwrap_or_else(|| Status {
                 kind: Kind::Done,
@@ -192,6 +193,7 @@ impl Shared {
         &self,
         actor: Actor,
         id: &str,
+        incarnation: &str,
         observation: Observation,
     ) -> Result<Option<i64>, RpcError> {
         let first_prompt = match &observation {
@@ -201,9 +203,17 @@ impl Shared {
             _ => None,
         };
         // Taken before `runs`, as every other path does, so a rename and a prompt cannot deadlock.
-        let mut rail = first_prompt.is_some().then(|| self.rail());
+        let mut rail = (first_prompt.is_some() || matches!(observation, Observation::Exit { .. }))
+            .then(|| self.rail());
         let (prompt, tick_at) = {
             let mut runs = self.runs();
+            if let Some(slot) = runs.get(id)
+                && (slot.incarnation() != incarnation || slot.closing())
+            {
+                return Err(RpcError::conflict(format!(
+                    "agent {id}: stale or stopped Incarnation"
+                )));
+            }
             let run = match runs.get_mut(id) {
                 Some(Slot::Running(run)) => run,
                 // A14: a Signal here is held, in arrival order, for when the Agent is
@@ -217,7 +227,13 @@ impl Shared {
                     return Ok(None);
                 }
                 None => return Err(RpcError::not_found(format!("agent {id}"))),
+                Some(Slot::Closing) => {
+                    return Err(RpcError::conflict(format!("agent {id} is stopping")));
+                }
             };
+            if run.ended {
+                return Err(RpcError::not_found(format!("agent {id} has ended")));
+            }
             self.apply(
                 rail.as_deref_mut(),
                 run,
@@ -242,14 +258,21 @@ impl Shared {
     /// one `rail`-then-`runs` lock section (`finish_starting`) is never asked to lock it twice.
     fn apply(
         &self,
-        rail: Option<&mut rail::Rail>,
+        mut rail: Option<&mut rail::Rail>,
         run: &mut Run,
         id: &str,
         actor: &Actor,
         observation: Observation,
         first_prompt: Option<Option<String>>,
     ) -> Result<Applied, RpcError> {
+        let exited = matches!(observation, Observation::Exit { .. });
         let changed = run.adapter.observe(observation);
+        if exited {
+            run.ended = true;
+            if let Some(rail) = rail.as_deref_mut() {
+                rail.detach_terminal(id)?;
+            }
+        }
         let idle = changed
             .as_ref()
             .is_some_and(|status| status.kind == Kind::Idle);
@@ -258,6 +281,7 @@ impl Shared {
         if let Some(status) = changed {
             let event = StatusEvent {
                 id: id.to_owned(),
+                incarnation: run.incarnation.clone(),
                 status,
             };
             self.bus.emit(actor.clone(), EventData::AgentStatus(event));
@@ -265,7 +289,7 @@ impl Shared {
         if let (Some(rail), Some(name)) = (rail, first_prompt)
             && !std::mem::replace(&mut run.named, true)
             && let Some(name) = name
-            && !rail.node(id)?.meta
+            && rail.node(id)?.kind == NodeKind::Agent
         {
             rail.rename(id, &name)?;
             self.bus.emit(actor.clone(), EventData::RailChanged);
@@ -284,9 +308,20 @@ impl Shared {
     /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
     /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
     /// that left the Agent idle, to type once the locks are let go.
-    fn finish_starting(&self, id: &str, build: impl FnOnce(bool) -> Run) -> Vec<(String, String)> {
+    fn finish_starting(
+        &self,
+        id: &str,
+        incarnation: &str,
+        build: impl FnOnce(bool) -> Run,
+    ) -> Result<Vec<(String, String)>, RpcError> {
         let mut rail = self.rail();
         let mut runs = self.runs();
+        if !matches!(runs.get(id), Some(Slot::Starting { incarnation: active, .. }) if active == incarnation)
+        {
+            return Err(RpcError::conflict(format!(
+                "agent {id}: stale start completion"
+            )));
+        }
         let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
             unreachable!("spawn marks {id} Starting before run_agent runs")
         };
@@ -314,61 +349,84 @@ impl Shared {
             }
         }
         runs.insert(id.to_owned(), Slot::Running(run));
-        prompts
+        Ok(prompts)
     }
 
-    /// Stop an Agent's program; it stays in the Rail as `done`, unless its program had already
-    /// ended, in which case it keeps the Status that ending gave it. A Meta-agent's children
-    /// move up to where it was and keep running (A7).
     async fn stop(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
-        let (node, run) = {
-            let rail = self.rail();
-            let node = rail.node(id)?;
-            let run = self.runs().get(id).map(|slot| match slot {
-                Slot::Running(run) => Some(run.terminal_id.clone()),
-                Slot::Starting { .. } => None,
-            });
-            (node, run)
-        };
-        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
-            return Err(RpcError::conflict(format!("{id} is not an Agent")));
-        }
-        match run {
-            Some(Some(terminal_id)) => {
-                self.observe(actor.clone(), id, Observation::Stopped)?;
-                kill_or_already_gone(&*self.kill, &self.terminals, &terminal_id).await?;
-            }
-            Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
-            // An earlier Daemon ran it; its Terminal ended with that Daemon.
-            None => {}
-        }
-        if node.kind == NodeKind::Group && self.rail().lift_children(id)? {
-            self.bus.emit(actor, EventData::RailChanged);
-        }
-        Ok(())
+        self.end(actor, id, false).await
     }
 
-    /// Delete a node from the Rail (A16). An Agent or a Meta-agent is stopped first, as `stop`
-    /// does (A7's lift of a Meta-agent's children included); a plain Terminal is killed instead,
-    /// since `stop` refuses one. Either failing returns its error and deletes nothing, so a
-    /// second `rail.remove` can retry. A plain Group's children move to its own parent, at its
-    /// place, with the delete itself in one transaction (`Rail::remove`): a failed delete there
-    /// leaves them still under it. A Meta-agent's children are already lifted by `stop` by the
-    /// time the delete runs, so a failed delete after that just leaves the node `done` on the
-    /// Rail with no children of its own left to lose. A successful delete also drops `id` from
-    /// `runs`, so a removed Agent's Slot does not sit there forever and a later `agent.signal`
-    /// for it is `NOT_FOUND` again, instead of quietly applying to a node no longer on the Rail.
     async fn remove(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
-        let node = self.rail().node(id)?;
-        if node.kind == NodeKind::Agent || node.meta {
-            self.stop(actor.clone(), id).await?;
-        } else if node.kind == NodeKind::Terminal
-            && let Some(terminal_id) = &node.terminal_id
-        {
-            kill_or_already_gone(&*self.kill, &self.terminals, terminal_id).await?;
+        self.end(actor, id, true).await
+    }
+
+    async fn end(&self, actor: Actor, id: &str, remove: bool) -> Result<(), RpcError> {
+        let terminal_id = {
+            let rail = self.rail();
+            let mut node = rail.node(id)?;
+            if !remove && node.kind == NodeKind::Terminal {
+                return Err(RpcError::conflict(format!("{id} is not an Agent")));
+            }
+            let mut runs = self.runs();
+            if !remove
+                && node.terminal_id.is_none()
+                && runs
+                    .get(id)
+                    .is_none_or(|s| matches!(s, Slot::Running(r) if r.ended))
+            {
+                return Ok(());
+            }
+            match runs.get_mut(id) {
+                Some(Slot::Starting { .. }) => {
+                    return Err(RpcError::conflict(format!("{id} is still starting")));
+                }
+                Some(Slot::Running(run)) => {
+                    if run.closing {
+                        return Err(RpcError::conflict(format!("{id} is stopping")));
+                    }
+                    self.apply(None, run, id, &actor, Observation::Stopped, None)?;
+                    run.closing = true;
+                    node.terminal_id = Some(run.terminal_id.clone());
+                }
+                None => {
+                    runs.insert(id.to_owned(), Slot::Closing);
+                }
+                Some(Slot::Closing) => {
+                    return Err(RpcError::conflict(format!("{id} is being removed")));
+                }
+            }
+            node.terminal_id
+        };
+        let killed = match terminal_id {
+            Some(terminal_id) => {
+                kill_or_already_gone(&*self.kill, &self.terminals, &terminal_id).await
+            }
+            None => Ok(()),
+        };
+        let mut rail = self.rail();
+        let mut runs = self.runs();
+        if let Err(err) = killed {
+            if let Some(Slot::Running(run)) = runs.get_mut(id) {
+                run.closing = false;
+            } else {
+                runs.remove(id);
+            }
+            return Err(err);
         }
-        self.rail().remove(id)?;
-        self.runs().remove(id);
+        let result = if remove {
+            rail.remove(id)
+        } else {
+            rail.detach_terminal(id)
+        };
+        if remove {
+            runs.remove(id);
+        } else if let Some(Slot::Running(run)) = runs.get_mut(id) {
+            run.closing = false;
+            run.ended = true;
+        } else {
+            runs.remove(id);
+        }
+        result?;
         self.bus.emit(actor, EventData::RailChanged);
         Ok(())
     }
@@ -378,6 +436,7 @@ impl Shared {
 enum Slot {
     /// Its Terminal is starting; `since` is when, on `clock`, it was marked.
     Starting {
+        incarnation: String,
         since: i64,
         /// A `rail.rename` came while it started; its first prompt must not undo it.
         named: bool,
@@ -386,14 +445,27 @@ enum Slot {
         held: VecDeque<(Actor, Value)>,
     },
     Running(Run),
+    Closing,
 }
 
 impl Slot {
+    fn incarnation(&self) -> &str {
+        match self {
+            Self::Starting { incarnation, .. } => incarnation,
+            Self::Running(run) => &run.incarnation,
+            Self::Closing => "",
+        }
+    }
+    fn closing(&self) -> bool {
+        matches!(self, Self::Closing) || matches!(self, Self::Running(run) if run.closing)
+    }
+
     /// The node's name is final: no prompt renames it.
     fn settle_name(&mut self) {
         match self {
             Self::Running(run) => run.named = true,
             Self::Starting { named, .. } => *named = true,
+            Self::Closing => {}
         }
     }
 }
@@ -415,6 +487,9 @@ fn hold(id: &str, held: &mut VecDeque<(Actor, Value)>, actor: Actor, payload: Va
 
 /// An Agent's program and what is left to tell it.
 struct Run {
+    incarnation: String,
+    closing: bool,
+    ended: bool,
     adapter: ClaudeCode,
     /// Typed into the Terminal at the first idle, then gone.
     prompt: Option<String>,
@@ -444,7 +519,12 @@ const REGISTERED: &str = "a watched Agent is registered";
 
 /// Feed one Terminal's titles and its exit to the Agent behind it, and a Tick at the time its
 /// adapter asks for one. Only a held star asks, so the watcher of an idle Agent never wakes.
-async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>) {
+async fn watch(
+    shared: Arc<Shared>,
+    id: String,
+    incarnation: String,
+    mut events: Receiver<EventData>,
+) {
     let mut tick: Option<Instant> = None;
     loop {
         let observation = tokio::select! {
@@ -458,11 +538,11 @@ async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>)
             () = sleep_until(tick.unwrap_or_else(Instant::now)), if tick.is_some() => Observation::Tick,
         };
         let exited = matches!(observation, Observation::Exit { .. });
-        let tick_at = match shared.observe(Actor::daemon(), &id, observation) {
+        let tick_at = match shared.observe(Actor::daemon(), &id, &incarnation, observation) {
             Ok(tick_at) => tick_at,
             // `rail.remove` evicts `id` from `runs` once it deletes the node (A16); an Exit
             // already in flight when that happened has nothing left to watch.
-            Err(err) if err.code == code::NOT_FOUND => return,
+            Err(err) if matches!(err.code, code::NOT_FOUND | code::CONFLICT) => return,
             Err(err) => panic!("{REGISTERED}: {err}"),
         };
         if exited {
@@ -526,7 +606,7 @@ impl Agents {
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
     async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
         let cwd = Path::new(&params.cwd);
-        let id = {
+        let (id, incarnation) = {
             let mut rail = self.shared.rail();
             let node = rail.insert(
                 NodeKind::Agent,
@@ -534,15 +614,22 @@ impl Agents {
                 params.parent.as_deref(),
                 None,
             )?;
-            self.shared.mark_starting(&node.id);
-            node.id
+            let incarnation = rail.allocate_incarnation(&node.id)?;
+            self.shared.mark_starting(&node.id, incarnation.clone());
+            (node.id, incarnation)
         };
-        let terminal_id = match self.run_agent(&id, cwd, params.prompt).await {
+        let terminal_id = match self.run_agent(&id, &incarnation, cwd, params.prompt).await {
             Ok(terminal_id) => terminal_id,
             Err(err) => {
                 let mut rail = self.shared.rail();
-                self.shared.runs().remove(&id);
-                report_undo("remove the Agent from the Rail", rail.remove(&id));
+                let mut runs = self.shared.runs();
+                if runs
+                    .get(&id)
+                    .is_some_and(|slot| slot.incarnation() == incarnation)
+                {
+                    runs.remove(&id);
+                    report_undo("remove the Agent from the Rail", rail.remove(&id));
+                }
                 return Err(err);
             }
         };
@@ -567,7 +654,7 @@ impl Agents {
             None,
         )?;
         let spawned = match self
-            .spawn_behind(&node.id, Path::new(&params.cwd), None)
+            .spawn_behind(&node.id, Path::new(&params.cwd), None, None)
             .await
         {
             Ok(spawned) => spawned,
@@ -586,18 +673,54 @@ impl Agents {
         })
     }
 
-    /// Make a Group a Meta-agent: start a live Agent that sits at it, in the Project's folder.
-    async fn promote(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
-        {
+    async fn start_door(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
+        let incarnation = {
             let mut rail = self.shared.rail();
-            rail.reserve_meta(id)?;
-            self.shared.mark_starting(id);
-        }
+            let node = rail.node(id)?;
+            if node.kind != NodeKind::Room {
+                return Err(RpcError::conflict(format!("{id} is not a Room")));
+            }
+            let mut runs = self.shared.runs();
+            if let Some(slot) = runs.get(id) {
+                let live = match slot {
+                    Slot::Running(run) => {
+                        run.closing
+                            || self
+                                .shared
+                                .terminals
+                                .list()
+                                .iter()
+                                .any(|t| t.id == run.terminal_id && t.running)
+                    }
+                    _ => true,
+                };
+                if live {
+                    return Err(RpcError::conflict(format!("Door {id} is already active")));
+                }
+            }
+            let incarnation = rail.allocate_incarnation(id)?;
+            runs.insert(
+                id.to_owned(),
+                Slot::Starting {
+                    incarnation: incarnation.clone(),
+                    since: (self.shared.clock)(),
+                    named: true,
+                    held: VecDeque::new(),
+                },
+            );
+            incarnation
+        };
         let project = self.project_dir().to_owned();
-        if let Err(err) = self.run_agent(id, &project, None).await {
+        if let Err(err) = self.run_agent(id, &incarnation, &project, None).await {
             let mut rail = self.shared.rail();
-            self.shared.runs().remove(id);
-            report_undo("give the Group back its plain state", rail.release_meta(id));
+            let mut runs = self.shared.runs();
+            if runs
+                .get(id)
+                .is_some_and(|slot| slot.incarnation() == incarnation)
+            {
+                runs.remove(id);
+                rail.detach_terminal(id)?;
+            }
             return Err(err);
         }
         ctx.emit(EventData::RailChanged);
@@ -676,14 +799,31 @@ impl Agents {
     async fn run_agent(
         &self,
         id: &str,
+        incarnation: &str,
         cwd: &Path,
         prompt: Option<String>,
     ) -> Result<String, RpcError> {
-        let provisioned = self.provision_worktree(id, cwd).await?;
-        let effective_cwd = provisioned
-            .as_ref()
-            .map_or_else(|| cwd.to_owned(), |(cwd, _)| cwd.clone());
-        let spawned = match self.start(id, &effective_cwd).await {
+        let node = self.shared.rail().node(id)?;
+
+        let retained = node.worktree.map(|w| PathBuf::from(w.path));
+        if let Some(path) = &retained
+            && !path.is_dir()
+        {
+            return Err(RpcError::internal(format!(
+                "recorded Worktree is missing: {}",
+                path.display()
+            )));
+        }
+        let provisioned = if retained.is_none() {
+            self.provision_worktree(id, cwd).await?
+        } else {
+            None
+        };
+        let effective_cwd = provisioned.as_ref().map_or_else(
+            || retained.unwrap_or_else(|| cwd.to_owned()),
+            |(cwd, _)| cwd.clone(),
+        );
+        let spawned = match self.start(id, incarnation, &effective_cwd).await {
             Ok(spawned) => spawned,
             Err(err) => {
                 report_undo(
@@ -698,12 +838,25 @@ impl Agents {
         };
         let clock = Arc::clone(&self.shared.clock);
         let terminal_id = spawned.id.clone();
-        let prompts = self.shared.finish_starting(id, move |named| Run {
+        let prompts = self.shared.finish_starting(id, incarnation, |named| Run {
+            incarnation: incarnation.to_owned(),
+            closing: false,
+            ended: false,
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
             named,
             terminal_id,
         });
+        let prompts = match prompts {
+            Ok(prompts) => prompts,
+            Err(err) => {
+                report_undo(
+                    "kill obsolete start Terminal",
+                    self.shared.terminals.kill(&spawned.id).await,
+                );
+                return Err(err);
+            }
+        };
         for (terminal_id, prompt) in prompts {
             tokio::spawn(type_prompt(
                 Arc::clone(&self.shared.terminals),
@@ -714,12 +867,18 @@ impl Agents {
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
+            incarnation.to_owned(),
             spawned.events,
         ));
         Ok(spawned.id)
     }
 
-    async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {
+    async fn start(
+        &self,
+        id: &str,
+        incarnation: &str,
+        cwd: &Path,
+    ) -> Result<terminal::Spawned, RpcError> {
         // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
         let (launcher, dir, node, folder) = (
             self.launcher.clone(),
@@ -730,7 +889,8 @@ impl Agents {
         let argv = tokio::task::spawn_blocking(move || launcher.prepare(&dir, &node, &folder))
             .await
             .map_err(RpcError::internal)??;
-        self.spawn_behind(id, cwd, Some(argv)).await
+        self.spawn_behind(id, cwd, Some(argv), Some(incarnation))
+            .await
     }
 
     /// Start `command` (the login shell when `None`) in a Terminal and record it as the one behind
@@ -740,6 +900,7 @@ impl Agents {
         id: &str,
         cwd: &Path,
         command: Option<Vec<String>>,
+        incarnation: Option<&str>,
     ) -> Result<terminal::Spawned, RpcError> {
         let spawned = self
             .shared
@@ -747,7 +908,11 @@ impl Agents {
             .spawn(TerminalSpawn {
                 cwd: cwd.to_string_lossy().into_owned(),
                 command,
-                env: BTreeMap::new(),
+                env: incarnation
+                    .map(|value| {
+                        BTreeMap::from([("ROUNDUP_AGENT_INCARNATION".into(), value.into())])
+                    })
+                    .unwrap_or_default(),
                 cols: 80,
                 rows: 24,
             })
@@ -762,6 +927,12 @@ impl Agents {
         }
         Ok(spawned)
     }
+}
+
+fn valid_incarnation(value: &str) -> bool {
+    value
+        .parse::<i64>()
+        .is_ok_and(|n| n > 0 && n.to_string() == value)
 }
 
 /// The error that made a caller undo its work is the one it returns, so a failed undo is only
@@ -825,13 +996,28 @@ impl Module for Agents {
                 shared.stop(ctx.actor.clone(), &id).await?;
                 reply(&())
             }
-            "rail.promote" => {
+            "rail.startDoor" => {
                 let NodeId { id } = params(value)?;
-                reply(&self.promote(ctx, &id).await?)
+                reply(&self.start_door(ctx, &id).await?)
             }
             "agent.signal" => {
-                let SignalParams { id, payload } = params(value)?;
-                shared.observe(ctx.actor.clone(), &id, Observation::Signal(payload))?;
+                let SignalParams {
+                    id,
+                    incarnation,
+                    payload,
+                } = params(value)?;
+                if !valid_incarnation(&incarnation) {
+                    return Err(RpcError::new(
+                        code::INVALID_PARAMS,
+                        "incarnation must be a canonical positive decimal within signed 64-bit range",
+                    ));
+                }
+                shared.observe(
+                    ctx.actor.clone(),
+                    &id,
+                    &incarnation,
+                    Observation::Signal(payload),
+                )?;
                 reply(&())
             }
             "rail.tree" => {
@@ -843,11 +1029,11 @@ impl Module for Agents {
                         .collect::<Vec<_>>(),
                 )
             }
-            "rail.createGroup" => {
-                let CreateGroupParams { name, parent } = params(value)?;
+            "rail.createRoom" => {
+                let CreateRoomParams { name, parent } = params(value)?;
                 let node = shared
                     .rail()
-                    .insert(NodeKind::Group, &name, parent.as_deref(), None)?;
+                    .insert(NodeKind::Room, &name, parent.as_deref(), None)?;
                 ctx.emit(EventData::RailChanged);
                 reply(&shared.present(node))
             }
@@ -957,6 +1143,9 @@ mod tests {
             let adapter_clock = Arc::clone(&clock);
             let (dir, bus, shared) = shared_over_temp_dir(clock);
             let run = Run {
+                incarnation: "1".into(),
+                closing: false,
+                ended: false,
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
                 named: false,
@@ -965,7 +1154,12 @@ mod tests {
             shared.runs().insert("1".into(), Slot::Running(run));
             let (terminal, terminal_events) = broadcast::channel(16);
             let events = bus.subscribe();
-            let watcher = tokio::spawn(watch(Arc::clone(&shared), "1".into(), terminal_events));
+            let watcher = tokio::spawn(watch(
+                Arc::clone(&shared),
+                "1".into(),
+                "1".into(),
+                terminal_events,
+            ));
             Self {
                 _dir: dir,
                 shared,
@@ -978,7 +1172,7 @@ mod tests {
         fn signal(&self, event: &str) {
             let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
             self.shared
-                .observe(Actor::daemon(), "1", Observation::Signal(payload))
+                .observe(Actor::daemon(), "1", "1", Observation::Signal(payload))
                 .unwrap();
         }
 
@@ -1081,6 +1275,7 @@ mod tests {
         shared.runs().insert(
             "1".into(),
             Slot::Starting {
+                incarnation: "1".into(),
                 since: 0,
                 named: false,
                 held: VecDeque::new(),
@@ -1088,7 +1283,7 @@ mod tests {
         );
 
         let err = shared
-            .observe(Actor::daemon(), "1", Observation::Tick)
+            .observe(Actor::daemon(), "1", "1", Observation::Tick)
             .unwrap_err();
 
         assert_eq!(err.code, rpc::code::NOT_FOUND);
@@ -1114,7 +1309,7 @@ mod tests {
             .insert(contracts::agent::NodeKind::Agent, "new-agent", None, None)
             .unwrap()
             .id;
-        shared.mark_starting(&id);
+        shared.mark_starting(&id, "1".into());
         if let Some(Slot::Starting { held, .. }) = shared.runs().get_mut(&id) {
             held.push_back((
                 Actor::daemon(),
@@ -1123,7 +1318,10 @@ mod tests {
         }
         let lock = lock_db_for_writes(dir.path());
 
-        let prompts = shared.finish_starting(&id, |named| Run {
+        let prompts = shared.finish_starting(&id, "1", |named| Run {
+            incarnation: "1".into(),
+            closing: false,
+            ended: false,
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
             named,
@@ -1131,7 +1329,7 @@ mod tests {
         });
 
         drop(lock);
-        assert_eq!(prompts, Vec::new());
+        assert_eq!(prompts.unwrap(), Vec::new());
         // Neither lock was poisoned by the failed write: both can still be acquired.
         assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
         shared.rail().tree().unwrap();
@@ -1166,6 +1364,7 @@ mod tests {
             shared.runs().insert(
                 id.clone(),
                 Slot::Starting {
+                    incarnation: "1".into(),
                     since: 0,
                     named: false,
                     held: VecDeque::from([(
@@ -1183,10 +1382,13 @@ mod tests {
                 let shared = Arc::clone(&shared);
                 let id = id.clone();
                 thread::spawn(move || {
-                    shared.finish_starting(&id, |named| {
+                    shared.finish_starting(&id, "1", |named| {
                         holding_tx.send(()).unwrap();
                         go_rx.recv().unwrap();
                         Run {
+                            incarnation: "1".into(),
+                            closing: false,
+                            ended: false,
                             adapter: ClaudeCode::starting(|| 0),
                             prompt: None,
                             named,
@@ -1208,6 +1410,7 @@ mod tests {
                     shared.observe(
                         Actor::daemon(),
                         &id,
+                        "1",
                         Observation::Signal(
                             json!({"hook_event_name": "Stop", "tool_name": "Bash"}),
                         ),
@@ -1217,7 +1420,7 @@ mod tests {
             about_rx.recv().unwrap();
             go_tx.send(()).unwrap();
 
-            registering.join().unwrap();
+            registering.join().unwrap().unwrap();
             late.join().unwrap().unwrap();
 
             let mut kinds = vec![];
@@ -1270,6 +1473,9 @@ mod tests {
         shared.runs().insert(
             id.clone(),
             Slot::Running(Run {
+                incarnation: "1".into(),
+                closing: false,
+                ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 named: true,
@@ -1290,20 +1496,23 @@ mod tests {
         assert_eq!(shared.rail().tree().unwrap().len(), 1);
     }
 
-    /// A Meta-agent whose kill fails must not have its children lifted either: `stop` returning
+    /// A Door whose kill fails must not have its children lifted either: `stop` returning
     /// early before it calls `lift_children` is what this proves.
     #[tokio::test]
     async fn a16_a_failed_stop_of_a_meta_agent_leaves_its_children_in_place() {
         let shared = shared_with_a_failing_kill();
         let group = shared
             .rail()
-            .insert(NodeKind::Group, "g", None, None)
+            .insert(NodeKind::Room, "g", None, None)
             .unwrap()
             .id;
-        shared.rail().reserve_meta(&group).unwrap();
+        shared.rail().allocate_incarnation(&group).unwrap();
         shared.runs().insert(
             group.clone(),
             Slot::Running(Run {
+                incarnation: "1".into(),
+                closing: false,
+                ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 named: true,
@@ -1312,7 +1521,7 @@ mod tests {
         );
         let child = shared
             .rail()
-            .insert(NodeKind::Group, "child", Some(&group), None)
+            .insert(NodeKind::Room, "child", Some(&group), None)
             .unwrap()
             .id;
 
@@ -1321,6 +1530,40 @@ mod tests {
         let tree = shared.rail().tree().unwrap();
         let child_node = tree.iter().find(|n| n.id == child).unwrap();
         assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a7_old_title_tick_exit_and_signal_do_not_change_a_new_run() {
+        let mut watched = Watched::start();
+        {
+            let mut runs = watched.shared.runs();
+            let Some(Slot::Running(run)) = runs.get_mut("1") else {
+                panic!("Running")
+            };
+            run.incarnation = "2".into();
+            run.terminal_id = "new-terminal".into();
+        }
+        for observation in [
+            Observation::Title("old title".into()),
+            Observation::Tick,
+            Observation::Exit { code: Some(1) },
+            Observation::Signal(json!({"hook_event_name":"Stop"})),
+        ] {
+            let err = watched
+                .shared
+                .observe(Actor::daemon(), "1", "1", observation)
+                .unwrap_err();
+            assert_eq!(err.code, rpc::code::CONFLICT);
+        }
+        assert!(watched.events.try_recv().is_err());
+        let runs = watched.shared.runs();
+        let Some(Slot::Running(run)) = runs.get("1") else {
+            panic!("Running")
+        };
+        assert_eq!(run.incarnation, "2");
+        assert_eq!(run.terminal_id, "new-terminal");
+        assert!(!run.ended);
+        assert_eq!(run.adapter.status().unwrap().kind, Kind::Working);
     }
 
     /// A plain Terminal node, with no watcher, for a test that drives `remove` directly.

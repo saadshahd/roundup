@@ -65,8 +65,8 @@ describe("u26 the harness seeds", () => {
     await within(await rail()).findByText("agent-1");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await expect(app.rpc("rail.createGroup", { name: "x", parent: null })).rejects.toMatchObject({ code: -32003 });
-    await expect(app.rpc("rail.createGroup", { name: "x", parent: null })).resolves.toMatchObject({ name: "x" });
+    await expect(app.rpc("rail.createRoom", { name: "x", parent: null })).rejects.toMatchObject({ code: -32003 });
+    await expect(app.rpc("rail.createRoom", { name: "x", parent: null })).resolves.toMatchObject({ name: "x" });
   });
 
   it("u26_a_pad_the_agent_owns_takes_an_append_and_shows_the_new_text", async () => {
@@ -168,7 +168,7 @@ describe("u26 the Daemon's rail methods", () => {
   it("u26_creating_a_group_adds_a_group_with_the_name", async () => {
     const { app, names } = await daemon();
 
-    await app.rpc("rail.createGroup", { name: "infra", parent: null });
+    await app.rpc("rail.createRoom", { name: "infra", parent: null });
 
     expect(await names()).toContain("infra");
   });
@@ -184,9 +184,9 @@ describe("u26 the Daemon's rail methods", () => {
   it("u26_promoting_a_group_makes_it_a_meta_agent_with_a_terminal", async () => {
     const { app } = await daemon();
 
-    const promoted = await app.rpc("rail.promote", { id: "backend" });
+    const promoted = await app.rpc("rail.startDoor", { id: "backend" });
 
-    expect([promoted.meta, promoted.terminal_id]).toEqual([true, "t-backend"]);
+    expect([promoted.kind, promoted.terminal_id]).toEqual(["room", "t-backend-1"]);
   });
 
   it("u26_moving_a_node_re_parents_it_at_the_index", async () => {

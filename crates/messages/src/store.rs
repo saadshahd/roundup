@@ -48,12 +48,77 @@ impl Store {
         if !has_rank {
             db.execute_batch("ALTER TABLE messages ADD COLUMN rank INTEGER NOT NULL DEFAULT 0;")?;
         }
+        let has_incarnation = db
+            .prepare(
+                "SELECT 1 FROM pragma_table_info('messages') WHERE name = 'receiver_incarnation'",
+            )?
+            .exists([])?;
+        if !has_incarnation {
+            db.execute_batch(
+                "ALTER TABLE messages ADD COLUMN receiver_incarnation INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        db.execute_batch("CREATE TABLE IF NOT EXISTS receiver_generations (id TEXT PRIMARY KEY, incarnation INTEGER NOT NULL, closed INTEGER NOT NULL);")?;
         let mut store = Self {
             db,
             active_takeovers: HashSet::new(),
         };
         store.release_stale_takeovers()?;
         Ok(store)
+    }
+
+    pub(crate) fn receivers(&self) -> Result<Vec<String>, RpcError> {
+        self.db.prepare("SELECT id FROM receiver_generations UNION SELECT to_id FROM messages WHERE to_id != 'you'").and_then(|mut q| q.query_map([], |r| r.get(0))?.collect()).map_err(RpcError::internal)
+    }
+
+    pub(crate) fn generation(&self, agent: &str) -> Result<Option<(i64, bool)>, RpcError> {
+        self.db
+            .query_row(
+                "SELECT incarnation, closed FROM receiver_generations WHERE id = ?",
+                [agent],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(RpcError::internal)
+    }
+
+    pub(crate) fn set_generation(
+        &self,
+        agent: &str,
+        incarnation: i64,
+        closed: bool,
+    ) -> Result<(), RpcError> {
+        self.db.execute("INSERT INTO receiver_generations VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET incarnation=excluded.incarnation, closed=excluded.closed", params![agent, incarnation, closed]).map_err(RpcError::internal)?;
+        Ok(())
+    }
+
+    pub(crate) fn require_generation(&self, agent: &str, incarnation: i64) -> Result<(), RpcError> {
+        if self.generation(agent)? == Some((incarnation, false)) {
+            return Ok(());
+        }
+        Err(RpcError::conflict(format!(
+            "{agent}: stale or stopped Incarnation"
+        )))
+    }
+
+    pub(crate) fn bind(&self, id: u32, incarnation: i64) -> Result<(), RpcError> {
+        self.db
+            .execute(
+                "UPDATE messages SET receiver_incarnation = ? WHERE id = ?",
+                params![incarnation, id],
+            )
+            .map_err(RpcError::internal)?;
+        Ok(())
+    }
+
+    pub(crate) fn bound(&self, id: u32) -> Result<i64, RpcError> {
+        self.db
+            .query_row(
+                "SELECT receiver_incarnation FROM messages WHERE id = ?",
+                [id],
+                |r| r.get(0),
+            )
+            .map_err(RpcError::internal)
     }
 
     /// B6: no Takeover survives a restart, so a Message left `held` for the reason `takeover` by
@@ -88,11 +153,12 @@ impl Store {
         status: MessageStatus,
         reason: Option<Reason>,
         at: i64,
+        incarnation: i64,
     ) -> Result<Message, RpcError> {
         self.db
             .execute(
-                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, rank)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, receiver_incarnation, rank)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
                      CASE WHEN ?6 = 'pending' THEN (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages) ELSE 0 END)",
                 params![
                     actor_json(from),
@@ -102,7 +168,8 @@ impl Store {
                     reply_to,
                     text_of(status),
                     reason.map(text_of),
-                    at
+                    at,
+                    incarnation
                 ],
             )
             .map_err(RpcError::internal)?;
@@ -194,6 +261,10 @@ impl Store {
         let Some(message) = self.get(id)? else {
             return Ok(None);
         };
+        let incarnation = self.bound(id)?;
+        if self.require_generation(&message.to, incarnation).is_err() {
+            return Ok(None);
+        }
         let held = message.from.kind != ActorKind::User && self.is_takeover_active(&message.to);
         let (status, reason) = if held {
             ("held", Some("takeover"))
@@ -437,6 +508,7 @@ mod tests {
                 None,
                 status,
                 reason,
+                1,
                 1,
             )
             .unwrap()

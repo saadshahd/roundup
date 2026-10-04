@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import { mountRailAndPane } from "../terminal/paneHarness";
-import { agent, event, group } from "../testing/nodes";
+import { agent, event, room } from "../testing/nodes";
 import { mountRail, railCallsTo } from "./railFixture";
 
 afterEach(cleanup);
@@ -16,7 +16,7 @@ const field = () => screen.getByLabelText<HTMLInputElement>("prompt");
 
 describe("u33 spawn with a prompt", () => {
   it("u33_shift_cmd_n_opens_a_focused_prompt_field_at_the_top_of_the_rail", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     chord("n");
     // SpawnPromptField's ref focuses the input from a queued microtask (SpawnPromptField.tsx); this flushes it.
@@ -26,7 +26,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_shift_cmd_n_is_handled_by_the_webview_so_the_browser_never_sees_it", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     const handled = fireEvent.keyDown(document, { key: "n", metaKey: true, shiftKey: true });
 
@@ -34,7 +34,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_the_prompt_field_sits_before_the_tree", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     chord("n");
 
@@ -44,7 +44,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_typing_an_ordinary_key_goes_into_the_field_and_never_closes_it", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
 
     chord("n");
     fireEvent.input(field(), { target: { value: "f" } });
@@ -55,7 +55,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_enter_trims_leading_and_trailing_whitespace_from_the_prompt", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("n");
@@ -68,7 +68,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_enter_spawns_with_the_typed_prompt_and_the_selected_groups_parent", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
     mounted.rail.select("g");
 
@@ -82,7 +82,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_enter_on_an_empty_field_spawns_with_no_prompt", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("n");
@@ -94,7 +94,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_enter_on_a_field_of_only_spaces_spawns_with_no_prompt", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("n");
@@ -107,7 +107,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_the_new_row_becomes_selected_once_the_tree_has_it", async () => {
-    const tree = [group("g")];
+    const tree = [room("g")];
     const mounted = await mountRail(tree);
     mounted.app.handlers["agent.spawn"] = () => {
       tree.push(SPAWNED);
@@ -123,7 +123,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_a_successful_spawn_closes_the_field", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("n");
@@ -133,7 +133,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_escape_closes_the_field_and_calls_nothing", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
 
     chord("n");
     fireEvent.keyDown(field(), { key: "Escape" });
@@ -142,7 +142,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_a_failed_call_shows_the_error_line_and_keeps_the_fields_text", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => {
       throw new Error("no room");
     };
@@ -156,7 +156,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_cmd_n_still_spawns_with_no_prompt_and_no_field", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("n", { metaKey: true });
@@ -168,7 +168,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_with_caps_lock_on_the_chord_still_opens_the_field", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     chord("N");
 
@@ -180,7 +180,7 @@ describe("u33 spawn with a prompt", () => {
     ["cmd shift and alt", { metaKey: true, shiftKey: true, altKey: true }],
     ["shift alone", { shiftKey: true }],
   ])("u33_shift_cmd_n_does_nothing_with_%s", async (_, held) => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     chord("n", held);
 
@@ -188,7 +188,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_shift_cmd_n_does_nothing_while_a_spawn_is_in_flight", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => new Promise(() => {});
 
     chord("n", { metaKey: true });
@@ -201,7 +201,7 @@ describe("u33 spawn with a prompt", () => {
 
   it("u33_shift_cmd_n_does_nothing_after_the_daemon_exited", async () => {
     const [exit] = createSignal({ code: 1 });
-    await mountRail([group("g")], [], exit);
+    await mountRail([room("g")], [], exit);
 
     chord("n");
 
@@ -210,7 +210,7 @@ describe("u33 spawn with a prompt", () => {
 
   it("u33_enter_after_the_daemon_exited_calls_nothing", async () => {
     const [exit, setExit] = createSignal<{ code: number } | null>(null);
-    const mounted = await mountRail([group("g")], [], exit);
+    const mounted = await mountRail([room("g")], [], exit);
     mounted.app.handlers["agent.spawn"] = () => SPAWNED;
 
     chord("n");
@@ -221,7 +221,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_a_second_enter_while_the_spawn_is_in_flight_calls_nothing_more", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["agent.spawn"] = () => new Promise(() => {});
 
     chord("n");
@@ -234,7 +234,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_cmd_n_does_nothing_while_the_prompt_field_is_already_open", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
@@ -246,7 +246,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_shift_cmd_n_does_nothing_while_the_field_is_already_open", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
@@ -258,7 +258,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_cmd_t_still_spawns_a_terminal_while_the_field_is_open_and_leaves_it_open", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
 
     chord("n");
@@ -274,7 +274,7 @@ describe("u33 spawn with a prompt", () => {
   it.each(["n", "t"])(
     "u33_cmd_%s_is_a_bound_shortcut_so_it_never_reaches_the_field_while_the_field_is_open",
     async (key) => {
-      const mounted = await mountRail([group("g")]);
+      const mounted = await mountRail([room("g")]);
       mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
 
       chord("n");
@@ -288,7 +288,7 @@ describe("u33 spawn with a prompt", () => {
   it.each(["v", "a", "z"])(
     "u33_cmd_%s_is_not_a_bound_shortcut_so_it_is_typed_into_the_field_and_never_closes_it",
     async (key) => {
-      await mountRail([group("g")]);
+      await mountRail([room("g")]);
 
       chord("n");
       fireEvent.input(field(), { target: { value: "keep me" } });
@@ -301,11 +301,11 @@ describe("u33 spawn with a prompt", () => {
   );
 
   it("u33_plus_agent_moves_focus_to_the_field_and_calls_nothing", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
-    screen.getByText("group").focus();
+    screen.getByText("room").focus();
 
     fireEvent.click(screen.getByText("agent"));
 
@@ -315,7 +315,7 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_plus_terminal_spawns_and_leaves_the_field_open_with_its_text", async () => {
-    const mounted = await mountRail([group("g")]);
+    const mounted = await mountRail([room("g")]);
     mounted.app.handlers["rail.spawnTerminal"] = () => SPAWNED;
 
     chord("n");
@@ -329,21 +329,21 @@ describe("u33 spawn with a prompt", () => {
   });
 
   it("u33_plus_group_creates_a_group_and_leaves_the_field_open_with_its_text", async () => {
-    const mounted = await mountRail([group("g")]);
-    mounted.app.handlers["rail.createGroup"] = () => group("fresh");
+    const mounted = await mountRail([room("g")]);
+    mounted.app.handlers["rail.createRoom"] = () => room("fresh");
 
     chord("n");
     fireEvent.input(field(), { target: { value: "keep me" } });
-    fireEvent.click(screen.getByText("group"));
+    fireEvent.click(screen.getByText("room"));
 
     await waitFor(() =>
-      expect(railCallsTo(mounted.app, "rail.createGroup")).toEqual([{ name: "group", parent: null }]),
+      expect(railCallsTo(mounted.app, "rail.createRoom")).toEqual([{ name: "room", parent: null }]),
     );
     expect(field().value).toBe("keep me");
   });
 
   it("u33_the_new_row_takes_focus_into_the_pane", async () => {
-    const tree = [group("g")];
+    const tree = [room("g")];
     const mounted = await mountRailAndPane(tree);
 
     mounted.app.handlers["agent.spawn"] = () => {

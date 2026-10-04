@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
-import { agent, group, USER } from "../testing/nodes";
+import { agent, room, USER } from "../testing/nodes";
 import { mountRail, rowOf } from "../rail/railFixture";
 import { openPad, openShelf, padOf, AGENT } from "../pads/padsFixture";
 import { mountTodos, todo } from "../todos/testHarness";
@@ -17,7 +17,7 @@ const vector = (element: Element, name: string) => {
 };
 
 it("u86_disclosure_uses_vectors_and_preserves_expansion", async () => {
-  await mountRail([group("topic")]);
+  await mountRail([room("topic")]);
   const button = screen.getByRole("button", { name: "collapse" });
   vector(button, "chevron-down");
   fireEvent.click(button);
@@ -30,7 +30,7 @@ it("u86_disclosure_uses_vectors_and_preserves_expansion", async () => {
 it("u86_rail_add_actions_keep_their_names", async () => {
   await mountRail([]);
 
-  for (const name of ["agent", "terminal", "group"]) {
+  for (const name of ["agent", "terminal", "room"]) {
     vector(screen.getByRole("button", { name }), "plus");
   }
 });
@@ -65,7 +65,7 @@ it("u86_rail_marks_share_the_disclosures_scan_line_when_selected", async () => {
 
   try {
     await withStylesheets(async () => {
-      const { rail } = await mountRail([group("topic"), agent("a", "working", "w")]);
+      const { rail } = await mountRail([room("topic"), agent("a", "working", "w")]);
       const values = tokensFrom(tokens);
 
       for (const name of ["topic", "a"]) {

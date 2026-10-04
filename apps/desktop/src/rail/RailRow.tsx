@@ -6,11 +6,11 @@ import { glyphOf, hasInk } from "../ink/glyph";
 import { Icon } from "../ink/Icon";
 import { KindGlyph } from "../ink/KindGlyph";
 import type { ExitState } from "../state/rail";
-import { isPlainGroup } from "./layout";
+import { isRoom } from "./layout";
 import type { NodeRow } from "./layout";
 import { isUnprompted, liveLineOf, liveTitleOf } from "./liveLine";
 
-/** A Kind's mark, or a bare mark for a plain Group, which has no Kind. */
+/** A Kind's mark, or a bare mark for a Room, which has no Kind. */
 type Mark = { kind: Kind } | { bare: "right" | "down" };
 
 /** A Terminal has no Kind, so it borrows the marks of `working` and `done`. */
@@ -64,7 +64,9 @@ export const RailRowView = (props: {
   onSelect: () => void;
   onToggle: () => void;
   onRename: (name: string) => void;
-  onPromote: () => void;
+  onStartDoor: () => void;
+  doorPending: boolean;
+  doorFailure: string | null;
   /** A drag is under way: live lines are hidden so the rows keep the heights the drag measured. */
   dragging: boolean;
   lifted: boolean;
@@ -99,7 +101,7 @@ export const RailRowView = (props: {
       role="treeitem"
       aria-level={props.row.depth + 1}
       aria-selected={props.selected}
-      aria-expanded={isPlainGroup(props.row.node) ? props.row.collapsed === null : undefined}
+      aria-expanded={isRoom(props.row.node) ? props.row.collapsed === null : undefined}
       data-selected={props.selected}
       data-id={props.row.node.id}
       data-lifted={props.lifted}
@@ -119,7 +121,7 @@ export const RailRowView = (props: {
     >
       <p class="line">
         <Show
-          when={isPlainGroup(props.row.node)}
+          when={isRoom(props.row.node)}
           fallback={<MarkView mark={mark()} />}
         >
           <button
@@ -130,8 +132,9 @@ export const RailRowView = (props: {
               props.onToggle();
             }}
           >
-            <MarkView mark={mark()} />
+            <Icon name={props.row.collapsed ? "right" : "down"} />
           </button>
+          <MarkView mark={mark()} />
         </Show>
         <Show
           when={editing()}
@@ -169,15 +172,16 @@ export const RailRowView = (props: {
         <Show when={props.row.collapsed}>
           {(collapsed) => <span class="light">{collapsed().children}</span>}
         </Show>
-        <Show when={hovered() && isPlainGroup(props.row.node)}>
+        <Show when={(hovered() || props.selected) && isRoom(props.row.node) && props.exit !== null}>
           <button
             class="word"
+            disabled={props.doorPending}
             onClick={(click) => {
               click.stopPropagation();
-              props.onPromote();
+              props.onStartDoor();
             }}
           >
-            promote
+            {props.doorFailure ? "retry Door" : "start Door"}
           </button>
         </Show>
       </p>

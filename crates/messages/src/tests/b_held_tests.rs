@@ -153,6 +153,7 @@ impl Held2 {
         }
         let data = EventData::AgentStatus(StatusEvent {
             id: id.into(),
+            incarnation: "1".into(),
             status,
         });
         self.bus.emit(Actor::daemon(), data);
@@ -779,6 +780,7 @@ async fn b9_a_done_lost_to_lag_still_drops_pending() {
             Actor::daemon(),
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
+                incarnation: "1".into(),
                 status: Status {
                     kind: Kind::Working,
                     label: "x".into(),
@@ -821,14 +823,22 @@ async fn b6_the_user_a_terminal_and_a_group_cannot_be_taken_over() {
         dir.path(),
         vec![
             node("t", NodeKind::Terminal, false, None),
-            node("g", NodeKind::Group, false, None),
+            node("g", NodeKind::Room, false, None),
         ],
     );
 
     for id in ["you", "t", "g", "ghost"] {
         for method in ["takeover.begin", "takeover.end"] {
             let err = h.call(method, json!({"agent": id})).await.unwrap_err();
-            assert_eq!(err.code, code::NOT_FOUND, "{method} {id}");
+            assert_eq!(
+                err.code,
+                if id == "g" {
+                    code::CONFLICT
+                } else {
+                    code::NOT_FOUND
+                },
+                "{method} {id}"
+            );
         }
     }
 }
@@ -886,6 +896,7 @@ async fn b9_a_lag_drops_nothing_for_a_live_agent() {
             Actor::daemon(),
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
+                incarnation: "1".into(),
                 status: Status {
                     kind: Kind::Working,
                     label: "x".into(),
@@ -971,7 +982,7 @@ async fn b6_a_meta_agent_can_be_taken_over() {
     };
     let h = Held2::new(
         dir.path(),
-        vec![node("m", NodeKind::Group, true, Some(working))],
+        vec![node("m", NodeKind::Room, true, Some(working))],
     );
 
     h.call("takeover.begin", json!({"agent": "m"}))
@@ -1043,6 +1054,7 @@ fn status_flood(h: &Held2) {
             Actor::daemon(),
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
+                incarnation: "1".into(),
                 status: Status {
                     kind: Kind::Working,
                     label: "x".into(),
@@ -1077,4 +1089,58 @@ async fn b2_a_sender_no_longer_on_the_rail_is_named_by_its_id() {
     h.becomes("b", Kind::Idle);
 
     assert_eq!(h.typed(1).await, ["[from a, note] one"]);
+}
+
+#[tokio::test]
+async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
+    let old_node = h.rail.0.lock().unwrap()[0].clone();
+    let old = h.send_as(agent("a"), "b", "old").await;
+    super::super::on_ended(&h.messages.inner, "b", 1);
+    assert_eq!(
+        h.get(old["id"].as_u64().unwrap() as u32).await["status"],
+        "dropped"
+    );
+    h.rail.0.lock().unwrap()[0].incarnation = Some("2".into());
+    let new = h.send_as(Actor::user(), "b", "new pending").await;
+    h.call("takeover.begin", json!({"agent":"b"}))
+        .await
+        .unwrap();
+    let held = h.send_as(agent("a"), "b", "new held").await;
+    super::super::on_status(&h.messages.inner, "b", "1", Kind::Done).await;
+    super::super::on_status(&h.messages.inner, "b", "1", Kind::Idle).await;
+    assert!(h.calls.lock().unwrap().is_empty());
+    let mut store = h.messages.store().unwrap();
+    assert_eq!(
+        super::super::accept_receiver(&h.messages.inner, &mut store, &old_node)
+            .unwrap_err()
+            .code,
+        code::CONFLICT
+    );
+    assert!(store.is_takeover_active("b"));
+    assert_eq!(
+        store
+            .get(new["id"].as_u64().unwrap() as u32)
+            .unwrap()
+            .unwrap()
+            .status,
+        MessageStatus::Pending
+    );
+    assert_eq!(
+        store
+            .get(held["id"].as_u64().unwrap() as u32)
+            .unwrap()
+            .unwrap()
+            .status,
+        MessageStatus::Held
+    );
+    assert_eq!(
+        store
+            .get(old["id"].as_u64().unwrap() as u32)
+            .unwrap()
+            .unwrap()
+            .status,
+        MessageStatus::Dropped
+    );
 }

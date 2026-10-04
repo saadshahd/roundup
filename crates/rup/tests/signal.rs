@@ -18,15 +18,25 @@ const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Served {
     /// Run `rup signal <agent_id>` against this Daemon.
-    fn signal(&self, agent_id: &str, stdin: &str) -> Output {
-        rup(&self.socket(), &["signal", agent_id], stdin)
+    fn signal(&self, agent_id: &str, incarnation: &str, stdin: &str) -> Output {
+        rup(
+            &self.socket(),
+            &["signal", agent_id],
+            stdin,
+            Some(incarnation),
+        )
     }
 }
 
 /// Run `rup <args>` with `stdin` on its standard input, pointed at `socket`. A run that outlasts
 /// Claude Code's hook timeout fails the test.
-fn rup(socket: &Path, args: &[&str], stdin: &str) -> Output {
-    let mut rup = Command::new(env!("CARGO_BIN_EXE_rup"))
+fn rup(socket: &Path, args: &[&str], stdin: &str, incarnation: Option<&str>) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_rup"));
+    command.env_remove("ROUNDUP_AGENT_INCARNATION");
+    if let Some(value) = incarnation {
+        command.env("ROUNDUP_AGENT_INCARNATION", value);
+    }
+    let mut rup = command
         .args(args)
         .env("RUPD_SOCKET", socket)
         .stdin(Stdio::piped())
@@ -65,7 +75,11 @@ async fn a4_signal_signals_the_agent_as_that_agent() {
         .unwrap();
     let id = agent["id"].as_str().unwrap();
 
-    let out = served.signal(id, r#"{"hook_event_name":"Stop"}"#);
+    let out = served.signal(
+        id,
+        agent["incarnation"].as_str().unwrap(),
+        r#"{"hook_event_name":"Stop"}"#,
+    );
 
     assert!(
         out.status.success(),
@@ -90,7 +104,7 @@ async fn a4_signal_signals_the_agent_as_that_agent() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a4_signal_for_an_unknown_agent_fails_loudly() {
     let served = Served::start("#!/bin/sh\nsleep 30\n", &[]).await;
-    let out = served.signal("999", r#"{"hook_event_name":"Stop"}"#);
+    let out = served.signal("999", "1", r#"{"hook_event_name":"Stop"}"#);
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("agent 999"));
 }
@@ -98,7 +112,7 @@ async fn a4_signal_for_an_unknown_agent_fails_loudly() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a4_signal_rejects_a_payload_that_is_not_json() {
     let served = Served::start("#!/bin/sh\nsleep 30\n", &[]).await;
-    let out = served.signal("1", "not json");
+    let out = served.signal("1", "1", "not json");
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("payload"));
 }
@@ -106,7 +120,12 @@ async fn a4_signal_rejects_a_payload_that_is_not_json() {
 #[test]
 fn a4_signal_with_no_daemon_exits_1_with_a_message() {
     let nowhere = tempfile::tempdir().unwrap().path().join("missing.sock");
-    let out = rup(&nowhere, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+    let out = rup(
+        &nowhere,
+        &["signal", "1"],
+        r#"{"hook_event_name":"Stop"}"#,
+        Some("1"),
+    );
     assert_eq!(out.status.code(), Some(1));
     assert!(!out.stderr.is_empty());
 }
@@ -125,7 +144,12 @@ fn a4_signal_to_a_daemon_that_never_answers_exits_1_in_time() {
     });
 
     let started = Instant::now();
-    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+    let out = rup(
+        &socket,
+        &["signal", "1"],
+        r#"{"hook_event_name":"Stop"}"#,
+        Some("1"),
+    );
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -153,7 +177,12 @@ fn h15_a_lost_signal_exits_1_with_exactly_one_stderr_line() {
         }
     });
 
-    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+    let out = rup(
+        &socket,
+        &["signal", "1"],
+        r#"{"hook_event_name":"Stop"}"#,
+        Some("1"),
+    );
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -181,7 +210,12 @@ fn a4_signal_to_a_daemon_that_closes_mid_call_says_the_signal_may_not_have_arriv
         lines.next().unwrap().unwrap();
     });
 
-    let out = rup(&socket, &["signal", "1"], r#"{"hook_event_name":"Stop"}"#);
+    let out = rup(
+        &socket,
+        &["signal", "1"],
+        r#"{"hook_event_name":"Stop"}"#,
+        Some("1"),
+    );
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -227,6 +261,7 @@ fn h15_rup_signal_never_runs_more_than_one_os_thread() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_rup"))
         .args(["signal", "1"])
         .env("RUPD_SOCKET", &socket)
+        .env("ROUNDUP_AGENT_INCARNATION", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -264,11 +299,34 @@ fn h15_rup_signal_never_runs_more_than_one_os_thread() {
 fn a4_signal_with_the_wrong_number_of_arguments_exits_1_not_2() {
     let nowhere = tempfile::tempdir().unwrap().path().join("missing.sock");
     for args in [&["signal"][..], &["signal", "1", "extra"]] {
-        let out = rup(&nowhere, args, "{}");
+        let out = rup(&nowhere, args, "{}", Some("1"));
         assert_eq!(out.status.code(), Some(1), "{args:?}");
         assert!(
             String::from_utf8_lossy(&out.stderr).contains("usage"),
             "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn a7_signal_missing_or_malformed_incarnation_fails_before_connecting() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("never-connect.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    for stamp in [
+        None,
+        Some(""),
+        Some("0"),
+        Some("01"),
+        Some("+1"),
+        Some("9223372036854775808"),
+    ] {
+        let out = rup(&socket, &["signal", "1"], "{}", stamp);
+        assert_eq!(out.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("ROUNDUP_AGENT_INCARNATION"));
+        assert!(
+            matches!(listener.accept(), Err(err) if err.kind() == std::io::ErrorKind::WouldBlock)
         );
     }
 }

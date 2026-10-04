@@ -5,8 +5,8 @@ import { ancestorsOf } from "../rail/layout";
 export type RailStep = { kind: "collapse" } | { kind: "expand" } | { kind: "select"; id: string } | { kind: "none" };
 
 /**
- * `←`/`→` on `id` (U41). `expanded` is `true`/`false` for a row with U8's `▾`/`▸` toggle (a plain Group), `null`
- * for one with no toggle (a leaf, or a Meta-agent, which has none yet). `firstVisibleChild` is the id of the row
+ * `←`/`→` on `id` (U41). `expanded` is `true`/`false` for a row with U8's `▾`/`▸` toggle (a Room), `null`
+ * for one with no toggle (a leaf, or a Door, which has none yet). `firstVisibleChild` is the id of the row
  * the Rail renders right after `id`, one level deeper (`undefined` when there is none): a child folded into U8's
  * `✓ n done` line is never it, because no row stands for it until the fold opens.
  */

@@ -155,12 +155,21 @@ impl Fixture {
         Ok(serde_json::from_value(node).unwrap())
     }
 
-    pub async fn group(&self, name: &str, parent: Option<&str>) -> String {
+    pub async fn room(&self, name: &str, parent: Option<&str>) -> String {
         let node = self
-            .call("rail.createGroup", json!({"name": name, "parent": parent}))
+            .call("rail.createRoom", json!({"name": name, "parent": parent}))
             .await
             .unwrap();
         node["id"].as_str().unwrap().to_owned()
+    }
+
+    pub async fn incarnation(&self, id: &str) -> String {
+        self.tree()
+            .await
+            .into_iter()
+            .find(|n| n.id == id)
+            .and_then(|n| n.incarnation)
+            .unwrap_or_else(|| "1".into())
     }
 
     pub async fn tree(&self) -> Vec<RailNode> {

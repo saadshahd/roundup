@@ -6,7 +6,7 @@ import { railStep } from "./railStep";
 const isRow = (target: EventTarget | null): target is HTMLElement =>
   target instanceof HTMLElement && target.dataset.id !== undefined;
 
-/** `aria-expanded` is set only on a plain Group's row (U8's `▾`/`▸`); anything else has no fold to read. */
+/** `aria-expanded` is set only on a Room's row (U8's `▾`/`▸`); anything else has no fold to read. */
 const expandedOf = (row: HTMLElement): boolean | null => {
   const value = row.getAttribute("aria-expanded");
 

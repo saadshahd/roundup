@@ -4,7 +4,7 @@ import { mostUrgent } from "../ink/glyph";
 
 const DONE_FOLD_MS = 10 * 60_000;
 
-/** What a collapsed Group shows in place of `▾`: its most urgent descendant Kind (`null` when no Agent is below) and its child count. */
+/** What a collapsed Room shows in place of `▾`: its most urgent descendant Kind (`null` when no Agent is below) and its child count. */
 export type Collapsed = { kind: Kind | null; children: number };
 
 export type RailRow =
@@ -22,7 +22,7 @@ export type RailView = {
   dragged: string | null;
 };
 
-export const isPlainGroup = (node: RailNode): boolean => node.kind === "group" && !node.meta;
+export const isRoom = (node: RailNode): boolean => node.kind === "room";
 
 /** The children of `parent` (`null` is the top level) by `order`. */
 export const siblingsOf = (nodes: readonly RailNode[], parent: string | null): RailNode[] =>
@@ -46,7 +46,7 @@ const isFoldedAgent = (node: RailNode, view: RailView): boolean =>
   node.status.kind === "done" &&
   view.now - node.status.since >= DONE_FOLD_MS;
 
-/** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Group without its descendants. */
+/** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Room without its descendants. */
 export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[] => {
   const under = (parent: string | null): RailNode[] => siblingsOf(nodes, parent);
 
@@ -64,14 +64,14 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
     ];
 
     const nodeRows = shown.flatMap((node): RailRow[] => {
-      const collapsed = isPlainGroup(node) && view.collapsed.has(node.id);
+      const collapsed = isRoom(node) && view.collapsed.has(node.id);
 
       const row: RailRow = {
         kind: "node",
         key: `node:${node.id}`,
         depth,
         node,
-        collapsed: collapsed ? { kind: mostUrgent(kindsBelow(node.id)), children: under(node.id).length } : null,
+        collapsed: collapsed ? { kind: mostUrgent([...(node.status ? [node.status.kind] : []), ...kindsBelow(node.id)]), children: under(node.id).length } : null,
       };
 
       return collapsed ? [row] : [row, ...rowsOf(node.id, depth + 1)];

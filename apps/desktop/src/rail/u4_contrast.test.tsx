@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, group, NOW } from "../testing/nodes";
+import { agent, room, NOW } from "../testing/nodes";
 import { colourOf, contrastRatio, loadTokens, withStylesheets } from "../testing/contrast";
 import { mountRail, rowOf } from "./railFixture";
 
@@ -65,10 +65,10 @@ describe("u4 ink contrast: Rail", () => {
     const { tokens, ground } = loadTokens();
 
     await withStylesheets(async () => {
-      await mountRail([group("g")]);
+      await mountRail([room("g")]);
       fireEvent.mouseEnter(rowOf("g"));
 
-      expect(contrastRatio(colourOf(screen.getByText("promote"), tokens), ground)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(colourOf(screen.getByText("start Door"), tokens), ground)).toBeGreaterThanOrEqual(4.5);
     });
   });
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { glyphOf, mountRail, rowNames, rowOf } from "./railFixture";
-import { agent, group, metaAgent, MINUTE, NOW, terminal } from "../testing/nodes";
+import { agent, room, door, MINUTE, NOW, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -49,7 +49,7 @@ describe("u8 folding", () => {
 
   it("u8_each_parent_folds_its_own_done_agents_at_its_own_depth", async () => {
     await mountRail([
-      group("migrate"),
+      room("migrate"),
       doneFor("inner", 30, { parent: "migrate" }),
       doneFor("outer", 30, { order: 1 }),
     ]);
@@ -58,19 +58,19 @@ describe("u8 folding", () => {
   });
 
   it("u8_a_meta_agent_never_folds_even_when_done", async () => {
-    await mountRail([metaAgent("lead", "done", "d", { status: { kind: "done", label: "d", since: NOW - 60 * MINUTE } })]);
+    await mountRail([door("lead", "done", "d", { status: { kind: "done", label: "d", since: NOW - 60 * MINUTE } })]);
 
     expect(rowNames()).toEqual(["lead"]);
   });
 
   it("u8_clicking_a_groups_triangle_collapses_it_to_its_most_urgent_descendants_glyph_and_ink", async () => {
     await mountRail([
-      group("migrate"),
+      room("migrate"),
       agent("a", "working", "w", { parent: "migrate", order: 0 }),
       agent("b", "needs-you", "asks", { parent: "migrate", order: 1 }),
     ]);
 
-    fireEvent.click(glyphOf("migrate"));
+    fireEvent.click(rowOf("migrate").querySelector("button[aria-label=collapse]")!);
 
     expect([rowNames(), glyphOf("migrate").getAttribute("aria-label"), glyphOf("migrate").className]).toEqual([
       ["migrate"],
@@ -81,23 +81,23 @@ describe("u8 folding", () => {
 
   it("u8_a_collapsed_group_shows_a_light_child_count", async () => {
     await mountRail([
-      group("migrate"),
+      room("migrate"),
       agent("a", "working", "w", { parent: "migrate", order: 0 }),
       agent("b", "idle", "i", { parent: "migrate", order: 1 }),
     ]);
 
-    fireEvent.click(glyphOf("migrate"));
+    fireEvent.click(rowOf("migrate").querySelector("button[aria-label=collapse]")!);
 
     expect(rowOf("migrate").querySelector(".light")?.textContent).toBe("2");
   });
 
   it("u8_another_click_expands_a_collapsed_group", async () => {
-    await mountRail([group("migrate"), agent("a", "working", "w", { parent: "migrate" })]);
-    fireEvent.click(glyphOf("migrate"));
+    await mountRail([room("migrate"), agent("a", "working", "w", { parent: "migrate" })]);
+    fireEvent.click(rowOf("migrate").querySelector("button[aria-label=collapse]")!);
 
-    fireEvent.click(glyphOf("migrate"));
+    fireEvent.click(rowOf("migrate").querySelector("button[aria-label=collapse]")!);
 
-    expect([rowNames(), glyphOf("migrate").querySelector("svg")?.classList.contains("lucide-chevron-down")]).toEqual([["migrate", "a"], true]);
+    expect([rowNames(), rowOf("migrate").querySelector("button[aria-label=collapse] svg")?.classList.contains("lucide-chevron-down")]).toEqual([["migrate", "a"], true]);
   });
 
   it.each<[Kind, string]>([
@@ -105,51 +105,51 @@ describe("u8 folding", () => {
     ["blocked", "blocked"],
     ["done", "done"],
   ])("u8_a_collapsed_group_with_a_%s_agent_below_shows_%s", async (kind, mark) => {
-    await mountRail([group("g"), agent("a", kind, "l", { parent: "g" })]);
+    await mountRail([room("g"), agent("a", kind, "l", { parent: "g" })]);
 
-    fireEvent.click(glyphOf("g"));
+    fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 
     expect(glyphOf("g").getAttribute("aria-label")).toBe(mark);
   });
 
   it("u8_collapsing_a_group_does_not_select_it", async () => {
-    const { rail } = await mountRail([group("g")]);
+    const { rail } = await mountRail([room("g")]);
 
-    fireEvent.click(glyphOf("g"));
+    fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 
     expect(rail.selected()).toBeNull();
   });
 
   it("u8_the_child_count_counts_direct_children_not_descendants", async () => {
     await mountRail([
-      group("g"),
-      group("inner", { parent: "g" }),
+      room("g"),
+      room("inner", { parent: "g" }),
       agent("deep", "working", "w", { parent: "inner" }),
     ]);
 
-    fireEvent.click(glyphOf("g"));
+    fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 
     expect(rowOf("g").querySelector(".light")?.textContent).toBe("1");
   });
 
   it("u8_a_collapsed_group_shows_the_most_urgent_kind_among_all_descendants_not_the_last_child", async () => {
     await mountRail([
-      group("outer"),
-      group("inner", { parent: "outer", order: 0 }),
+      room("outer"),
+      room("inner", { parent: "outer", order: 0 }),
       agent("asks", "needs-you", "?", { parent: "inner", order: 0 }),
       agent("busy", "working", "w", { parent: "outer", order: 1 }),
     ]);
 
-    fireEvent.click(glyphOf("outer"));
+    fireEvent.click(rowOf("outer").querySelector("button[aria-label=collapse]")!);
 
     expect([glyphOf("outer").getAttribute("aria-label"), glyphOf("outer").className]).toEqual(["needs-you", "glyph ink"]);
   });
 
   it("u8_a_collapsed_group_with_no_agent_below_shows_a_right_triangle", async () => {
-    await mountRail([group("g"), terminal("t", { parent: "g" })]);
+    await mountRail([room("g"), terminal("t", { parent: "g" })]);
 
-    fireEvent.click(glyphOf("g"));
+    fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 
-    expect(glyphOf("g").querySelector("svg.lucide-chevron-right")).not.toBeNull();
+    expect(rowOf("g").querySelector("button[aria-label=collapse] svg.lucide-chevron-right")).not.toBeNull();
   });
 });

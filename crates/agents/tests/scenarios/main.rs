@@ -1,7 +1,7 @@
 mod common;
+mod door;
 mod held_signal;
 mod naming;
-mod promote;
 mod rail;
 mod remove;
 mod signal;

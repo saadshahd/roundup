@@ -6,7 +6,7 @@ import { exitText } from "../ink/exitText";
 
 const UNPROMPTED: readonly Kind[] = ["blocked", "needs-you", "error"];
 
-/** The Live line's label and, for an Agent or Meta-agent, its elapsed time pinned after it (U7); an exited Terminal's ending has no age. */
+/** The Live line's label and, for an Agent or Door, its elapsed time pinned after it (U7); an exited Terminal's ending has no age. */
 export type LiveLine = { label: string; age: string | null };
 
 /** What the row shows on its Live line, or `null` when it shows none. */

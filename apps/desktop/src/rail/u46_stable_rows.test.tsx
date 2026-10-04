@@ -1,6 +1,6 @@
 import { cleanup, fireEvent } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, metaAgent, terminal } from "../testing/nodes";
+import { agent, door, terminal } from "../testing/nodes";
 import styles from "./styles.css?inline";
 import { exitedTerminal, mountRail, rowOf } from "./railFixture";
 
@@ -55,7 +55,7 @@ describe("u46 hovering or selecting never moves a row", () => {
   it("u46_a_meta_agents_live_text_joins_the_first_line_too", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
-    await mountRail([metaAgent("lead", "blocked", "waits on #4")]);
+    await mountRail([door("lead", "blocked", "waits on #4")]);
 
     const linesAfter = rowOf("lead").querySelectorAll("p").length;
     const live = rowOf("lead").querySelector(".live");

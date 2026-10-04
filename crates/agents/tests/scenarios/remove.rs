@@ -26,8 +26,8 @@ async fn spawn_terminal(f: &Fixture, parent: Option<&str>) -> RailNode {
     serde_json::from_value(node).unwrap()
 }
 
-async fn promote(f: &Fixture, id: &str) {
-    f.call("rail.promote", json!({"id": id})).await.unwrap();
+async fn start_door(f: &Fixture, id: &str) {
+    f.call("rail.startDoor", json!({"id": id})).await.unwrap();
 }
 
 /// `name:order` of the children of `parent`, in order; an Agent shows as `agent` whatever its name.
@@ -110,13 +110,13 @@ async fn a16_a_descendant_holding_the_pty_open_does_not_hang_remove() {
 }
 
 #[tokio::test]
-async fn a16_a_plain_groups_children_move_to_its_parent_at_its_place() {
+async fn a16_a_plain_rooms_children_move_to_its_parent_at_its_place() {
     let f = Fixture::new();
-    f.group("before", None).await;
-    let g = f.group("g", None).await;
-    f.group("after", None).await;
-    let child_a = f.group("child-a", Some(&g)).await;
-    let child_b = f.group("child-b", Some(&g)).await;
+    f.room("before", None).await;
+    let g = f.room("g", None).await;
+    f.room("after", None).await;
+    let child_a = f.room("child-a", Some(&g)).await;
+    let child_b = f.room("child-b", Some(&g)).await;
 
     f.remove(&g).await.unwrap();
 
@@ -131,16 +131,16 @@ async fn a16_a_plain_groups_children_move_to_its_parent_at_its_place() {
 }
 
 #[tokio::test]
-async fn a16_removing_a_meta_agent_stops_it_lifts_its_children_then_deletes_it() {
+async fn a16_removing_a_door_stops_it_lifts_its_children_then_deletes_it() {
     let f = Fixture::running("sleep 30");
-    f.group("before", None).await;
-    let team = f.group("team", None).await;
-    f.group("after", None).await;
+    f.room("before", None).await;
+    let team = f.room("team", None).await;
+    f.room("after", None).await;
     let mut agents = vec![];
     for _ in 0..2 {
         agents.push(f.spawn(Some(&team), None).await.unwrap().id);
     }
-    promote(&f, &team).await;
+    start_door(&f, &team).await;
 
     f.remove(&team).await.unwrap();
 
@@ -179,9 +179,9 @@ async fn a16_unknown_id_is_not_found() {
 #[tokio::test]
 async fn a16_siblings_after_it_keep_their_order() {
     let f = Fixture::new();
-    let a = f.group("a", None).await;
-    let b = f.group("b", None).await;
-    let c = f.group("c", None).await;
+    let a = f.room("a", None).await;
+    let b = f.room("b", None).await;
+    let c = f.room("c", None).await;
 
     f.remove(&b).await.unwrap();
 
@@ -194,10 +194,10 @@ async fn a16_siblings_after_it_keep_their_order() {
 #[tokio::test]
 async fn a16_remove_emits_rail_changed() {
     let mut f = Fixture::new();
-    let group = f.group("g", None).await;
+    let room = f.room("g", None).await;
     f.changed();
 
-    f.remove(&group).await.unwrap();
+    f.remove(&room).await.unwrap();
 
     assert_eq!(f.changed(), 1);
 }
@@ -237,6 +237,7 @@ async fn a16_a_removed_agents_id_no_longer_answers_agent_signal() {
             "agent.signal",
             json!({
                 "id": agent.id,
+                "incarnation": agent.incarnation,
                 "payload": json!({"hook_event_name": "PreToolUse", "tool_name": "Bash"}),
             }),
         )
@@ -246,21 +247,21 @@ async fn a16_a_removed_agents_id_no_longer_answers_agent_signal() {
 }
 
 #[tokio::test]
-async fn a16_a_groups_failed_delete_leaves_its_children_under_it() {
+async fn a16_a_rooms_failed_delete_leaves_its_children_under_it() {
     let f = Fixture::new();
-    let group = f.group("g", None).await;
-    let child = f.group("child", Some(&group)).await;
+    let room = f.room("g", None).await;
+    let child = f.room("child", Some(&room)).await;
     let lock = lock_db_for_writes(f.dir.path());
 
-    let err = f.remove(&group).await.unwrap_err();
+    let err = f.remove(&room).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
     let child_node = tree.iter().find(|n| n.id == child).unwrap();
-    assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    assert_eq!(child_node.parent.as_deref(), Some(room.as_str()));
     drop(lock);
 
-    f.remove(&group).await.unwrap();
+    f.remove(&room).await.unwrap();
 
     assert_eq!(f.tree().await[0].id, child);
 }

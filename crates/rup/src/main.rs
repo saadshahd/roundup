@@ -65,13 +65,23 @@ async fn ping() -> Result<(), String> {
 
 /// Claude Code runs this as the Agent's command hook: one payload on stdin is one Signal.
 async fn signal(agent_id: &str) -> Result<(), String> {
+    let incarnation = std::env::var("ROUNDUP_AGENT_INCARNATION")
+        .map_err(|_| "ROUNDUP_AGENT_INCARNATION is required".to_owned())?;
+    if !incarnation
+        .parse::<i64>()
+        .is_ok_and(|n| n > 0 && n.to_string() == incarnation)
+    {
+        return Err(
+            "ROUNDUP_AGENT_INCARNATION must be a canonical positive signed 64-bit decimal".into(),
+        );
+    }
     let mut input = String::new();
     std::io::stdin()
         .read_to_string(&mut input)
         .map_err(|err| format!("cannot read the payload: {err}"))?;
     let payload =
         serde_json::from_str(&input).map_err(|err| format!("the payload is not JSON: {err}"))?;
-    tokio::time::timeout(SIGNAL_DEADLINE, deliver(agent_id, payload))
+    tokio::time::timeout(SIGNAL_DEADLINE, deliver(agent_id, incarnation, payload))
         .await
         .map_err(|_| {
             format!(
@@ -82,7 +92,7 @@ async fn signal(agent_id: &str) -> Result<(), String> {
 }
 
 /// Identify as Agent `agent_id` and hand the Daemon its Signal.
-async fn deliver(agent_id: &str, payload: Value) -> Result<(), String> {
+async fn deliver(agent_id: &str, incarnation: String, payload: Value) -> Result<(), String> {
     let client = connect().await?;
     let actor = Actor {
         kind: ActorKind::Agent,
@@ -95,6 +105,7 @@ async fn deliver(agent_id: &str, payload: Value) -> Result<(), String> {
         .map_err(|err| err.to_string())?;
     let signal = SignalParams {
         id: agent_id.to_owned(),
+        incarnation,
         payload,
     };
     client

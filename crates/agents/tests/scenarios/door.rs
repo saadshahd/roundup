@@ -1,4 +1,4 @@
-//! A7 promote and stop, and A8 for Meta-agents.
+//! A7 start_door and stop, and A8 for Doors.
 
 use contracts::Kind;
 use contracts::agent::{NodeKind, RailNode};
@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use crate::common::{Fixture, hold_starts, release, status_of, until_file};
 
 impl Fixture {
-    async fn promote(&self, id: &str) -> Result<RailNode, rpc::RpcError> {
-        let node = self.call("rail.promote", json!({"id": id})).await?;
+    async fn start_door(&self, id: &str) -> Result<RailNode, rpc::RpcError> {
+        let node = self.call("rail.startDoor", json!({"id": id})).await?;
         Ok(serde_json::from_value(node).unwrap())
     }
 
@@ -33,11 +33,11 @@ fn names(tree: &[RailNode], parent: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-/// A Group `team` between two other Groups, holding two running Agents.
+/// A Room `team` between two other Rooms, holding two running Agents.
 async fn team(f: &Fixture) -> (String, Vec<String>) {
-    f.group("before", None).await;
-    let team = f.group("team", None).await;
-    f.group("after", None).await;
+    f.room("before", None).await;
+    let team = f.room("team", None).await;
+    f.room("after", None).await;
     let mut agents = vec![];
     for _ in 0..2 {
         agents.push(f.spawn(Some(&team), None).await.unwrap().id);
@@ -46,14 +46,14 @@ async fn team(f: &Fixture) -> (String, Vec<String>) {
 }
 
 #[tokio::test]
-async fn a7_promote_makes_a_group_a_meta_agent_with_a_live_agent() {
+async fn a7_start_door_makes_a_room_a_door_with_a_live_agent() {
     let mut f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
     f.changed();
 
-    let node = f.promote(&team).await.unwrap();
+    let node = f.start_door(&team).await.unwrap();
 
-    assert_eq!((node.kind, node.meta), (NodeKind::Group, true));
+    assert_eq!(node.kind, NodeKind::Room);
     assert!(node.terminal_id.is_some());
     assert_eq!(node.status.as_ref().map(|s| s.kind), Some(Kind::Working));
     let tree = f.tree().await;
@@ -66,17 +66,17 @@ async fn a7_promote_makes_a_group_a_meta_agent_with_a_live_agent() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a7_two_concurrent_promotes_start_one_agent_and_one_loses() {
+async fn a7_two_concurrent_start_doors_start_one_agent_and_one_loses() {
     let f = std::sync::Arc::new(Fixture::running(
         "echo started >> \"$(dirname \"$0\")/starts\"; sleep 30",
     ));
-    let team = f.group("team", None).await;
-    let promote = || {
+    let team = f.room("team", None).await;
+    let start_door = || {
         let (f, team) = (std::sync::Arc::clone(&f), team.clone());
-        tokio::spawn(async move { f.promote(&team).await })
+        tokio::spawn(async move { f.start_door(&team).await })
     };
 
-    let (first, second) = (promote(), promote());
+    let (first, second) = (start_door(), start_door());
 
     let mut codes: Vec<_> = [first.await.unwrap(), second.await.unwrap()]
         .map(|r| r.map_err(|e| e.code))
@@ -90,26 +90,26 @@ async fn a7_two_concurrent_promotes_start_one_agent_and_one_loses() {
 }
 
 #[tokio::test]
-async fn a7_a_promote_whose_agent_cannot_start_leaves_the_group_plain() {
+async fn a7_a_start_door_whose_agent_cannot_start_leaves_the_room_plain() {
     let f = Fixture::running("sleep 30");
-    let team = f.group("team", None).await;
+    let team = f.room("team", None).await;
     let rup = f.dir.path().join("rup");
     std::fs::remove_file(&rup).unwrap();
 
-    assert!(f.promote(&team).await.is_err());
-    assert!(!f.tree().await[0].meta);
+    assert!(f.start_door(&team).await.is_err());
+    assert!(f.tree().await[0].terminal_id.is_none());
 
     std::fs::write(&rup, "").unwrap();
-    assert!(f.promote(&team).await.unwrap().meta);
+    assert_eq!(f.start_door(&team).await.unwrap().kind, NodeKind::Room);
 }
 
 #[tokio::test]
-async fn a7_a_promote_whose_claude_is_missing_leaves_no_settings_file() {
+async fn a7_a_start_door_whose_claude_is_missing_leaves_no_settings_file() {
     let f = Fixture::running("sleep 30");
-    let team = f.group("team", None).await;
+    let team = f.room("team", None).await;
     std::fs::remove_file(f.dir.path().join("fake-claude")).unwrap();
 
-    assert!(f.promote(&team).await.is_err());
+    assert!(f.start_door(&team).await.is_err());
 
     let left: Vec<_> = std::fs::read_dir(f.dir.path().join("agents"))
         .map(|entries| entries.map(|e| e.unwrap().file_name()).collect())
@@ -118,14 +118,14 @@ async fn a7_a_promote_whose_claude_is_missing_leaves_no_settings_file() {
 }
 
 #[tokio::test]
-async fn a7_only_a_plain_group_can_be_promoted() {
+async fn a7_only_a_plain_room_can_be_start_doord() {
     let f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
-    f.promote(&team).await.unwrap();
+    f.start_door(&team).await.unwrap();
 
-    let again = f.promote(&team).await.unwrap_err();
-    let agent = f.promote(&agents[0]).await.unwrap_err();
-    let unknown = f.promote("999").await.unwrap_err();
+    let again = f.start_door(&team).await.unwrap_err();
+    let agent = f.start_door(&agents[0]).await.unwrap_err();
+    let unknown = f.start_door("999").await.unwrap_err();
     assert_eq!(
         (again.code, agent.code, unknown.code),
         (code::CONFLICT, code::CONFLICT, code::NOT_FOUND)
@@ -133,24 +133,21 @@ async fn a7_only_a_plain_group_can_be_promoted() {
 }
 
 #[tokio::test]
-async fn a7_stopping_a_meta_agent_lifts_its_children_where_it_was_and_they_keep_running() {
+async fn a7_stopping_a_door_lifts_its_children_where_it_was_and_they_keep_running() {
     let mut f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
-    f.promote(&team).await.unwrap();
+    f.start_door(&team).await.unwrap();
     f.changed();
 
     f.stop(&team).await.unwrap();
 
     let tree = f.until(|t| status_of(t, &team).kind == Kind::Done).await;
-    assert_eq!(
-        names(&tree, None),
-        ["before:0", "agent:1", "agent:2", "team:3", "after:4"]
-    );
+    assert_eq!(names(&tree, None), ["before:0", "team:1", "after:2"]);
     let meta = tree.iter().find(|n| n.id == team).unwrap();
-    assert!(meta.meta);
+    assert_eq!(meta.kind, NodeKind::Room);
     for id in &agents {
         let child = tree.iter().find(|n| &n.id == id).unwrap();
-        assert_eq!(child.parent, None);
+        assert_eq!(child.parent.as_deref(), Some(team.as_str()));
         assert_eq!(status_of(&tree, id).kind, Kind::Working);
     }
     assert_eq!(f.changed(), 1);
@@ -187,15 +184,16 @@ async fn a7_a_stopped_agent_is_done_not_an_error() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a7_stopping_a_meta_agent_that_is_still_starting_is_a_conflict_and_moves_nothing() {
+async fn a7_stopping_a_door_that_is_still_starting_is_a_conflict_and_moves_nothing() {
     let f = std::sync::Arc::new(Fixture::running("sleep 30"));
     let (team, agents) = team(&f).await;
     let config = hold_starts(&f);
     let promoting = {
         let (f, team) = (std::sync::Arc::clone(&f), team.clone());
-        tokio::spawn(async move { f.promote(&team).await })
+        tokio::spawn(async move { f.start_door(&team).await })
     };
-    f.until(|t| t.iter().any(|n| n.id == team && n.meta)).await;
+    f.until(|t| t.iter().any(|n| n.id == team && n.incarnation.is_some()))
+        .await;
 
     let stopped = f.stop(&team).await.unwrap_err();
 
@@ -211,15 +209,17 @@ async fn a7_stopping_a_meta_agent_that_is_still_starting_is_a_conflict_and_moves
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a7_a_group_being_promoted_reads_working_starting_not_done() {
+async fn a7_a_room_being_start_doord_reads_working_starting_not_done() {
     let f = std::sync::Arc::new(Fixture::running("sleep 30"));
-    let team = f.group("team", None).await;
+    let team = f.room("team", None).await;
     let config = hold_starts(&f);
     let promoting = {
         let (f, team) = (std::sync::Arc::clone(&f), team.clone());
-        tokio::spawn(async move { f.promote(&team).await })
+        tokio::spawn(async move { f.start_door(&team).await })
     };
-    let tree = f.until(|t| t.iter().any(|n| n.id == team && n.meta)).await;
+    let tree = f
+        .until(|t| t.iter().any(|n| n.id == team && n.incarnation.is_some()))
+        .await;
 
     let status = status_of(&tree, &team);
 
@@ -287,10 +287,10 @@ async fn a7_stopping_an_agent_whose_program_already_failed_keeps_its_error() {
 }
 
 #[tokio::test]
-async fn a7_stopping_a_meta_agent_twice_announces_the_move_once() {
+async fn a7_stopping_a_door_twice_announces_the_move_once() {
     let mut f = Fixture::running("sleep 30");
     let (team, _) = team(&f).await;
-    f.promote(&team).await.unwrap();
+    f.start_door(&team).await.unwrap();
     f.stop(&team).await.unwrap();
     f.changed();
 
@@ -300,35 +300,35 @@ async fn a7_stopping_a_meta_agent_twice_announces_the_move_once() {
 }
 
 #[tokio::test]
-async fn a7_promote_names_a_node_by_its_exact_id() {
+async fn a7_start_door_names_a_node_by_its_exact_id() {
     let f = Fixture::running("sleep 30");
-    let team = f.group("team", None).await;
+    let team = f.room("team", None).await;
 
-    let err = f.promote(&format!("0{team}")).await.unwrap_err();
+    let err = f.start_door(&format!("0{team}")).await.unwrap_err();
 
     assert_eq!(err.code, code::NOT_FOUND);
-    assert!(!f.tree().await[0].meta);
-    assert!(f.promote(&team).await.unwrap().meta);
+    assert!(f.tree().await[0].terminal_id.is_none());
+    assert_eq!(f.start_door(&team).await.unwrap().kind, NodeKind::Room);
 }
 
 #[tokio::test]
-async fn a7_stop_only_applies_to_agents_and_meta_agents() {
+async fn a7_stop_only_applies_to_agents_and_doors() {
     let f = Fixture::new();
-    let group = f.group("plain", None).await;
-    assert_eq!(f.stop(&group).await.unwrap_err().code, code::CONFLICT);
+    let room = f.room("plain", None).await;
+    assert_eq!(f.stop(&room).await.unwrap(), Value::Null);
     assert_eq!(f.stop("999").await.unwrap_err().code, code::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn a8_a_meta_agent_keeps_its_flag_across_reopening_and_comes_back_done() {
+async fn a8_a_door_keeps_its_flag_across_reopening_and_comes_back_done() {
     let f = Fixture::running("sleep 30");
     let (team, _) = team(&f).await;
-    f.promote(&team).await.unwrap();
+    f.start_door(&team).await.unwrap();
 
     let tree = f.reopen().tree().await;
 
     let meta = tree.iter().find(|n| n.id == team).unwrap();
-    assert!(meta.meta);
+    assert_eq!(meta.kind, NodeKind::Room);
     assert_eq!(meta.terminal_id, None);
     assert_eq!(meta.status.as_ref().map(|s| s.kind), Some(Kind::Done));
 }
@@ -345,16 +345,16 @@ async fn a7_stopping_an_agent_an_earlier_daemon_ran_leaves_it_done() {
 }
 
 #[tokio::test]
-async fn a7_stopping_a_meta_agent_an_earlier_daemon_ran_lifts_its_children() {
+async fn a7_stopping_a_door_an_earlier_daemon_ran_lifts_its_children() {
     let f = Fixture::running("sleep 30");
     let (team, _) = team(&f).await;
-    f.promote(&team).await.unwrap();
+    f.start_door(&team).await.unwrap();
     let f = f.reopen();
 
     f.stop(&team).await.unwrap();
 
     assert_eq!(
         names(&f.tree().await, None),
-        ["before:0", "agent:1", "agent:2", "team:3", "after:4"]
+        ["before:0", "team:1", "after:2"]
     );
 }

@@ -72,13 +72,13 @@ pub const METHODS: &[Method] = &[
     m("decision.answer", "decision_AnswerParams", "null"),
     m("rail.tree", "null", "agent_RailNode[]"),
     m(
-        "rail.createGroup",
-        "agent_CreateGroupParams",
+        "rail.createRoom",
+        "agent_CreateRoomParams",
         "agent_RailNode",
     ),
     m("rail.move", "agent_MoveParams", "null"),
     m("rail.rename", "agent_RenameParams", "agent_RailNode"),
-    m("rail.promote", "agent_NodeId", "agent_RailNode"),
+    m("rail.startDoor", "agent_NodeId", "agent_RailNode"),
     m(
         "rail.spawnTerminal",
         "agent_SpawnTerminalParams",

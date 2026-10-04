@@ -18,7 +18,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
   /** U38: a failure that fills this region shows in its place, never beside its empty line. */
-  const notice = createMemo(() => props.notice ?? screens.failure(terminalId()));
+  const notice = createMemo(() => props.notice ?? rail.doorFailure(selected()?.id ?? "") ?? screens.failure(terminalId()));
   const [screen, setScreen] = createSignal<HTMLDivElement>();
   let pane: HTMLDivElement | undefined;
   let pendingFrame: number | null = null;
@@ -111,6 +111,11 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
           <p class="pane-empty">select an agent or a terminal</p>
+        </Show>
+        <Show when={selected()?.kind === "room" && selected() !== null && rail.exitOf(selected()!) !== null}>
+          <button class="word" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
+            {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
+          </button>
         </Show>
         <Show when={latest()}>
           {(id) => (

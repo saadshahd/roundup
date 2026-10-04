@@ -6,7 +6,7 @@ import type { ExitState, RailState } from "../../state/rail";
 
 type MenuState = { node: RailNode; exit: ExitState | null; x: number; y: number; confirming: boolean };
 
-const isAgent = (node: RailNode) => node.kind === "agent" || node.meta;
+const isAgent = (node: RailNode) => node.kind !== "terminal";
 
 const isRunning = (node: RailNode, exit: ExitState | null) =>
   exit === null && (node.kind === "terminal" || (isAgent(node) && node.status?.kind !== "done"));

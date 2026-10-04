@@ -10,8 +10,11 @@ use crate::common::{Fixture, status_of, until_file};
 impl Fixture {
     async fn signal(&self, id: &str, event: &str) -> Result<Value, rpc::RpcError> {
         let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
-        self.call("agent.signal", json!({"id": id, "payload": payload}))
-            .await
+        self.call(
+            "agent.signal",
+            json!({"id": id, "incarnation": self.incarnation(id).await, "payload": payload}),
+        )
+        .await
     }
 
     fn statuses(&mut self) -> Vec<StatusEvent> {
@@ -66,7 +69,7 @@ async fn a5_status_events_arrive_in_the_order_the_status_changed() {
                 let ctx = f.ctx();
                 for event in ["Stop", "UserPromptSubmit"].repeat(SIGNALS / 2) {
                     let payload = json!({"hook_event_name": event});
-                    let params = json!({"id": id, "payload": payload});
+                    let params = json!({"id": id, "incarnation": f.incarnation(&id).await, "payload": payload});
                     f.agents.call(&ctx, "agent.signal", params).await.unwrap();
                 }
             })
@@ -104,9 +107,12 @@ async fn a5_a_payload_the_adapter_does_not_recognise_is_ignored() {
     f.statuses();
 
     f.signal(&node.id, "FutureEvent").await.unwrap();
-    f.call("agent.signal", json!({"id": node.id, "payload": {}}))
-        .await
-        .unwrap();
+    f.call(
+        "agent.signal",
+        json!({"id": node.id, "incarnation": node.incarnation, "payload": {}}),
+    )
+    .await
+    .unwrap();
 
     assert!(f.statuses().is_empty());
     assert_eq!(status_of(&f.tree().await, &node.id).kind, Kind::Working);
@@ -126,7 +132,13 @@ async fn a3_a_signal_after_exit_is_ignored() {
     f.until(|t| status_of(t, &node.id).kind == Kind::Done).await;
     f.statuses();
 
-    f.signal(&node.id, "UserPromptSubmit").await.unwrap();
+    assert_eq!(
+        f.signal(&node.id, "UserPromptSubmit")
+            .await
+            .unwrap_err()
+            .code,
+        code::NOT_FOUND
+    );
 
     assert!(f.statuses().is_empty());
     assert_eq!(status_of(&f.tree().await, &node.id).kind, Kind::Done);
@@ -196,9 +208,12 @@ async fn child_signals_payloads_the_adapter_refuses() {
         json!({"hook_event_name": "FutureEvent", "prompt": "SECRET-PROMPT"}),
         json!({"prompt": "SECRET-PROMPT"}),
     ] {
-        f.call("agent.signal", json!({"id": node.id, "payload": payload}))
-            .await
-            .unwrap();
+        f.call(
+            "agent.signal",
+            json!({"id": node.id, "incarnation": node.incarnation, "payload": payload}),
+        )
+        .await
+        .unwrap();
     }
 }
 

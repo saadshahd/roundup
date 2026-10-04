@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { RpcError } from "../../app/seam";
-import { agent, group, metaAgent, terminal } from "../../testing/nodes";
+import { agent, room, door, terminal } from "../../testing/nodes";
 import { exitedTerminal, mountRail, rowOf } from "../railFixture";
 
 afterEach(cleanup);
@@ -12,7 +12,7 @@ const item = (name: string) => screen.getByRole("menuitem", { name });
 
 describe("u56 remove from the Rail", () => {
   it("u56_right_click_selects_the_row_and_opens_a_menu_at_the_pointer", async () => {
-    const { rail } = await mountRail([group("g")]);
+    const { rail } = await mountRail([room("g")]);
 
     openAt("g");
 
@@ -30,7 +30,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_a_done_meta_agent_and_an_exited_terminal_offer_remove_only", async () => {
-    await mountRail([metaAgent("m", "done", "done"), terminal("t")], [exitedTerminal("t", 0)]);
+    await mountRail([door("m", "done", "done"), terminal("t")], [exitedTerminal("t", 0)]);
 
     openAt("m");
     expect(screen.getAllByRole("menuitem").map((each) => each.textContent)).toEqual(["remove"]);
@@ -61,7 +61,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_removing_a_group_calls_rail_remove_without_stopping_children", async () => {
-    const { app } = await mountRail([group("g"), agent("child", "working", "busy", { parent: "g" })]);
+    const { app } = await mountRail([room("g"), agent("child", "working", "busy", { parent: "g" })]);
     app.handlers["rail.remove"] = () => null;
     openAt("g");
 
@@ -134,7 +134,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_context_menu_key_opens_under_the_focused_row_and_esc_closes_it", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
     rowOf("g").focus();
 
     fireEvent.keyDown(rowOf("g"), { key: "ContextMenu" });
@@ -147,7 +147,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_shift_f10_in_the_rail_opens_the_menu", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
     rowOf("g").focus();
 
     fireEvent.keyDown(rowOf("g"), { key: "F10", shiftKey: true });
@@ -156,7 +156,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_a_pointer_down_outside_the_menu_closes_it", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
     openAt("g");
 
     fireEvent.pointerDown(document.body);
@@ -165,7 +165,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_shift_f10_in_the_pane_does_not_open_a_rail_menu", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     fireEvent.keyDown(document.body, { key: "F10", shiftKey: true });
 
@@ -186,7 +186,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_not_found_refetches_rail_tree_and_does_not_show_an_error", async () => {
-    const { app, rail } = await mountRail([group("g")]);
+    const { app, rail } = await mountRail([room("g")]);
     app.handlers["rail.remove"] = () => Promise.reject(new RpcError(-32001, "gone"));
     app.handlers["rail.tree"] = () => [];
     openAt("g");
@@ -198,7 +198,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_other_remove_error_uses_the_rail_failure_line", async () => {
-    const { app } = await mountRail([group("g")]);
+    const { app } = await mountRail([room("g")]);
     app.handlers["rail.remove"] = () => Promise.reject(new RpcError(-32603, "cannot remove"));
     openAt("g");
 
