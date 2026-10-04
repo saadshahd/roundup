@@ -15,6 +15,7 @@ A Builder holds each row and its PR is in review. Nothing below is dispatched ag
 
 | Item | Needed scenario | Observer before dispatch |
 |---|---|---|
+| Automatic before/after capture and publication for visible PRs | L77: specify capture at the scenario window size, exact-head binding, and publication without manual proof branches; preserve L53 media checks and separation of unreviewed capture from publication | fake capture/publication tests cover stale heads and failures; a visible PR has before/after evidence without manual branch work; waits on L76, specification only here |
 | Driver dispatches ready Builders without a human choosing every row | Architect assigns a new L id after L49 and specifies a queue reader that atomically claims the oldest ready, approved scenario with disjoint file ownership, starts `BOXD_AGENT=codex loop/boxd.sh build` up to both the WIP and VM caps, ingests each Builder's `Next:` recommendation as a candidate row, and records why a row was skipped; it must never dispatch a duplicate, a blocked dependency or a scenario without approval | fake queue/boxd race tests show two concurrent Driver ticks claim one row once, run independent rows together, stop at caps, and turn one completed Builder recommendation into a durable candidate; a live boxd smoke leaves no `ru-` VM |
 
 ## Waiting
