@@ -1061,17 +1061,16 @@ async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
         ),
     );
     let f = Arc::new(Fixture::in_git_project(
-        "while read line; do if [ \"$line\" = exit ]; then exit 0; fi; printf '\\033]0;◐ Claude Code\\007'; done",
+        "echo ready > ready\nwhile read line; do if [ \"$line\" = exit ]; then exit 0; fi; printf '\\033]0;◐ Claude Code\\007'; done",
         git,
     ));
     set_worktrees(&f, true, None).await;
     let id = f.room("room", None).await;
     let node = start_door(&f, &id).await.unwrap();
-    std::fs::write(
-        Path::new(&node.worktree.unwrap().path).join("dirty"),
-        "keep",
-    )
-    .unwrap();
+    let path = PathBuf::from(node.worktree.unwrap().path);
+    crate::common::until_file(&path.join("ready")).await;
+    std::fs::remove_file(path.join("ready")).unwrap();
+    std::fs::write(path.join("dirty"), "keep").unwrap();
     f.call(
         "agent.signal",
         json!({"id":id,"incarnation":node.incarnation,"payload":{"hook_event_name":"Stop"}}),
@@ -1084,11 +1083,19 @@ async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
         tokio::spawn(async move { f.call("rail.remove", json!({"id":id})).await })
     };
     crate::common::until_file(&held).await;
+    let mut titles = f
+        .terminals
+        .subscribe(node.terminal_id.as_ref().unwrap())
+        .unwrap();
     f.terminals
         .write(node.terminal_id.as_ref().unwrap(), b"title\n")
         .await
         .unwrap();
-    let observed = tokio::time::timeout(Duration::from_secs(2), async {
+    let mut title_received = false;
+    let observed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if matches!(titles.recv().await.unwrap(), contracts::EventData::TerminalTitle(ref title) if title.title.starts_with('◐')) { break; }
+        }
         loop {
             if f.tree().await[0].status.as_ref().unwrap().kind == contracts::Kind::Working {
                 break;
@@ -1106,7 +1113,9 @@ async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
         .unwrap();
     assert!(
         observed.is_ok(),
-        "a rejected removal must not revoke its live watcher"
+        "a rejected removal must not revoke its live watcher; title_received={title_received}; tree={:?}; terminal={:?}",
+        f.tree().await,
+        f.terminals.snapshot(node.terminal_id.as_ref().unwrap())
     );
     f.until(|tree| tree[0].status.as_ref().unwrap().kind == contracts::Kind::Done)
         .await;
