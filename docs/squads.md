@@ -4,7 +4,7 @@ No single agent writes every scenario. A squad owns a module and everything up t
 
 ## Squads
 
-A squad is one scenario writer, its Builders and its reviewer pool. It writes scenarios inside its own files and id range, starts Builders from them and merges through rule 1, and needs no architect for any of that. Its rows live in `.work/queue/<squad>.md`, and its Builders edit only the files those rows own.
+A squad is one scenario writer, its Builders and its reviewer pool. It writes scenarios inside its own files and id range, starts Builders from them and merges through rule 1, and needs no architect for any of that. Its rows are the `## Work` tables of its scenario files, and its Builders edit only the files those rows own.
 
 | Squad | Module directories | Scenario files | New ids it allocates |
 |---|---|---|---|
@@ -14,7 +14,7 @@ A squad is one scenario writer, its Builders and its reviewer pool. It writes sc
 | loop | `loop/`, `.agents/`, `.agents/data/boxd.md` | `loop.md` | L34 to L39 |
 | perf | `crates/perf`, the workspace files | `perf.md`, `workspace.md` | R14 to R29, K4 to K9, W2 to W5 |
 
-Architects allocate from A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59; ids in `.work/queue.md`'s table keep their holders. A squad out of ids asks the committee. Two squads never edit one scenario file: `ui.md` (U1 to U60) takes no new ids, and an edit to one of its scenarios belongs to the squad owning that scenario's module; a scenario needing another squad's file names it, and that squad's writer adds the part.
+Architects allocate from A30 to A49, D10 to D19, C10 to C19, T16 to T25 and L40 to L59. A squad out of ids asks the committee. Two squads never edit one scenario file: `ui.md` (U1 to U60) takes no new ids, and an edit to one of its scenarios belongs to the squad owning that scenario's module; a scenario needing another squad's file names it, and that squad's writer adds the part.
 
 ## Architect committee
 
@@ -29,6 +29,6 @@ Three architects: `architect-swarm` (contracts, ids, queue), `architect-b` (UI a
 
 An approval is a comment `ARCHITECT: approve <full sha>` (or `reject`) from one architect other than the author, naming what was checked; it counts for the head it names. When a second architect disagrees the third decides in a PR comment, or the user when the third is the author. Nothing outside this list waits on the committee.
 
-## Moving the queue
+## Work
 
-`.work/queue.md` keeps the swarm protocol and the id table. Each squad's rows are in `.work/queue/<squad>.md`; rows no squad owns (contracts, spikes, rows that cross squads) are in `.work/queue/architects.md`.
+Each scenario file ends in a `## Work` table (`Ids | Item | Owns | Keeps green | After`), written only by the squad that owns the file; a row no squad owns goes in the file of its first id. `loop/rules.sh ready` (L34) prints each row as `done`, `unspecified`, `waiting` or `ready`; a done row is deleted. An id is taken when its heading exists.

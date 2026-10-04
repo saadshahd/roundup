@@ -10,4 +10,14 @@ A scenario is the spec for a unit of work: given / when / then, in `GLOSSARY.md`
 
 Each scenario file states its module and ids on its `Module:` line, just under its title (`scenarios/loop.md` L50); this file holds no table of files, so adding a scenario file edits no line here.
 
-The order of work, the PR each scenario belongs to and what can start now are in `.work/queue.md`.
+Each file's `## Work` table holds its rows; `loop/rules.sh ready` prints what can start (`docs/squads.md`).
+
+## Deferred past the MVP (no scenario yet)
+
+- motion.md rows other than the Drawer slide and drag;
+- Terminals named from their first command;
+- the `● 1 below` line (U30 covers jumping, not the pinned line), provenance letters, the Todo `on` field and the Pad storage switch;
+- Inbox, Messages, Routes, Extensions and history;
+- packaging (a signed `.app`).
+
+Product roadmap: [Rooms, Doors and Sketches](../docs/wireframes.md#accepted-product-direction-rooms-doors-and-sketches); it needs scoped scenarios before dispatch.

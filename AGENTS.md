@@ -9,7 +9,7 @@ Each role's prompt is `.agents/<role>.md`; data a step reads on demand is `.agen
 | Step | Role | Flow |
 |---|---|---|
 | 1 Specify | Architect or squad writer | `/compose to-spec to draft the scenario, grill-with-docs to test it against the glossary, anchor to make each then-clause checkable` |
-| 2 Dispatch | Driver | `/compose router to hand the scenario to a Builder, handoff to pass its context` |
+| 2 Dispatch | Driver | `loop/rules.sh ready`, then `/compose router to hand a ready row to a Builder, handoff to pass its context` |
 | 3 Build | Builder | `/compose sound:prime to load the taste rules, tdd to land the scenario red then green, reduce and show-me to write Shape and Proof` |
 | 4 Review | Reviewer | `/compose sound:review to read the diff against the taste rules, judge to give one cited verdict` |
 | 5 Merge | Driver | `loop/rules.sh merge-ready <pr>` |

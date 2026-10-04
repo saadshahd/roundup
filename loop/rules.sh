@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
+# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -639,6 +639,50 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
+# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, unspecified, waiting or ready.
+ready() {
+  python3 - <<'PY'
+import glob, re, subprocess, sys
+files = sorted(glob.glob('scenarios/*.md'))
+heads = {m for f in files for m in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', open(f).read(), re.M)}
+def ids(text):
+    out = []
+    for a, b in re.findall(r'\b([A-Z][0-9]+)(?:\s*(?:–|-|to)\s*[A-Z]?([0-9]+))?\b', text):
+        if b:
+            out += [a[0] + str(n) for n in range(int(a[1:]), int(b) + 1)]
+        else:
+            out.append(a)
+    return out
+def tested(i):
+    if i[0] == 'L':
+        args = ['git', 'grep', '-qE', r'\b' + i + r'\b', '--', 'loop/*.test.sh']
+    else:
+        args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
+    return subprocess.run(args).returncode == 0
+for f in files:
+    lines = open(f).read().split('\n')
+    if '## Work' not in lines:
+        continue
+    rows = [l for l in lines[lines.index('## Work'):] if l.startswith('|')]
+    header = [c.strip() for c in rows[0].strip('|').split('|')] if rows else []
+    if header != ['Ids', 'Item', 'Owns', 'Keeps green', 'After']:
+        print(f'{f}: Work table needs Ids, Item, Owns, Keeps green, After', file=sys.stderr)
+        sys.exit(2)
+    for row in rows[2:]:
+        cells = [c.strip() for c in row.strip().strip('|').split('|')]
+        own = ids(cells[0])
+        if own and all(tested(i) for i in own):
+            state = 'done'
+        elif not own or any(i not in heads for i in own):
+            state = 'unspecified'
+        elif any(not tested(i) for i in ids(cells[4])):
+            state = 'waiting'
+        else:
+            state = 'ready'
+        print(state, cells[0], f)
+PY
+}
+
 case "${1:-}" in
   base | class | rounds | merge-ready | proof | ci-trailers)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
@@ -646,6 +690,7 @@ case "${1:-}" in
   size) size ;;
   trailers) pr_rule trailers "$base" ;;
   vocab) vocab ;;
+  ready) ready ;;
   delta) delta "${2:-}" "${3:-}" ;;
   carry) carry "${2:-}" "${3:-origin/main}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;

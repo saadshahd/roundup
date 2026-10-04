@@ -13,3 +13,10 @@ U101 QA compares the same selected Terminal before and after at a 1280×800 wind
 U102 QA compares the same selected Terminal before and after at 1280×800 and 700×800, using the real emulator and actual size chords; long wrapped output, including an unterminated last line, keeps its content and logical scroll position.
 
 Tests (`u101_`, `u102_`) use the injected emulator, a stubbed clipboard and the fake App: selection and no selection, `⌃C` against `⌘C`, a multi-line paste, an exited Terminal, `daemon-exited`, each chord's modifier cases, a throwing clipboard, each end of the size range, a second Terminal at the same size, one `terminal.resize` per change, and a mount with a saved size in range and out of range, `⇧⌘=` and `⌘+` growing the size, `⇧⌘-`, `⌥⌘0`, `⌃⌘=`, `⌥⌘=` and `⌃⌘+` doing nothing, and a size change that leaves `cols` and `rows` as they were calling nothing.
+
+## Work
+
+Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
+
+| Ids | Item | Owns | Keeps green | After |
+|---|---|---|---|---|

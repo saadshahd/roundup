@@ -425,4 +425,4 @@ Current evidence is the source at `a1f4d5eae322470951bb4906b31412af564bed15`; a 
 2. Extend it with Room-scoped Todos, dependencies and durable comments, with polished keyboard and pointer interaction.
 3. Add Sketches with rich Markdown and Mermaid or tldraw visuals; settle representation, permissions and storage through scoped implementation and create/edit/reopen proof.
 
-Room nesting, cross-Room dependencies, Sketch embedding, storage and editing rights, and retention of the whole-Project view remain open. No implementation row is ready until it has a scenario and an observer. Use the existing [work queue](../.work/queue.md) to assign that work; keep accepted product choices and their reasons here.
+Room nesting, cross-Room dependencies, Sketch embedding, storage and editing rights, and retention of the whole-Project view remain open. No implementation row is ready until it has a scenario and an observer. Assign that work as `; keep accepted product choices and their reasons here.

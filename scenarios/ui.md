@@ -1,6 +1,6 @@
 # UI
 
-Module: `apps/desktop` (the webview). Ids: every `U` heading in the file; ids are reserved in `.work/queue.md`.
+Module: `apps/desktop` (the webview). Ids: every `U` heading in the file.
 
 The webview in `apps/desktop`: Solid, Vite and xterm.js with the WebGL addon (ADR 0005), drawn from `docs/wireframes.md` (its corrections and decisions win over the drawings) and timed by `docs/motion.md`. It is a client of the Daemon through the App seam (`app.md`) and nothing else. Tests run in Vitest with jsdom against a fake App seam. Only one adapter file imports Tauri; it belongs to U1, and every other scenario reaches Tauri through it. The terminal emulator and the clock are injected, so no test needs a display, a GPU or real time. Exported names say Project, never folder: `folder` is the _Avoid_ word for Group. On-screen text may say folder, because the wireframes do.
 
@@ -127,7 +127,7 @@ Double-clicking the title or the body edits it, and leaving the field calls `tod
 
 ## Later UX (U37 to U38, U40 to U41, U44 to U50)
 
-Ordered by what each needs; each names its owner files in `.work/queue.md`.
+Ordered by what each needs; each names its owner files in its `## Work` row.
 
 **U37 reopen after the Daemon exits.** Needs S5 (`scenarios/app.md`). Given U25's state after `daemon-exited`, then the header reads as U25 says and, after the exit text, a light `reopen`. Clicking it calls `open_project {path: <Project path>}`. When that succeeds, the header returns to `roundup   <Project name>`, the Rail, the Shelf and the pane are enabled again, every region refetches (`rail.tree`, `terminal.list`, `todo.list`, `pad.list`), and the webview subscribes again so the new Daemon's Events arrive; the greyed Rail shows the new Daemon's tree, never a mix. When it fails, `✕ <message>` replaces the exit text in Ink and `reopen` is still offered. Narrowing U25: "that is the only place the exit shows" now includes `reopen`; its disabled controls come back on success; `u25_daemon_gone.test.tsx` keeps passing for everything before a reopen.
 
@@ -196,3 +196,14 @@ No scenario yet:
 - **Rail:** Terminals named from their first command (A10 names them after the shell); the `● 1 below` line.
 - **Screen 11:** the list of recent folders, and the `claude` version / `✕ claude not found` line.
 - **Missing contract pieces:** provenance letters (decision 5); the Todo `on` field; the Pad storage switch.
+
+## Work
+
+Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
+
+| Ids | Item | Owns | Keeps green | After |
+|---|---|---|---|---|
+| U58 | an Agent's Pads under it, on demand (Moves: D1, D2, D4, D6) | `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
+| U60 | an Agent's Todos under it (Moves: D1, D2, D4) | `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
+| U59 | the terminal blends with the app (Moves: D1, D5) | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U103 and the contrast tokens merge |
+| U37 | reopen, webview half (Moves: D3, D5, D6, D7) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |

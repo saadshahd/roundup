@@ -1025,4 +1025,41 @@ expect fail 'L46 trusted checkout initially lacks PR objects' git cat-file -e "$
 expect_output "ready $pr_head" 'L46 fetches missing PR objects as data' gate merge-ready 12
 expect_output main 'L46 leaves the trusted branch checked out' git branch --show-current
 
+ready_repo() {
+  new_repo
+  mkdir -p scenarios apps
+  printf '%s\n' '**U1 one.** a' '**U2 two.** b' '**U3 three.** c' '' '## Work' '' \
+    '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' \
+    '| U1 | first | `a` | — | — |' '| U2 | second | `b` | — | after U3 |' '| U3 | third | `c` | — | — |' \
+    '| U9 | unwritten | — | — | — |' '| U1, U3 | both | — | — | — |' >scenarios/ui.md
+  echo 'test("u1_works", () => {});' >apps/u1.test.ts
+  commit x
+}
+ready() { loop/rules.sh ready; }
+
+ready_repo
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 ready prints each Work row with its state' ready
+
+ready_repo
+echo 'test("u3_works", () => {});' >apps/u3.test.ts; commit x
+expect_output "done U1 scenarios/ui.md
+ready U2 scenarios/ui.md
+done U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+done U1, U3 scenarios/ui.md" 'L34 a done After frees the row' ready
+
+ready_repo
+printf '%s\n' '**L7 x.** a' '## Work' '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' '| L7 | x | — | — | — |' '| U4–U5 | y | — | — | — |' '**U4 a.** x' '**U5 b.** y' >scenarios/loop.md
+printf 'echo L7\n' >loop/x.test.sh; echo 'fn u4_a() {} fn u5_b() {}' >crates/u.rs; commit x
+expect_output "done L7 scenarios/loop.md
+done U4–U5 scenarios/loop.md" 'L34 L ids read loop tests; a range needs every id' bash -c 'loop/rules.sh ready | grep loop.md'
+
+ready_repo
+printf '%s\n' '## Work' '| Ids | Item |' '|---|---|' '| U1 | x |' >scenarios/bad.md; commit x
+expect_exit 2 'L34 a Work table missing a column exits 2' ready
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

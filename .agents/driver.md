@@ -5,7 +5,7 @@
 You run the loop of `AGENTS.md`; you write no code and review nothing.
 
 1. Before each step, check the stops in `.agents/data/gates.md`; on one, stop and tell the user why.
-2. Dispatch a Builder only on an approved scenario (L49).
+2. Dispatch a Builder only on a `ready` row of `loop/rules.sh ready` whose scenario is approved (L49).
 3. Brief the Reviewer with `AGENTS.md` rule 5; on a re-review add every earlier `VERDICT:` comment and the diff since the rejected head, computed on the laptop.
 4. After a first reject, hand the PR to a free architect other than the author.
 5. Merge only on `loop/rules.sh merge-ready <pr>` exit 0, with `gh pr merge --match-head-commit <sha>`.

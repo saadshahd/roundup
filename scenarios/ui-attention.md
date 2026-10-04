@@ -17,3 +17,11 @@ Source: the user's $anchor rules on attention, navigation and ergonomics (2026-1
 **U110 select-to-quote.** Given text selected in the Thread's feed or in a Terminal's output, when the user then types a printable character in the Thread's input, then one Quote block is attached before the typed text, and the selection is used up: the next character typed adds no Quote. The block holds the selected text, up to 2000 characters (a longer selection is cut and marked `[cut]`), and its source, the name the Rail shows for that Agent or Terminal (or the Message id for a Message). The typed character lands after the block. A selection of no characters, or one made in the input itself, adds nothing. Whether a quote is true to its transcript is the Evaluator spike (B27). Tests use the injected emulator selection and the harness: a first and a second character, a long selection, a plain Terminal, an empty selection.
 
 Tests are named `u105_` to `u107_`, `u109_` and `u110_`; U108 has a pass condition and no test.
+
+## Work
+
+Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
+
+| Ids | Item | Owns | Keeps green | After |
+|---|---|---|---|---|
+| U105–U107, U109, U110 | the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3) | `apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns | after the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107 | — |

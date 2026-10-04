@@ -42,6 +42,17 @@ One `kind:` (`feature fix docs scenario prompt loop spike`), one or more `area:`
 | re-review | the brief carries every earlier `VERDICT:` comment and the diff since the rejected head; unchanged text blocks only for a broken rule or a correctness defect |
 | 3rd | `rounds` (L45) blocks until an Architect other than the author picks; the user picks when the author is the only Architect |
 
+## Branches
+
+- Rows merge in their `After` order. A stacked PR (its scenario says "after X" or "may stack") branches from its base, touches no file the base touches, and merges after it.
+- Behind `main`: merge `origin/main` in (a stacked branch merges its base first), `just check`, push, ask for a new approval; never rebase a branch with an approval or a review in flight.
+- Lockfile conflict: take main's file and regenerate (`git checkout origin/main -- Cargo.lock && cargo update -w`; `git checkout origin/main -- pnpm-lock.yaml && pnpm install`), committed with the merge.
+- A defect needing `contracts/`, `GLOSSARY.md` or the App seam stops the Builder and goes to an Architect.
+
+## Audit PR
+
+Every scenario id has a test prefixed with its lowercase id (`L` ids: `L<n>` in `loop/*.test.sh`), except W1 (`just check`) and F1, F7 (spike records). An audit adds one test per clause no test asserts, with an id, clause, test table in the PR; it changes no scenario or behaviour and reports an unmet clause to an Architect.
+
 ## Stops
 
 `main` red over 30 minutes · `loop/out/PAUSED` exists · a contract change without architect approval · the same perf budget breached twice.
