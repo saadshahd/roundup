@@ -1,13 +1,17 @@
 {
   "entry": [
     "contracts/**/*.ts",
-    "apps/*/harness.html"
+    "apps/*/harness.html",
+    "loop/*.run.ts",
+    "loop/qa-coordinator.test.ts",
+    "loop/qa-command.test.ts"
   ],
   "ignorePatterns": [
     "tools/oxlint/anti-slop/**",
     "spikes/**"
   ],
   "ignoreDependencies": [
-    "@oxlint/plugins"
+    "@oxlint/plugins",
+    "@boxd/run"
   ]
 }
