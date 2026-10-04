@@ -41,7 +41,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     exited: {},
   });
 
-  const [doors, setDoors] = createStore<Record<string, { pending: boolean; failure: { message: string; incarnation: string | null } | null }>>({});
+  const [doors, setDoors] = createStore<Record<string, { pending: boolean; observedLive: boolean; failure: { message: string; incarnation: string | null } | null }>>({});
   const [selected, setSelected] = createSignal<string | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
 
@@ -73,6 +73,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       setModel("tree", reconcile(tree, { key: "id" }));
 
       for (const node of tree) {
+        if (doors[node.id]?.pending && hasLiveTerminal(node)) setDoors(node.id, "observedLive", true);
         const failed = doors[node.id]?.failure;
 
         if (failed && (hasLiveTerminal(node) || (node.incarnation !== null && BigInt(node.incarnation) > BigInt(failed.incarnation ?? "0")))) {
@@ -152,7 +153,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     doorFailure: (id) => doors[id]?.failure?.message ?? null,
     startDoor: async (id) => {
       if (doors[id]?.pending) return;
-      setDoors(id, { pending: true, failure: null });
+      setDoors(id, { pending: true, observedLive: false, failure: null });
 
       try {
         await app.rpc("rail.startDoor", { id });
@@ -164,7 +165,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
         await latest;
         const node = model.tree.find((each) => each.id === id);
 
-        if (node && !hasLiveTerminal(node)) {
+        if (node && !hasLiveTerminal(node) && !doors[id]?.observedLive) {
           setDoors(id, "failure", { message: error.message, incarnation: node.incarnation });
         }
       } finally {

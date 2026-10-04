@@ -243,6 +243,20 @@ describe("u62 Door launch failures", () => {
     expect(rail.doorFailure("r")).toBeNull();
   });
 
+  it("u62_a_late_start_rejection_does_not_cover_an_external_run_that_already_ended", async () => {
+    const { app, rail } = await open([room("r")]);
+    let reject!: (error: Error) => void;
+    app.handlers["rail.startDoor"] = () => new Promise((_, fail) => { reject = fail; });
+    const starting = rail.startDoor("r");
+    app.handlers["rail.tree"] = () => [door("r", "working", "ready", { incarnation: "2" })];
+    await rail.refresh();
+    app.handlers["rail.tree"] = () => [room("r", { incarnation: "2" })];
+    await rail.refresh();
+    reject(new Error("old launch failed"));
+    await starting;
+    expect(rail.doorFailure("r")).toBeNull();
+  });
+
   it("u62_a_late_start_rejection_does_not_cover_an_external_success", async () => {
     const { app, rail } = await open([room("r")]);
     let reject!: (error: Error) => void;
