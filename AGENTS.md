@@ -18,7 +18,8 @@ Read `CONTEXT.md` and `PRINCIPLES.md` first; every identifier, RPC method and UI
 
 - No scenario, no work: specs are `scenarios/*.md`, given/when/then in glossary words. Squads write them in their own files and id ranges (`docs/squads.md`) and start Builders without an architect.
 - Name tests after their scenario: `fn t3_...` proves T3.
-- Build: invoke `sound:prime` before writing code, then the failing test first, then the code, in your own git worktree.
+- Skills live in `.agents/skills` (Codex) and `.claude/skills` (Claude); `sound` is a plugin for Claude (`sound:prime`) and plain `prime` for Codex. A skill that says `GLOSSARY.md` means `CONTEXT.md`.
+- Build: invoke `sound:prime`, then `tdd` (the failing test first, then the code), in your own git worktree.
 - Review: invoke `sound:review` on the diff; every added comment must name a consequence, or is deleted (says what the code says) or corrected (false).
 - Red main is stop-the-line: revert, never fix forward. Also reverted: work a Builder started on an unapproved scenario (L49). A PR rejected 3 times waits for an Architect to pick split, amend or retire (L45).
 
