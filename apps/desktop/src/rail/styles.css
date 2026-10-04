@@ -110,6 +110,8 @@
 .rail-tree {
   position: relative;
   font-family: var(--font-ui);
+  -webkit-user-select: none;
+  user-select: none;
   /* The one value the pinned bar's own height and every row's scroll reservation both read (U44). */
   --rail-actions-height: 40px;
 }
@@ -121,8 +123,9 @@
   background: var(--ground);
 }
 
-.rail-row {
-  user-select: none;
+.rail-tree input {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .rail-row[data-lifted="true"] {
