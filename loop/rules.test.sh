@@ -863,6 +863,23 @@ gate_set '.body |= sub("Scenarios: A7"; "Scenarios: A7 T1") | .body += "\nPendin
 gate_specification_head
 expect_exit 0 'L53 later Todo product specifications use the same proof scope' gate proof 12
 
+for path in docs/wireframes.md .work/prompts/product.md; do
+  gate_specification
+  mkdir -p "$(dirname "$path")"
+  printf 'Product observer specification\n' >"$path"
+  commit product-plan 'Author-Agent: builder'
+  git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+  gate_specification_head
+  expect_exit 0 "L53 specification accepts $path" gate proof 12
+done
+gate_specification
+printf '**T1 a Todo.** Given a title, when created, then a Todo exists.\n' >scenarios/todos.md
+ln -s ../crates/a.rs 'scenarios/[t]odos.md'
+commit bracket-link 'Author-Agent: builder'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+gate_specification_head
+expect_exit 1 'L53 bracket-named symlink cannot borrow the regular Todo file mode' gate proof 12
+
 gate_visible
 expect_exit 0 'L53 visible before and after evidence passes' gate proof 12
 gate_set '.body |= sub("U1 before[^\n]*\n"; "")'
