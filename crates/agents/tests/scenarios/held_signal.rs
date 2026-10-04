@@ -84,7 +84,7 @@ async fn a14_a_held_user_prompt_submit_still_names_the_agent() {
     let held = f
         .call(
             "agent.signal",
-            json!({"id": id, "incarnation": f.incarnation(id).await, "payload": payload}),
+            json!({"id": id, "incarnation": f.incarnation(&id).await, "payload": payload}),
         )
         .await;
 
