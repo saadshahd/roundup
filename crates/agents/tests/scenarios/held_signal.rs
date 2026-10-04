@@ -16,7 +16,7 @@ async fn signal(f: &Fixture, id: &str, event: &str) -> Result<Value, RpcError> {
     let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
     f.call(
         "agent.signal",
-        json!({"id": id, "incarnation": f.incarnation(&id).await, "payload": payload}),
+        json!({"id": id, "incarnation": f.incarnation(id).await, "payload": payload}),
     )
     .await
 }
@@ -84,7 +84,7 @@ async fn a14_a_held_user_prompt_submit_still_names_the_agent() {
     let held = f
         .call(
             "agent.signal",
-            json!({"id": id, "incarnation": f.incarnation(&id).await, "payload": payload}),
+            json!({"id": id, "incarnation": f.incarnation(id).await, "payload": payload}),
         )
         .await;
 

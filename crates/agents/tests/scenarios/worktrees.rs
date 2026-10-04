@@ -976,7 +976,7 @@ async fn g5_missing_worktree_does_not_allow_deleting_an_ahead_branch() {
         &[
             "update-ref",
             &format!("refs/heads/{}", worktree.branch),
-            &git_output(f.dir.path(), &["rev-parse", &worktree.base]).trim(),
+            git_output(f.dir.path(), &["rev-parse", &worktree.base]).trim(),
         ],
     );
     f.call("rail.remove", json!({"id":id})).await.unwrap();
