@@ -125,6 +125,17 @@
   user-select: none;
 }
 
+/* U142: the whole Rail (rows, done summary, pinned bar and the gaps between) selects rows, never text; a field the user types in, the error line and the menu keep theirs. */
+.rail-tree {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.rail-tree :is(input, textarea, [role="alert"], .rail-menu) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .rail-row[data-lifted="true"] {
   opacity: 0.4;
   transform: translateY(var(--lift));
