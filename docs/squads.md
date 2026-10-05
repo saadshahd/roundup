@@ -27,4 +27,4 @@ Three architects: `architect-swarm` (contracts and ids), `architect-b` (UI and p
 - a change to a scenario that a merged test asserts, when it crosses squads;
 - a conflict between squads.
 
-An approval is a comment `ARCHITECT: approve <full sha>` (or `reject`) from one architect other than the author, naming what was checked; it counts for the head it names. When a second architect disagrees the third decides in a PR comment, or the user when the third is the author. Nothing outside this list waits on the committee.
+An approval is the contract approval of `.agents/data/gates.md` from one architect other than the author, naming what was checked; it counts for the head it names. When a second architect disagrees the third decides in a PR comment, or the user when the third is the author. Nothing outside this list waits on the committee.

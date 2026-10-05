@@ -6,15 +6,15 @@ The direction: a Mac app that stays out of the way. System sans for the chrome, 
 
 Every rule below is a check with an id. A check passes or fails; it has no score. The same checks run twice: as `vitest` tests in `just check` (the gate), and by the Design critic on the real rendering (advisory). One module measures them for both (U137).
 
-## Five rules, and where each comes from
+## Five rules
 
-| # | Rule | Source | Checks |
-|---|---|---|---|
-| 1 | Every look value is a Token; no other value is drawn. | Frost: inventory the parts, then fix them in one place | D1, D2 |
-| 2 | Hue is rare and means one thing: a Kind, or the one accent. | Tufte: colour that carries status stays scarce | D3, D4 |
-| 3 | Anything clickable looks clickable and answers at once. | Norman: signifiers and feedback | D6, D7 |
-| 4 | A check passes or fails on measured values, on screens the Builder did not tune for. | Goodhart: a score the author can see becomes the target | D1 to D10, the held-out list |
-| 5 | A visual change is judged against the build before it, not against taste. | Deming: study the change, not the noise | the baseline protocol |
+| # | Rule | Checks |
+|---|---|---|
+| 1 | Every look value is a Token; no other value is drawn. | D1, D2 |
+| 2 | Hue is rare and means one thing: a Kind, or the one accent. | D3, D4 |
+| 3 | Anything clickable looks clickable and answers at once. | D6, D7 |
+| 4 | A check passes or fails on measured values, on screens the Builder did not tune for. | D1 to D10, the held-out list |
+| 5 | A visual change is judged against the build before it, not against taste. | the baseline protocol |
 
 ## Tokens
 
@@ -88,8 +88,6 @@ Three user settings change the look. Each has a rule in `tokens.css`:
 - `prefers-contrast: more` makes every `--hairline` 40% opaque and every `--grey` text `--text`.
 - `prefers-reduced-transparency: reduce` removes every `backdrop-filter`.
 
-Motion is `docs/motion.md`, unchanged.
-
 ## The checks
 
 Each check is measured from computed style and the DOM of the running App, never from pixels, on every visible element of the screen, in light and in dark. A check that cannot measure fails; it never passes by default.
@@ -109,7 +107,7 @@ Each check is measured from computed style and the DOM of the running App, never
 
 ## Held-out screens
 
-A check is public. The screens it runs on are not all the Builder's. The Builder drives the scenario's own seeds. The critic also runs the screens listed in `.agents/design-critic.md`, which a Builder prompt never carries. The Architect changes at least one entry in that list after every ten merged UI PRs. This stops a PR tuning one screen to pass; it does not hide a rule.
+A check is public; the screens it runs on are not all the Builder's. The critic also runs the held-out screens in `.agents/data/harness.md`, so a PR cannot tune one screen to pass.
 
 ## Ideas
 
@@ -117,11 +115,4 @@ The critic's report ends with an `ideas` list of at most three things that look 
 
 ## Baseline protocol
 
-Plan, do, study, act, for each UI PR.
-
-1. **Plan.** The PR names the checks it moves (`Moves: D3, D6`) and the scenarios.
-2. **Do.** The Builder writes the failing test first. Each check is a `vitest` test over one module (U137), so `just check` is the gate.
-3. **Study.** The critic builds `origin/main` and the PR head, and for each seed and step saves `<step>.png` and `<step>.checks.json` under `artifacts/ux/<id>/base/` and `artifacts/ux/<id>/head/`: each check, `pass` or `fail`, and the measured value and selector behind it. The two builds share the seed, viewport, colour scheme and the injected clock. `loop/rules.sh delta` compares the two sets of `checks.json` files, never the pixels, and prints each check as `fixed`, `regressed`, `still-failing` or `still-passing`; the critic pastes its lines.
-4. **Act.** A `regressed` check is a Todo of class `ux-checklist` and a reject if it is in `just check`. A `still-failing` check is queued; it is a defect only once a scenario names it.
-
-Linux and macOS captures are never compared with each other (`.agents/data/boxd.md`).
+The critic captures `origin/main` and the PR head on the same seed, viewport, colour scheme and injected clock (`.agents/data/harness.md`, Captures); `loop/rules.sh delta` prints each check as `fixed`, `regressed`, `still-failing` or `still-passing`. A `regressed` check is a Todo of class `ux-checklist`, and a reject if it is in `just check`. A `still-failing` check is queued; it is a defect only once a scenario names it.

@@ -27,9 +27,9 @@ Recommendation: hooks plus the existing MCP server plus one keystroke path with 
 
 `agent.prompt {id, text}`, `agent.interrupt {id}`, the errors `BUSY`, `NOT_ACCEPTED`, `NOT_RUNNING`, `NOT_ACKED`, and the Decision store shared with permission Decisions and `ask_user` (`decision.list`, `decision.answer`, `decision.opened`, `decision.cleared`). One store, one `Decision` type, so the UI draws one thing. architect-b's steering series builds on `agent.prompt` and the Route rules; it owns when a Steer is sent and by whom. This document owns how it is delivered.
 
-## Fork cost (measured)
+## Fork cost
 
-`rup signal` costs 3.8 ms wall and 4.3 ms CPU per call on this Mac (measured by architect-swarm), about 0.9 s of CPU per 100 tool uses, each with a `PreToolUse` and a `PostToolUse` call. H1b or the H15 Builder repeats the measurement and commits the script. The cheap fix is H15: a single-threaded runtime in `rup`, and dropping an event only when a replay shows every Status unchanged without it. A long-lived transport (an `http` hook, an `mcp_tool` hook) works in the report (finding 7) but adds a second path into the Daemon and fails silently when the server is unreachable (the dialog appears with no message), so it is not chosen.
+Measured in `docs/perf.md` (H15's hook cost). A long-lived transport (an `http` hook, an `mcp_tool` hook) works in the report (finding 7) but adds a second path into the Daemon and fails silently when the server is unreachable (the dialog appears with no message), so it is not chosen.
 
 ## Failure modes
 

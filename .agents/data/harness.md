@@ -8,7 +8,7 @@ Data for QA, the Design critic and the Percy build: `loop/percy.sh` (L36) snapsh
 |---|---|
 | `first-run` | no open Project |
 | `agents-10` | ten Agents, one per Kind in turn |
-| `tree-40` | forty nodes (nested Groups, a Meta-agent, Terminals), eight Todos, four Pads |
+| `tree-40` | forty nodes (nested Rooms, a Door, Terminals), eight Todos, four Pads |
 | `daemon-exits` | `agents-10`, then `daemon-exited` with code 1 |
 | `conflict` | `agents-10`; the first call fails with `CONFLICT` |
 
@@ -22,7 +22,7 @@ Data for QA, the Design critic and the Percy build: `loop/percy.sh` (L36) snapsh
 | `failNext(-32003, "name already taken")` | the next call rejects |
 | `app.exitDaemon({code: 1})` | `daemon-exited`; `app.calls` lists every call |
 
-`window.__checks()` (U137) is not on `main` yet: measure with `agent-browser eval` until it lands. `agent-browser`: one session name per agent, `set viewport W H`, single key events via `eval` (after `press Enter` a key may repeat; count keydowns first).
+`window.__checks()` (U137) runs D1 to D10 on the screen. `agent-browser`: one session name per agent, `set viewport W H`, single key events via `eval` (after `press Enter` a key may repeat; count keydowns first).
 
 ## Held-out screens
 
