@@ -29,6 +29,7 @@ const OpenProject = (props: {
   daemonExit: DaemonExit | null;
   reopenFailure: string | null;
   onReopen: () => void;
+  reopening: boolean;
   reducedMotion: Accessor<boolean>;
   now: Accessor<number>;
   createEmulator?: EmulatorFactory | undefined;
@@ -53,7 +54,7 @@ const OpenProject = (props: {
                       <>
                         {"   "}
                         <ErrorLine message={props.reopenFailure ?? daemonExitText(exit())} />
-                        <Reopen onReopen={props.onReopen} />
+                        <Reopen onReopen={props.onReopen} busy={props.reopening} />
                       </>
                     )}
                   </Show>
@@ -122,6 +123,7 @@ export const App = (props: {
                 daemonExit={phase().daemonGone?.exit ?? null}
                 reopenFailure={phase().daemonGone?.reopenFailure ?? null}
                 onReopen={() => void project.reopen()}
+                reopening={project.reopening()}
                 reducedMotion={props.reducedMotion}
                 now={now}
                 createEmulator={props.createEmulator}

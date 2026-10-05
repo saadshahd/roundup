@@ -23,7 +23,6 @@ describe("u4 stylesheet text-colour allowlist", () => {
     const sheets = allStylesheets();
 
     expect(Object.keys(sheets).sort()).toEqual([
-      "../app/reopen.styles.css",
       "../pads/styles.css",
       "../rail/attentionChip.styles.css",
       "../rail/styles.css",

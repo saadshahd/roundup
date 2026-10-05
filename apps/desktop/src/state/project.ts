@@ -20,10 +20,13 @@ type ProjectState = {
   choose(): Promise<void>;
   /** Starts a new Daemon for the open Project (U37); a failure keeps the exit and records why. */
   reopen(): Promise<void>;
+  /** True from a `reopen` call until it answers, so a second click cannot ask for a second Daemon. */
+  reopening: Accessor<boolean>;
 };
 
 export const createProjectState = (app: AppSeam): ProjectState => {
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading" });
+  const [reopening, setReopening] = createSignal(false);
 
   // The adapter rejects as an RpcError; a rejection that is not an Error is a bug and is rethrown, which surfaces as an unhandled rejection rather than as text.
   const fail = (failure: Error) => setPhase({ kind: "empty", failure: failure.message });
@@ -50,6 +53,7 @@ export const createProjectState = (app: AppSeam): ProjectState => {
 
   return {
     phase,
+    reopening,
     choose: async () => {
       try {
         const path = await app.chooseProjectPath();
@@ -66,7 +70,9 @@ export const createProjectState = (app: AppSeam): ProjectState => {
     reopen: async () => {
       const current = phase();
 
-      if (current.kind !== "open") return;
+      if (current.kind !== "open" || reopening()) return;
+
+      setReopening(true);
 
       try {
         const project = await app.openProject(current.project.path);
@@ -78,6 +84,8 @@ export const createProjectState = (app: AppSeam): ProjectState => {
         const latest = phase();
 
         if (latest.kind === "open" && latest.daemonGone) setPhase({ ...latest, daemonGone: { ...latest.daemonGone, reopenFailure: failure.message } });
+      } finally {
+        setReopening(false);
       }
     },
   };

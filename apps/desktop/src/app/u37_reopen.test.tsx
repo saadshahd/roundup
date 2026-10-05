@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../App";
 import { RpcError } from "./seam";
 import { createFakeApp } from "../testing/fakeApp";
-import { node } from "../testing/nodes";
+import { info, node, terminal } from "../testing/nodes";
+import { fakeEmulators } from "../terminal/paneHarness";
 import type { FakeApp } from "../testing/fakeApp";
 
 const REGIONS = ["rail.tree", "terminal.list", "todo.list", "pad.list"] as const;
@@ -34,8 +35,8 @@ describe("u37 reopen after the Daemon exits", () => {
 
     app.exitDaemon({ code: 1 });
 
-    expect(header.textContent).toBe("roundup   payments-api   daemon exited 1");
-    expect(within(header).getByRole("button", { name: "reopen" }).getAttribute("data-label")).toBe("reopen");
+    expect(header.textContent).toBe("roundup   payments-api   daemon exited 1   reopen");
+    expect(within(header).getByRole("button", { name: "reopen" }).className).toBe("word");
   });
 
   it("u37_clicking_reopen_calls_open_project_with_the_project_path", async () => {
@@ -104,6 +105,43 @@ describe("u37 reopen after the Daemon exits", () => {
     expect(within(header).getByText("rupd stayed silent").className).toBe("ink");
     expect(within(header).queryByText("daemon exited 1")).toBeNull();
     expect(within(header).getByRole("button", { name: "reopen" })).not.toBeNull();
+  });
+
+  it("u37_the_pane_works_again_after_a_successful_reopen", async () => {
+    const app = createFakeApp();
+    const { factory, made } = fakeEmulators();
+
+    app.opened.project = { name: "payments-api", path: "/work/payments-api" };
+    app.handlers["rail.tree"] = () => [terminal("a")];
+    app.handlers["terminal.list"] = () => [info("t-a")];
+    app.handlers["terminal.write"] = () => null;
+
+    render(() => <App app={app} reducedMotion={() => false} clock={() => 0} createEmulator={factory} />);
+    await waitFor(() => expect(screen.queryByText("a")).not.toBeNull());
+
+    app.exitDaemon({ code: 1 });
+    reopen(screen.getByRole("banner"));
+    await waitFor(() => expect(screen.getByRole("banner").textContent).toBe("roundup   payments-api"));
+
+    fireEvent.click(await screen.findByText("a"));
+    await waitFor(() => expect(made.get("t-a")?.host).not.toBeNull());
+    made.get("t-a")!.type(Uint8Array.of(3));
+
+    await waitFor(() => expect(callsOf(app, "terminal.write")).toBe(1));
+  });
+
+  it("u37_a_second_click_while_a_reopen_is_starting_asks_for_one_daemon", async () => {
+    const { app, header } = await openApp();
+    const asked = { count: 0 };
+    const open = app.openProject;
+
+    app.openProject = (path) => (asked.count++, open(path));
+    app.exitDaemon({ code: 1 });
+    reopen(header);
+    reopen(header);
+
+    expect(asked.count).toBe(1);
+    expect(within(header).getByRole("button", { name: "reopen" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("u37_a_reopen_after_a_failed_one_can_succeed", async () => {
