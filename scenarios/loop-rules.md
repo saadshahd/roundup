@@ -1,6 +1,6 @@
 # Loop rules
 
-Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L<n>` tests in `loop/rules.test.sh`, `loop/merge-ready.test.sh` and `loop/percy.test.sh`.
+Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. Each id's cases are its `L<n>` tests in `loop/rules.test.sh`, `loop/merge-ready.test.sh`, `loop/percy.test.sh` and `loop/stalls.test.sh`.
 
 | Exit | Means |
 |---|---|
@@ -14,6 +14,18 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 **L2 approval.** `trailers` passes when every commit but a clean merge of `main` (L54) or a Copilot Autofix commit (L37) carries `Author-Agent` and the newest is an empty `Reviewed-by-Agent` commit whose id differs from every author.
 
 **L3 vocabulary.** `vocab` fails naming the word when a public Rust item, TS export or `contracts/` name holds a `GLOSSARY.md` _Avoid_ word, except under `crates/agents/claude_code/`.
+
+**L28 stalls.** `loop/stalls.sh check` writes `loop/out/stalls/<kind>-<subject>` for each Stall below that holds, deletes each file whose Stall no longer holds, and exits 1 naming the files on stderr, or 0 silently. A file holds `since` (UTC, kept while the file exists), `owner` and `deadline` (`since` plus 30 minutes). A verdict is a comment that the parser behind `rounds` (L45) reads as `approve` or `reject`, with the head it names and its `created_at`; `check` calls that parser, never a copy.
+
+| Kind | Holds when | Subject | Owner |
+|---|---|---|---|
+| a | the newest completed `check` or `rules` run on `main` did not succeed | `main` | `Triage` |
+| b | an open PR's `merge-ready` prints `ready <head SHA>` and its newest approve is 20 minutes old or more | PR number | `Merger` |
+| c | an open PR's `rounds` fails on its round cap, not on a `retire` | PR number | `Architect except <author ids>` |
+| d | a `loop/out/verdicts/` file holding an open PR's full head SHA was written 5 minutes ago or more, and no verdict names that head | PR number | `Driver` |
+| e | a PR merged after `loop/stalls.sh` landed, which `class` prints `post` for, has no verdict on its merged head 60 minutes after merge | PR number | `Driver` |
+
+`check` reads all of `gh` before changing a file; `gh` failing or slower than `BOXD_GH_TIMEOUT` exits 4 naming it and changes nothing. `report` prints `<kind> <subject> owner <owner> due <deadline>` once per file not yet printed; a file deleted and written again prints again. Tests use a fake `gh` and set file times: one case per kind, none holding, `since` kept, a cleared file deleted, `report` twice, a `gh` failure and a timeout.
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 
