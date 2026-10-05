@@ -469,10 +469,11 @@ def proof(pr, paths, head, base, events=None):
     # L76: Percy renders apps/desktop/src in Chromium; WKWebView on macOS stays a laptop check.
     if any(path.startswith('apps/desktop/src/') for path in paths):
         checks(head, ('percy',))
-        percy_project = os.environ.get('PERCY_PROJECT')
-        require(isinstance(percy_project, str) and percy_project.strip(), 'proof: missing PERCY_PROJECT configuration for Percy project path')
-        percy_project = re.escape(percy_project.strip())
-        require(re.search(r'^Percy: https://percy\.io/'+percy_project+r'/builds/\d+/?\s*$', evidence, re.M), 'proof: missing Percy: build link for expected project')
+        # The project path (e.g. `org/web/roundup`) comes from the repository variable, so a link to another project fails.
+        project = os.environ.get('PERCY_PROJECT', '').strip().strip('/')
+        require(project, 'proof: PERCY_PROJECT is not set; merge-ready reads it from the repository variable')
+        require(re.search(r'^Percy: https://percy\.io/'+re.escape(project)+r'/builds/\d+/?\s*$', evidence, re.M),
+                f'proof: missing Percy: build link to percy.io/{project}')
     if any(path.startswith('crates/desktop/') for path in paths):
         require(re.search(r'^macOS: \S.+$', evidence, re.M), 'proof: missing macOS: laptop check')
 

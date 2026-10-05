@@ -644,8 +644,13 @@ gate_percy() {
   gate_set --arg head "$(git rev-parse HEAD)" --arg conclusion "$1" --arg at "${2:-$(git rev-parse HEAD)}" \
     '.checks=[{check_runs:([("check","rules")|{name:.,head_sha:$head,status:"completed",conclusion:"success",app:{slug:"github-actions"}}] + [{name:"percy",head_sha:$at,status:"completed",conclusion:$conclusion,app:{slug:"github-actions"}}])}]'
 }
+export PERCY_PROJECT=abc/web/roundup
 gate_visible
 expect_exit 0 'L76 a green percy check on the head and a Percy link pass' gate proof 12
+expect_exit 1 'L76 an unset PERCY_PROJECT fails closed' env -u PERCY_PROJECT loop/rules.sh proof 12
+gate_set '.body |= sub("percy.io/abc/web/roundup"; "percy.io/other/web/roundup")'
+expect_exit 1 'L76 a link to another Percy project fails' gate proof 12
+gate_visible
 expect_exit 0 'L76 a green Percy build passes merge-ready' gate merge-ready 12
 gate_set '.body |= sub("Percy: [^\n]*"; "")'
 expect_exit 1 'L76 a visible PR without a Percy link fails' gate proof 12

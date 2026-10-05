@@ -33,7 +33,7 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 
 **L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge (`clean-merge <commit>`); such a merge needs no `Author-Agent`, so a human can merge `main` in from GitHub.
 
-**L76 Percy proof.** A PR touching `apps/desktop/src/` passes `proof` only when the `percy` check (L36) succeeded on its exact head and Proof has a `Percy: https://percy.io/…/builds/<n>` line; one touching `crates/desktop/` needs a `macOS: <what was seen>` line, WKWebView being the one laptop check. No other path, scenario text or verdict asks for visual proof.
+**L76 Percy proof.** A PR touching `apps/desktop/src/` passes `proof` only when the `percy` check (L36) succeeded on its exact head and Proof has a `Percy: https://percy.io/<project>/builds/<n>` line, `<project>` being the `PERCY_PROJECT` repository variable (unset fails); one touching `crates/desktop/` needs a `macOS: <what was seen>` line, WKWebView being the one laptop check. No other path, scenario text or verdict asks for visual proof.
 
 **L78 auto-merge.** The merge-ready workflow disarms auto-merge on a `.github/` PR only when it is enabled, and fails closed on a read or disarm error.
 
