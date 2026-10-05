@@ -1,0 +1,11 @@
+.reopen {
+  margin-left: 3ch;
+}
+
+.reopen::before {
+  content: attr(data-label);
+}
+
+.reopen:hover {
+  text-decoration: underline;
+}
