@@ -1200,3 +1200,45 @@ async fn g5_branch_advance_after_safety_check_is_not_deleted() {
             .contains("ahead 1")
     );
 }
+
+#[tokio::test]
+async fn g6_a_record_recovery_refuses_keeps_its_work_and_the_project_opens() {
+    for record in ["legacy", "unowned"] {
+        let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+        set_worktrees(&f, true, None).await;
+        let node = f.spawn(None, None).await.unwrap();
+        let path = PathBuf::from(node.worktree.clone().unwrap().path);
+        std::fs::write(path.join("keep"), "user work").unwrap();
+        f.call("agent.stop", json!({"id": node.id})).await.unwrap();
+        // A crash during `git` leaves the row provisioning: before ownership proofs with no
+        // owner at all, or with an owner ref that no longer proves the destination is ours.
+        let owner = if record == "legacy" {
+            "NULL"
+        } else {
+            "'refs/roundup/gone'"
+        };
+        rusqlite::Connection::open(f.dir.path().join(".roundup/agents.db"))
+            .unwrap()
+            .execute(
+                &format!(
+                    "UPDATE nodes SET worktree_state = 'provisioning', worktree_owner = {owner},
+                     worktree_commit = 'deadbeef' WHERE id = ?"
+                ),
+                [&node.id],
+            )
+            .unwrap();
+        let before = git_state(f.dir.path());
+
+        let f = f.reopen();
+
+        let kept = f.tree().await.into_iter().find(|n| n.id == node.id);
+        assert_eq!(kept.and_then(|n| n.worktree), node.worktree, "{record}");
+        assert_eq!(git_state(f.dir.path()), before, "{record}");
+        assert_eq!(
+            std::fs::read_to_string(path.join("keep")).unwrap(),
+            "user work"
+        );
+        let other = f.spawn(None, None).await.unwrap();
+        f.call("agent.stop", json!({"id": other.id})).await.unwrap();
+    }
+}

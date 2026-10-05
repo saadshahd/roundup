@@ -597,6 +597,8 @@ async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: Str
 
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
 const REGISTERED: &str = "a watched Agent is registered";
+/// G6: a legacy Worktree record from before ownership proofs; nothing may clean it up.
+const UNPROVEN: &str = "unfinished legacy provisioning has no ownership proof";
 
 /// Feed one Terminal's titles and its exit to the Agent behind it, and a Tick at the time its
 /// adapter asks for one. Only a held star asks, so the watcher of an idle Agent never wakes.
@@ -665,17 +667,26 @@ impl Agents {
         let project = dir.parent().unwrap_or(dir);
         let mut rail = rail::Rail::open(&dir.join("agents.db"))?;
         for (node, plan, ready) in rail.provisioning()? {
-            if ready {
-                git.finish(project, &plan)?;
-                rail.clear_provisioning_owner(&node.id)?;
+            let Some(plan) = plan else {
+                eprintln!("agents: {}: {UNPROVEN}; kept", node.id);
+                continue;
+            };
+            let settled = if ready {
+                git.finish(project, &plan)
+                    .and_then(|()| rail.clear_provisioning_owner(&node.id))
             } else {
-                git.recover(project, &plan)?;
-                Launcher::discard(dir, &node.id)?;
-                if node.kind == NodeKind::Agent {
-                    rail.remove(&node.id)?;
-                } else {
-                    rail.clear_worktree(&node.id)?;
-                }
+                git.recover(project, &plan).and_then(|()| {
+                    Launcher::discard(dir, &node.id).map_err(RpcError::internal)?;
+                    if node.kind == NodeKind::Agent {
+                        rail.remove(&node.id)
+                    } else {
+                        rail.clear_worktree(&node.id)
+                    }
+                })
+            };
+            // G6: a record recovery refuses keeps its work and its row; the Project still opens.
+            if let Err(error) = settled {
+                eprintln!("agents: {}: {}; kept", node.id, error.message);
             }
         }
         Ok(Self {
@@ -885,7 +896,8 @@ impl Agents {
             }
         };
         let undone = tokio::task::spawn_blocking(move || match pending {
-            Some((_, plan, _)) => git.recover(&project, &plan),
+            Some((_, Some(plan), _)) => git.recover(&project, &plan),
+            Some((_, None, _)) => Err(RpcError::internal(format!("worktree_failed: {UNPROVEN}"))),
             None => git.remove_landed(&project, &worktree),
         })
         .await
@@ -1004,6 +1016,8 @@ impl Agents {
             .into_iter()
             .find(|(node, _, _)| node.id == id);
         if let Some((node, plan, _)) = pending {
+            let plan =
+                plan.ok_or_else(|| RpcError::internal(format!("worktree_failed: {UNPROVEN}")))?;
             self.shared
                 .rail()
                 .set_worktree(id, &node.worktree.expect("provisioned Worktree"))?;

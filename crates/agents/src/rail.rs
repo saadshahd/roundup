@@ -248,9 +248,12 @@ impl Rail {
         Ok(())
     }
 
+    /// Each node with a Worktree record still owned by provisioning, with its plan and whether
+    /// it reached `ready`; the plan is `None` for a legacy record with no ownership proof (G6),
+    /// which no caller may clean up.
     pub fn provisioning(
         &self,
-    ) -> Result<Vec<(RailNode, super::worktree::Provision, bool)>, RpcError> {
+    ) -> Result<Vec<(RailNode, Option<super::worktree::Provision>, bool)>, RpcError> {
         let mut records = Vec::new();
         for node in self.tree()? {
             let (state, owner, commit): (Option<String>, Option<String>, Option<String>) = self
@@ -262,18 +265,17 @@ impl Rail {
                 )
                 .map_err(sql)?;
             if state.as_deref() == Some("provisioning") && owner.is_none() {
-                return Err(RpcError::internal(
-                    "worktree_failed: unfinished legacy provisioning has no ownership proof",
-                ));
+                records.push((node.clone(), None, false));
+                continue;
             }
             if let (Some(owner), Some(commit), Some(worktree)) = (owner, commit, &node.worktree) {
                 records.push((
                     node.clone(),
-                    super::worktree::Provision {
+                    Some(super::worktree::Provision {
                         worktree: super::worktree::Worktree::from(worktree),
                         owner,
                         commit,
-                    },
+                    }),
                     state.as_deref() == Some("ready"),
                 ));
             }
