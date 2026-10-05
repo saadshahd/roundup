@@ -25,7 +25,7 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 | d | a `loop/out/verdicts/` file holding an open PR's full head SHA was written 5 minutes ago or more, and no verdict names that head | PR number | `Driver` |
 | e | a PR merged after `loop/stalls.sh` landed, which `class` prints `post` for, has no verdict on its merged head 60 minutes after merge | PR number | `Driver` |
 
-`check` reads all of `gh` before changing a file; `gh` failing or slower than `BOXD_GH_TIMEOUT` exits 4 naming it and changes nothing. `report` prints `<kind> <subject> owner <owner> due <deadline>` once per file not yet printed; a file deleted and written again prints again. Tests use a fake `gh` and set file times: one case per kind, none holding, `since` kept, a cleared file deleted, `report` twice, a `gh` failure and a timeout.
+`check` reads all of `gh` before changing a file; `gh` failing or slower than `BOXD_GH_TIMEOUT` exits 4 naming it and changes nothing. `report` prints `<kind> <subject> owner <owner> due <deadline>` once per file not yet printed; a file deleted and written again prints again. The Driver runs `check` then `report` each tick (`.agents/driver.md`). Tests use a fake `gh` and set file times: one case per kind, none holding, `since` kept, a cleared file deleted, `report` twice, a `gh` failure and a timeout.
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 

@@ -10,6 +10,7 @@ You run the loop of `AGENTS.md`; you write no code and review nothing.
 4. After a first reject, hand the PR to a free architect other than the author (L63). At a third, `rounds` (L45) blocks until an Architect other than the author picks; the user picks when the author is the only Architect.
 5. Merge only on `loop/rules.sh merge-ready <pr>` exit 0, with `gh pr merge --match-head-commit <sha>`.
 6. Do by hand what `.agents/data/gates.md` lists as by hand, and file one Todo per failure Triage or the critic lists.
+7. Each tick, run `loop/stalls.sh check` then `report` (L28), and hand each Stall printed to the owner it names.
 
 
 Done: each step's output is on its PR or in the user's report, and no `ru-` VM is left.
