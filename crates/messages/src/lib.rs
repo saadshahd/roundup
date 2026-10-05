@@ -476,7 +476,7 @@ fn spawn_status_listener(
                     on_status(
                         &inner,
                         &status.id,
-                        &status.incarnation,
+                        &status.attempt,
                         &status.status_revision,
                         status.status.kind,
                     )
@@ -497,9 +497,9 @@ fn spawn_status_listener(
     });
 }
 
-async fn on_status(inner: &Arc<Inner>, agent: &str, incarnation: &str, revision: &str, kind: Kind) {
+async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &str, kind: Kind) {
     let at = (
-        contracts::agent::parse_positive_ordinal(incarnation).expect("wire Incarnation"),
+        contracts::agent::parse_positive_ordinal(attempt).expect("wire Attempt"),
         contracts::agent::parse_positive_ordinal(revision).expect("wire Status revision"),
     );
     {
@@ -542,8 +542,8 @@ async fn resync(inner: &Arc<Inner>) -> bool {
         if !nodes.iter().any(|node| node.id == id)
             && store.generation(&id).expect("message store") == generation
         {
-            let incarnation = generation.map_or(0, |state| state.incarnation);
-            reconcile(inner, &mut store, &id, (incarnation, i64::MAX), true, true)
+            let attempt = generation.map_or(0, |state| state.attempt);
+            reconcile(inner, &mut store, &id, (attempt, i64::MAX), true, true)
                 .expect("message store");
         }
     }
@@ -647,8 +647,8 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
 
 fn binding(node: &RailNode) -> store::Binding {
     (
-        node.incarnation.as_deref().map_or(0, |n| {
-            contracts::agent::parse_positive_ordinal(n).expect("Rail Incarnation")
+        node.attempt.as_deref().map_or(0, |n| {
+            contracts::agent::parse_positive_ordinal(n).expect("Rail Attempt")
         }),
         node.status_revision.as_deref().map_or(i64::MAX, |n| {
             contracts::agent::parse_positive_ordinal(n).expect("Rail Status revision")
@@ -691,7 +691,7 @@ fn reconcile(
         Some((at.0, i64::MAX))
     } else if closed {
         Some(at)
-    } else if previous.is_none_or(|state| state.incarnation < at.0) {
+    } else if previous.is_none_or(|state| state.attempt < at.0) {
         Some((at.0.saturating_sub(1), i64::MAX))
     } else {
         None
@@ -716,17 +716,18 @@ fn reconcile(
                 .emit(Actor::daemon(), EventData::MessageDropped(message));
         }
     }
-    if previous.is_some_and(|state| state.incarnation > at.0) {
+    if previous.is_some_and(|state| state.attempt > at.0) {
         return Ok(());
     }
-    let mut state = previous
-        .filter(|state| state.incarnation == at.0)
-        .unwrap_or(store::ReceiverState {
-            incarnation: at.0,
-            revision: at.1,
-            closed_revision: -1,
-            closed: false,
-        });
+    let mut state =
+        previous
+            .filter(|state| state.attempt == at.0)
+            .unwrap_or(store::ReceiverState {
+                attempt: at.0,
+                revision: at.1,
+                closed_revision: -1,
+                closed: false,
+            });
     state.revision = state.revision.max(at.1);
     if closed {
         state.closed_revision = state.closed_revision.max(at.1);
@@ -798,7 +799,7 @@ mod tests {
             parent: None,
             order: 0,
             status,
-            incarnation: Some("1".into()),
+            attempt: Some("1".into()),
             status_revision: Some("1".into()),
             terminal_id: None,
             worktree: None,

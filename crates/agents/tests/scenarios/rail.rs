@@ -132,10 +132,10 @@ async fn a7_room_restart_preserves_membership_and_fences_old_signals() {
         .unwrap();
     let id = room["id"].as_str().unwrap();
     assert_eq!(room["kind"], "room");
-    assert_eq!(room["incarnation"], Value::Null);
+    assert_eq!(room["attempt"], Value::Null);
     let child = f.spawn(Some(id), None).await.unwrap();
     let first = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
-    assert_eq!(first["incarnation"], "1");
+    assert_eq!(first["attempt"], "1");
     let live = f
         .call("rail.startDoor", json!({"id":id}))
         .await
@@ -143,10 +143,11 @@ async fn a7_room_restart_preserves_membership_and_fences_old_signals() {
     assert_eq!(live.code, code::CONFLICT);
     f.call("agent.stop", json!({"id":id})).await.unwrap();
     let second = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
-    assert_eq!(second["incarnation"], "2");
+    assert_eq!(second["attempt"], "2");
     assert_ne!(first["terminal_id"], second["terminal_id"]);
-    let stale = f.call("agent.signal", json!({"id":id,"incarnation":"1","payload":{"hook_event_name":"UserPromptSubmit","prompt":"wrong name"}})).await.unwrap_err();
-    assert_eq!(stale.code, code::CONFLICT);
+    // A20: an earlier Attempt's Signal is ignored, never an error to the caller.
+    let stale = f.call("agent.signal", json!({"id":id,"attempt":"1","payload":{"hook_event_name":"UserPromptSubmit","prompt":"wrong name"}})).await.unwrap();
+    assert_eq!(stale, Value::Null);
     let tree = f.tree().await;
     assert_eq!(
         tree.iter()
@@ -176,13 +177,18 @@ async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
     assert!(f.terminals.list().is_empty());
     let node = &f.tree().await[0];
     assert_eq!(node.terminal_id, None);
-    assert_eq!(node.incarnation.as_deref(), Some("1"));
+    assert_eq!(node.attempt.as_deref(), Some("1"));
     assert_eq!(node.status_revision, None);
     let next = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
     assert_eq!(first["terminal_id"], next["terminal_id"]);
-    assert_eq!(next["incarnation"], "2");
+    assert_eq!(next["attempt"], "2");
+    // A20: the earlier Attempt is ignored; a malformed one is refused.
+    let earlier = f
+        .call("agent.signal", json!({"id":id,"attempt":"1","payload":{}}))
+        .await
+        .unwrap();
+    assert_eq!(earlier, Value::Null);
     for (stamp, expected) in [
-        ("1", code::CONFLICT),
         ("", code::INVALID_PARAMS),
         ("01", code::INVALID_PARAMS),
         ("+2", code::INVALID_PARAMS),
@@ -192,7 +198,7 @@ async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
         let err = f
             .call(
                 "agent.signal",
-                json!({"id":id,"incarnation":stamp,"payload":{}}),
+                json!({"id":id,"attempt":stamp,"payload":{}}),
             )
             .await
             .unwrap_err();
@@ -205,7 +211,7 @@ async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
     assert_eq!(missing.code, code::INVALID_PARAMS);
     f.call(
         "agent.signal",
-        json!({"id":id,"incarnation":"2","payload":{"hook_event_name":"Stop"}}),
+        json!({"id":id,"attempt":"2","payload":{"hook_event_name":"Stop"}}),
     )
     .await
     .unwrap();
@@ -213,7 +219,7 @@ async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
 }
 
 #[tokio::test]
-async fn a7_failed_door_attempt_consumes_incarnation_and_retry_keeps_children() {
+async fn a7_failed_door_attempt_consumes_attempt_and_retry_keeps_children() {
     let f = Fixture::running("exec sleep 30");
     let room = f
         .call("rail.createRoom", json!({"name":"room","parent":null}))
@@ -225,7 +231,7 @@ async fn a7_failed_door_attempt_consumes_incarnation_and_retry_keeps_children() 
     assert!(f.call("rail.startDoor", json!({"id":id})).await.is_err());
     let tree = f.tree().await;
     let stopped = tree.iter().find(|n| n.id == id).unwrap();
-    assert_eq!(stopped.incarnation.as_deref(), Some("1"));
+    assert_eq!(stopped.attempt.as_deref(), Some("1"));
     assert_eq!(stopped.terminal_id, None);
     assert_eq!(
         tree.iter()
@@ -237,7 +243,7 @@ async fn a7_failed_door_attempt_consumes_incarnation_and_retry_keeps_children() 
     );
     std::fs::write(f.dir.path().join("rup"), "").unwrap();
     let next = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
-    assert_eq!(next["incarnation"], "2");
+    assert_eq!(next["attempt"], "2");
     f.call("agent.stop", json!({"id":id})).await.unwrap();
     f.call("agent.stop", json!({"id":child.id})).await.unwrap();
 }

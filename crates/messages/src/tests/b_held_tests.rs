@@ -163,7 +163,7 @@ impl Held2 {
         }
         let data = EventData::AgentStatus(StatusEvent {
             id: id.into(),
-            incarnation: "1".into(),
+            attempt: "1".into(),
             status_revision: revision,
             status,
         });
@@ -791,7 +791,7 @@ async fn b9_a_done_lost_to_lag_still_drops_pending() {
             Actor::daemon(),
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
-                incarnation: "1".into(),
+                attempt: "1".into(),
                 status_revision: "1".into(),
                 status: Status {
                     kind: Kind::Working,
@@ -908,7 +908,7 @@ async fn b9_a_lag_drops_nothing_for_a_live_agent() {
             Actor::daemon(),
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
-                incarnation: "1".into(),
+                attempt: "1".into(),
                 status_revision: "1".into(),
                 status: Status {
                     kind: Kind::Working,
@@ -1067,7 +1067,7 @@ fn status_flood(h: &Held2) {
             Actor::daemon(),
             EventData::AgentStatus(StatusEvent {
                 id: "z".into(),
-                incarnation: "1".into(),
+                attempt: "1".into(),
                 status_revision: "1".into(),
                 status: Status {
                     kind: Kind::Working,
@@ -1106,7 +1106,7 @@ async fn b2_a_sender_no_longer_on_the_rail_is_named_by_its_id() {
 }
 
 #[tokio::test]
-async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
+async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_attempt() {
     let dir = tempfile::tempdir().unwrap();
     let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
     let old_node = h.rail.0.lock().unwrap()[0].clone();
@@ -1123,7 +1123,7 @@ async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
         h.get(old["id"].as_u64().unwrap() as u32).await["status"],
         "dropped"
     );
-    h.rail.0.lock().unwrap()[0].incarnation = Some("2".into());
+    h.rail.0.lock().unwrap()[0].attempt = Some("2".into());
     let new = h.send_as(Actor::user(), "b", "new pending").await;
     h.call("takeover.begin", json!({"agent":"b"}))
         .await
@@ -1167,7 +1167,7 @@ async fn b9_old_exit_idle_and_receiver_lookup_cannot_touch_new_incarnation() {
 }
 
 #[tokio::test]
-async fn b9_recovered_live_incarnation_accepts_new_work_without_reviving_finals() {
+async fn b9_recovered_live_attempt_accepts_new_work_without_reviving_finals() {
     let dir = tempfile::tempdir().unwrap();
     let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
     h.rail.0.lock().unwrap()[0].terminal_id = Some("live-terminal".into());
@@ -1200,7 +1200,7 @@ async fn b9_recovered_live_incarnation_accepts_new_work_without_reviving_finals(
 }
 
 #[tokio::test]
-async fn b9_old_active_status_cannot_reopen_a_stopped_incarnation() {
+async fn b9_old_active_status_cannot_reopen_a_stopped_attempt() {
     let dir = tempfile::tempdir().unwrap();
     let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
     h.send_as(agent("a"), "b", "old").await;

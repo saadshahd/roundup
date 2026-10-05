@@ -18,23 +18,18 @@ const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Served {
     /// Run `rup signal <agent_id>` against this Daemon.
-    fn signal(&self, agent_id: &str, incarnation: &str, stdin: &str) -> Output {
-        rup(
-            &self.socket(),
-            &["signal", agent_id],
-            stdin,
-            Some(incarnation),
-        )
+    fn signal(&self, agent_id: &str, attempt: &str, stdin: &str) -> Output {
+        rup(&self.socket(), &["signal", agent_id], stdin, Some(attempt))
     }
 }
 
 /// Run `rup <args>` with `stdin` on its standard input, pointed at `socket`. A run that outlasts
 /// Claude Code's hook timeout fails the test.
-fn rup(socket: &Path, args: &[&str], stdin: &str, incarnation: Option<&str>) -> Output {
+fn rup(socket: &Path, args: &[&str], stdin: &str, attempt: Option<&str>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rup"));
-    command.env_remove("ROUNDUP_AGENT_INCARNATION");
-    if let Some(value) = incarnation {
-        command.env("ROUNDUP_AGENT_INCARNATION", value);
+    command.env_remove("ROUNDUP_ATTEMPT");
+    if let Some(value) = attempt {
+        command.env("ROUNDUP_ATTEMPT", value);
     }
     let mut rup = command
         .args(args)
@@ -77,7 +72,7 @@ async fn a4_signal_signals_the_agent_as_that_agent() {
 
     let out = served.signal(
         id,
-        agent["incarnation"].as_str().unwrap(),
+        agent["attempt"].as_str().unwrap(),
         r#"{"hook_event_name":"Stop"}"#,
     );
 
@@ -261,7 +256,7 @@ fn h15_rup_signal_never_runs_more_than_one_os_thread() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_rup"))
         .args(["signal", "1"])
         .env("RUPD_SOCKET", &socket)
-        .env("ROUNDUP_AGENT_INCARNATION", "1")
+        .env("ROUNDUP_ATTEMPT", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -309,7 +304,7 @@ fn a4_signal_with_the_wrong_number_of_arguments_exits_1_not_2() {
 }
 
 #[test]
-fn a7_signal_missing_or_malformed_incarnation_fails_before_connecting() {
+fn a7_signal_missing_or_malformed_attempt_fails_before_connecting() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("never-connect.sock");
     let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
@@ -324,7 +319,7 @@ fn a7_signal_missing_or_malformed_incarnation_fails_before_connecting() {
     ] {
         let out = rup(&socket, &["signal", "1"], "{}", stamp);
         assert_eq!(out.status.code(), Some(1));
-        assert!(String::from_utf8_lossy(&out.stderr).contains("ROUNDUP_AGENT_INCARNATION"));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("ROUNDUP_ATTEMPT"));
         assert!(
             matches!(listener.accept(), Err(err) if err.kind() == std::io::ErrorKind::WouldBlock)
         );

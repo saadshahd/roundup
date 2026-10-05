@@ -851,7 +851,7 @@ async fn g2_g6_door_retry_reuses_recorded_worktree_and_preserves_uncommitted_fil
     std::fs::write(rup, "").unwrap();
     let second = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
     assert_eq!(second["worktree"], first["worktree"]);
-    assert_eq!(second["incarnation"], "3");
+    assert_eq!(second["attempt"], "3");
     f.call("agent.stop", json!({"id":id})).await.unwrap();
     let renamed = path.with_extension("retained");
     std::fs::rename(&path, &renamed).unwrap();
@@ -1073,7 +1073,7 @@ async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
     std::fs::write(path.join("dirty"), "keep").unwrap();
     f.call(
         "agent.signal",
-        json!({"id":id,"incarnation":node.incarnation,"payload":{"hook_event_name":"Stop"}}),
+        json!({"id":id,"attempt":node.attempt,"payload":{"hook_event_name":"Stop"}}),
     )
     .await
     .unwrap();

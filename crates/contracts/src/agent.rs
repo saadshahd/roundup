@@ -45,8 +45,8 @@ pub struct RailNode {
     /// `None` for Terminals.
     pub status: Option<Status>,
     /// Last allocated program attempt; present even after stop or reopen.
-    pub incarnation: Option<String>,
-    /// Status transition within the current Incarnation; absent after reopen.
+    pub attempt: Option<String>,
+    /// Status transition within the current Attempt; absent after reopen.
     pub status_revision: Option<String>,
     /// The Terminal behind an Agent or Terminal node.
     pub terminal_id: Option<String>,
@@ -81,7 +81,7 @@ pub struct NodeId {
 #[ts(export, export_to = "agent/")]
 pub struct SignalParams {
     pub id: String,
-    pub incarnation: String,
+    pub attempt: String,
     #[ts(type = "Record<string, unknown>")]
     pub payload: Value,
 }
@@ -113,7 +113,7 @@ pub struct RenameParams {
 #[ts(export, export_to = "agent/")]
 pub struct StatusEvent {
     pub id: String,
-    pub incarnation: String,
+    pub attempt: String,
     pub status_revision: String,
     pub status: Status,
 }

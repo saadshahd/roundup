@@ -353,7 +353,7 @@ it("u62_failed_start_retries_the_same_room_and_focuses_its_terminal", async () =
 });
 
 it("u9_selecting_a_reopened_room_offers_start_without_launching", async () => {
-  const mounted = await mountRail([room("reopened", {incarnation:"4"})]);
+  const mounted = await mountRail([room("reopened", {attempt:"4"})]);
   mounted.rail.select("reopened");
   expect(screen.getByText("start Door")).toBeDefined();
   expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([]);

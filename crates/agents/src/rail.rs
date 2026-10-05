@@ -36,10 +36,7 @@ impl Rail {
         // SQLite's `ALTER TABLE` has no `ADD COLUMN IF NOT EXISTS`, so a column a Project's
         // `agents.db` already has (from before G2) is skipped by hand.
         for (column, decl) in [
-            (
-                "incarnation",
-                "INTEGER NOT NULL DEFAULT 0 CHECK (incarnation >= 0)",
-            ),
+            ("attempt", "INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0)"),
             ("worktree_owner", "TEXT"),
             ("worktree_commit", "TEXT"),
             ("worktree_path", "TEXT"),
@@ -131,20 +128,20 @@ impl Rail {
         tx.commit().map_err(sql)
     }
 
-    pub fn allocate_incarnation(&mut self, id: &str) -> Result<String, RpcError> {
+    pub fn allocate_attempt(&mut self, id: &str) -> Result<String, RpcError> {
         let node = self.node(id)?;
         let previous = node
-            .incarnation
+            .attempt
             .as_deref()
             .unwrap_or("0")
             .parse::<i64>()
             .map_err(sql_ordinal)?;
         let next = previous
             .checked_add(1)
-            .ok_or_else(|| RpcError::internal("Incarnation exhausted"))?;
+            .ok_or_else(|| RpcError::internal("Attempt exhausted"))?;
         self.db
             .execute(
-                "UPDATE nodes SET incarnation = ? WHERE id = ?",
+                "UPDATE nodes SET attempt = ? WHERE id = ?",
                 params![next, id],
             )
             .map_err(sql)?;
@@ -361,7 +358,7 @@ fn kind_name(kind: NodeKind) -> &'static str {
 fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let mut query = db
         .prepare(
-            "SELECT id, kind, name, parent, ord, incarnation, terminal_id,
+            "SELECT id, kind, name, parent, ord, attempt, terminal_id,
                 worktree_path, worktree_branch, worktree_base FROM nodes",
         )
         .map_err(sql)?;
@@ -388,7 +385,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 order: row.get(4)?,
                 status: None,
                 status_revision: None,
-                incarnation: match row.get::<_, i64>(5)? {
+                attempt: match row.get::<_, i64>(5)? {
                     0 => None,
                     n => Some(n.to_string()),
                 },
@@ -498,25 +495,25 @@ mod tests {
         assert_eq!(tree[2].parent.as_deref(), Some("2"));
         assert!(
             tree.iter()
-                .all(|n| n.incarnation.is_none() && n.terminal_id.is_none())
+                .all(|n| n.attempt.is_none() && n.terminal_id.is_none())
         );
-        assert_eq!(rail.allocate_incarnation("2").unwrap(), "1");
+        assert_eq!(rail.allocate_attempt("2").unwrap(), "1");
         drop(rail);
         let mut rail = Rail::open(&path).unwrap();
-        assert_eq!(rail.allocate_incarnation("2").unwrap(), "2");
+        assert_eq!(rail.allocate_attempt("2").unwrap(), "2");
         assert_eq!(rail.node("3").unwrap().parent.as_deref(), Some("2"));
     }
 
     #[test]
-    fn a7_incarnation_exhaustion_does_not_wrap_or_change_the_node() {
+    fn a7_attempt_exhaustion_does_not_wrap_or_change_the_node() {
         let (_dir, mut rail) = rail();
         let node = rail.insert(NodeKind::Room, "room", None, None).unwrap();
         rail.db
-            .execute("UPDATE nodes SET incarnation = ?", [i64::MAX])
+            .execute("UPDATE nodes SET attempt = ?", [i64::MAX])
             .unwrap();
         let before = rail.node(&node.id).unwrap();
         assert_eq!(
-            rail.allocate_incarnation(&node.id).unwrap_err().code,
+            rail.allocate_attempt(&node.id).unwrap_err().code,
             code::INTERNAL
         );
         assert_eq!(rail.node(&node.id).unwrap(), before);

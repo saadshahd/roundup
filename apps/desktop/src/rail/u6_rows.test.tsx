@@ -25,7 +25,7 @@ describe("u6 rows", () => {
   });
 
   it("u6_a_meta_agent_shows_its_status_glyph", async () => {
-    await mountRail([room("checkout", { incarnation: "1", status: { kind: "idle", label: "idle", since: 0 } })]);
+    await mountRail([room("checkout", { attempt: "1", status: { kind: "idle", label: "idle", since: 0 } })]);
 
     expect(glyphOf("checkout").getAttribute("aria-label")).toBe("idle");
   });
@@ -79,7 +79,7 @@ describe("u6 rows", () => {
       agent("b", "working", "w", { order: 1 }),
     ]);
 
-    app.emit(event({ name: "agent.status", data: { status_revision: "2", incarnation: "1", id: "b", status: { kind: "error", label: "x", since: 2 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", attempt: "1", id: "b", status: { kind: "error", label: "x", since: 2 } } }));
     await rail.settled();
 
     expect([rowNames(), glyphOf("b").getAttribute("aria-label")]).toEqual([["a", "b"], "error"]);

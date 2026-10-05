@@ -192,7 +192,7 @@ async fn a7_stopping_a_door_that_is_still_starting_is_a_conflict_and_moves_nothi
         let (f, team) = (std::sync::Arc::clone(&f), team.clone());
         tokio::spawn(async move { f.start_door(&team).await })
     };
-    f.until(|t| t.iter().any(|n| n.id == team && n.incarnation.is_some()))
+    f.until(|t| t.iter().any(|n| n.id == team && n.attempt.is_some()))
         .await;
 
     let stopped = f.stop(&team).await.unwrap_err();
@@ -218,7 +218,7 @@ async fn a7_a_room_whose_door_is_starting_reads_working_starting_not_done() {
         tokio::spawn(async move { f.start_door(&team).await })
     };
     let tree = f
-        .until(|t| t.iter().any(|n| n.id == team && n.incarnation.is_some()))
+        .until(|t| t.iter().any(|n| n.id == team && n.attempt.is_some()))
         .await;
 
     let status = status_of(&tree, &team);
@@ -357,4 +357,52 @@ async fn a7_stopping_a_door_an_earlier_daemon_ran_keeps_its_children() {
         names(&f.tree().await, None),
         ["before:0", "team:1", "after:2"]
     );
+}
+
+/// The `ROUNDUP_ATTEMPT` the Door's settings file hands its Stop hook.
+fn hook_attempt(f: &Fixture, id: &str) -> String {
+    let path = f.dir.path().join(format!("agents/{id}.settings.json"));
+    let settings: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let command = settings["hooks"]["Stop"][0]["hooks"][0]["command"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let rest = command
+        .strip_prefix("ROUNDUP_ATTEMPT='")
+        .expect("Attempt first");
+    rest[..rest.find('\'').unwrap()].to_owned()
+}
+
+#[tokio::test]
+async fn a20_each_launch_gets_its_own_attempt_and_an_earlier_one_changes_nothing() {
+    let f = Fixture::running("sleep 30");
+    let room = f.room("room", None).await;
+    let first = f.start_door(&room).await.unwrap();
+    assert_eq!(hook_attempt(&f, &room), "1");
+    f.stop(&room).await.unwrap();
+
+    let second = f.start_door(&room).await.unwrap();
+    assert_eq!(hook_attempt(&f, &room), "2");
+    assert_ne!(first.terminal_id, second.terminal_id);
+    let before = f.tree().await;
+    for payload in [
+        json!({"hook_event_name":"Stop"}),
+        json!({"hook_event_name":"UserPromptSubmit","prompt":"rename the door"}),
+    ] {
+        let ignored = f
+            .call(
+                "agent.signal",
+                json!({"id": room, "attempt": "1", "payload": payload}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ignored, Value::Null);
+    }
+    assert_eq!(f.tree().await, before);
+    let missing = f
+        .call("agent.signal", json!({"id": room, "payload": {}}))
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, code::INVALID_PARAMS);
+    f.stop(&room).await.unwrap();
 }

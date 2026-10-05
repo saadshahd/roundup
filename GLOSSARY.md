@@ -31,11 +31,11 @@ Where an item sits: a Room, or the Project root. Each item has one Home the user
 The coordinating Agent role of one Room, with a system prompt tuned to that role. Its Rail id is the Room id; its program may be starting, running or stopped without changing the Room. Direct access to any Agent remains (P1).
 _Avoid_: meta-agent, parent agent, lead
 
-**Incarnation**:
-The increasing ordinal of one attempt to start an Agent's or Door's program; (Agent id, Incarnation) names that attempt. Not a credential, a liveness flag, or a second Agent or Terminal. On the wire, a canonical positive decimal string within SQLite's signed 64-bit range; the last allocated ordinal survives stop, failure and reopen.
+**Attempt**:
+One launch of an Agent's program; internal to the Daemon and its hook, never a Rail identity or a vendor conversation id (A20). The Daemon numbers them per Agent from `1`, a canonical positive decimal string within SQLite's signed 64-bit range; the last one survives stop, failure and reopen.
 
 **Status revision**:
-The strictly increasing ordinal of published Status transitions within one Incarnation, `1` at Starting. A canonical positive decimal string on the wire; absent after reopen. Never stands in for Incarnation or Terminal liveness.
+The strictly increasing ordinal of published Status transitions within one Attempt, `1` at Starting. A canonical positive decimal string on the wire; absent after reopen. Never stands in for an Attempt or Terminal liveness.
 
 **Worktree**:
 The git worktree roundup makes for one Agent when the Project's `worktrees` setting is on: its own directory, branch and working directory (`docs/worktrees.md`).

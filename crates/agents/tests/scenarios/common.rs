@@ -175,12 +175,12 @@ impl Fixture {
         node["id"].as_str().unwrap().to_owned()
     }
 
-    pub async fn incarnation(&self, id: &str) -> String {
+    pub async fn attempt(&self, id: &str) -> String {
         self.tree()
             .await
             .into_iter()
             .find(|n| n.id == id)
-            .and_then(|n| n.incarnation)
+            .and_then(|n| n.attempt)
             .unwrap_or_else(|| "1".into())
     }
 

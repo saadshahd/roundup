@@ -41,7 +41,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     exited: {},
   });
 
-  const [doors, setDoors] = createStore<Record<string, { pending: boolean; observedLive: boolean; failure: { message: string; incarnation: string | null } | null }>>({});
+  const [doors, setDoors] = createStore<Record<string, { pending: boolean; observedLive: boolean; failure: { message: string; attempt: string | null } | null }>>({});
   const [selected, setSelected] = createSignal<string | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
 
@@ -76,7 +76,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
         if (doors[node.id]?.pending && hasLiveTerminal(node)) setDoors(node.id, "observedLive", true);
         const failed = doors[node.id]?.failure;
 
-        if (failed && (hasLiveTerminal(node) || (node.incarnation !== null && BigInt(node.incarnation) > BigInt(failed.incarnation ?? "0")))) {
+        if (failed && (hasLiveTerminal(node) || (node.attempt !== null && BigInt(node.attempt) > BigInt(failed.attempt ?? "0")))) {
           setDoors(node.id, "failure", null);
         }
       }
@@ -136,7 +136,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       } else if (event.name === "rail.changed") {
         fetching(fetchTree);
       } else if (event.name === "agent.status") {
-        setModel("tree", (node) => node.id === event.data.id && node.incarnation === event.data.incarnation && node.status_revision !== null && BigInt(event.data.status_revision) > BigInt(node.status_revision), { status: event.data.status, status_revision: event.data.status_revision });
+        setModel("tree", (node) => node.id === event.data.id && node.attempt === event.data.attempt && node.status_revision !== null && BigInt(event.data.status_revision) > BigInt(node.status_revision), { status: event.data.status, status_revision: event.data.status_revision });
       } else if (event.name === "terminal.exited") {
         setModel("exited", event.data.id, event.data.code);
       }
@@ -166,7 +166,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
         const node = model.tree.find((each) => each.id === id);
 
         if (node && !hasLiveTerminal(node) && !doors[id]?.observedLive) {
-          setDoors(id, "failure", { message: error.message, incarnation: node.incarnation });
+          setDoors(id, "failure", { message: error.message, attempt: node.attempt });
         }
       } finally {
         setDoors(id, "pending", false);

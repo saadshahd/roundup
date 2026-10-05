@@ -81,7 +81,7 @@ impl Git {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
     }
 
-    pub fn plan(&self, project: &Path, id: &str, incarnation: &str) -> Result<Provision, RpcError> {
+    pub fn plan(&self, project: &Path, id: &str, attempt: &str) -> Result<Provision, RpcError> {
         let commit = self
             .run(project, &["rev-parse", "HEAD"])
             .map_err(|_| invalid("not_a_git_project", project.display()))?;
@@ -103,7 +103,7 @@ impl Git {
         Ok(Provision {
             worktree,
             commit,
-            owner: format!("refs/roundup/provisioning/{id}/{incarnation}"),
+            owner: format!("refs/roundup/provisioning/{id}/{attempt}"),
         })
     }
 

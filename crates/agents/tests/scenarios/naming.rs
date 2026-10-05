@@ -10,7 +10,7 @@ impl Fixture {
         let payload = json!({"hook_event_name": "UserPromptSubmit", "prompt": prompt});
         self.call(
             "agent.signal",
-            json!({"id": id, "incarnation": self.incarnation(id).await, "payload": payload}),
+            json!({"id": id, "attempt": self.attempt(id).await, "payload": payload}),
         )
         .await
         .unwrap();

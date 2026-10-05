@@ -158,12 +158,12 @@ pub async fn next_kind(client: &mut Client) -> Kind {
 /// Hand Agent `id` a Signal directly over RPC, the way `rup signal` does, bypassing the fake
 /// `claude` process so a test can drive one Agent's Status without the others.
 pub async fn signal(client: &Client, id: &str, payload: Value) {
-    let incarnation = rail_tree(client)
+    let attempt = rail_tree(client)
         .await
         .into_iter()
         .find(|n| n.id == id)
         .unwrap()
-        .incarnation
+        .attempt
         .unwrap();
     tokio::time::timeout(
         BOUND,
@@ -171,7 +171,7 @@ pub async fn signal(client: &Client, id: &str, payload: Value) {
             "agent.signal",
             SignalParams {
                 id: id.to_owned(),
-                incarnation,
+                attempt,
                 payload,
             },
         ),

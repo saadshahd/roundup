@@ -15,7 +15,7 @@ pub(crate) type Binding = (i64, i64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ReceiverState {
-    pub incarnation: i64,
+    pub attempt: i64,
     pub revision: i64,
     pub closed_revision: i64,
     pub closed: bool,
@@ -58,17 +58,15 @@ impl Store {
         if !has_rank {
             db.execute_batch("ALTER TABLE messages ADD COLUMN rank INTEGER NOT NULL DEFAULT 0;")?;
         }
-        let has_incarnation = db
-            .prepare(
-                "SELECT 1 FROM pragma_table_info('messages') WHERE name = 'receiver_incarnation'",
-            )?
+        let has_attempt = db
+            .prepare("SELECT 1 FROM pragma_table_info('messages') WHERE name = 'receiver_attempt'")?
             .exists([])?;
-        if !has_incarnation {
+        if !has_attempt {
             db.execute_batch(
-                "ALTER TABLE messages ADD COLUMN receiver_incarnation INTEGER NOT NULL DEFAULT 0;",
+                "ALTER TABLE messages ADD COLUMN receiver_attempt INTEGER NOT NULL DEFAULT 0;",
             )?;
         }
-        db.execute_batch("CREATE TABLE IF NOT EXISTS receiver_generations (id TEXT PRIMARY KEY, incarnation INTEGER NOT NULL, closed INTEGER NOT NULL);")?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS receiver_generations (id TEXT PRIMARY KEY, attempt INTEGER NOT NULL, closed INTEGER NOT NULL);")?;
         for (table, column, declaration) in [
             (
                 "messages",
@@ -110,17 +108,17 @@ impl Store {
     }
 
     pub(crate) fn generation(&self, agent: &str) -> Result<Option<ReceiverState>, RpcError> {
-        self.db.query_row("SELECT incarnation, revision, closed_revision, closed FROM receiver_generations WHERE id=?", [agent], |r| Ok(ReceiverState { incarnation:r.get(0)?, revision:r.get(1)?, closed_revision:r.get(2)?, closed:r.get(3)? })).optional().map_err(RpcError::internal)
+        self.db.query_row("SELECT attempt, revision, closed_revision, closed FROM receiver_generations WHERE id=?", [agent], |r| Ok(ReceiverState { attempt:r.get(0)?, revision:r.get(1)?, closed_revision:r.get(2)?, closed:r.get(3)? })).optional().map_err(RpcError::internal)
     }
 
     pub(crate) fn set_generation(&self, agent: &str, state: ReceiverState) -> Result<(), RpcError> {
-        self.db.execute("INSERT INTO receiver_generations (id,incarnation,revision,closed_revision,closed) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET incarnation=excluded.incarnation,revision=excluded.revision,closed_revision=excluded.closed_revision,closed=excluded.closed", params![agent,state.incarnation,state.revision,state.closed_revision,state.closed]).map_err(RpcError::internal)?;
+        self.db.execute("INSERT INTO receiver_generations (id,attempt,revision,closed_revision,closed) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET attempt=excluded.attempt,revision=excluded.revision,closed_revision=excluded.closed_revision,closed=excluded.closed", params![agent,state.attempt,state.revision,state.closed_revision,state.closed]).map_err(RpcError::internal)?;
         Ok(())
     }
 
     pub(crate) fn require_generation(&self, agent: &str, binding: Binding) -> Result<(), RpcError> {
         if self.generation(agent)?.is_some_and(|state| {
-            state.incarnation == binding.0 && !state.closed && binding.1 > state.closed_revision
+            state.attempt == binding.0 && !state.closed && binding.1 > state.closed_revision
         }) {
             return Ok(());
         }
@@ -132,7 +130,7 @@ impl Store {
     pub(crate) fn bind(&self, id: u32, binding: Binding) -> Result<(), RpcError> {
         self.db
             .execute(
-                "UPDATE messages SET receiver_incarnation=?,receiver_revision=? WHERE id=?",
+                "UPDATE messages SET receiver_attempt=?,receiver_revision=? WHERE id=?",
                 params![binding.0, binding.1, id],
             )
             .map_err(RpcError::internal)?;
@@ -142,7 +140,7 @@ impl Store {
     pub(crate) fn bound(&self, id: u32) -> Result<Binding, RpcError> {
         self.db
             .query_row(
-                "SELECT receiver_incarnation,receiver_revision FROM messages WHERE id=?",
+                "SELECT receiver_attempt,receiver_revision FROM messages WHERE id=?",
                 [id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -189,7 +187,7 @@ impl Store {
     ) -> Result<Message, RpcError> {
         self.db
             .execute(
-                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, receiver_incarnation, receiver_revision, rank)
+                "INSERT INTO messages (from_actor, to_id, kind, body, reply_to, status, reason, at, receiver_attempt, receiver_revision, rank)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                      CASE WHEN ?6 = 'pending' THEN (SELECT COALESCE(MAX(rank), 0) + 1 FROM messages) ELSE 0 END)",
                 params![
@@ -263,7 +261,7 @@ impl Store {
         self.db
             .query_row(
                 "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at
-                 FROM messages WHERE to_id = ?1 AND status = 'pending' AND receiver_incarnation = ?2 AND receiver_revision < ?3
+                 FROM messages WHERE to_id = ?1 AND status = 'pending' AND receiver_attempt = ?2 AND receiver_revision < ?3
                  ORDER BY rank ASC, id ASC LIMIT 1",
                 params![to, before.0, before.1],
                 row_to_message,
@@ -297,8 +295,8 @@ impl Store {
         let Some(message) = self.get(id)? else {
             return Ok(None);
         };
-        let incarnation = self.bound(id)?;
-        if self.require_generation(&message.to, incarnation).is_err() {
+        let attempt = self.bound(id)?;
+        if self.require_generation(&message.to, attempt).is_err() {
             return Ok(None);
         }
         let held = message.from.kind != ActorKind::User && self.is_takeover_active(&message.to);
@@ -352,7 +350,7 @@ impl Store {
     pub(crate) fn begin_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
         let binding = self
             .generation(agent)?
-            .map_or((0, 0), |state| (state.incarnation, state.revision));
+            .map_or((0, 0), |state| (state.attempt, state.revision));
         if self
             .active_takeovers
             .insert(agent.to_owned(), binding)

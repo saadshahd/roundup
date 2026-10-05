@@ -54,7 +54,7 @@ describe("u41 rail by keyboard, the rest: railStep", () => {
   });
 
   it("u41_right_on_a_meta_agent_with_no_toggle_selects_its_first_child", () => {
-    const nodes = [room("m", { incarnation: "1" }), agent("a", "idle", "x", { parent: "m" })];
+    const nodes = [room("m", { attempt: "1" }), agent("a", "idle", "x", { parent: "m" })];
 
     expect(railStep(nodes, "m", "right", null, "a")).toEqual({ kind: "select", id: "a" });
   });

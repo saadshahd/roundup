@@ -184,6 +184,11 @@ impl AgentAdapter for ClaudeCode {
     }
 }
 
+/// The hook event a payload names, or `Signal` when it names none.
+pub fn event_name(payload: &Value) -> &str {
+    payload["hook_event_name"].as_str().unwrap_or("Signal")
+}
+
 /// The prompt a `UserPromptSubmit` payload carries (empty when it carries none); `None` for any
 /// other payload.
 pub fn submitted_prompt(payload: &Value) -> Option<&str> {

@@ -12,7 +12,7 @@ impl Fixture {
         let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
         self.call(
             "agent.signal",
-            json!({"id": id, "incarnation": self.incarnation(id).await, "payload": payload}),
+            json!({"id": id, "attempt": self.attempt(id).await, "payload": payload}),
         )
         .await
     }
@@ -69,7 +69,8 @@ async fn a5_status_events_arrive_in_the_order_the_status_changed() {
                 let ctx = f.ctx();
                 for event in ["Stop", "UserPromptSubmit"].repeat(SIGNALS / 2) {
                     let payload = json!({"hook_event_name": event});
-                    let params = json!({"id": id, "incarnation": f.incarnation(&id).await, "payload": payload});
+                    let params =
+                        json!({"id": id, "attempt": f.attempt(&id).await, "payload": payload});
                     f.agents.call(&ctx, "agent.signal", params).await.unwrap();
                 }
             })
@@ -109,7 +110,7 @@ async fn a5_a_payload_the_adapter_does_not_recognise_is_ignored() {
     f.signal(&node.id, "FutureEvent").await.unwrap();
     f.call(
         "agent.signal",
-        json!({"id": node.id, "incarnation": node.incarnation, "payload": {}}),
+        json!({"id": node.id, "attempt": node.attempt, "payload": {}}),
     )
     .await
     .unwrap();
@@ -210,7 +211,7 @@ async fn child_signals_payloads_the_adapter_refuses() {
     ] {
         f.call(
             "agent.signal",
-            json!({"id": node.id, "incarnation": node.incarnation, "payload": payload}),
+            json!({"id": node.id, "attempt": node.attempt, "payload": payload}),
         )
         .await
         .unwrap();

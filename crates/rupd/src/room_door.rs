@@ -16,7 +16,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
     let dir = project.path().join(".roundup");
     std::fs::create_dir(&dir).unwrap();
     let fake = project.path().join("fake-claude");
-    std::fs::write(&fake, "#!/bin/sh\nwhile read line; do printf '%s:%s\\n' \"$ROUNDUP_AGENT_INCARNATION\" \"$line\" >> \"$(dirname \"$0\")/input\"; done\n").unwrap();
+    std::fs::write(&fake, "#!/bin/sh\n# A20: the launch's Attempt is in the hook command of its --settings file, not the program's env.\nattempt=$(sed -n \"s/.*ROUNDUP_ATTEMPT='\\([0-9]*\\)'.*/\\1/p\" \"$2\" | head -n 1)\nwhile read line; do printf '%s:%s\\n' \"$attempt\" \"$line\" >> \"$(dirname \"$0\")/input\"; done\n").unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
     let rup = project.path().join("rup");
     std::fs::write(&rup, "").unwrap();
@@ -97,7 +97,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
         .await
         .unwrap();
     assert_eq!(second["id"], first["id"]);
-    assert_eq!(second["incarnation"], "2");
+    assert_eq!(second["attempt"], "2");
     assert_ne!(second["terminal_id"], first["terminal_id"]);
     client
         .request(
@@ -142,7 +142,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
         Actor::daemon(),
         EventData::AgentStatus(StatusEvent {
             id: id.into(),
-            incarnation: "1".into(),
+            attempt: "1".into(),
             status_revision: "1".into(),
             status: Status {
                 kind: Kind::Done,
@@ -193,11 +193,12 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
     let stale = client
         .request(
             "agent.signal",
-            json!({"id":id,"incarnation":"1","payload":{"hook_event_name":"Stop"}}),
+            json!({"id":id,"attempt":"1","payload":{"hook_event_name":"Stop"}}),
         )
         .await
-        .unwrap_err();
-    assert_eq!(stale.code, rpc::code::CONFLICT);
+        .unwrap();
+    // A20: the earlier Attempt's Signal is ignored, never an error to the caller.
+    assert_eq!(stale, Value::Null);
     let tree = client.request("rail.tree", Value::Null).await.unwrap();
     let nodes = tree.as_array().unwrap();
     assert_eq!(

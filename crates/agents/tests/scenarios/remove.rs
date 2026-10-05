@@ -237,7 +237,7 @@ async fn a16_a_removed_agents_id_no_longer_answers_agent_signal() {
             "agent.signal",
             json!({
                 "id": agent.id,
-                "incarnation": agent.incarnation,
+                "attempt": agent.attempt,
                 "payload": json!({"hook_event_name": "PreToolUse", "tool_name": "Bash"}),
             }),
         )

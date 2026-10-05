@@ -30,7 +30,7 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
     assert_eq!(
         settings["hooks"]["Stop"][0]["hooks"][0]["command"],
         format!(
-            "'{}' signal '{}'",
+            "ROUNDUP_ATTEMPT='1' '{}' signal '{}'",
             f.dir.path().join("rup").display(),
             node.id
         )

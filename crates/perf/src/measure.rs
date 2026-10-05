@@ -149,7 +149,7 @@ pub async fn hook_calls(
     rup: &Path,
     socket: &Path,
     id: &str,
-    incarnation: &str,
+    attempt: &str,
     payloads: &[&Path],
     calls: usize,
 ) -> io::Result<Duration> {
@@ -159,7 +159,7 @@ pub async fn hook_calls(
         let payload = payloads[call % payloads.len()];
         let status = Command::new(rup)
             .args(["signal", id])
-            .env("ROUNDUP_AGENT_INCARNATION", incarnation)
+            .env("ROUNDUP_ATTEMPT", attempt)
             .env("RUPD_SOCKET", socket)
             .stdin(std::fs::File::open(payload)?)
             .stdout(std::process::Stdio::null())
@@ -219,9 +219,9 @@ async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
         rup,
         &socket,
         id,
-        agent["incarnation"]
+        agent["attempt"]
             .as_str()
-            .ok_or_else(|| io::Error::other("agent.spawn returned no Incarnation"))?,
+            .ok_or_else(|| io::Error::other("agent.spawn returned no Attempt"))?,
         &[&pre, &post],
         HOOK_LOOP_CALLS,
     )

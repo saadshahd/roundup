@@ -66,7 +66,7 @@ export const openShelf = async (pads: Pad[]) => {
       parent: null,
       order: 0,
       status: null,
-      incarnation: "1", status_revision: null,
+      attempt: "1", status_revision: null,
       terminal_id: null,
       worktree: null,
     },

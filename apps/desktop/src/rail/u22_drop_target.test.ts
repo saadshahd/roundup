@@ -82,7 +82,7 @@ describe("u22 drop target", () => {
   });
 
   it("u22_a_meta_agent_can_be_nested_under", () => {
-    const nodes = [room("m", { incarnation: "1" }), agent("a", "idle", "i", { order: 1 })];
+    const nodes = [room("m", { attempt: "1" }), agent("a", "idle", "i", { order: 1 })];
 
     expect(dropOf("a", 1, 5, nodes)).toEqual({ parent: "m", index: 0, depth: 1 });
   });

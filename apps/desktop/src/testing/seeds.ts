@@ -171,9 +171,9 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
     const node = find(id);
 
     if (node.kind !== "room" || (node.terminal_id !== null && !exits.has(node.terminal_id))) throw new Error("Door is already active");
-    const incarnation = String(BigInt(node.incarnation ?? "0") + 1n);
+    const attempt = String(BigInt(node.attempt ?? "0") + 1n);
 
-    return changed(Object.assign(node, { incarnation, status_revision: "1", terminal_id: `t-${id}-${incarnation}`, status: statusAt(Date.now(), "working", "starting", 0) }));
+    return changed(Object.assign(node, { attempt, status_revision: "1", terminal_id: `t-${id}-${attempt}`, status: statusAt(Date.now(), "working", "starting", 0) }));
   };
 
   app.handlers["rail.move"] = ({ id, parent, index }) => {
@@ -255,7 +255,7 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
       find(id).status = status;
       const status_revision = String(BigInt(find(id).status_revision ?? "0") + 1n);
       find(id).status_revision = status_revision;
-      send({ name: "agent.status", data: { incarnation: find(id).incarnation ?? "1", status_revision, id, status } });
+      send({ name: "agent.status", data: { attempt: find(id).attempt ?? "1", status_revision, id, status } });
     },
     writeOutput: (terminalId, text) => {
       const bytes = new TextEncoder().encode(text);

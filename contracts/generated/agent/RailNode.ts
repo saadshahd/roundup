@@ -15,9 +15,9 @@ status: Status | null,
 /**
  * Last allocated program attempt; present even after stop or reopen.
  */
-incarnation: string | null, 
+attempt: string | null, 
 /**
- * Status transition within the current Incarnation; absent after reopen.
+ * Status transition within the current Attempt; absent after reopen.
  */
 status_revision: string | null, 
 /**

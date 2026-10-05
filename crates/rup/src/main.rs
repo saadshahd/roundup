@@ -65,12 +65,10 @@ async fn ping() -> Result<(), String> {
 
 /// Claude Code runs this as the Agent's command hook: one payload on stdin is one Signal.
 async fn signal(agent_id: &str) -> Result<(), String> {
-    let incarnation = std::env::var("ROUNDUP_AGENT_INCARNATION")
-        .map_err(|_| "ROUNDUP_AGENT_INCARNATION is required".to_owned())?;
-    if contracts::agent::parse_positive_ordinal(&incarnation).is_none() {
-        return Err(
-            "ROUNDUP_AGENT_INCARNATION must be a canonical positive signed 64-bit decimal".into(),
-        );
+    let attempt =
+        std::env::var("ROUNDUP_ATTEMPT").map_err(|_| "ROUNDUP_ATTEMPT is required".to_owned())?;
+    if contracts::agent::parse_positive_ordinal(&attempt).is_none() {
+        return Err("ROUNDUP_ATTEMPT must be a canonical positive signed 64-bit decimal".into());
     }
     let mut input = String::new();
     std::io::stdin()
@@ -78,7 +76,7 @@ async fn signal(agent_id: &str) -> Result<(), String> {
         .map_err(|err| format!("cannot read the payload: {err}"))?;
     let payload =
         serde_json::from_str(&input).map_err(|err| format!("the payload is not JSON: {err}"))?;
-    tokio::time::timeout(SIGNAL_DEADLINE, deliver(agent_id, incarnation, payload))
+    tokio::time::timeout(SIGNAL_DEADLINE, deliver(agent_id, attempt, payload))
         .await
         .map_err(|_| {
             format!(
@@ -89,7 +87,7 @@ async fn signal(agent_id: &str) -> Result<(), String> {
 }
 
 /// Identify as Agent `agent_id` and hand the Daemon its Signal.
-async fn deliver(agent_id: &str, incarnation: String, payload: Value) -> Result<(), String> {
+async fn deliver(agent_id: &str, attempt: String, payload: Value) -> Result<(), String> {
     let client = connect().await?;
     let actor = Actor {
         kind: ActorKind::Agent,
@@ -102,7 +100,7 @@ async fn deliver(agent_id: &str, incarnation: String, payload: Value) -> Result<
         .map_err(|err| err.to_string())?;
     let signal = SignalParams {
         id: agent_id.to_owned(),
-        incarnation,
+        attempt,
         payload,
     };
     client
