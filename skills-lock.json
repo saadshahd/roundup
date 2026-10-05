@@ -193,6 +193,72 @@
       "skillPath": "hold/skills/learn/SKILL.md",
       "computedHash": "77ff08e2f419fa373739f07b785637da5c2682cd7d3f23e3e305e57597922dee"
     },
+    "percy-expand-coverage": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-expand-coverage/SKILL.md",
+      "computedHash": "6e652fbc11ea4df7925f36d36acaf9b0b6c5b8adc8870eeec2c1e40fb2f55987"
+    },
+    "percy-gate": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-gate/SKILL.md",
+      "computedHash": "1aaea9fc78c50c5280a1bdb17ef627a22589f36e038780b2b15cc7ab83ece847"
+    },
+    "percy-integrate": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-integrate/SKILL.md",
+      "computedHash": "1c7c6f598a0f2153ec3a59fc336d9b3f185a21e8d4556ad8d273d7262807fc17"
+    },
+    "percy-migrate": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-migrate/SKILL.md",
+      "computedHash": "8582b12652aff9d92ce5ddf21ea77be11a93aebd36e71cf9e24062edd7c97a33"
+    },
+    "percy-review": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-review/SKILL.md",
+      "computedHash": "cf39cac73d507aecaaffe5c623111819c42af6920945edb4765e766c8784dafd"
+    },
+    "percy-run-build": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-run-build/SKILL.md",
+      "computedHash": "3c74b869088a149c22aa43bb93033fd992aa9e6013d6dbd9f38af31ded5faf78"
+    },
+    "percy-setup": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-setup/SKILL.md",
+      "computedHash": "62ba8dfad8634b4c511ee8774b122941d9049837e6e61464d762f4b298fd7a03"
+    },
+    "percy-status": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-status/SKILL.md",
+      "computedHash": "60fb863d78da5f88b7fcb0c2de542d6e31951340a026fe9e0de100129ad0f193"
+    },
+    "percy-troubleshoot": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-troubleshoot/SKILL.md",
+      "computedHash": "6fac3642ab21a3504d680ae6d769d30e606143f4f2b867a2048a72a6050983d8"
+    },
+    "percy-visual-intent": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-visual-intent/SKILL.md",
+      "computedHash": "d06dcf9daf1176bf51235c7238b468f9909dd81ab941ac78113ba4255323624a"
+    },
+    "percy-watch": {
+      "source": "percy/percy-visual-testing-agent",
+      "sourceType": "github",
+      "skillPath": "plugins/percy-visual-testing/skills/percy-watch/SKILL.md",
+      "computedHash": "b4848274c12d28e0a71c9b2bfefd20311472fab16c0476728d9dc20bb4c26294"
+    },
     "pick-ui-library": {
       "source": "emilkowalski/skills",
       "sourceType": "github",
