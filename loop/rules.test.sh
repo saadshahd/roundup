@@ -503,6 +503,15 @@ gate_repo
 gate_rejects 2
 expect_output 2 'L45 two independent rejects print two' gate rounds 12
 expect_exit 1 'L46 latest independent reject blocks' gate merge-ready 12
+gate_repo
+gate_rejects 1
+gate_set --arg head "$(git rev-parse HEAD)" '.comments[0] += [{id: 5, created_at: "2026-10-03T01:00:00Z", body: ("VERDICT: approve\n"+$head+"\nReviewed-by-Agent: reviewer")}, {id: 6, created_at: "2026-10-03T02:00:00Z", body: "VERDICT: approve\nReviewed-by-Agent: reviewer"}, {id: 7, created_at: "2026-10-03T03:00:00Z", body: ("VERDICT: approve\n"+$head+"\nReviewed-by-Agent: builder")}, {id: 8, created_at: "2026-10-03T04:00:00Z", body: "ARCHITECT: split\nArchitect: architect-a"}]'
+expect_output "reject $(git rev-parse HEAD) 2026-10-03T00:00:00Z
+approve $(git rev-parse HEAD) 2026-10-03T01:00:00Z" 'L28 verdicts print each independent verdict with its head and time, in order' gate verdicts 12
+expect_exit 2 'L28 verdicts needs a number' gate verdicts
+gate_set '.failure=true'
+expect_exit 4 'L28 verdicts gh failure is not success' gate verdicts 12
+gate_repo
 gate_rejects 3
 expect_exit 1 'L45 third reject blocks' gate rounds 12
 gate_pick split architect-a
