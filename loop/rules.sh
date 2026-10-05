@@ -263,7 +263,7 @@ def copilot(commit):
         imported = subprocess.run(['gpg', '--batch', '--quiet', '--import', 'loop/web-flow.asc'], env=env,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=limit)
         return imported.returncode == 0 and subprocess.run(
-            ['git', '-c', 'gpg.program=gpg', 'verify-commit', commit], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            ['git', '-c', 'gpg.program=gpg', '-c', 'gpg.ssh.allowedSignersFile=/dev/null', 'verify-commit', commit], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             timeout=limit).returncode == 0
 
 def history(base, head):
@@ -295,7 +295,7 @@ def trailer_gate(records, authors, lane, head, base):
         elif lane == 'post':
             require(author and not reviewer, f'trailers: {commit} needs Author-Agent only')
         elif reviewer:
-            require(not author and not (reviewer & authors) and
+            require(not author and not (reviewer & authors) and 'copilot' not in reviewer and
                     git('rev-parse', commit+'^{tree}') == git('rev-parse', parents[0]+'^{tree}'),
                     f'trailers: {commit} is not a clean independent approval')
         else:
@@ -342,7 +342,7 @@ def comments(authors, head, base, records):
         body = item['body']
         verdict = re.match(r'VERDICT: (approve|reject)\b', body)
         ids = re.findall(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
-        if verdict and len(ids) == 1 and ids[0] not in authors:
+        if verdict and len(ids) == 1 and ids[0] not in authors | {'copilot'}:
             explicit = re.findall(r'^(?:Reviewed-head|Head): ([0-9a-f]{40})\s*$', body, re.M)
             named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
             if len(set(named)) == 1:
@@ -493,6 +493,8 @@ def proof(pr, paths, head, base, events=None):
         require(project, 'proof: PERCY_PROJECT is not set; merge-ready reads it from the repository variable')
         require(re.search(r'^Percy: https://percy\.io/'+re.escape(project)+r'/builds/\d+/?\s*$', evidence, re.M),
                 f'proof: missing Percy: build link to percy.io/{project}')
+        require(not re.search(r'\]\(https?://\S+\.(?:png|jpe?g|gif|webp|mp4|webm)\)', evidence, re.I),
+                'proof: an image is not visual proof; link the Percy build')
     if any(path.startswith('crates/desktop/') for path in paths):
         require(re.search(r'^macOS: \S.+$', evidence, re.M), 'proof: missing macOS: laptop check')
 

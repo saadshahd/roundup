@@ -361,6 +361,16 @@ copilot_repo; copilot_fix noreply@github.com someone@example.com
 expect_exit 1 'L37 a Copilot claim GitHub did not commit fails' gate ci-trailers 12
 copilot_repo; copilot_fix noreply@github.com noreply@github.com 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>' copilot
 expect_exit 1 'L37 copilot cannot approve its own fix' gate ci-trailers 12
+gate_repo
+git commit -q --amend --allow-empty -m approval -m 'Reviewed-by-Agent: copilot'
+expect_exit 1 'L37 copilot cannot approve a PR it did not touch in CI' gate ci-trailers 12
+expect_exit 1 'L37 copilot cannot approve a PR it did not touch at merge' gate merge-ready 12
+copilot_repo
+git checkout -q main; echo m >docs/main.md; git add -A; git commit -qm main-update; git checkout -q work
+git merge -q --no-ff --no-commit main; echo extra >>crates/change.rs; git add -A
+GIT_COMMITTER_NAME=GitHub GIT_COMMITTER_EMAIL=noreply@github.com git -c gpg.format=openpgp -c user.signingkey=noreply@github.com commit -q -S -m 'merge main' -m 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L37 a signed Copilot merge that changes more than main still needs Author-Agent' gate ci-trailers 12
 unset GNUPGHOME
 
 gate_repo
@@ -436,6 +446,9 @@ echo sneaky >>crates/change.rs
 git add -A
 git commit -qm 'merge main and edit'
 expect_exit 1 'L46 block still needs Author-Agent on a merge that changes more than main' gate ci-trailers 12
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L2 an untrailed merge that changes more than main fails before an approval' gate ci-trailers 12
+expect_exit 1 'L2 local trailers refuse an untrailed merge that changes more than main' rules trailers
 
 gate_repo
 git reset -q --hard HEAD^
@@ -688,6 +701,12 @@ export PERCY_PROJECT=abc/web/roundup
 gate_visible
 expect_exit 0 'L76 a green percy check on the head and a Percy link pass' gate proof 12
 expect_exit 1 'L76 an unset PERCY_PROJECT fails closed' env -u PERCY_PROJECT loop/rules.sh proof 12
+gate_set '.body |= sub("percy.io/abc/web/roundup/builds/42"; "percy.io//builds/1")'
+expect_exit 1 'L76 an empty PERCY_PROJECT fails closed even on an empty-project link' env PERCY_PROJECT= loop/rules.sh proof 12
+gate_visible
+gate_set '.body += "\nU1 after [image](https://github.com/example/roundup/blob/proof/pr-12/proof/after.png)"'
+expect_exit 1 'L53 a visible PR with an image in Proof fails' gate proof 12
+gate_visible
 gate_set '.body |= sub("percy.io/abc/web/roundup"; "percy.io/other/web/roundup")'
 expect_exit 1 'L76 a link to another Percy project fails' gate proof 12
 gate_visible
@@ -754,6 +773,9 @@ gate_specification() {
 gate_specification
 expect_exit 0 'L53 specification baseline and future observer pass without invented scenario execution' gate proof 12
 expect_exit 0 'L53 specification still passes the ordinary merge gates' gate merge-ready 12
+gate_set '.comments[0][0].body |= sub("Reviewed-by-Agent: reviewer"; "Reviewed-by-Agent: copilot")'
+expect_exit 1 'L37 a copilot verdict is not an independent approval' gate proof 12
+gate_specification
 gate_set '.body |= sub("just check: exit 0"; "checks planned")'
 expect_exit 1 'L53 specification missing baseline fails' gate proof 12
 gate_specification

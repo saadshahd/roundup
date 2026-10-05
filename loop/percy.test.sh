@@ -12,6 +12,7 @@ cat >"$dir/bin/just" <<'JUST'
 #!/usr/bin/env bash
 echo "$*" >>"$TRACE"
 [ "$CASE" != harness_dies ] || exit 1
+[ "$CASE" != harness_silent ] || exec sleep 30
 cd "$SITE" && exec python3 -m http.server "$3" --bind 127.0.0.1
 JUST
 cat >"$dir/bin/pnpm" <<'PNPM'
@@ -59,6 +60,8 @@ check 'build link reaches the job summary' 'grep -q "https://percy.io/abc/web/ro
 
 l36_run harness_dies 1
 check 'a dead harness never reaches Percy' '! grep -q "exec percy" "$TRACE"'
+HARNESS_WAIT=2 l36_run harness_silent 1
+check 'a silent harness never reaches Percy' '! grep -q "exec percy" "$TRACE"'
 l36_run percy_fails 1
 l36_run no_link 1
 
