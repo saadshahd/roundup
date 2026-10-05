@@ -91,6 +91,28 @@ async fn wait_for_output(events: &mut Client, terminal: &str) -> io::Result<Inst
     }
 }
 
+/// R15: each write's own call time, sending the next only after `echo` has seen the last come back,
+/// so the Terminal never holds more than one unread write (it refuses past 16).
+pub async fn paced_writes(
+    mut write: impl AsyncFnMut() -> io::Result<()>,
+    mut echo: impl AsyncFnMut() -> io::Result<()>,
+    calls: usize,
+) -> io::Result<Vec<f64>> {
+    let mut taken = Vec::with_capacity(WARMUP + calls);
+
+    for _ in 0..WARMUP + calls {
+        let started = Instant::now();
+
+        write().await?;
+        taken.push(ms(started.elapsed()));
+        echo().await?;
+    }
+
+    taken.drain(..WARMUP);
+
+    Ok(taken)
+}
+
 /// From the write call to the `terminal.output` event it causes; the program is `cat` on a raw tty with echo off, so a byte only comes back if `cat` read and rewrote it.
 async fn write_to_output(
     writer: &Client,
@@ -328,14 +350,19 @@ pub async fn one_run(rupd: &Path, rup: &Path, calls: usize) -> io::Result<Sample
         ),
     );
 
-    // Last: its echoes are never read, so they must not sit in front of a write_to_output sample.
+    // Each write waits for its echo before the next (R15): unpaced, a busy machine leaves 16 unread and the Terminal refuses.
+    let params = json!({ "id": terminal, "data": "YQ==" });
+
     sample.insert(
         "terminal_write_p95_ms".into(),
         percentile(
-            latencies(
-                &client,
-                "terminal.write",
-                json!({ "id": terminal, "data": "YQ==" }),
+            paced_writes(
+                async || {
+                    ask(&client, "terminal.write", params.clone())
+                        .await
+                        .map(drop)
+                },
+                async || wait_for_output(&mut events, terminal).await.map(drop),
                 calls,
             )
             .await?,

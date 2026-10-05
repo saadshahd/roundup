@@ -45,6 +45,8 @@ The PR that builds R13 also amends, in the same PR, AGENTS.md rule 7 and the "Wh
 
 **R14 binary paths.** `perf` resolves its `rupd` and `rup` paths to absolute before launching, because the launcher refuses a relative `rup` (`rup not found at target/release/rup`). Given no `--rupd` or `--rup`, then each is the current directory joined with its default (`target/release/rupd`, `target/release/rup`); given a relative `--rup bin/rup`, then it is the current directory joined with `bin/rup`; given an absolute path, then it is unchanged. The path is not required to exist, so R10 still names a missing `rupd`.
 
+**R15 paced writes.** A Terminal refuses a write while 16 earlier ones are unread (`terminal <id> is not reading its input`), so `terminal_write_p95_ms` sends each `terminal.write` only after the `cat` Terminal's output event for the one before it. Given 1000 writes to a Terminal that refuses at 16 unread and echoes each write 1 ms later, then all 1000 are timed, at most one is ever unread, and no write's time includes its 1 ms echo wait: the metric is the `terminal.write` call alone.
+
 ## Keystroke-to-render in the App (`apps/desktop`, run by `crates/perf`)
 
 **K1 opt-in.** Given a normal build, then its bundle holds no trace of the keystroke probe (the string `roundup-keystroke-probe` is absent). A build made with `VITE_ROUNDUP_PERF` carries it. The probe is chosen when the bundle is built, so a normal run pays nothing and no query or flag can switch it on.
