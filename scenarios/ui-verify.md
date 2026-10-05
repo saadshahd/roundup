@@ -11,3 +11,11 @@ The user asked which UI verification tools to use and to keep every law readable
 **Y3 the laws sheet.** Given the scenario files, when `loop/rules.sh laws` runs, then it prints one line for each clause that carries a line `Law: <one plain sentence>. Check: <how it is checked>`, in the form `id | sentence | check`, sorted by id, one page for the whole repo, and prints nothing else. A clause with a `Law:` line and no `Check:` is printed with the check `unchecked`, and `loop/rules.sh laws` exits 1 for it. A `Check:` that names a test prefix (`u111_`, `y2_`) must match at least one test name in the repo or it exits 1 naming the id. Exit 4 when `scenarios/` is missing. The sheet is generated, never edited by hand, so it cannot drift; the user's desk copy is its output. The first three laws are: `U111 | Opening or closing a Drawer never moves the Rail, the terminal or the Shelf | y2_`, `U131 | Every Rail row is 28 px high at rest, hovered and selected | u131_`, and `U41 | Exactly one focus ring is visible at a time | u41_` (a DOM has one focused element, so the check is the visible ring, not the count). Tests (`y3_`) use a temporary directory with fixture scenario files: a Law with a matching test, a Law with no Check (exit 1, `unchecked`), a Check naming a prefix no test has (exit 1), and a missing directory (exit 4).
 
 Tests are named `y1_` to `y3_`. A reviewer reads the laws sheet before the diff.
+
+## Work
+
+Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
+
+| Ids | Item | Owns | Keeps green | After |
+|---|---|---|---|---|
+| Y1, Y2, Y3 | axe-core in `window.__axe()`, the per-frame sampler and the Drawer laws (Y2 is U111's real-window check), `loop/rules.sh laws` (prompt `.work/prompts/v-verify.md`) (Moves: none) | `apps/desktop/src/testing/**`, `apps/desktop/harness.html`, `apps/desktop/package.json`, `loop/rules.sh`, `loop/rules.test.sh` | `u26_` and `u137_` tests, the `loop/rules.sh` tests | U137 merged (it owns `testing/`), the U111 and U131 Builders merged (so `u111_` and `u131_` tests exist, or the sheet exits 1 at birth), a `u41_` test on main, and L41 merged, so `loop/rules.sh` has one writer at a time; Y3 is the one `loop/rules.sh` slice here and starts last |

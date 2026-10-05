@@ -39,6 +39,7 @@ const recordingEmulators = () => {
       shown: false,
       fits: 0,
       setSize: (size) => log.push(`size ${size.cols}x${size.rows}`),
+      setFontSize: () => {},
       reset: () => log.push("reset"),
       write: (bytes, parsed) => {
         log.push(new TextDecoder().decode(bytes));

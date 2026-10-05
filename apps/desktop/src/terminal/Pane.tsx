@@ -4,6 +4,7 @@ import { Icon } from "../ink/Icon";
 import { useConnectedProject } from "../state/connectedProject";
 import { createXtermEmulators } from "./emulator";
 import type { EmulatorFactory } from "./emulator";
+import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, fontSizeStorage } from "./fontSize";
 import { createScreens } from "./screens";
 import "./styles.css";
 
@@ -15,26 +16,47 @@ import "./styles.css";
 export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorFactory | undefined }) => {
   const connected = useConnectedProject();
   const { rail } = connected;
-  const screens = createScreens(connected, props.createEmulator ?? createXtermEmulators());
+  const storage = fontSizeStorage(connected.project.path);
+  let fontSize: number | undefined;
+  const [storageFailure, setStorageFailure] = createSignal<string | null>(null);
+  const createEmulator = props.createEmulator ?? createXtermEmulators();
+
+  const screens = createScreens(connected, (id) => {
+    fontSize ??= storage.read() ?? DEFAULT_FONT_SIZE;
+    const emulator = createEmulator(id);
+
+    emulator.setFontSize(fontSize);
+
+    return emulator;
+  });
+
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
   /** U38: a failure that fills this region shows in its place, never beside its empty line. */
-  const notice = createMemo(() => props.notice ?? rail.doorFailure(selected()?.id ?? "") ?? screens.failure(terminalId()));
+  const notice = createMemo(() => props.notice ?? storageFailure() ?? rail.doorFailure(selected()?.id ?? "") ?? screens.failure(terminalId()));
   const [screen, setScreen] = createSignal<HTMLDivElement>();
   let pane: HTMLDivElement | undefined;
   let pendingFrame: number | null = null;
 
-  // Window resize only: opening a Drawer overlays the pane and never changes its size.
+  let windowResized = false;
+
   const refit = () => {
     pendingFrame = null;
 
     const id = terminalId();
 
-    if (id !== null) screens.resize(id, screens.emulatorFor(id).fit());
+    if (id !== null && connected.daemonExit() === null) screens.resize(id, screens.emulatorFor(id).fit(), !windowResized);
+
+    windowResized = false;
   };
 
   const refitNextFrame = () => {
     pendingFrame ??= requestAnimationFrame(refit);
+  };
+
+  const onWindowResize = () => {
+    windowResized = true;
+    refitNextFrame();
   };
 
   createEffect(() => {
@@ -67,7 +89,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   });
 
   const onKeyDown = (press: KeyboardEvent): void => {
-    if (!press.metaKey || press.ctrlKey || press.altKey || press.shiftKey) return;
+    if (!press.metaKey || press.ctrlKey || press.altKey) return;
 
     const target = press.target;
 
@@ -80,6 +102,28 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     if (id === null) return;
 
     const key = press.key.toLowerCase();
+
+    const grows = key === "=" || key === "+";
+
+    if (press.shiftKey && !grows) return;
+
+    if (grows || key === "-" || key === "0") {
+      if (connected.daemonExit() !== null) return;
+
+      press.preventDefault();
+      press.stopPropagation();
+
+      const next = key === "0" ? DEFAULT_FONT_SIZE : Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, (fontSize ?? DEFAULT_FONT_SIZE) + (grows ? 1 : -1)));
+
+      if (next === fontSize) return;
+
+      fontSize = next;
+      screens.setFontSize(next);
+      setStorageFailure(storage.write(next));
+      refitNextFrame();
+
+      return;
+    }
 
     if (key !== "c" && key !== "v") return;
 
@@ -94,9 +138,9 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
   onCleanup(() => pane?.removeEventListener("keydown", onKeyDown, true));
 
-  window.addEventListener("resize", refitNextFrame);
+  window.addEventListener("resize", onWindowResize);
   onCleanup(() => {
-    window.removeEventListener("resize", refitNextFrame);
+    window.removeEventListener("resize", onWindowResize);
 
     if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
 

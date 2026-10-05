@@ -25,6 +25,7 @@ const mountPaneWithDrawer = async () => {
   const emulator: Emulator = {
     write: () => {},
     setSize: () => {},
+    setFontSize: () => {},
     reset: () => {},
     selection: () => "",
     paste: () => {},

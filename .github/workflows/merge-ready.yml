@@ -10,7 +10,7 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_run:
-    workflows: [check, loop]
+    workflows: [check, loop, visual]
     types: [completed]
 
 permissions:
@@ -37,6 +37,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          PERCY_PROJECT: ${{ vars.PERCY_PROJECT }}
           PR_FROM_PR: ${{ github.event.pull_request.number }}
           PR_FROM_COMMENT: ${{ github.event.issue.pull_request && github.event.issue.number }}
           PR_FROM_RUN: ${{ github.event.workflow_run.pull_requests[0].number }}

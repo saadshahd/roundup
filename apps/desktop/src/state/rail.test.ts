@@ -86,13 +86,13 @@ describe("u3 Rail state", () => {
     expect(rail.exitOf(node("a"))).toEqual({ kind: "code", code: 1 });
   });
 
-  it("u3_terminal_exited_marks_a_meta_agent_whose_terminal_ended", async () => {
-    const meta = node("m", { kind: "room", incarnation: "1" });
-    const { app, rail } = await open([meta]);
+  it("u3_terminal_exited_marks_a_door_whose_terminal_ended", async () => {
+    const room = node("m", { kind: "room", incarnation: "1" });
+    const { app, rail } = await open([room]);
 
     app.emit(event({ name: "terminal.exited", data: { id: "t-m", code: 2 } }));
 
-    expect(rail.exitOf(meta)).toEqual({ kind: "code", code: 2 });
+    expect(rail.exitOf(room)).toEqual({ kind: "code", code: 2 });
   });
 
   it("u3_a_stopped_room_has_no_live_terminal", async () => {

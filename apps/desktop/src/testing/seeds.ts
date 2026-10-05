@@ -61,7 +61,7 @@ const nestedTree = (now: number): RailNode[] => [
   room("backend", { name: "backend" }),
   room("auth", { name: "auth-refactor", parent: "backend" }),
   door("payments", "working", "coordinating 3 children", {
-    name: "payments meta-agent with a very long name that overflows the rail",
+    name: "payments room with a very long name that overflows the rail",
     order: 1,
     status: statusAt(now, "working", "coordinating 3 children", 42),
   }),

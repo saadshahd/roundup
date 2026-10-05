@@ -14,7 +14,7 @@ new_repo() {
   git config user.name t
   mkdir loop crates contracts
   cp "$script" loop/rules.sh
-  printf '_Avoid:_ session, bot, process.\n_Avoid:_ parent agent.\n' >CONTEXT.md
+  printf '_Avoid_: session, bot, process\n_Avoid_: parent agent\n' >GLOSSARY.md
   echo 'pub fn ok() {}' >crates/a.rs
   git add -A
   git commit -qm base
@@ -94,14 +94,14 @@ for decl in 'pub fn session_id() {}' 'pub const fn session_id() {}' 'pub struct 
   new_repo; printf '%b\n' "$decl" >crates/b.rs; commit x
   expect fail "L3 vocab: $decl" rules vocab
 done
-new_repo; mkdir -p crates/agents/claude_code; echo 'pub fn session_id() {}' >crates/agents/claude_code/a.rs; commit x
+new_repo; mkdir -p crates/agents/src/claude_code; echo 'pub fn session_id() {}' >crates/agents/src/claude_code/a.rs; commit x
 expect pass "L3 vocab: claude_code adapter is exempt" rules vocab
 new_repo; mkdir -p crates/other/claude_code; echo 'pub fn session_id() {}' >crates/other/claude_code/a.rs; commit x
 expect fail "L3 vocab: another claude_code dir is not exempt" rules vocab
 new_repo; echo 'export type SessionId = string;' >contracts/a.ts; commit x
 expect fail "L3 vocab: TS export" rules vocab
-new_repo; rm CONTEXT.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
-expect fail "L3 vocab: missing CONTEXT.md fails loudly" rules vocab
+new_repo; rm GLOSSARY.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
+expect fail "L3 vocab: missing GLOSSARY.md fails loudly" rules vocab
 
 # delta
 expect_exit() {
@@ -183,89 +183,13 @@ merge_main() { git merge -q --no-commit --no-ff origin/main >/dev/null 2>&1 || t
 finish_merge() { git add -A && git commit -qm "Merge main" -m "${1-Author-Agent: t}"; }
 carry() { git rev-parse HEAD >gh-head; loop/rules.sh carry 7; }
 carry_code() { local want=$1 name=$2 why=${3:-} got=0 out; out=$(carry 2>&1) || got=$?; if [ "$got" -eq "$want" ] && [[ $out == *"$why"* ]]; then echo "ok:   $name"; else echo "FAIL: $name (wanted exit $want, got $got: $out)"; failures=$((failures + 1)); fi; }
-queue_with() { printf '| id | item |\n|---|---|\n%s' "$1"; }
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"; approval=$(git rev-parse HEAD)
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-| L3 | three |
-' >.work/queue.md; finish_merge
-carry_code 0 "L54 carry: a merge that conflicts only in queue rows and keeps both carries"
+carry_repo; main_commit other.txt x; merge_main; finish_merge
+carry_code 0 "L54 carry: a conflict-free merge of main carries"
 out=$(carry 2>&1 || true); if [[ $out == "carried $approval "* ]]; then echo "ok:   L54 carry prints carried <A> <H>"; else echo "FAIL: L54 carry prints carried <A> <H> ($out)"; failures=$((failures + 1)); fi
 
-carry_repo; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a merge that drops a row main added exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a merge that keeps a row main removed exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-| L3 | three |
-| L7 | invented |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a merge that invents a row exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | main |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm mine -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-
-| L9 | mine |
-| L3 | main |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: an invented blank line exits 1 (rule b)" "rule b"
-
-carry_repo; printf '| L2 | two |\n' >>.work/queue.md; git add -A; git commit -qm duplicate -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
-main_commit .work/queue.md "$(queue_with '| L1 | one |
-')"; merge_main; queue_with '| L1 | one |
-| L2 | two |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a duplicated row removed by main exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; printf '| L3 | three |\n' >>.work/queue.md; git add -A; git commit -qm "same row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-' >.work/queue.md; finish_merge
-carry_code 0 "L54 carry: a row both sides added appears once and carries"
-
-carry_repo; printf '| L9 | both |\n| L9 | both |\n' >>.work/queue.md; git add -A; git commit -qm "duplicate shared row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L9 | both |
-')"; merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | both |
-| L9 | both |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a row both sides added cannot remain duplicated (rule b)" "rule b"
+carry_repo; main_commit .work/queue.md changed; echo mine >>.work/queue.md; git add -A; git commit -qm "edit queue" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+merge_main; echo resolved >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a conflict in any file exits 1 (rule a)" "rule a"
 
 carry_repo; git checkout -q -b offmain main; echo x >off.txt; git add -A; git commit -qm off -m "Author-Agent: t"; git checkout -q pr
 git merge -q --no-ff offmain -m "Merge offmain" -m "Author-Agent: t" >/dev/null
@@ -283,7 +207,7 @@ carry_repo; main_commit other.txt x; merge_main; echo sneaky >>scenarios/loop.md
 carry_code 1 "L54 carry: a merge that also edits another file exits 1 (rule c)" "rule c"
 
 carry_repo; main_commit other.txt x; merge_main; finish_merge "no trailer here"
-carry_code 1 "L54 carry: a merge with no Author-Agent exits 1" "Author-Agent"
+carry_code 0 "L54 carry: a clean merge of main needs no Author-Agent"
 
 carry_repo; echo more >more.txt; git add -A; git commit -qm "later work" -m "Author-Agent: t"
 carry_code 1 "L54 carry: a non-merge commit after the approval exits 1" "not a merge"
@@ -299,7 +223,7 @@ if [ "$got" -eq 4 ] && grep -q gh err; then echo "ok:   L54 carry: a gh failure 
 got=0; loop/rules.sh carry x >/dev/null 2>&1 || got=$?
 if [ "$got" -eq 2 ]; then echo "ok:   L54 carry: a non-numeric <pr> exits 2"; else echo "FAIL: L54 carry: a non-numeric <pr> exits 2 (got $got)"; failures=$((failures + 1)); fi
 
-# Further L54 carry cases: fail closed, the allowed paths, an empty chain, other shapes of commit.
+# Further L54 carry cases: fail closed, an empty chain, other shapes of commit.
 carry_repo; git checkout -q --orphan unrelated; git rm -rqf . >/dev/null; echo r >root.txt; git add -A; git commit -qm root -m "Author-Agent: t"
 git update-ref refs/remotes/origin/main HEAD; git checkout -q pr
 git merge -q --no-ff --allow-unrelated-histories --no-edit origin/main -m "Merge main" -m "Author-Agent: t" >/dev/null 2>&1 || true
@@ -308,10 +232,6 @@ carry_code 1 "L54 carry: a merge of unrelated history exits 1, merge-tree failin
 carry_repo
 carry_code 0 "L54 carry: an empty chain (head is the approval) carries" "carried $approval $approval"
 
-carry_repo; git checkout -q main; mkdir -p .work/queue; printf '| id |\n|---|\n| A1 |\n' >.work/queue/daemon.md; git add -A; git commit -qm "squad file" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-echo "| A2 |" >>.work/queue/daemon.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-main_commit .work/queue/daemon.md "$(printf '| id |\n|---|\n| A1 |\n| A3 |\n')"; merge_main; printf '| id |\n|---|\n| A1 |\n| A2 |\n| A3 |\n' >.work/queue/daemon.md; finish_merge
-carry_code 0 "L54 carry: a conflict in a .work/queue/ squad file that keeps both carries"
 
 carry_repo; git checkout -q main; printf '| id |\n|---|\n| A1 |\n' >scenarios/README.md; git add -A; git commit -qm readme -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
 echo "| A2 |" >>scenarios/README.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
@@ -323,9 +243,6 @@ echo 'PR prose' >>scenarios/README.md; git add -A; git commit -qm prose -m 'Auth
 main_commit scenarios/README.md "$(printf 'Intro\nShared prose\nMain prose\n')"; merge_main; printf 'Intro\nShared prose\nPR prose\nMain prose\n' >scenarios/README.md; finish_merge
 carry_code 1 "L54 carry: README prose conflict exits 1 (rule a)" "rule a"
 
-carry_repo; git checkout -q main; mkdir -p .work/queue; echo base >.work/queue/a.md; git add -A; git commit -qm a -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; echo more >>.work/queue/a.md; git add -A; git commit -qm edit -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-git checkout -q main; git rm -q .work/queue/a.md; git commit -qm "delete" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; merge_main; git rm -qf .work/queue/a.md 2>/dev/null || true; finish_merge
-carry_code 1 "L54 carry: a queue file main deleted that the PR edited exits 1, naming the deletion" "gone from the merge"
 
 carry_repo; main_commit other.txt x; git checkout -q -b side main; echo s >side.txt; git add -A; git commit -qm side -m "Author-Agent: t"; git checkout -q pr; git update-ref refs/remotes/origin/main main
 git merge -q --no-ff -m "Octopus" -m "Author-Agent: t" main side >/dev/null 2>&1 || true
@@ -391,18 +308,10 @@ elif '/pulls/' in route:
     out = [pr]
 elif '/issues/' in route:
     out = d.get('comments', [[]])
-elif route == 'repos/{owner}/{repo}':
-    out = [{'full_name': 'example/roundup'}]
-elif '/git/trees/proof/' in route:
-    if d.get('no_proof_branch'):
-        sys.exit(1)
-    out = [d.get('tree', {'truncated': False, 'tree': [
-        {'path': 'proof/'+name+'.png', 'mode': '100644', 'type': 'blob', 'size': 1024}
-        for name in ['before', 'after']]})]
 elif '/check-runs' in route:
     out = d.get('checks', [{'check_runs': [{'id': i, 'name': name, 'head_sha': head,
         'status': 'completed', 'conclusion': 'success', 'app': {'slug': 'github-actions'}}
-        for i, name in enumerate(['check', 'rules'], 1)]}])
+        for i, name in enumerate(['check', 'rules', 'percy'], 1)]}])
 else:
     print('unexpected gh route: '+route, file=sys.stderr)
     sys.exit(1)
@@ -413,6 +322,56 @@ GH
 }
 gate_set() { jq "$@" "$GATE_DATA" >"$GATE_DATA.tmp"; mv "$GATE_DATA.tmp" "$GATE_DATA"; }
 gate() { loop/rules.sh "$@"; }
+
+# L37: a GitHub-signed Copilot Autofix commit is authored by `copilot`. A throwaway key stands in for web-flow.
+copilot_repo() {
+  gate_repo
+  git reset -q --hard main
+  GNUPGHOME=$(mktemp -d)
+  export GNUPGHOME
+  gpg --batch -q --passphrase '' --quick-gen-key 'GitHub <noreply@github.com>' ed25519 sign never 2>/dev/null
+  gpg --batch -q --passphrase '' --quick-gen-key 'Other <other@example.com>' ed25519 sign never 2>/dev/null
+  gpg --armor --export noreply@github.com >loop/web-flow.asc
+  commit web-flow
+  git branch -f main HEAD
+  echo changed >crates/change.rs
+  commit change 'Author-Agent: builder'
+}
+copilot_fix() {
+  local key=${1-noreply@github.com} committer=${2:-noreply@github.com} trailer=${3-Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>}
+  local sign=--no-gpg-sign
+  [ -z "$key" ] || sign=-S
+  echo fix >>crates/change.rs
+  git add -A
+  GIT_COMMITTER_NAME=GitHub GIT_COMMITTER_EMAIL=$committer git -c gpg.format=openpgp -c user.signingkey="$key" commit -q "$sign" \
+    -m 'Potential fix for pull request finding' ${trailer:+-m "$trailer"}
+  git commit -q --allow-empty -m approval -m "Reviewed-by-Agent: ${4:-reviewer}"
+}
+copilot_repo; copilot_fix
+expect_exit 0 'L37 a GitHub-signed Copilot Autofix commit needs no Author-Agent in CI' gate ci-trailers 12
+expect_output "ready $(git rev-parse HEAD)" 'L37 merge-ready accepts a Copilot Autofix commit' gate merge-ready 12
+expect_exit 0 'L37 local trailers agree on a review checkout' rules trailers
+copilot_repo; copilot_fix ''
+expect_exit 1 'L37 an unsigned commit claiming Copilot fails' gate ci-trailers 12
+copilot_repo; copilot_fix other@example.com
+expect_exit 1 'L37 a Copilot claim signed by another key fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com noreply@github.com ''
+expect_exit 1 'L37 a GitHub-signed commit without the Copilot Autofix trailer fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com someone@example.com
+expect_exit 1 'L37 a Copilot claim GitHub did not commit fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com noreply@github.com 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>' copilot
+expect_exit 1 'L37 copilot cannot approve its own fix' gate ci-trailers 12
+gate_repo
+git commit -q --amend --allow-empty -m approval -m 'Reviewed-by-Agent: copilot'
+expect_exit 1 'L37 copilot cannot approve a PR it did not touch in CI' gate ci-trailers 12
+expect_exit 1 'L37 copilot cannot approve a PR it did not touch at merge' gate merge-ready 12
+copilot_repo
+git checkout -q main; echo m >docs/main.md; git add -A; git commit -qm main-update; git checkout -q work
+git merge -q --no-ff --no-commit main; echo extra >>crates/change.rs; git add -A
+GIT_COMMITTER_NAME=GitHub GIT_COMMITTER_EMAIL=noreply@github.com git -c gpg.format=openpgp -c user.signingkey=noreply@github.com commit -q -S -m 'merge main' -m 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L37 a signed Copilot merge that changes more than main still needs Author-Agent' gate ci-trailers 12
+unset GNUPGHOME
 
 gate_repo
 expect_exit 0 'L33 base main passes' gate base 12
@@ -447,7 +406,7 @@ for merge_trailer in missing authored self-review approval invalid-id; do
   git checkout -q work
   want=1
   case $merge_trailer in
-    missing) trailer='' ;;
+    missing) trailer=''; want=0 ;;
     authored) trailer='Author-Agent: builder'; want=0 ;;
     self-review) trailer='Author-Agent: reviewer' ;;
     approval) trailer='Reviewed-by-Agent: reviewer' ;;
@@ -472,6 +431,24 @@ git checkout -q work
 git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 expect_output "ready $(git rev-parse HEAD)" 'L46 L54-carried approval passes' gate merge-ready 12
 expect_exit 1 'L2 local approval requires newest commit even when L54 carries remotely' rules trailers
+
+gate_repo
+git checkout -q main
+printf 'main update\n' >docs/main.md
+commit main-update
+git checkout -q work
+git merge -q --no-ff main -m 'merge main without a trailer'
+expect_exit 0 'L46 block allows an untrailed clean merge of main in CI' gate ci-trailers 12
+expect_output "ready $(git rev-parse HEAD)" 'L46 block carries an approval across an untrailed clean merge' gate merge-ready 12
+git reset -q --hard HEAD^
+git merge -q --no-ff --no-commit main
+echo sneaky >>crates/change.rs
+git add -A
+git commit -qm 'merge main and edit'
+expect_exit 1 'L46 block still needs Author-Agent on a merge that changes more than main' gate ci-trailers 12
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L2 an untrailed merge that changes more than main fails before an approval' gate ci-trailers 12
+expect_exit 1 'L2 local trailers refuse an untrailed merge that changes more than main' rules trailers
 
 gate_repo
 git reset -q --hard HEAD^
@@ -631,15 +608,14 @@ expect_exit 1 'L46 approval with changed content fails' gate merge-ready 12
 
 gate_repo
 git reset -q --hard main
-mkdir -p .work/queue
-for path in docs/notes.md .work/queue/notes.md scenarios/notes.md; do
+for path in docs/notes.md scenarios/notes.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo 'plain prose' >"$path"
   commit prose 'Author-Agent: builder'
   expect_output post "L44 allowed $path is post" gate class 12
 done
-for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md .work/queue/.hidden.md; do
+for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md scenarios/loop-rules.md .work/queue.md .work/queue/notes.md .work/queue/.hidden.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo prose >"$path"
@@ -694,19 +670,6 @@ expect_output block 'L44 rename out of docs blocks' gate class 12
 
 gate_repo
 git reset -q --hard main
-mkdir -p .work
-printf 'rows\n## Swarm protocol\nfixed\n' >.work/queue.md
-commit setup
-git branch -f main HEAD
-printf 'new rows\n## Swarm protocol\nfixed\n' >.work/queue.md
-commit rows 'Author-Agent: builder'
-expect_output post 'L44 queue rows above protocol are post' gate class 12
-printf 'new rows\n## Swarm protocol\nchanged\n' >.work/queue.md
-commit protocol 'Author-Agent: builder'
-expect_output block 'L44 protocol changes block' gate class 12
-
-gate_repo
-git reset -q --hard main
 echo prose >docs/notes.md
 commit prose 'Author-Agent: builder'
 gate_set '.files=[[{filename:"docs/notes.md"}]]'
@@ -717,6 +680,7 @@ commit source 'Author-Agent: builder'
 gate_set '.files=[[{filename:"docs/notes.md",patch:"p"}],[{filename:"crates/more.rs",patch:"p"}]]'
 expect_output block 'L44 block path on page two blocks' gate class 12
 
+# L76: a PR touching apps/desktop/src proves its look with the percy check on its head and a Percy build link.
 gate_visible() {
   gate_repo
   git reset -q --hard main
@@ -727,73 +691,70 @@ gate_visible() {
   echo visible >apps/desktop/src/view.tsx
   commit visible 'Author-Agent: builder'
   git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
-  gate_set '.body="Scenarios: U1\n## Shape\n```\na -> b\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok U1_visible\n```\nU1 before [image](https://github.com/example/roundup/blob/proof/pr-12/proof/before.png) 1280×800\nU1 after [image](https://github.com/example/roundup/blob/proof/pr-12/proof/after.png) 1280×800\nShows: layout"'
+  gate_set '.body="Scenarios: U1\n## Shape\n```\na -> b\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok U1_visible\n```\nPercy: https://percy.io/abc/web/roundup/builds/42"'
 }
-l76_unchanged() {
-  gate_visible
-  gate_set '.body |= sub("U1 before[\\s\\S]*"; "Visual: unchanged") | .no_proof_branch=true'
-  gate_set --arg head "$(git rev-parse HEAD^)" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nVisual: unchanged\nReviewed-by-Agent: reviewer")}]]'
+gate_percy() {
+  gate_set --arg head "$(git rev-parse HEAD)" --arg conclusion "$1" --arg at "${2:-$(git rev-parse HEAD)}" \
+    '.checks=[{check_runs:([("check","rules")|{name:.,head_sha:$head,status:"completed",conclusion:"success",app:{slug:"github-actions"}}] + [{name:"percy",head_sha:$at,status:"completed",conclusion:$conclusion,app:{slug:"github-actions"}}])}]'
 }
-l76_unchanged
-expect_exit 0 'L76 unchanged tree across empty approval needs no proof branch' gate proof 12
-expect_exit 0 'L76 unchanged attestation passes merge-ready' gate merge-ready 12
-gate_set '.comments=[[]]'
-expect_exit 1 'L76 author body claim alone fails' gate proof 12
-l76_unchanged
-gate_set --arg head "$(git rev-parse main)" '.comments[0][0].body += "\nHead: "+$head'
-expect_exit 1 'L76 ambiguous reviewed head fails' gate proof 12
-l76_unchanged
-git reset -q --hard HEAD^
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 0 'L76 attestation can be checked before approval commit' gate proof 12
-expect_exit 1 'L76 attestation does not replace approval commit' gate merge-ready 12
-l76_unchanged
-gate_set '.comments[0][0].body |= sub("reviewer"; "builder")'
-expect_exit 1 'L76 author verdict fails' gate proof 12
-l76_unchanged
-gate_set '.comments[0][0].body += "\nReviewed-by-Agent: another"'
-expect_exit 1 'L76 multiple reviewer ids fail' gate proof 12
-l76_unchanged
-gate_set '.comments[0][0].body |= sub("Visual: unchanged"; "Visual: unchanged maybe")'
-expect_exit 1 'L76 attestation must be explicit' gate proof 12
-l76_unchanged
-gate_set --arg head "$(git rev-parse HEAD^)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 test output must name exact approval head' gate proof 12
-l76_unchanged
-for verdict in reject approve; do
-  gate_set --arg verdict "$verdict" --arg head "$(git rev-parse HEAD)" '.comments[1]=[{id:2,created_at:"2026-10-03T00:01:00Z",body:("VERDICT: "+$verdict+"\nReviewed-head: "+$head+"\nReviewed-by-Agent: another")}]'
-  expect_exit 1 "L76 newer $verdict without attestation supersedes it" gate proof 12
-done
-l76_unchanged
-echo changed >>apps/desktop/src/view.tsx
-commit followup 'Author-Agent: another'
-git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 changed code invalidates earlier attestation' gate proof 12
-l76_unchanged
-git commit -q --allow-empty -m coauthor -m 'Author-Agent: reviewer'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 reviewer must differ from every author' gate proof 12
+export PERCY_PROJECT=abc/web/roundup
+gate_visible
+expect_exit 0 'L76 a green percy check on the head and a Percy link pass' gate proof 12
+expect_exit 1 'L76 an unset PERCY_PROJECT fails closed' env -u PERCY_PROJECT loop/rules.sh proof 12
+gate_set '.body |= sub("percy.io/abc/web/roundup/builds/42"; "percy.io//builds/1")'
+expect_exit 1 'L76 an empty PERCY_PROJECT fails closed even on an empty-project link' env PERCY_PROJECT= loop/rules.sh proof 12
+gate_visible
+gate_set '.body += "\nU1 after [image](https://github.com/example/roundup/blob/proof/pr-12/proof/after.png)"'
+expect_exit 1 'L53 a visible PR with an image in Proof fails' gate proof 12
+gate_visible
+gate_set '.body |= sub("percy.io/abc/web/roundup"; "percy.io/other/web/roundup")'
+expect_exit 1 'L76 a link to another Percy project fails' gate proof 12
+gate_visible
+expect_exit 0 'L76 a green Percy build passes merge-ready' gate merge-ready 12
+gate_set '.body |= sub("Percy: [^\n]*"; "")'
+expect_exit 1 'L76 a visible PR without a Percy link fails' gate proof 12
+gate_visible
+gate_set '.body |= sub("https://percy.io/abc/web/roundup/builds/42"; "https://example.com/builds/42")'
+expect_exit 1 'L76 a link outside percy.io fails' gate proof 12
+gate_visible
+gate_percy failure
+expect_exit 1 'L76 a failed percy check fails' gate proof 12
+gate_percy success 0000000000000000000000000000000000000000
+expect_exit 1 'L76 a percy check on another head fails' gate proof 12
+gate_set '.checks=[{check_runs:[("check","rules")|{name:.,head_sha:"'"$(git rev-parse HEAD)"'",status:"completed",conclusion:"success",app:{slug:"github-actions"}}]}]'
+expect_exit 1 'L76 no percy check fails' gate proof 12
+gate_visible
+gate_set '.body |= sub("Percy: [^\n]*"; "U1 before [image](https://github.com/example/roundup/blob/proof/pr-12/proof/before.png) 1280×800\nShows: layout")'
+expect_exit 1 'L76 images on a proof branch are not visual proof' gate proof 12
+gate_set --arg head "$(git rev-parse HEAD^)" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nVisual: unchanged\nReviewed-by-Agent: reviewer")}]]'
+expect_exit 1 'L76 Visual: unchanged no longer replaces a Percy build' gate proof 12
 
-l76_unchanged
-gate_set '.body |= sub("Visual: unchanged"; "")'
-expect_exit 0 'L76 reviewer attestation needs no author visibility claim' gate proof 12
-l76_unchanged
-git checkout -q main
-echo main >crates/from-main.rs
-commit main
-git checkout -q work
-git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 carried approval does not carry attestation across changed tree' gate proof 12
-expect_exit 1 'L76 merge-ready still needs proof after changed-tree carry' gate merge-ready 12
-l76_unchanged
-git checkout -q main
-git commit -q --allow-empty -m main
-git checkout -q work
-git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 0 'L76 same-tree carry retains attestation' gate merge-ready 12
+gate_desktop() {
+  gate_repo
+  git reset -q --hard main
+  mkdir -p crates/desktop
+  echo shell >crates/desktop/window.rs
+  commit desktop 'Author-Agent: builder'
+  git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+}
+gate_desktop
+expect_exit 1 'L76 a crates/desktop change without a macOS line fails' gate proof 12
+gate_set --arg head "$(git rev-parse HEAD)" '.body="Scenarios: L46\n## Shape\n```\na\n```\n## Proof\nHead: "+$head+"\n```\nok L46_gate\n```\nmacOS: the window opens at 1280×800 in just app"'
+expect_exit 0 'L76 a crates/desktop change needs only the macOS laptop check' gate proof 12
+
+gate_repo
+git reset -q --hard main
+echo prose >docs/design-system.md
+commit docs 'Author-Agent: builder'
+git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+expect_exit 0 'L76 a docs-only change needs no Percy build' gate proof 12
+
+gate_repo
+printf '**U1 a visible change.** Given a 1280 by 800 window, when opened, then a screenshot shows it.\n' >scenarios/ui.md
+commit scenario 'Author-Agent: builder'
+git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+gate_set --arg head "$(git rev-parse HEAD)" '.body="Scenarios: U1\n## Shape\n```\na\n```\n## Proof\nHead: "+$head+"\n```\nok U1_visible\n```"'
+expect_exit 0 'L76 naming a visual scenario outside apps/desktop/src needs no Percy build' gate proof 12
 
 gate_specification_head() {
   gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .comments=[[{id:1,created_at:"2026-10-04T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nReviewed-by-Agent: reviewer")}]]'
@@ -812,6 +773,9 @@ gate_specification() {
 gate_specification
 expect_exit 0 'L53 specification baseline and future observer pass without invented scenario execution' gate proof 12
 expect_exit 0 'L53 specification still passes the ordinary merge gates' gate merge-ready 12
+gate_set '.comments[0][0].body |= sub("Reviewed-by-Agent: reviewer"; "Reviewed-by-Agent: copilot")'
+expect_exit 1 'L37 a copilot verdict is not an independent approval' gate proof 12
+gate_specification
 gate_set '.body |= sub("just check: exit 0"; "checks planned")'
 expect_exit 1 'L53 specification missing baseline fails' gate proof 12
 gate_specification
@@ -823,7 +787,7 @@ expect_exit 1 'L53 specification missing consistency review fails' gate proof 12
 gate_specification
 gate_set '.body |= sub("Proof scope: specification"; "Proof scope: implementation")'
 expect_exit 1 'L53 unknown explicit proof scope fails' gate proof 12
-for path in crates/change.rs AGENTS.md CONTEXT.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
+for path in crates/change.rs AGENTS.md GLOSSARY.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
   gate_specification
   printf 'changed\n' >>"$path"
   commit mixed 'Author-Agent: builder'
@@ -881,20 +845,13 @@ gate_specification_head
 expect_exit 1 'L53 bracket-named symlink cannot borrow the regular Todo file mode' gate proof 12
 
 gate_visible
-expect_exit 0 'L53 visible before and after evidence passes' gate proof 12
-gate_set '.body |= sub("U1 before[^\n]*\n"; "")'
-expect_exit 1 'L53 missing before fails' gate proof 12
-gate_visible
-gate_set '.tree={truncated:false,tree:[]}'
-expect_exit 1 'L53 absent linked file fails' gate proof 12
-gate_set '.tree={truncated:false,tree:[{path:"proof/before.png",type:"blob",mode:"100644",size:6291456},{path:"proof/after.png",type:"blob",mode:"100644",size:1024}]}'
-expect_exit 1 'L53 six MiB file fails' gate proof 12
-gate_visible
-gate_set '.body += "\nShows: /Users/private"'
-expect_exit 1 'L53 private caption path fails' gate proof 12
-gate_visible
-gate_set '.body |= sub("1280×800"; "640×400")'
-expect_exit 1 'L53 wrong window size fails' gate proof 12
+printf '**A7 backend lifecycle.** Given an Agent, when stopped, then its record remains.\n' >scenarios/agents.md
+commit backend 'Author-Agent: builder'
+gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .body |= sub("Scenarios: U1"; "Scenarios: U1 A7") | .body |= sub("ok U1_visible"; "ok U1_visible\nok A7_lifecycle")'
+expect_exit 0 'L53 mixed proof needs backend test output beside the Percy build' gate proof 12
+gate_set '.body |= sub("ok A7_lifecycle"; "")'
+expect_exit 1 'L53 mixed proof still requires backend test output' gate proof 12
+
 gate_visible
 gate_set '.body |= sub("## Shape"; "## Other")'
 expect_exit 1 'L53 missing shape fails' gate proof 12
@@ -923,14 +880,6 @@ gate_repo
 gate_rejects 1
 gate_set '.comments += [[{id: 100, created_at: "2026-10-03T03:00:00Z", body: "VERDICT: approve\n'"$(git rev-parse HEAD)"'\nReviewed-by-Agent: reviewer"}]]'
 expect_exit 0 'L46 newer independent approve clears head reject' gate merge-ready 12
-
-gate_visible
-gate_set '.tree={truncated:true,tree:[]}'
-expect_exit 1 'L53 truncated proof tree fails' gate proof 12
-
-gate_visible
-gate_set '.tree={truncated:false,tree:([{path:"proof/before.png",type:"blob",mode:"100644",size:5242880},{path:"proof/after.png",type:"blob",mode:"100644",size:5242880}] + [range(3)|{path:("proof/extra-"+tostring+".png"),type:"blob",mode:"100644",size:5242880}])}'
-expect_exit 1 'L53 branch exceeding twenty MiB fails' gate proof 12
 
 gate_repo
 gate_set '.body="Scenarios: L46\n## Shape\n```\n$(touch /tmp/roundup-gate-executed)\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok L46_gate\n```"'
@@ -988,10 +937,6 @@ gate_repo
 gate_set '.body="Scenarios: L46\n## Shape\n```\n" + ([range(40)|"line"]|join("\n")) + "\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok L46_gate\n```"'
 expect_exit 0 'L53 forty shape lines pass' gate proof 12
 
-gate_visible
-gate_set '.tree={truncated:false,tree:[{path:"outside.png",type:"blob",mode:"100644",size:1}]}'
-expect_exit 1 'L53 proof file outside proof directory fails' gate proof 12
-
 
 gate_repo
 pr_head=$(git rev-parse HEAD)
@@ -1002,5 +947,79 @@ cd "$trusted"
 expect fail 'L46 trusted checkout initially lacks PR objects' git cat-file -e "$pr_head^{commit}"
 expect_output "ready $pr_head" 'L46 fetches missing PR objects as data' gate merge-ready 12
 expect_output main 'L46 leaves the trusted branch checked out' git branch --show-current
+
+ready_repo() {
+  new_repo
+  mkdir -p scenarios apps
+  printf '%s\n' '**U1 one.** a' '**U2 two.** b' '**U3 three.** c' '' '## Work' '' \
+    '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' \
+    '| U1 | first | `a` | — | — |' '| U2 | second | `b` | — | after U3 |' '| U3 | third | `c` | — | — |' \
+    '| U9 | unwritten | — | — | — |' '| U1, U3 | both | — | — | — |' >scenarios/ui.md
+  echo 'test("u1_works", () => {});' >apps/u1.test.ts
+  commit x
+  # A fake `gh pr list` printing gh-prs, failing on GH_FAIL and hanging on GH_HANG.
+  mkdir -p .git/ready-bin
+  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
+  chmod +x .git/ready-bin/gh
+  echo '[]' >.git/gh-prs
+  export PATH="$PWD/.git/ready-bin:$PATH"
+}
+ready() { loop/rules.sh ready "$@"; }
+
+ready_repo
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 ready prints each Work row with its state' ready
+
+ready_repo
+echo 'test("u3_works", () => {});' >apps/u3.test.ts; commit x
+expect_output "done U1 scenarios/ui.md
+ready U2 scenarios/ui.md
+done U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+done U1, U3 scenarios/ui.md" 'L34 a done After frees the row' ready
+
+ready_repo
+printf '%s\n' '**L7 x.** a' '## Work' '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' '| L7 | x | — | — | — |' '| U4–U5 | y | — | — | — |' '**U4 a.** x' '**U5 b.** y' >scenarios/loop.md
+printf 'echo L7\n' >loop/x.test.sh; echo 'fn u4_a() {} fn u5_b() {}' >crates/u.rs; commit x
+expect_output "done L7 scenarios/loop.md
+done U4–U5 scenarios/loop.md" 'L34 L ids read loop tests; a range needs every id' bash -c 'loop/rules.sh ready | grep loop.md'
+
+ready_repo
+printf '%s\n' '## Work' '| Ids | Item |' '|---|---|' '| U1 | x |' >scenarios/bad.md; commit x
+expect_exit 2 'L34 a Work table missing a column exits 2' ready
+
+ready_repo
+echo '[{"number":301,"title":"U3 and U9: third"},{"number":302,"title":"U31 elsewhere"},{"number":303,"title":"U1 again"}]' >.git/gh-prs
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+in-flight U3 scenarios/ui.md #301
+in-flight U9 scenarios/ui.md #301
+in-flight U1, U3 scenarios/ui.md #301 #303" 'L34 an open PR naming a row id makes it in-flight after done; every naming PR is listed' ready
+
+ready_repo
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 no open PR leaves every state' ready
+
+ready_repo
+expect_exit 4 'L34 gh failure exits 4' env GH_FAIL=1 loop/rules.sh ready
+expect pass 'L34 gh failure names gh' gate_error_contains gh env GH_FAIL=1 loop/rules.sh ready
+expect pass 'L34 gh slower than BOXD_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 BOXD_GH_TIMEOUT=1 loop/rules.sh ready
+mkdir .git/no-gh-bin
+for tool in bash dirname python3 git; do ln -s "$(command -v "$tool")" .git/no-gh-bin/; done
+expect_exit 4 'L34 gh missing exits 4' env PATH="$PWD/.git/no-gh-bin" loop/rules.sh ready
+
+ready_repo
+echo '[{"number":301,"title":"U3"}]' >.git/gh-prs
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 --offline skips gh and keeps the four states' env GH_FAIL=1 loop/rules.sh ready --offline
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

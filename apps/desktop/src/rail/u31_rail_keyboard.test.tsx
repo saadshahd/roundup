@@ -16,6 +16,7 @@ const focusableEmulator = (): EmulatorFactory => () => {
   return {
     write: () => {},
     setSize: () => {},
+    setFontSize: () => {},
     reset: () => {},
     selection: () => "",
     paste: () => {},

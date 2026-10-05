@@ -41,6 +41,8 @@ Starting values. The thresholds in the checks are fixed; a value that fails a th
 
 Type: `--font-ui` is `-apple-system, system-ui, sans-serif`; `--font-mono` is `ui-monospace, "SF Mono", Menlo, monospace`. The steps are `--text-caption` 11, `--text-small` 12, `--text-body` 13, `--text-title` 15, `--text-pad-subheading` 20 and `--text-pad-heading` 24 px. Weight is 400, 500 or 600. Tracking is `0` at body and below, `-0.01em` at title (apple-design: tracking follows size).
 
+Static interface typography uses the listed type steps. U102’s user-adjustable Terminal font starts at `--text-body` and changes in 1 px increments within `--text-terminal-min` and `--text-terminal-max`; this scale applies only to the Terminal, not the Rail or other interface text.
+
 Pad prose uses `--text-title` (15 px). Its `--text-pad-subheading` (20 px) and `--text-pad-heading` (24 px) steps apply only to rendered and formatted Pad headings, in both colour schemes; source and code stay mono at `--text-body`. A Pad's reading and editing views use the same steps.
 
 Space: `--space-1` to `--space-6` are 4, 8, 12, 16, 24, 32 px. A Rail row is 28 px high.
@@ -49,7 +51,7 @@ Mono is for the Terminal, paths, ids and code. Every other word is `--font-ui`.
 
 ## Colour
 
-Kind has two carriers, a Glyph shape and a tone. The shape is enough on its own: colour never carries a Kind alone. Ink (bold plus hue) stays what `CONTEXT.md` says: only `needs-you` and `error`.
+Kind has two carriers, a Glyph shape and a tone. The shape is enough on its own: colour never carries a Kind alone. Ink (bold plus hue) stays what `GLOSSARY.md` says: only `needs-you` and `error`.
 
 | Kind | Glyph | Tone | Ink |
 |---|---|---|---|
@@ -95,7 +97,7 @@ Each check is measured from computed style and the DOM of the running App, never
 | Id | Passes when | Scenario |
 |---|---|---|
 | D1 | every computed colour, background, border-color, shadow, radius and duration is the value of a Token | U130 |
-| D2 | every font size is a type step; every margin, padding and gap is `0` or a space step | U131 |
+| D2 | every static interface font size is a type step; U102 Terminal sizing uses its bounded Token-defined scale; every margin, padding and gap is `0` or a space step | U131 |
 | D3 | every colour whose saturation exceeds 15% is `--red`, `--amber` or `--accent`; with no `error` or `needs-you` row on screen, no red or amber is drawn | U132 |
 | D4 | every Rail, Shelf and Drawer row shows one of the six Glyphs for its Kind; no Kind is drawn by colour only | U132 |
 | D5 | text has at least 4.5:1 against its own ground, and a Glyph tone and a focus ring 3:1 (`done` is exempt as U4 says), in light and in dark | U4, U135 |
@@ -111,7 +113,7 @@ A check is public. The screens it runs on are not all the Builder's. The Builder
 
 ## Ideas
 
-The critic's report ends with an `ideas` list of at most three things that look wrong and no check covers. An idea is never a Todo and never a gate. The Architect reads the ideas each batch. An idea that comes back three times becomes a check (`docs/development-loop.md`, "Loop on the loop").
+The critic's report ends with an `ideas` list of at most three things that look wrong and no check covers. An idea is never a Todo and never a gate. The Architect reads the ideas each batch. An idea that comes back three times becomes a check (`.agents/architect.md`).
 
 ## Baseline protocol
 
@@ -122,4 +124,4 @@ Plan, do, study, act, for each UI PR.
 3. **Study.** The critic builds `origin/main` and the PR head, and for each seed and step saves `<step>.png` and `<step>.checks.json` under `artifacts/ux/<id>/base/` and `artifacts/ux/<id>/head/`: each check, `pass` or `fail`, and the measured value and selector behind it. The two builds share the seed, viewport, colour scheme and the injected clock. `loop/rules.sh delta` compares the two sets of `checks.json` files, never the pixels, and prints each check as `fixed`, `regressed`, `still-failing` or `still-passing`; the critic pastes its lines.
 4. **Act.** A `regressed` check is a Todo of class `ux-checklist` and a reject if it is in `just check`. A `still-failing` check is queued; it is a defect only once a scenario names it.
 
-Linux and macOS captures are never compared with each other (`docs/boxd.md`).
+Linux and macOS captures are never compared with each other (`.agents/data/boxd.md`).

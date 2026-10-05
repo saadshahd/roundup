@@ -1,6 +1,6 @@
 # Architecture
 
-roundup is a Claude Code workbench: Terminals, Agents (Claude Code only), Todos, Pads. macOS only for the MVP. No accounts, sync or telemetry. Terms are defined in `/CONTEXT.md`.
+roundup is a Claude Code workbench: Terminals, Agents (Claude Code only), Todos, Pads. macOS only for the MVP. No accounts, sync or telemetry. Terms are defined in `/GLOSSARY.md`.
 
 ```
  ┌ Tauri UI (Solid) ┐  ┌ rup CLI ┐  ┌ Claude Code agents ┐  ┌ extensions ┐
@@ -67,4 +67,4 @@ Cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle Agents < 150 MB ex
 
 ## Boundaries
 
-Local only. The MVP targets macOS, so the shipped app, perf numbers and the macOS gate run locally and on GitHub macOS runners. boxd VMs are optional: unattended Builders and Linux or web-UI QA runs. See `docs/boxd.md` for what they can and cannot do.
+Local only. The MVP targets macOS, so the shipped app, perf numbers and the macOS gate run locally and on GitHub macOS runners. boxd VMs are optional: unattended Builders and Linux or web-UI QA runs. See `.agents/data/boxd.md` for what they can and cannot do.

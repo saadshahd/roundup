@@ -1,6 +1,6 @@
 # Agent awareness
 
-Design for `scenarios/awareness.md` (E1 to E7). Terms: Brief and Channel (`CONTEXT.md`). Series B (Messages, `docs/messages.md`) and the permission Cards (H) share the channel this uses; nothing here adds a second seam.
+Design for `scenarios/awareness.md` (E1 to E7). Terms: Brief and Channel (`GLOSSARY.md`). Series B (Messages, `docs/messages.md`) and the permission Cards (H) share the channel this uses; nothing here adds a second seam.
 
 ## What exists
 
@@ -26,7 +26,7 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## Naming
 
-"Team lead" is not a glossary term, and `CONTEXT.md` lists "lead" under Meta-agent's _Avoid_. The user decided: add no role word. An Agent's lead is the Agent at its parent **Meta-agent**, and when the parent is a plain Group the question goes to the user (E2's `ask`). One term is added, **Brief** (accepted by the user): the text roundup gives an Agent at start.
+"Team lead" is not a glossary term, and `GLOSSARY.md` lists "lead" under Meta-agent's _Avoid_. The user decided: add no role word. An Agent's lead is the Agent at its parent **Meta-agent**, and when the parent is a plain Group the question goes to the user (E2's `ask`). One term is added, **Brief** (accepted by the user): the text roundup gives an Agent at start.
 
 ## Contract change (rule 4, with the first Builder PR)
 
@@ -34,7 +34,7 @@ Not used: `CLAUDE.md`, because it is the user's file; screen scraping or typing 
 
 ## The gates
 
-- **P1.** An Agent can ask its Meta-agent (the Agent that serves the Thread about that Home, `CONTEXT.md`), a peer or the user, so asking the Meta-agent is how an Agent reaches the Thread. No Agent is reachable only through the Thread.
+- **P1.** An Agent can ask its Meta-agent (the Agent that serves the Thread about that Home, `GLOSSARY.md`), a peer or the user, so asking the Meta-agent is how an Agent reaches the Thread. No Agent is reachable only through the Thread.
 - **P3.** Nothing interrupts the user: `missing` changes no Kind and rings nothing, and a question to the user is B10's Inbox Message.
 - **P4.** Everything Claude-specific (the flag, the hook JSON) sits in `claude_code/`: `rup context` prints a string the Daemon built and parses nothing. `agent.context` and the tool are vendor-neutral, and `AgentAdapter` gains no seam.
 

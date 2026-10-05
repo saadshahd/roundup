@@ -54,3 +54,11 @@ The PR that builds R13 also amends, in the same PR, AGENTS.md rule 7 and the "Wh
 **R11 what the runner accepts.** `perf-keystroke` starts the App with `SHELL` set to a script that makes its tty raw, prints `ready` and runs `cat`, reads the `PERF` line from `terminal.output` on the Daemon's socket, and refuses (exit 2) a report that proves nothing: the webview's own error, a mean frame time above 25 ms (the window was covered or napped; the perf build's window is always on top and on every Space so that it is not), or more than 5% of keys dropped. Otherwise `keystroke_p95_ms` (median over `--runs`, default 3) is compared with `keystroke-budgets.json`: limit 16 ms.
 
 **R12 the window needs a yes.** `perf-keystroke` and `just perf-keystroke` open a window over the user's screen, kept on top for about 40 s per run, and type into it. Without `ROUNDUP_ALLOW_WINDOW=1` in the environment they print why and exit 2 before building, starting or opening anything. The variable is set only by someone the user asked to run it; no agent, Reviewer, CI job, boxd VM or `just check` sets it.
+
+## Work
+
+Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
+
+| Ids | Item | Owns | Keeps green | After |
+|---|---|---|---|---|
+| audit-perf | coverage audit: R1-R7 | `crates/perf/**` | existing tests | — |

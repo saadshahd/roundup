@@ -1,6 +1,6 @@
 # Spawn boundary
 
-Design for `scenarios/spawn-boundary.md` (F1 to F5). Terms: Meta-agent, Home, Worktree (`CONTEXT.md`). Series B (Messages) supplies the message half: `agent_message` is B12's `message_send`, not a second tool.
+Design for `scenarios/spawn-boundary.md` (F1 to F5). Terms: Meta-agent, Home, Worktree (`GLOSSARY.md`). Series B (Messages) supplies the message half: `agent_message` is B12's `message_send`, not a second tool.
 
 ## The question
 

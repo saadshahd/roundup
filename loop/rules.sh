@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
+# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready [--offline] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr> | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -45,12 +45,12 @@ size() {
   [ "$distinct" -le 1 ] || { echo "rule 3 size guide: touches $distinct module directories: $(printf '%s' "$modules" | sort -u | tr '\n' ' '); not a failure, the Reviewer notes it" >&2; }
 }
 
-# Avoid words from CONTEXT.md, lowercased; a two-word term joins with `_`.
+# Avoid words from GLOSSARY.md, lowercased; a two-word term joins with `_`.
 avoid_phrases() {
   local phrases
-  phrases=$(sed -n 's/.*_Avoid:_ \([^.;]*\).*/\1/p' CONTEXT.md | tr ',' '\n' |
+  phrases=$(sed -n 's/^_Avoid_: \([^.;]*\).*/\1/p' GLOSSARY.md | tr ',' '\n' |
     awk 'NF { print tolower(($2 != "" && $2 != "in") ? $1 "_" $2 : $1) }')
-  [ -n "$phrases" ] || { echo "rule 6: no _Avoid:_ words found in CONTEXT.md" >&2; return 1; }
+  [ -n "$phrases" ] || { echo "rule 6: no _Avoid_ words found in GLOSSARY.md" >&2; return 1; }
   echo "$phrases"
 }
 
@@ -62,7 +62,7 @@ public_names() {
   local dirs="" d
   for d in contracts apps ext; do [ ! -d "$d" ] || dirs="$dirs $d"; done
   {
-    find crates -path crates/agents/claude_code -prune -o -name '*.rs' -print0 |
+    find crates -path crates/agents/src/claude_code -prune -o -name '*.rs' -print0 |
       xargs -0 grep -hoE "$rust_pub|$rust_field" | tr -d ':' | awk '{ print $NF }'
     # shellcheck disable=SC2086 # $dirs is a word list on purpose
     if [ -n "$dirs" ]; then
@@ -129,70 +129,25 @@ delta() {
   return "$regressed"
 }
 
-# L54: does a PR's approval still hold after merges of main? Prints `carried <A> <H>` or names the commit and rule.
-carry_allowed() { case $1 in .work/queue.md | .work/queue/*) return 0 ;; *) return 1 ;; esac; }
-
-# Rule b for one file of merge $1 (parents $2 and $3): the result holds exactly the first parent's lines that main
-# did not remove, plus the lines main added, each at most as often as either side has it.
-carry_rule_b() {
-  local merge=$1 p1=$2 p2=$3 file=$4 base
-  base=$(git merge-base "$p1" "$p2")
-  python3 - "$merge" "$p1" "$p2" "$base" "$file" <<'PY'
-from collections import Counter
-import subprocess
-import sys
-
-merge, first_ref, main_ref, base_ref, path = sys.argv[1:]
-
-def lines(ref):
-    result = subprocess.run(['git', 'show', f'{ref}:{path}'], capture_output=True)
-    if result.returncode:
-        return None
-    content = result.stdout.split(b'\n')
-    if content[-1] == b'':
-        content.pop()
-    return Counter(content)
-
-result = lines(merge)
-if result is None:
-    sys.exit(f'carry: {merge}: rule b: {path} conflicted and is gone from the merge (one side deleted it)')
-base = lines(base_ref) or Counter()
-first = lines(first_ref) or Counter()
-main = lines(main_ref) or Counter()
-keep = (set(first) - (set(base) - set(main))) | (set(main) - set(base))
-for line, count in result.items():
-    if line not in keep:
-        sys.exit(f'carry: {merge}: rule b: {path} holds a line neither side may keep: {line!r}')
-    cap = 1 if not base[line] and first[line] and main[line] else max(first[line], main[line])
-    if count > cap:
-        sys.exit(f'carry: {merge}: rule b: {path} repeats a line: {line!r}')
-for line in keep - set(result):
-    sys.exit(f'carry: {merge}: rule b: {path} lost a line a side keeps: {line!r}')
-PY
-}
-
-carry_one() {
+# L54: does a PR's approval still hold after conflict-free merges of main? Prints `carried <A> <H>` or names the commit and rule.
+# A clean merge of main: two parents, the second on main, no conflict, and nothing beyond the trial merge.
+# It adds no authored content, so it needs no Author-Agent in either lane (L46) and carries an approval (L54).
+clean_merge() {
   local c=$1 main_ref=$2 p1 p2 extra trial conflicted f
   read -r _ p1 p2 extra <<<"$(git rev-list --parents -n 1 "$c")"
   { [ -n "${p2:-}" ] && [ -z "${extra:-}" ]; } || { echo "carry: $c: not a merge of main" >&2; return 1; }
   git merge-base --is-ancestor "$p2" "$main_ref" || { echo "carry: $c: not a merge of main (second parent is not on $main_ref)" >&2; return 1; }
-  git log -1 --format=%B "$c" | grep -q '^Author-Agent: ' || { echo "carry: $c: no Author-Agent trailer" >&2; return 1; }
   local mt_rc=0
   trial=$(git merge-tree --write-tree --name-only --no-messages "$p1" "$p2" 2>/dev/null) || mt_rc=$?
   { [ "$mt_rc" -le 1 ] && [ -n "$trial" ]; } || { echo "carry: $c: merge-tree failed (exit $mt_rc)" >&2; return 1; }
   conflicted=$(sed 1d <<<"$trial" | sed '/^$/d')
   trial=$(head -n 1 <<<"$trial")
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    carry_allowed "$f" || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
-    carry_rule_b "$c" "$p1" "$p2" "$f" || return 1
-  done <<<"$conflicted"
+  f=$(head -n 1 <<<"$conflicted")
+  [ -z "$f" ] || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
   local differs
   differs=$(git diff --name-only "$trial" "$c") || { echo "carry: $c: could not compare with the trial merge" >&2; return 1; }
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    grep -qxF -- "$f" <<<"$conflicted" || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
-  done <<<"$differs"
+  f=$(head -n 1 <<<"$differs")
+  [ -z "$f" ] || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
 }
 
 carry() {
@@ -205,7 +160,7 @@ carry() {
     chain=("$c" ${chain[@]+"${chain[@]}"})
   done
   [ -n "${approval:-}" ] || { echo "carry: no approval commit on $head" >&2; return 1; }
-  for c in "${chain[@]+"${chain[@]}"}"; do carry_one "$c" "$main_ref" || return 1; done
+  for c in "${chain[@]+"${chain[@]}"}"; do clean_merge "$c" "$main_ref" || return 1; done
   echo "carried $approval $head"
 }
 
@@ -218,9 +173,9 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from pathlib import PurePosixPath
-from urllib.parse import unquote
 
 command, number = sys.argv[1:]
 if command != 'trailers' and not re.fullmatch(r'[0-9]+', number):
@@ -295,6 +250,22 @@ def trailers(commit, key):
     require(all(re.fullmatch(r'[A-Za-z0-9_.-]+', agent) for agent in ids), f'invalid {key} on {commit}')
     return set(ids)
 
+COPILOT = 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>'
+
+# L37: a Copilot Autofix commit accepted on GitHub is authored by `copilot`: it carries Copilot's trailer, GitHub
+# committed it, and its signature verifies against GitHub's web-flow key in loop/web-flow.asc and no other key.
+def copilot(commit):
+    message = git('show', '-s', '--format=%B', commit)
+    if COPILOT not in message.splitlines() or git('show', '-s', '--format=%ce', commit) != 'noreply@github.com':
+        return False
+    with tempfile.TemporaryDirectory() as home:
+        env = {**os.environ, 'GNUPGHOME': home}
+        imported = subprocess.run(['gpg', '--batch', '--quiet', '--import', 'loop/web-flow.asc'], env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=limit)
+        return imported.returncode == 0 and subprocess.run(
+            ['git', '-c', 'gpg.program=gpg', '-c', 'gpg.ssh.allowedSignersFile=/dev/null', 'verify-commit', commit], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=limit).returncode == 0
+
 def history(base, head):
     commits = git('rev-list', '--reverse', base+'..'+head).splitlines()
     require(commits, 'no PR commits')
@@ -302,20 +273,29 @@ def history(base, head):
     for commit in commits:
         parents = git('rev-list', '--parents', '-n', '1', commit).split()[1:]
         author, reviewer = trailers(commit, 'Author-Agent'), trailers(commit, 'Reviewed-by-Agent')
+        if not author and not reviewer and len(parents) == 1 and copilot(commit):
+            author = {'copilot'}
         authors.update(author)
         records.append((commit, parents, author, reviewer))
     require(authors, 'no Author-Agent trailers')
     return authors, records
 
+def clean_merge(commit, base):
+    try:
+        return subprocess.run(['bash', 'loop/rules.sh', 'clean-merge', commit, base], stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=limit).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
 def trailer_gate(records, authors, lane, head, base):
     for commit, parents, author, reviewer in records:
         if len(parents) != 1:
-            require(not reviewer and (lane == 'post' or author),
+            require(not reviewer and (lane == 'post' or author or clean_merge(commit, base)),
                     f'trailers: merge {commit} has an invalid trailer')
         elif lane == 'post':
             require(author and not reviewer, f'trailers: {commit} needs Author-Agent only')
         elif reviewer:
-            require(not author and not (reviewer & authors) and
+            require(not author and not (reviewer & authors) and 'copilot' not in reviewer and
                     git('rev-parse', commit+'^{tree}') == git('rev-parse', parents[0]+'^{tree}'),
                     f'trailers: {commit} is not a clean independent approval')
         else:
@@ -362,24 +342,23 @@ def comments(authors, head, base, records):
         body = item['body']
         verdict = re.match(r'VERDICT: (approve|reject)\b', body)
         ids = re.findall(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
-        if verdict and len(ids) == 1 and ids[0] not in authors:
+        if verdict and len(ids) == 1 and ids[0] not in authors | {'copilot'}:
             explicit = re.findall(r'^(?:Reviewed-head|Head): ([0-9a-f]{40})\s*$', body, re.M)
             named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
             if len(set(named)) == 1:
-                events.append((verdict[1], named[0] if named[0] in current_heads else None,
-                               'Visual: unchanged' in body.splitlines()))
+                events.append((verdict[1], named[0] if named[0] in current_heads else None))
             elif named and verdict[1] == 'reject':
                 target = next((candidate for candidate in reversed(ordered_heads) if candidate in named), None)
-                events.append(('reject', target, False))
+                events.append(('reject', target))
         pick = re.match(r'ARCHITECT: (split|amend|retire)\b', body)
         ids = re.findall(r'^Architect: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if pick and len(ids) == 1 and ids[0] in architects - authors:
-            events.append((pick[1], None, False))
+            events.append((pick[1], None))
     return events
 
 def rounds(events):
     count = 0
-    for event, _, _ in events:
+    for event, _ in events:
         require(event != 'retire', 'retired')
         if event in ('split', 'amend'):
             count = 0
@@ -406,17 +385,16 @@ def lane_of(files, paths, base, head):
     start = git('merge-base', base, head)
     for path in paths:
         parts = PurePosixPath(path).parts
-        queue = path == '.work/queue.md' or bool(re.fullmatch(r'\.work/queue/[^/]+\.md', path))
         if not parts or any(part in ('AGENTS.md', 'CLAUDE.md') for part in parts):
             return 'block'
-        if any(part.startswith('.') for part in (parts[1:] if queue else parts)):
+        if any(part.startswith('.') for part in parts):
             return 'block'
         scenario = bool(re.fullmatch(r'scenarios/[^/]+\.md', path))
-        if not (queue or path.startswith('docs/') or scenario):
+        if not (path.startswith('docs/') or scenario):
             return 'block'
         if path in {'docs/development-loop.md', 'docs/boxd.md', 'docs/squads.md', 'docs/design-system.md'} or path.startswith('docs/adr/'):
             return 'block'
-        if scenario and parts[-1] in {'loop.md', 'daemon.md', 'rpc.md', 'control.md', 'agents.md', 'app.md', 'mcp.md'}:
+        if scenario and (parts[-1].startswith('loop') or parts[-1] in {'daemon.md', 'rpc.md', 'control.md', 'agents.md', 'app.md', 'mcp.md'}):
             return 'block'
         old, new = tree_entry(start, path), tree_entry(head, path)
         if any(entry and entry[0] not in ('100644', '100755') for entry in (old, new)) or (old and new and old[0] != new[0]):
@@ -434,17 +412,6 @@ def lane_of(files, paths, base, head):
             folded = unicodedata.normalize('NFKC', '\n'.join(lines)).lower()
             if re.search(r'secret|token|credential|password|oauth|identity|impersonat|daemon|rupd|api key|auth|author-agent|reviewed-by|verdict|architect|approve|merger|rpc|seam|(?<!\w)(card|loop|key)(?!\w)', folded):
                 return 'block'
-        if path == '.work/queue.md':
-            for ref in (start, head):
-                entry = tree_entry(ref, path)
-                if not entry:
-                    return 'block'
-            old_text, new_text = (git('show', ref+':'+path) for ref in (start, head))
-            heading = '## Swarm protocol'
-            if heading not in old_text.splitlines() or heading not in new_text.splitlines():
-                return 'block'
-            if old_text[old_text.index(heading):] != new_text[new_text.index(heading):]:
-                return 'block'
     return 'post'
 
 def section(body, title):
@@ -456,10 +423,10 @@ def fences(text):
     return re.findall(r'^```[^\n]*\n(.*?)^```[ \t]*$', text, re.M | re.S)
 
 def latest_tree_verdict(events, head):
-    for verdict, reviewed, unchanged in reversed(events):
+    for verdict, reviewed in reversed(events):
         if reviewed and ancestor(reviewed, head) and git('rev-parse', reviewed+'^{tree}') == git('rev-parse', head+'^{tree}'):
-            return verdict, unchanged
-    return None, False
+            return verdict
+    return None
 
 def proof(pr, paths, head, base, events=None):
     body = pr['body']
@@ -479,7 +446,6 @@ def proof(pr, paths, head, base, events=None):
     require(ids, 'proof: no scenario ids')
     scopes = re.findall(r'^Proof scope: (.*)$', body, re.M)
     require(not scopes or scopes == ['specification'], 'proof: invalid or repeated Proof scope')
-    visible = any(path.startswith(('apps/desktop/src/', 'crates/desktop/')) or path in ('docs/motion.md', 'docs/design-system.md') for path in paths)
     texts = {}
     for path in git('ls-tree', '-r', '--name-only', head, '--', 'scenarios').splitlines():
         if path.endswith('.md'):
@@ -488,7 +454,6 @@ def proof(pr, paths, head, base, events=None):
                 if match[1] in ids:
                     texts[match[1]] = match[0]
     require(ids <= texts.keys(), 'proof: unknown scenario ids: '+', '.join(sorted(ids - texts.keys())))
-    visible |= any(re.search(r'screenshot|motion', text, re.I) for id_, text in texts.items() if not id_.startswith('L'))
     output = '\n'.join(fences(evidence))
     require(head in evidence, 'proof: test output must name the head SHA')
     if scopes:
@@ -515,55 +480,30 @@ def proof(pr, paths, head, base, events=None):
         if events is None:
             authors, records = history(base, head)
             events = comments(authors, head, base, records)
-        require(latest_tree_verdict(events, head)[0] == 'approve',
+        require(latest_tree_verdict(events, head) == 'approve',
                 'proof: specification needs an independent approval on this tree')
         return
     for id_ in sorted(ids):
         require(re.search(r'^.*\b'+id_+r'(?:\b|_).*\b(?:ok|passed)\b|^.*\b(?:ok|passed)\b.*\b'+id_+r'(?:\b|_)', output, re.M | re.I), 'proof: missing test output for '+id_)
-    if not visible:
-        return
-    if events is None:
-        authors, records = history(base, head)
-        events = comments(authors, head, base, records)
-    if latest_tree_verdict(events, head) == ('approve', True):
-        return
-    require(re.search(r'^Shows: .+', evidence, re.M), 'proof: missing Shows:')
-    captions = re.sub(r'^```[^\n]*\n.*?^```[ \t]*$', '', evidence, flags=re.M | re.S)
-    require(not re.search(r'/Users/|/home/|secret|token|credential|password|oauth', captions, re.I), 'proof: private path or secret word in caption')
-    repository = one(repo)['full_name']
-    require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository), 'proof: invalid repository')
-    branch = f'proof/pr-{number}'
-    tree = one(f'{repo}/git/trees/{branch}?recursive=1')
-    require(tree.get('truncated') is False and isinstance(tree.get('tree'), list), 'proof: incomplete branch tree')
-    blobs = {}
-    for item in tree['tree']:
-        require(item['path'] == 'proof' or item['path'].startswith('proof/'), 'proof: file outside proof/')
-        if item['type'] == 'tree':
-            continue
-        require(item['type'] == 'blob' and item['mode'] == '100644' and isinstance(item['size'], int), 'proof: invalid file')
-        require(PurePosixPath(item['path']).suffix in ('.png', '.webp', '.mp4', '.webm'), 'proof: unsupported file')
-        require(0 < item['size'] <= 5*1024*1024, 'proof: file exceeds 5 MiB or is empty')
-        blobs[item['path']] = item
-    require(sum(item['size'] for item in blobs.values()) <= 20*1024*1024, 'proof: branch exceeds 20 MiB')
-    for id_ in sorted(ids):
-        for when in ('before', 'after'):
-            found = False
-            for line in evidence.splitlines():
-                if not re.search(r'\b'+id_+r'\b', line) or not re.search(r'\b'+when+r'\b', line, re.I):
-                    continue
-                link = re.search(r'https://github\.com/'+re.escape(repository)+r'/(?:blob|raw)/'+re.escape(branch)+r'/([^\s)]+)\)\s+(\d+)×(\d+)', line)
-                if link and unquote(link[1]) in blobs:
-                    width, height = link.group(2, 3)
-                    require(re.search(width+r'\s*(?:×|by|x)\s*'+height, texts[id_]), 'proof: window size not in '+id_)
-                    found = True
-            require(found, f'proof: missing {id_} {when} image/video and window size')
+    # L76: Percy renders apps/desktop/src in Chromium; WKWebView on macOS stays a laptop check.
+    if any(path.startswith('apps/desktop/src/') for path in paths):
+        checks(head, ('percy',))
+        # The project path (e.g. `org/web/roundup`) comes from the repository variable, so a link to another project fails.
+        project = os.environ.get('PERCY_PROJECT', '').strip().strip('/')
+        require(project, 'proof: PERCY_PROJECT is not set; merge-ready reads it from the repository variable')
+        require(re.search(r'^Percy: https://percy\.io/'+re.escape(project)+r'/builds/\d+/?\s*$', evidence, re.M),
+                f'proof: missing Percy: build link to percy.io/{project}')
+        require(not re.search(r'\]\(https?://\S+\.(?:png|jpe?g|gif|webp|mp4|webm)\)', evidence, re.I),
+                'proof: an image is not visual proof; link the Percy build')
+    if any(path.startswith('crates/desktop/') for path in paths):
+        require(re.search(r'^macOS: \S.+$', evidence, re.M), 'proof: missing macOS: laptop check')
 
-def checks(head):
+def checks(head, names=('check', 'rules')):
     pages = gh(f'{repo}/commits/{head}/check-runs?per_page=100&filter=latest')
     require(all(isinstance(page, dict) and isinstance(page.get('check_runs'), list) for page in pages), 'invalid check runs')
     runs = [run for page in pages for run in page['check_runs']]
     require(all(isinstance(run, dict) for run in runs), 'invalid check run')
-    for name in ('check', 'rules'):
+    for name in names:
         matches = [run for run in runs if run.get('name') == name]
         require(matches and all(run.get('head_sha') == head and run.get('status') == 'completed'
                 and run.get('conclusion') == 'success' and run.get('app', {}).get('slug') == 'github-actions'
@@ -609,7 +549,7 @@ try:
             gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
             gate(lambda: rounds(events))
             rejected = set()
-            for event, named_head, _ in events:
+            for event, named_head in events:
                 if named_head and event == 'reject':
                     rejected.add(named_head)
                 elif named_head and event == 'approve':
@@ -633,6 +573,62 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
+# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, in-flight, unspecified, waiting or ready.
+ready() {
+  python3 - "$@" <<'PY'
+import glob, json, os, re, subprocess, sys
+files = sorted(glob.glob('scenarios/*.md'))
+heads = {m for f in files for m in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', open(f).read(), re.M)}
+def ids(text):
+    out = []
+    for a, b in re.findall(r'\b([A-Z][0-9]+)(?:\s*(?:–|-|to)\s*[A-Z]?([0-9]+))?\b', text):
+        if b:
+            out += [a[0] + str(n) for n in range(int(a[1:]), int(b) + 1)]
+        else:
+            out.append(a)
+    return out
+def tested(i):
+    if i[0] == 'L':
+        args = ['git', 'grep', '-qE', r'\b' + i + r'\b', '--', 'loop/*.test.sh']
+    else:
+        args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
+    return subprocess.run(args).returncode == 0
+prs = []
+if sys.argv[1:] != ['--offline']:
+    try:
+        result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,title'],
+                                text=True, stdout=subprocess.PIPE, timeout=int(os.environ.get('BOXD_GH_TIMEOUT', '20')), check=True)
+        prs = [(pr['number'], set(ids(pr['title']))) for pr in json.loads(result.stdout)]
+    except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError) as error:
+        print(f'gh: pr list: {error}', file=sys.stderr)
+        sys.exit(4)
+for f in files:
+    lines = open(f).read().split('\n')
+    if '## Work' not in lines:
+        continue
+    rows = [l for l in lines[lines.index('## Work'):] if l.startswith('|')]
+    header = [c.strip() for c in rows[0].strip('|').split('|')] if rows else []
+    if header != ['Ids', 'Item', 'Owns', 'Keeps green', 'After']:
+        print(f'{f}: Work table needs Ids, Item, Owns, Keeps green, After', file=sys.stderr)
+        sys.exit(2)
+    for row in rows[2:]:
+        cells = [c.strip() for c in row.strip().strip('|').split('|')]
+        own = ids(cells[0])
+        open_prs = ' '.join(f'#{n}' for n, named in prs if named & set(own))
+        if own and all(tested(i) for i in own):
+            state = 'done'
+        elif open_prs:
+            state = 'in-flight'
+        elif not own or any(i not in heads for i in own):
+            state = 'unspecified'
+        elif any(not tested(i) for i in ids(cells[4])):
+            state = 'waiting'
+        else:
+            state = 'ready'
+        print(state, cells[0], f, *([open_prs] if state == 'in-flight' else []))
+PY
+}
+
 case "${1:-}" in
   base | class | rounds | merge-ready | proof | ci-trailers)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
@@ -640,7 +636,12 @@ case "${1:-}" in
   size) size ;;
   trailers) pr_rule trailers "$base" ;;
   vocab) vocab ;;
+  ready)
+    [[ -z ${2:-} || $2 == --offline ]] || { echo "usage: loop/rules.sh ready [--offline]" >&2; exit 2; }
+    ready "${@:2}" ;;
   delta) delta "${2:-}" "${3:-}" ;;
   carry) carry "${2:-}" "${3:-origin/main}" ;;
+  clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
+    clean_merge "$2" "${3:-origin/main}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;
 esac

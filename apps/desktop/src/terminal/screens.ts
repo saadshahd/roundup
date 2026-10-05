@@ -12,7 +12,8 @@ export type Screens = {
   /** Opens a Terminal's emulator in the pane and records the fitted size for later snapshot recovery. */
   show(id: string, host: HTMLElement, focus?: boolean): Size;
   /** Tells the Daemon the size of the Terminal's pane. A Terminal that has exited, or a Daemon that has, takes no resize. */
-  resize(id: string, size: Size): void;
+  resize(id: string, size: Size, changedOnly?: boolean): void;
+  setFontSize(size: number): void;
   /**
    * Whether the Terminal's view sits at its newest line; false once the user has scrolled up. Creates the
    * Terminal's emulator if none exists yet (true for that first read), so a caller never needs `emulatorFor`
@@ -82,8 +83,10 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     });
   };
 
-  const resize = (id: string, size: Size): void => {
+  const resize = (id: string, size: Size, changedOnly = false): void => {
     const holder = holders.get(id);
+
+    if (changedOnly && holder?.shownSize?.cols === size.cols && holder.shownSize.rows === size.rows) return;
 
     if (holder?.shownSize) holder.shownSize = size;
 
@@ -211,6 +214,7 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     if (known) return known;
 
     const emulator = createEmulator(id);
+
     const [atBottom, setAtBottom] = createSignal(true);
     // Tauri may run two `rpc` calls out of order, so at most one write is in flight; what is typed meanwhile goes as one write.
     let typed: number[] = [];
@@ -329,6 +333,9 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     emulatorFor,
     show,
     resize,
+    setFontSize: (size) => {
+      for (const holder of holders.values()) holder.emulator.setFontSize(size);
+    },
     isAtBottom: (id) => holderFor(id).atBottom(),
     returnToBottom: (id) => holderFor(id).returnToBottom(),
     copy,
