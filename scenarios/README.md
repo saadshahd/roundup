@@ -7,7 +7,7 @@ A scenario is the spec for a unit of work: given / when / then, in `GLOSSARY.md`
 - Methods and events are the ones in `crates/contracts`; errors use the codes in `rpc::code`.
 - Every write or read of a Todo or Pad is a Touch: `ctx.touch(verb, "todo:<id>" | "pad:<name>")`.
 - Tests run without Claude, a network or a display; anything needing a real `claude` replays `spikes/hooks-state/*.jsonl`.
-- Each file ends in a `## Work` table (`Ids | Item | Owns | Keeps green | After`); `loop/rules.sh ready` (L34) prints each row as `done`, `unspecified`, `waiting` or `ready`, and a done row is deleted. Who writes which table: `docs/squads.md`.
+- Each file ends in a `## Work` table (`Ids | Item | Owns | Keeps green | After`); `loop/rules.sh ready` (L34) prints each row as `done`, `in-flight`, `unspecified`, `waiting` or `ready`, and a done row is deleted. Who writes which table: `docs/squads.md`.
 
 ## Deferred past the MVP (no scenario yet)
 
