@@ -118,7 +118,7 @@ async fn a7_a_start_door_whose_claude_is_missing_leaves_no_settings_file() {
 }
 
 #[tokio::test]
-async fn a7_only_a_plain_room_can_be_start_doord() {
+async fn a7_only_a_stopped_room_can_start_its_door() {
     let f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
     f.start_door(&team).await.unwrap();
@@ -209,7 +209,7 @@ async fn a7_stopping_a_door_that_is_still_starting_is_a_conflict_and_moves_nothi
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a7_a_room_being_start_doord_reads_working_starting_not_done() {
+async fn a7_a_room_whose_door_is_starting_reads_working_starting_not_done() {
     let f = std::sync::Arc::new(Fixture::running("sleep 30"));
     let team = f.room("team", None).await;
     let config = hold_starts(&f);

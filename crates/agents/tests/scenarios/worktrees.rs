@@ -402,7 +402,7 @@ async fn g2_failed_call_emits_no_event() {
 }
 
 #[tokio::test]
-async fn g2_failed_start_door_leaves_a_plain_group() {
+async fn g2_failed_start_door_leaves_a_stopped_room() {
     let wrapper = tempfile::tempdir().unwrap();
     let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
@@ -535,7 +535,7 @@ async fn g2_terminal_gets_no_worktree() {
 }
 
 #[tokio::test]
-async fn g2_start_failure_of_start_door_leaves_a_plain_group() {
+async fn g2_start_failure_of_start_door_leaves_a_stopped_room() {
     let mut f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
     let room = f.room("team", None).await;

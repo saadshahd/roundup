@@ -986,7 +986,7 @@ async fn b1_held_for_takeover_messages_count_toward_the_bound_of_32() {
 }
 
 #[tokio::test]
-async fn b6_a_meta_agent_can_be_taken_over() {
+async fn b6_a_door_can_be_taken_over() {
     let dir = tempfile::tempdir().unwrap();
     let working = Status {
         kind: Kind::Working,

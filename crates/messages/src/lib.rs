@@ -997,7 +997,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn b1_a_meta_agent_a_promoted_group_can_receive() {
+    async fn b1_a_door_can_receive() {
         let dir = tempfile::tempdir().unwrap();
         let meta = node(
             "m",
