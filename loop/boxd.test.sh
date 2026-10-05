@@ -36,6 +36,7 @@ else cat >/dev/null 2>&1 || true; fi
 case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
+    [ "${STUB_MODE:-}" != list-fails ] || exit 1
     if [ -n "${STUB_BUSY_LISTS:-}" ] && { echo x >>"$STUB_DIR/listcalls"; [ "$(wc -l <"$STUB_DIR/listcalls")" -le "$STUB_BUSY_LISTS" ]; }; then jq -nc --argjson n "${BOXD_MAX_VMS:-12}" '[range($n) | {name: "ru-other-\(.)"}]'
     elif [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
     elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'
@@ -775,6 +776,11 @@ expect_true "L13 status shows agent-running" grep -qx 'ru-builder-1 agent-runnin
 expect_true "L13 status shows idle" grep -qx 'ru-reviewer-2 idle' out
 expect_true "L13 status shows unreachable" grep -qx 'ru-x8-1 unreachable' out
 expect_true "L13 status lists every ru- VM" test "$(wc -l <out | tr -d ' ')" = 8
+new_repo; got=0; STUB_MODE=list-fails loop/boxd.sh status >out 2>err || got=$?
+expect_true "L13 a failed machine list exits 1 naming it" bash -c "test $got = 1 && grep -q 'boxd machine list failed' err"
+new_repo; nobox=$(tr : '\n' <<<"$PATH" | while read -r p; do [ -x "$p/boxd" ] || printf '%s:' "$p"; done)
+got=0; PATH=${nobox%:} loop/boxd.sh status >out 2>err || got=$?
+expect_true "L13 a missing boxd exits 1 naming it" bash -c "test $got = 1 && grep -q 'boxd machine list failed' err"
 new_repo; STUB_MODE=codex-running loop/boxd.sh status >out 2>err
 expect_true "L64 status reports a running Codex Builder" grep -qx 'ru-codex-1 agent-running' out
 

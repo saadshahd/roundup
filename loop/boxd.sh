@@ -524,12 +524,15 @@ running_children() {
   echo "$count"
 }
 
+# A failed `boxd machine list`, or no boxd at all, exits 1: an empty list must mean no VMs, never an unreadable one.
 status() {
-  local vm state
+  local vm state vms
+  vms=$(boxd machine list --json </dev/null | jq -r '.[] | select(.name | startswith("ru-")) | .name') || { echo "boxd.sh: status: boxd machine list failed" >&2; exit 1; }
   while read -r vm; do
+    [ -n "$vm" ] || continue
     state=$(boxd machine exec "$vm" --timeout 10 -- 'if pgrep -x claude >/dev/null || pgrep -x codex >/dev/null; then echo agent-running; else echo idle; fi' </dev/null 2>/dev/null) || state=unreachable
     echo "$vm $state"
-  done < <(boxd machine list --json </dev/null | jq -r '.[] | select(.name | startswith("ru-")) | .name')
+  done <<<"$vms"
 }
 
 # `all` is every VM named exactly ru-builder-<n> or ru-reviewer-<n>, which is what `swarm` creates, including another swarm's.

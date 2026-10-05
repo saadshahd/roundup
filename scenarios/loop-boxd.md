@@ -27,7 +27,7 @@ Module: `loop/boxd.sh`. Each id's cases are its `L<n>` tests in `loop/boxd.test.
 
 **L12 swarm.** `swarm build|review <prompt>…` runs one VM per prompt within the cap, prints one result line per VM, and cleans up on a signal.
 
-**L13 status.** `status` prints each `ru-` VM as `agent-running`, `idle` or `unreachable`.
+**L13 status.** `status` prints each `ru-` VM as `agent-running`, `idle` or `unreachable`; a missing boxd or a failed `boxd machine list` exits 1 naming it.
 
 **L14 kill.** `kill <name>` removes `ru-<name>` and its `-r<digits>` twins; `kill all` removes only swarm VMs.
 
