@@ -130,13 +130,17 @@ afterAll(async () => {
   if (child) {
     const exited = new Promise((resolve) => child.once("exit", resolve));
 
-    child.kill("SIGKILL");
+    // Browser.close lets Chrome stop its helper processes, which still write to the profile after a SIGKILL of the parent; the kill is the fallback.
+    const fallback = setTimeout(() => child.kill("SIGKILL"), 5_000);
+
+    await send("Browser.close").catch(() => child.kill("SIGKILL"));
     await exited;
+    clearTimeout(fallback);
   }
 
   await server?.close();
 
-  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 type Metrics = { top: number; height: number; lines: number }[];
