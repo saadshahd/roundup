@@ -18,7 +18,7 @@ One `kind:` (`feature fix docs scenario prompt loop spike`), one or more `area:`
 
 ## Commits and branches
 
-- Every authored commit carries `Author-Agent: <id>` (`human-saad` for the user's own); a clean merge of `main` needs none (L54).
+- Every authored commit carries `Author-Agent: <id>` (`human-saad` for the user's own); a clean merge of `main` needs none (L54), and a Copilot Autofix accepted on GitHub is authored by `copilot` (L37).
 - Rows merge in their `After` order. A stacked PR (its scenario says "after X" or "may stack") branches from its base, touches no file the base touches, and merges after it.
 - Behind `main`: merge `origin/main` in (a stacked branch merges its base first), `just check`, push, ask for a new approval; never rebase a branch with an approval or a review in flight.
 - Lockfile conflict: take main's file and regenerate (`git checkout origin/main -- Cargo.lock && cargo update -w`; `git checkout origin/main -- pnpm-lock.yaml && pnpm install`), committed with the merge.

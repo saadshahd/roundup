@@ -323,6 +323,46 @@ GH
 gate_set() { jq "$@" "$GATE_DATA" >"$GATE_DATA.tmp"; mv "$GATE_DATA.tmp" "$GATE_DATA"; }
 gate() { loop/rules.sh "$@"; }
 
+# L37: a GitHub-signed Copilot Autofix commit is authored by `copilot`. A throwaway key stands in for web-flow.
+copilot_repo() {
+  gate_repo
+  git reset -q --hard main
+  GNUPGHOME=$(mktemp -d)
+  export GNUPGHOME
+  gpg --batch -q --passphrase '' --quick-gen-key 'GitHub <noreply@github.com>' ed25519 sign never 2>/dev/null
+  gpg --batch -q --passphrase '' --quick-gen-key 'Other <other@example.com>' ed25519 sign never 2>/dev/null
+  gpg --armor --export noreply@github.com >loop/web-flow.asc
+  commit web-flow
+  git branch -f main HEAD
+  echo changed >crates/change.rs
+  commit change 'Author-Agent: builder'
+}
+copilot_fix() {
+  local key=${1-noreply@github.com} committer=${2:-noreply@github.com} trailer=${3-Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>}
+  local sign=--no-gpg-sign
+  [ -z "$key" ] || sign=-S
+  echo fix >>crates/change.rs
+  git add -A
+  GIT_COMMITTER_NAME=GitHub GIT_COMMITTER_EMAIL=$committer git -c gpg.format=openpgp -c user.signingkey="$key" commit -q "$sign" \
+    -m 'Potential fix for pull request finding' ${trailer:+-m "$trailer"}
+  git commit -q --allow-empty -m approval -m "Reviewed-by-Agent: ${4:-reviewer}"
+}
+copilot_repo; copilot_fix
+expect_exit 0 'L37 a GitHub-signed Copilot Autofix commit needs no Author-Agent in CI' gate ci-trailers 12
+expect_output "ready $(git rev-parse HEAD)" 'L37 merge-ready accepts a Copilot Autofix commit' gate merge-ready 12
+expect_exit 0 'L37 local trailers agree on a review checkout' rules trailers
+copilot_repo; copilot_fix ''
+expect_exit 1 'L37 an unsigned commit claiming Copilot fails' gate ci-trailers 12
+copilot_repo; copilot_fix other@example.com
+expect_exit 1 'L37 a Copilot claim signed by another key fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com noreply@github.com ''
+expect_exit 1 'L37 a GitHub-signed commit without the Copilot Autofix trailer fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com someone@example.com
+expect_exit 1 'L37 a Copilot claim GitHub did not commit fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com noreply@github.com 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>' copilot
+expect_exit 1 'L37 copilot cannot approve its own fix' gate ci-trailers 12
+unset GNUPGHOME
+
 gate_repo
 expect_exit 0 'L33 base main passes' gate base 12
 gate_set '.base="architect/x"'

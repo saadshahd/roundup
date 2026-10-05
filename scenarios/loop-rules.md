@@ -11,7 +11,7 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 
 **L1 size.** `size` prints an advisory and still exits 0 when a PR spans more than one module directory or about 2000 changed lines, lockfiles and `generated/` excluded.
 
-**L2 approval.** `trailers` passes when every commit but a clean merge of `main` carries `Author-Agent` and the newest is an empty `Reviewed-by-Agent` commit whose id differs from every author.
+**L2 approval.** `trailers` passes when every commit but a clean merge of `main` (L54) or a Copilot Autofix commit (L37) carries `Author-Agent` and the newest is an empty `Reviewed-by-Agent` commit whose id differs from every author.
 
 **L3 vocabulary.** `vocab` fails naming the word when a public Rust item, TS export or `contracts/` name holds a `GLOSSARY.md` _Avoid_ word, except under `crates/agents/claude_code/`.
 
@@ -20,6 +20,8 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 **L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as the first that holds of `done` (every id has a test), `in-flight #<pr>` (an open PR's title names an id; gh missing, failing or slower than `BOXD_GH_TIMEOUT` exits 4, and `--offline` skips gh), `unspecified` (an id has no heading), `waiting` (an `After` id is not done) or `ready`.
 
 **L36 Percy build.** On every PR touching `apps/desktop/src/`, and on each such push to `main` as Percy's baseline, the `visual` workflow's `percy` job serves `just harness` and runs `percy snapshot` on each seed of `.agents/data/harness.md` at 1280 px wide in Chrome only; it fails without `PERCY_TOKEN`, when the harness never answers, when Percy fails, or when its output has no build link, and writes that link to the job summary.
+
+**L37 Copilot attribution.** A commit with no `Author-Agent` is authored by `copilot` when it has the Copilot Autofix `Co-authored-by` trailer, GitHub committed it, and its signature verifies against GitHub's web-flow key in `loop/web-flow.asc` and no other key; anything short of all three still needs `Author-Agent`, and `copilot` can never be the approver.
 
 **L42 delta.** `delta <base-dir> <head-dir>` prints `<step> <id> fixed|regressed|still-failing|still-passing` per check and fails on any `regressed`; a check missing on one side is exit 2, never a pass.
 

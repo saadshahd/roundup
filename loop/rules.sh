@@ -173,6 +173,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from pathlib import PurePosixPath
 
@@ -249,6 +250,22 @@ def trailers(commit, key):
     require(all(re.fullmatch(r'[A-Za-z0-9_.-]+', agent) for agent in ids), f'invalid {key} on {commit}')
     return set(ids)
 
+COPILOT = 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>'
+
+# L37: a Copilot Autofix commit accepted on GitHub is authored by `copilot`: it carries Copilot's trailer, GitHub
+# committed it, and its signature verifies against GitHub's web-flow key in loop/web-flow.asc and no other key.
+def copilot(commit):
+    message = git('show', '-s', '--format=%B', commit)
+    if COPILOT not in message.splitlines() or git('show', '-s', '--format=%ce', commit) != 'noreply@github.com':
+        return False
+    with tempfile.TemporaryDirectory() as home:
+        env = {**os.environ, 'GNUPGHOME': home}
+        imported = subprocess.run(['gpg', '--batch', '--quiet', '--import', 'loop/web-flow.asc'], env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=limit)
+        return imported.returncode == 0 and subprocess.run(
+            ['git', '-c', 'gpg.program=gpg', 'verify-commit', commit], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=limit).returncode == 0
+
 def history(base, head):
     commits = git('rev-list', '--reverse', base+'..'+head).splitlines()
     require(commits, 'no PR commits')
@@ -256,6 +273,8 @@ def history(base, head):
     for commit in commits:
         parents = git('rev-list', '--parents', '-n', '1', commit).split()[1:]
         author, reviewer = trailers(commit, 'Author-Agent'), trailers(commit, 'Reviewed-by-Agent')
+        if not author and not reviewer and len(parents) == 1 and copilot(commit):
+            author = {'copilot'}
         authors.update(author)
         records.append((commit, parents, author, reviewer))
     require(authors, 'no Author-Agent trailers')
