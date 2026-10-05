@@ -32,7 +32,7 @@ The coordinating Agent role of one Room, with a system prompt tuned to that role
 _Avoid_: meta-agent, parent agent, lead
 
 **Attempt**:
-One launch of an Agent's program; internal to the Daemon and its hook, never a Rail identity or a vendor conversation id (A20). The Daemon numbers them per Agent from `1`, a canonical positive decimal string within SQLite's signed 64-bit range; the last one survives stop, failure and reopen.
+One launch of an Agent's program, numbered per Agent from `1` in launch order (A20). It travels in the hook command, `SignalParams`, `StatusEvent` and `RailNode.attempt` as a canonical positive decimal string within SQLite's signed 64-bit range; a client may compare two of one Agent and reads nothing else from it. Never a Rail identity or a vendor conversation id; the last one survives stop, failure and reopen.
 
 **Status revision**:
 The strictly increasing ordinal of published Status transitions within one Attempt, `1` at Starting. A canonical positive decimal string on the wire; absent after reopen. Never stands in for an Attempt or Terminal liveness.
