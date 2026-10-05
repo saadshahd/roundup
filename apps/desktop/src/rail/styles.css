@@ -125,6 +125,17 @@
   user-select: none;
 }
 
+/* U142: the whole Rail (rows, done summary, pinned bar and the gaps between) selects rows, never text; only a field the user types in keeps its selection. */
+.rail-tree {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.rail-tree :is(input, textarea) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .rail-row[data-lifted="true"] {
   opacity: 0.4;
   transform: translateY(var(--lift));
