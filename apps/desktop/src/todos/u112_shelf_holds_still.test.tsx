@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import styles from "../styles.css?inline";
 import { mountTodos, todo, todoRowOf as rowOf } from "./testHarness";
@@ -11,15 +11,17 @@ const shelf = () => [todo(1, { title: longest }), todo(2, { title: "short" }), t
 
 // jsdom has no layout: what it can read is everything layout depends on, i.e. each row's flow children, their text and their computed position.
 // The browser proof (Chromium, `tree-40`, 500-1400 px) reads the top edge and height themselves.
-const flowOf = (id: number) => {
-  const row = rowOf(id);
+const ownText = (element: Element) =>
+  Array.from(element.childNodes, (node) => (node.nodeType === Node.TEXT_NODE ? node.textContent : "")).join("");
 
-  return [...row.querySelectorAll<HTMLElement>("*")]
-    .filter((element) => !["absolute", "fixed"].includes(getComputedStyle(element).position))
-    .map((element) => `${element.tagName}.${element.getAttribute("class")}:${[...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join("")}`);
-};
+const flowOf = (id: number) =>
+  Array.from(rowOf(id).querySelectorAll("*")).flatMap((element) =>
+    ["absolute", "fixed"].includes(getComputedStyle(element).position)
+      ? []
+      : [`${element.tagName}.${element.getAttribute("class")}:${ownText(element)}`],
+  );
 
-const restOf = () => [1, 2, 3].map((id) => ({ id, flow: flowOf(id), title: rowOf(id).querySelector("button")!.textContent }));
+const restOf = () => [1, 2, 3].map((id) => ({ id, flow: flowOf(id), title: rowOf(id).querySelector("button")?.textContent }));
 
 const withStyles = async (run: () => Promise<void>) => {
   const sheet = document.head.appendChild(document.createElement("style"));
@@ -53,13 +55,17 @@ describe("u112 hovering or focusing a Shelf row never moves a row", () => {
       const rest = restOf();
 
       for (const id of [1, 2, 3]) {
-        const row = rowOf(id).querySelector<HTMLElement>(".todo-row-button")!;
+        const row = within(rowOf(id)).getAllByRole("button")[0];
+
+        if (!row) throw new Error(`no row button for #${id}`);
+
 
         row.focus();
         expect(restOf()).toEqual(rest);
-        rowOf(id).querySelector<HTMLElement>(".complete")!.focus();
+        within(rowOf(id)).getByRole("button", { name: "complete" }).focus();
         expect(restOf()).toEqual(rest);
-        (document.activeElement as HTMLElement).blur();
+        row.focus();
+        row.blur();
       }
     });
   });
@@ -69,11 +75,9 @@ describe("u112 hovering or focusing a Shelf row never moves a row", () => {
       const before = rowOf(1).querySelectorAll("*").length;
 
       fireEvent.mouseEnter(rowOf(1));
-      const added = [...rowOf(1).querySelectorAll<HTMLElement>("*")].filter((element) => element.classList.contains("complete"));
-      const shown = getComputedStyle(added[0]!);
+      const shown = getComputedStyle(within(rowOf(1)).getByRole("button", { name: "complete" }));
 
-      expect([rowOf(1).querySelectorAll("*").length - before, added.length, shown.position, shown.top, shown.right]).toEqual([
-        1,
+      expect([rowOf(1).querySelectorAll("*").length - before, shown.position, shown.top, shown.right]).toEqual([
         1,
         "absolute",
         "0px",
