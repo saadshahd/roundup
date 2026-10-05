@@ -61,5 +61,5 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 | L49 | `dispatch <id>`: pass only when the scenario's newest change was approved | `loop/rules.sh` | `L34` | — |
 | L50 | `queue`: two Work rows never name one id; every scenario file has `Module:` | `loop/rules.sh` | `L34` | — |
 | L57 | `labels`: one `kind:`, `area:`, `lane:` matching `class`, `owner:` | `loop/rules.sh` | `L44` | — |
-| L28 | `loop/stalls.sh check\|report`: detect, own and report each Stall once (red `main`, an unmerged approval, a third reject, a lost verdict, an overdue post-merge review) | `loop/stalls.sh` | — | — |
+| L28 | `loop/stalls.sh check\|report`: detect, own and report each Stall once (red `main`, an unmerged approval, a third reject, a lost verdict, an overdue post-merge review) | `loop/stalls.sh`, `loop/stalls.test.sh`, the `verdicts` subcommand in `loop/rules.sh`, one line in `.github/workflows/loop.yml` | `L45`, `L46` | — |
 | L63 | a reject lists every finding; its count line gates `rounds` | `loop/rules.sh` | `L45` | — |
