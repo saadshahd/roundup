@@ -31,7 +31,9 @@ const chromePath = (): string | undefined => {
   ].find((path) => path !== undefined && existsSync(path));
 };
 
-type Params = Readonly<Record<string, string | number | boolean | readonly string[] | { [name: string]: string | number | boolean }>>;
+type Json = string | number | boolean | null | readonly Json[] | { readonly [name: string]: Json };
+
+type Params = Readonly<Record<string, Json>>;
 
 type Reply = { id?: number; sessionId?: string; result?: unknown; error?: { message: string } };
 
@@ -92,6 +94,22 @@ class Browser {
     return out.result.value;
   }
 
+  /** Runs a constant function declaration in the page with `args` passed as data, so no value is ever spliced into source. */
+  async call<T>(declaration: string, ...args: Json[]): Promise<T> {
+    const { result: page } = await this.page<{ result: { objectId: string } }>("Runtime.evaluate", { expression: "globalThis" });
+    const out = await this.page<{ result: { value: T }; exceptionDetails?: { text: string; exception?: { description: string } } }>("Runtime.callFunctionOn", {
+      objectId: page.objectId,
+      functionDeclaration: declaration,
+      arguments: args.map((value) => ({ value })),
+      returnByValue: true,
+      awaitPromise: true,
+    });
+
+    if (out.exceptionDetails) throw new Error(out.exceptionDetails.exception?.description ?? out.exceptionDetails.text);
+
+    return out.result.value;
+  }
+
   mouse(type: "mousePressed" | "mouseMoved" | "mouseReleased", x: number, y: number, extra: Params = {}) {
     return this.page("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !("buttons" in extra) ? "none" : "left", ...extra });
   }
@@ -142,34 +160,43 @@ const found = chromePath();
 
 /** Where a selector's n-th match is, as a point `dx` pixels from its left edge or `fx` of its width, and the vertical middle. */
 const pointOf = (selector: string, at: { dx?: number; fx?: number; nth?: number } = {}) =>
-  browser.eval<Point>(`(() => {
-    const element = [...document.querySelectorAll(${JSON.stringify(selector)})][${at.nth ?? 0}];
-    if (!element) throw new Error("no ${selector.replaceAll('"', "'")}");
-    element.scrollIntoView({ block: "nearest" });
-    const box = element.getBoundingClientRect();
-    return { x: box.left + ${at.dx ?? 0} + box.width * ${at.fx ?? 0}, y: box.top + box.height / 2 };
-  })()`);
+  browser.call<Point>(
+    `function (selector, dx, fx, nth) {
+      const element = [...document.querySelectorAll(selector)][nth];
+      if (!element) throw new Error("no " + selector);
+      element.scrollIntoView({ block: "nearest" });
+      const box = element.getBoundingClientRect();
+      return { x: box.left + dx + box.width * fx, y: box.top + box.height / 2 };
+    }`,
+    selector,
+    at.dx ?? 0,
+    at.fx ?? 0,
+    at.nth ?? 0,
+  );
 
 const selected = () => browser.eval<string>("window.getSelection().toString()");
 
-/** Resolves when the page expression is truthy: the App's own state is the bound, not a sleep. */
-const until = (condition: string) =>
-  browser.eval(`new Promise((resolve, reject) => {
-    const stop = Date.now() + 15000;
-    const poll = () => (${condition} ? resolve(true) : Date.now() > stop ? reject(new Error("never became true: ${condition.replaceAll('"', "'")}")) : setTimeout(poll, 20));
-    poll();
-  })`);
+/** Resolves when the page function (a constant declaration taking `args`) returns truthy: the App's own state is the bound, not a sleep. */
+const until = async (predicate: string, ...args: Json[]) => {
+  const stop = Date.now() + 15_000;
+
+  while (!(await browser.call<boolean>(predicate, ...args))) {
+    if (Date.now() > stop) throw new Error(`never became true: ${predicate}`);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+};
 
 const load = async (size: { width: number; height: number }) => {
   await browser.page("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 1, mobile: false });
   await browser.page("Page.navigate", { url: `${origin}/harness.html?seed=tree-40` });
   // The harness asks for its pads last, once the Rail's tree and Terminals are in.
-  await until(`window.__fake && window.__fake.app.calls.some((call) => call.method === "pad.list") && document.querySelector(".rail-fold button")`);
+  await until(`() => Boolean(window.__fake && window.__fake.app.calls.some((call) => call.method === "pad.list") && document.querySelector(".rail-fold button"))`);
   await browser.eval("window.getSelection().removeAllRanges()");
 };
 
 const calls = (method: string) =>
-  browser.eval<unknown[]>(`window.__fake.app.calls.filter((call) => call.method === ${JSON.stringify(method)}).map((call) => call.params)`);
+  browser.call<unknown[]>(`(method) => window.__fake.app.calls.filter((call) => call.method === method).map((call) => call.params)`, method);
 
 beforeAll(async () => {
   if (!found) return;
@@ -214,7 +241,7 @@ const nameAt = (nth: number) => pointOf(".rail-row .name", { dx: 3, nth });
 
 const editName = async (nth: number) => {
   await browser.click(await nameAt(nth), 2);
-  await until(`document.querySelector(".rail-row input")`);
+  await until(`() => Boolean(document.querySelector(".rail-row input"))`);
 };
 
 const selectAllInField = () => browser.page("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2, commands: ["selectAll"] });
@@ -284,7 +311,7 @@ run("u142 the Rail selects rows, not browser text", () => {
     it(`u142_${at}_clicking_a_row_selects_it`, async () => {
       await load(size);
       await browser.click(await nameAt(2));
-      await until(`document.querySelector('.rail-row[aria-selected="true"]')?.dataset.id === document.querySelectorAll(".rail-row")[2].dataset.id`);
+      await until(`() => document.querySelector('.rail-row[aria-selected="true"]')?.dataset.id === document.querySelectorAll(".rail-row")[2].dataset.id`);
     }, 30_000);
 
     it(`u142_${at}_clicking_the_done_summary_folds_it`, async () => {
@@ -292,13 +319,13 @@ run("u142 the Rail selects rows, not browser text", () => {
       const rows = await browser.eval<number>(`document.querySelectorAll(".rail-row").length`);
 
       await browser.click(await pointOf(".rail-fold button", { dx: 3 }));
-      await until(`document.querySelectorAll(".rail-row").length !== ${rows}`);
+      await until(`(rows) => document.querySelectorAll(".rail-row").length !== rows`, rows);
     }, 30_000);
 
     it(`u142_${at}_clicking_add_terminal_spawns_one`, async () => {
       await load(size);
       await browser.click(await pointOf(".rail-actions button", { nth: 1, dx: 3 }));
-      await until(`window.__fake.app.calls.filter((call) => call.method === "rail.spawnTerminal").length === 1`);
+      await until(`() => window.__fake.app.calls.filter((call) => call.method === "rail.spawnTerminal").length === 1`);
     }, 30_000);
 
     it(`u142_${at}_a_row_drop_still_changes_home`, async () => {
@@ -307,7 +334,7 @@ run("u142 the Rail selects rows, not browser text", () => {
       const target = await pointOf('[data-id="agent-2"]', { dx: 3 });
 
       await browser.drag(await pointOf('[data-id="agent-4"] .name', { dx: 3 }), target);
-      await until(`window.__fake.app.calls.some((call) => call.method === "rail.move")`);
+      await until(`() => window.__fake.app.calls.some((call) => call.method === "rail.move")`);
       expect(await calls("rail.move")).toEqual([{ id: "agent-4", parent: null, index: expect.any(Number) }]);
       expect(await selected()).toBe("");
     }, 30_000);
@@ -337,7 +364,7 @@ run("u142 the Rail selects rows, not browser text", () => {
       await selectAllInField();
       await browser.page("Input.insertText", { text: "renamed" });
       await browser.key("Enter", { code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
-      await until(`!document.querySelector(".rail-row input")`);
+      await until(`() => !document.querySelector(".rail-row input")`);
       expect(await calls("rail.rename")).toEqual([expect.objectContaining({ name: "renamed" })]);
     }, 30_000);
 
@@ -348,7 +375,7 @@ run("u142 the Rail selects rows, not browser text", () => {
       await editName(2);
       await browser.page("Input.insertText", { text: "x" });
       await browser.key("Escape", { code: "Escape", windowsVirtualKeyCode: 27 });
-      await until(`!document.querySelector(".rail-row input")`);
+      await until(`() => !document.querySelector(".rail-row input")`);
       expect(await calls("rail.rename")).toEqual([]);
       expect(await browser.eval<string>(`document.querySelectorAll(".rail-row .name")[2].textContent`)).toBe(name);
     }, 30_000);
