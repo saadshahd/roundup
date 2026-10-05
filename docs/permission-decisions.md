@@ -2,7 +2,7 @@
 
 Status: provisional. H1 is recorded (`spikes/hooks-permission/REPORT.md`); the design is final only after H1b and the control-channel comparison report back.
 
-A Claude Code permission prompt becomes a Decision (`CONTEXT.md`). The user answers it in the App; the answer reaches Claude Code through its `PermissionRequest` hook. Scenarios: `scenarios/decisions.md` (H1 to H10).
+A Claude Code permission prompt becomes a Decision (`GLOSSARY.md`). The user answers it in the App; the answer reaches Claude Code through its `PermissionRequest` hook. Scenarios: `scenarios/decisions.md` (H1 to H10).
 
 ## What exists
 

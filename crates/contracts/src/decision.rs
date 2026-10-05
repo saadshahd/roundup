@@ -1,4 +1,4 @@
-//! Decisions: the Card that blocks an Agent on a live hook or tool call (`CONTEXT.md`). Only the
+//! Decisions: the Card that blocks an Agent on a live hook or tool call (`GLOSSARY.md`). Only the
 //! user answers one; see `scenarios/decisions.md`.
 
 use serde::{Deserialize, Serialize};

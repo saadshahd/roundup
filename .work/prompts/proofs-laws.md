@@ -1,3 +1,8 @@
-You are an Architect (`.agents/architect.md`), not a Builder: write `proofs/messages/LAWS.bend` for scenario V3 in `scenarios/proofs.md`, a human-written statement of ten laws, and nothing else. It starts only after `scenarios/proofs.md` is on main, the `proofs/` toolchain pins (V1) are installed and the pure `step` of `crates/messages` (V4) has a first draft, so the laws can name its state and events.
+Architect. `/compose anchor to state each law so it cannot be read two ways`
 
-Scope: `proofs/messages/LAWS.bend` and `proofs/messages/mutants/` only. Run `bend guide` once, use `bend base <Name>` for library names (Base names change between versions: bise's own proofs broke on `String.eq.fin`), and install only the pinned Bend (`proofs/BEND_VERSION`) with `just proofs-setup`. State the ten laws of V3 as `law` statements over a minimal `model.bend` skeleton you also write (state, events, `step` with the names of `docs/messages.md`), leave every law without a proof (an open claim is how a Builder knows what to prove) and keep the statements strong: no law that is true of every state. Add one mutant of `model.bend` per law that drops exactly the guard that law needs. A different Architect approves this PR; the PR body quotes each law in English next to the Bend text. Observer: `bend proofs/messages/LAWS.bend` parses and reports the ten laws as open, and `bend` rejects nothing else. Report: what you could not state and why.
+Write `proofs/messages/LAWS.bend` for V3 in `scenarios/proofs.md`, over a minimal `model.bend` skeleton named as `docs/messages.md` names its transitions; only `LAWS.bend` and `mutants/`.
+
+- Every law stays open (no proof), and none is true of every state.
+- One mutant per law drops exactly the guard that law needs.
+- Use `bend base <Name>` for library names; they change between versions.
+- The PR quotes each law in English beside its Bend; another Architect approves.

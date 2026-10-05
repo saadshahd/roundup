@@ -34,7 +34,7 @@ const focusTabbableRow = (): void => document.querySelector<HTMLElement>('[role=
 const focusPane = (): void =>
   document.querySelector<HTMLElement>(".pane-screen textarea, .pane-screen [tabindex]")?.focus();
 
-/** `⌘1`, `⌘2`, `←`, `→` and `F2`, the Rail keys U31 leaves to U41 (CONTEXT.md, Rail). No UI of its own. */
+/** `⌘1`, `⌘2`, `←`, `→` and `F2`, the Rail keys U31 leaves to U41 (GLOSSARY.md, Rail). No UI of its own. */
 export const Keys = () => {
   const { rail } = useConnectedProject();
 

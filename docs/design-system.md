@@ -51,7 +51,7 @@ Mono is for the Terminal, paths, ids and code. Every other word is `--font-ui`.
 
 ## Colour
 
-Kind has two carriers, a Glyph shape and a tone. The shape is enough on its own: colour never carries a Kind alone. Ink (bold plus hue) stays what `CONTEXT.md` says: only `needs-you` and `error`.
+Kind has two carriers, a Glyph shape and a tone. The shape is enough on its own: colour never carries a Kind alone. Ink (bold plus hue) stays what `GLOSSARY.md` says: only `needs-you` and `error`.
 
 | Kind | Glyph | Tone | Ink |
 |---|---|---|---|
@@ -113,7 +113,7 @@ A check is public. The screens it runs on are not all the Builder's. The Builder
 
 ## Ideas
 
-The critic's report ends with an `ideas` list of at most three things that look wrong and no check covers. An idea is never a Todo and never a gate. The Architect reads the ideas each batch. An idea that comes back three times becomes a check (`docs/development-loop.md`, "Loop on the loop").
+The critic's report ends with an `ideas` list of at most three things that look wrong and no check covers. An idea is never a Todo and never a gate. The Architect reads the ideas each batch. An idea that comes back three times becomes a check (`.agents/architect.md`).
 
 ## Baseline protocol
 
@@ -124,4 +124,4 @@ Plan, do, study, act, for each UI PR.
 3. **Study.** The critic builds `origin/main` and the PR head, and for each seed and step saves `<step>.png` and `<step>.checks.json` under `artifacts/ux/<id>/base/` and `artifacts/ux/<id>/head/`: each check, `pass` or `fail`, and the measured value and selector behind it. The two builds share the seed, viewport, colour scheme and the injected clock. `loop/rules.sh delta` compares the two sets of `checks.json` files, never the pixels, and prints each check as `fixed`, `regressed`, `still-failing` or `still-passing`; the critic pastes its lines.
 4. **Act.** A `regressed` check is a Todo of class `ux-checklist` and a reject if it is in `just check`. A `still-failing` check is queued; it is a defect only once a scenario names it.
 
-Linux and macOS captures are never compared with each other (`docs/boxd.md`).
+Linux and macOS captures are never compared with each other (`.agents/data/boxd.md`).

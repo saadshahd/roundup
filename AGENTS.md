@@ -1,44 +1,41 @@
 # AGENTS.md
 
-Read `CONTEXT.md` and `PRINCIPLES.md` first; every identifier, RPC method and UI string uses a term from it (or adds it there in the same PR).
+roundup is built by agents in a loop. Every identifier, RPC method and UI string uses a `GLOSSARY.md` term (read it when naming one), or adds one in the same PR.
+
+## The loop
+
+Each role's prompt is `.agents/<role>.md`; data a step reads on demand is `.agents/data/`.
+
+| Step | Role | Flow |
+|---|---|---|
+| 1 Specify | Architect or squad writer | `/compose to-spec to draft the scenario, grill-with-docs to test it against the glossary, anchor to make each then-clause checkable` |
+| 2 Dispatch | Driver | `loop/rules.sh ready`, then `/compose router to hand a ready row to a Builder, handoff to pass its context` |
+| 3 Build | Builder | `/compose sound:prime to load the taste rules, tdd to land the scenario red then green, reduce and show-me to write Shape and Proof` |
+| 4 Review | Reviewer | `/compose sound:review to read the diff against the taste rules, judge to give one cited verdict` |
+| 5 Merge | Driver | `loop/rules.sh merge-ready <pr>` |
+| 6 Observe | QA, Design critic | `/compose break-ui to stress each screen, review-animations to score the motion` |
+| 7 Recover | Triage, Architect | `/compose diagnosing-bugs to classify the failure, retro to turn a recurring class into a rule` |
+| 8 Sweep | Slop sweeper | `/compose reduce to leave each duplicate as one copy` |
+
+Claude names a moo skill `sound:prime`; Codex names it `prime`.
 
 ## Rules
 
-1. **Done** = CI `check` green; the scenario(s) named in the PR pass in e2e; one approval from an agent whose id differs from the author's; zero anti-slop findings; the PR body names the `PRINCIPLES.md` ids it serves and the Merger confirms they exist; the Reviewer answers each of those gates from the diff. The body also has `## Shape` and `## Proof` (`loop/rules.sh proof <pr>`, L53): proof is test output for any PR, and for a PR that changes what the user sees, before and after screenshots or a short video at the window size the scenario names, so an approval of a visible PR with no proof is not an approval. A specification-only PR meeting L53’s explicit `Proof scope: specification` path and evidence rules is done as a specification when its baseline CI, independent consistency review and normal approval gates pass; its named implementation observers remain pending, never reported as scenario executions. This exception does not apply to production, contract, glossary, policy or mixed changes. That is the **block** lane, for every PR except a `post` one. A PR of class `post` (`loop/rules.sh class`, L44: `docs/` prose, `.work/queue.md` and scenarios that pass the content screen) merges on green CI, a base of `main` and `Author-Agent` trailers (`loop/rules.sh merge-ready`, L46), and an independent Reviewer must post a verdict within 60 minutes of the merge (L47). Until those exist, a PR is in the post lane by path (user decision, 2026-10-02) only when every file it changes (a rename counts both paths) is under `docs/` other than `docs/development-loop.md` and `docs/boxd.md`, is `.work/queue.md` or a `.work/queue/*.md` file, or is a `scenarios/*.md` file other than `loop.md`, `daemon.md`, `rpc.md`, `control.md` and `agents.md`, and no added line matches the case-insensitive regex `secret|token|credential|password|oauth|identity|impersonat|\bcard|daemon|\bloop\b|Author-Agent|Reviewed-by`; every other PR, and any PR the Driver is unsure of, is in the block lane. By hand, the Driver checks `Author-Agent` trailers and `base <pr>`, assigns an independent Reviewer within 60 minutes of the merge, and reverts a post-lane PR whose newest verdict is a reject 60 minutes after the merge. The by-path list also excludes `docs/squads.md`, `docs/design-system.md`, `docs/adr/`, `scenarios/app.md`, `scenarios/mcp.md`, any file named `CLAUDE.md` or `AGENTS.md`, any dotfile, and `.work/queue.md` below its `## Swarm protocol` heading; the regex is applied to removed lines as well as added ones; and a verdict counts only with a line `Reviewed-by-Agent: <id>` whose id differs from every `Author-Agent` on the PR.
-2. **Slop** (each is a CI failure): an anti-slop rule violation; TypeScript duplication, unused exports, files or dependencies reported by `pnpm slop` (fallow); Rust dead code or unused dependencies reported by clippy and `cargo machete`; a public function with no test or caller; a comment that restates the line below it.
-3. **PR size is a guide**: aim for exactly one module directory (or only `contracts/`) and about 2000 changed lines (excluding lockfiles and generated files). A PR that exceeds either is allowed; `loop/rules.sh size` prints an advisory and the Reviewer notes it. Neither ever fails a PR.
-4. **Contract change** = any edit under `contracts/`. Needs approval from an architect of the committee in `docs/squads.md`, one whose id differs from the author's; so do a new RPC method, an App seam command and a change to U4's tokens. No v2s: change every caller in the same PR.
-5. **Reviewer input** = diff + linked spec + this file + the PR's earlier `VERDICT:` comments, with a checkout so it can run `loop/rules.sh`. Never the author's rationale.
-6. **Vocabulary**: see `CONTEXT.md`; `session`, `process`, `task`, `notification` and the other _Avoid_ words are banned in public names, except under `crates/agents/claude_code/`.
-7. **Perf budget**: cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle agents < 150 MB extra RSS. A regression above 10% fails: `just perf` enforces it for five metrics on Linux and five on macOS (not the same five: cold start is gated only on macOS), except that a time metric's regression test is skipped, loudly, when the machine is busier than its baseline's load (R13); every other metric is limit-only. Keystroke-to-render is limit-only too, measured on macOS by `just perf-keystroke`. A latency miss on a busy machine is rerun on a quiet one before it is believed; a memory miss is believed at any load (`docs/perf.md`).
-8. **Visual change**: a PR that edits a stylesheet or component under `apps/desktop/src` names the Checks of `docs/design-system.md` it moves (`Moves: D3, D6`). Every look value is a Token (`loop/rules.sh tokens`, L41, once it lands), and no Check passes on `origin/main` and fails on the head (`loop/rules.sh delta`, L42, over QA's `checks.json` files). A Check that is a `vitest` test gates in `just check`; the Design critic's run on the real rendering is advisory. The proof images are the Checks' evidence for a human: `## Proof` links them (L53).
+1. **Done**: `loop/rules.sh merge-ready <pr>` passes and `.agents/data/pr.md` and `.agents/data/gates.md` hold.
+2. **Slop** fails CI: `just check`, plus no public function without a test or caller.
+3. **PR size**: aim for one module directory and about 2000 changed lines; `loop/rules.sh size` only advises.
+4. **Contract change** (`contracts/`, a new RPC method, an App seam command, U4's tokens) needs a `docs/squads.md` architect other than the author. Change every caller in the same PR.
+5. **Reviewer input**: the diff, the scenario, this file, earlier `VERDICT:` comments and a checkout; never the author's rationale.
+6. **Vocabulary**: `GLOSSARY.md`'s _Avoid_ words stay out of public names, except under `crates/agents/src/claude_code/`.
+7. **Perf**: cold start < 300 ms, keystroke-to-render < 16 ms p95, 10 idle agents < 150 MB extra RSS; `just perf` fails a regression above 10% (`docs/perf.md`).
+8. **Visual change** under `apps/desktop/src` names the `docs/design-system.md` Checks it moves, uses only Tokens, and breaks no Check passing on `main`.
 
-## Workflow
+## Conventions
 
-- No scenario, no work: specs are `scenarios/*.md` (given/when/then in glossary words).
-- Name tests after the scenario they prove: `fn t3_...` for scenario T3 (`scenarios/README.md`).
-- Write the failing test first, then the code, in your own git worktree.
-- Before writing or editing code, read the taste rules in `.claude/sound/` (`sound:prime`): 33 rules chosen for this repo, one file each, grouped by topic. Reviewers check every added comment against `comment-must-name-a-consequence`: delete a comment the code already says, correct one that is false. Rules the daemon deliberately breaks (shared locked state in one process, in-file unit tests of private functions) are not installed.
-- Red main is stop-the-line. Fix-forward on main is forbidden; revert. A `post` PR whose newest independent verdict is a `VERDICT: reject` 60 minutes after its merge is reverted (`loop/rules.sh revert-due`, L48; only a newer independent approve on the same head withdraws it, never a later PR), and so is work a Builder started on a scenario with no approval (L49). A PR rejected 3 times cannot merge until an Architect picks split, amend or retire (L45).
-- Anti-slop is mandatory (installed in Phase 1 via `/install-anti-slop`).
-
-Scenarios are written by squads inside their own files and id ranges (`docs/squads.md`); a squad needs no architect to write a scenario or start a Builder.
-
-## Branches and reviews
-
-- Builders work on a branch in their own worktree and open a PR against `main`. Nobody pushes to `main` except an architect for `contracts/` and core crates, and docs.
-- Before pushing: `pnpm install` then `just check`; the PR must also pass `loop/rules.sh size origin/main` (advisory only: it exits 0 and prints when a guide is exceeded).
-- A module may ship as several PRs; each names its scenario ids.
-- The generated TypeScript in `contracts/generated/` comes from `crates/contracts`; never edit it by hand.
-
-## Using boxd
-
-boxd is optional. Read `docs/boxd.md` before touching it; it says what a VM can and cannot do and what was measured.
-
-- Start boxd Builders only with `loop/boxd.sh build <name> <prompt-file>`. With `BOXD_AGENT=codex` and `BOXD_CODEX_AUTH_VM=ru-<login-holder>`, it creates a normal VM from the `ru-toolchain` snapshot, transfers only Codex login, and verifies that no GitHub login is available before uploading source. The Claude path stays `--isolated`. Both have an auto-destroy timer, run `just check` as observer, return a patch, and destroy the Builder VM.
-- Name every VM `ru-<something>`. Create QA VMs with `--auto-destroy-timeout` and `--auto-suspend-timeout 0`. Use `--isolated` for code you did not write unless it is a Codex Builder VM from `ru-toolchain` that has passed the GitHub credential guards before receiving source.
-- Claude authenticates through the boxd secret `CLAUDE_CODE_OAUTH_TOKEN` (sealed, scoped to `*.anthropic.com`, `*.claude.com`, `claude.ai`): a VM sees only a placeholder and boxd substitutes the real token on those hosts. Never print or write the real token, and do not widen the secret's hosts.
-- Never copy, write or print a GitHub credential into a VM. Results come back as a patch and are pushed from the laptop, except proof: a normal VM (not `--isolated`) made by plain `boxd machine new` has a GitHub login that boxd's own GitHub integration injects (not `loop/boxd.sh`, and not a credential we hand it). That login is the account's, not scoped to a branch, so a VM that holds it runs no unreviewed code and uses it only for proof publishing and PR reads/comments. It never merges, approves, pushes `main` or a PR branch, or changes settings. A Codex Builder is a normal VM made from `ru-toolchain`, which had no GitHub login or App token route in the 2026-10-03 probe; the runner checks both before uploading source. Its login holder runs no checkout or test. User decision, 2026-10-03.
-- At most `BOXD_MAX_VMS` `ru-` VMs at once, default 12 (`loop/boxd.sh` enforces it). If `loop/out/PAUSED` exists, a limit was hit: stop and tell the user.
-- A VM cannot show macOS behaviour: perf numbers, WKWebView rendering and the macOS gate come from the laptop and CI.
-- After any session, `boxd machine list` must show no `ru-` machines.
+- No scenario, no work. Tests are named after their scenario (`fn t3_…` proves T3).
+- Work in your own worktree and branch; `pnpm install` and `just check` before pushing; PRs go against `main`.
+- Red `main`: revert, never fix forward.
+- Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
+- Only an architect pushes to `main`, and only `contracts/`, core crates and docs.
+- Everything a human reads (a PR body, a verdict, a report): `reduce`, then the `show-me` layout.
+- On a boxd VM (optional; `.agents/data/boxd.md`): keep every GitHub credential and the real `CLAUDE_CODE_OAUTH_TOKEN` off it and never widen the token's hosts; a VM holding boxd's GitHub login runs no unreviewed code, only publishing proof and reading or commenting on PRs.

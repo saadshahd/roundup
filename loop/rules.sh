@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
+# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -45,12 +45,12 @@ size() {
   [ "$distinct" -le 1 ] || { echo "rule 3 size guide: touches $distinct module directories: $(printf '%s' "$modules" | sort -u | tr '\n' ' '); not a failure, the Reviewer notes it" >&2; }
 }
 
-# Avoid words from CONTEXT.md, lowercased; a two-word term joins with `_`.
+# Avoid words from GLOSSARY.md, lowercased; a two-word term joins with `_`.
 avoid_phrases() {
   local phrases
-  phrases=$(sed -n 's/.*_Avoid:_ \([^.;]*\).*/\1/p' CONTEXT.md | tr ',' '\n' |
+  phrases=$(sed -n 's/^_Avoid_: \([^.;]*\).*/\1/p' GLOSSARY.md | tr ',' '\n' |
     awk 'NF { print tolower(($2 != "" && $2 != "in") ? $1 "_" $2 : $1) }')
-  [ -n "$phrases" ] || { echo "rule 6: no _Avoid:_ words found in CONTEXT.md" >&2; return 1; }
+  [ -n "$phrases" ] || { echo "rule 6: no _Avoid_ words found in GLOSSARY.md" >&2; return 1; }
   echo "$phrases"
 }
 
@@ -62,7 +62,7 @@ public_names() {
   local dirs="" d
   for d in contracts apps ext; do [ ! -d "$d" ] || dirs="$dirs $d"; done
   {
-    find crates -path crates/agents/claude_code -prune -o -name '*.rs' -print0 |
+    find crates -path crates/agents/src/claude_code -prune -o -name '*.rs' -print0 |
       xargs -0 grep -hoE "$rust_pub|$rust_field" | tr -d ':' | awk '{ print $NF }'
     # shellcheck disable=SC2086 # $dirs is a word list on purpose
     if [ -n "$dirs" ]; then
@@ -129,48 +129,7 @@ delta() {
   return "$regressed"
 }
 
-# L54: does a PR's approval still hold after merges of main? Prints `carried <A> <H>` or names the commit and rule.
-carry_allowed() { case $1 in .work/queue.md | .work/queue/*) return 0 ;; *) return 1 ;; esac; }
-
-# Rule b for one file of merge $1 (parents $2 and $3): the result holds exactly the first parent's lines that main
-# did not remove, plus the lines main added, each at most as often as either side has it.
-carry_rule_b() {
-  local merge=$1 p1=$2 p2=$3 file=$4 base
-  base=$(git merge-base "$p1" "$p2")
-  python3 - "$merge" "$p1" "$p2" "$base" "$file" <<'PY'
-from collections import Counter
-import subprocess
-import sys
-
-merge, first_ref, main_ref, base_ref, path = sys.argv[1:]
-
-def lines(ref):
-    result = subprocess.run(['git', 'show', f'{ref}:{path}'], capture_output=True)
-    if result.returncode:
-        return None
-    content = result.stdout.split(b'\n')
-    if content[-1] == b'':
-        content.pop()
-    return Counter(content)
-
-result = lines(merge)
-if result is None:
-    sys.exit(f'carry: {merge}: rule b: {path} conflicted and is gone from the merge (one side deleted it)')
-base = lines(base_ref) or Counter()
-first = lines(first_ref) or Counter()
-main = lines(main_ref) or Counter()
-keep = (set(first) - (set(base) - set(main))) | (set(main) - set(base))
-for line, count in result.items():
-    if line not in keep:
-        sys.exit(f'carry: {merge}: rule b: {path} holds a line neither side may keep: {line!r}')
-    cap = 1 if not base[line] and first[line] and main[line] else max(first[line], main[line])
-    if count > cap:
-        sys.exit(f'carry: {merge}: rule b: {path} repeats a line: {line!r}')
-for line in keep - set(result):
-    sys.exit(f'carry: {merge}: rule b: {path} lost a line a side keeps: {line!r}')
-PY
-}
-
+# L54: does a PR's approval still hold after conflict-free merges of main? Prints `carried <A> <H>` or names the commit and rule.
 carry_one() {
   local c=$1 main_ref=$2 p1 p2 extra trial conflicted f
   read -r _ p1 p2 extra <<<"$(git rev-list --parents -n 1 "$c")"
@@ -182,17 +141,12 @@ carry_one() {
   { [ "$mt_rc" -le 1 ] && [ -n "$trial" ]; } || { echo "carry: $c: merge-tree failed (exit $mt_rc)" >&2; return 1; }
   conflicted=$(sed 1d <<<"$trial" | sed '/^$/d')
   trial=$(head -n 1 <<<"$trial")
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    carry_allowed "$f" || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
-    carry_rule_b "$c" "$p1" "$p2" "$f" || return 1
-  done <<<"$conflicted"
+  f=$(head -n 1 <<<"$conflicted")
+  [ -z "$f" ] || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
   local differs
   differs=$(git diff --name-only "$trial" "$c") || { echo "carry: $c: could not compare with the trial merge" >&2; return 1; }
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    grep -qxF -- "$f" <<<"$conflicted" || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
-  done <<<"$differs"
+  f=$(head -n 1 <<<"$differs")
+  [ -z "$f" ] || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
 }
 
 carry() {
@@ -406,17 +360,16 @@ def lane_of(files, paths, base, head):
     start = git('merge-base', base, head)
     for path in paths:
         parts = PurePosixPath(path).parts
-        queue = path == '.work/queue.md' or bool(re.fullmatch(r'\.work/queue/[^/]+\.md', path))
         if not parts or any(part in ('AGENTS.md', 'CLAUDE.md') for part in parts):
             return 'block'
-        if any(part.startswith('.') for part in (parts[1:] if queue else parts)):
+        if any(part.startswith('.') for part in parts):
             return 'block'
         scenario = bool(re.fullmatch(r'scenarios/[^/]+\.md', path))
-        if not (queue or path.startswith('docs/') or scenario):
+        if not (path.startswith('docs/') or scenario):
             return 'block'
         if path in {'docs/development-loop.md', 'docs/boxd.md', 'docs/squads.md', 'docs/design-system.md'} or path.startswith('docs/adr/'):
             return 'block'
-        if scenario and parts[-1] in {'loop.md', 'daemon.md', 'rpc.md', 'control.md', 'agents.md', 'app.md', 'mcp.md'}:
+        if scenario and (parts[-1].startswith('loop') or parts[-1] in {'daemon.md', 'rpc.md', 'control.md', 'agents.md', 'app.md', 'mcp.md'}):
             return 'block'
         old, new = tree_entry(start, path), tree_entry(head, path)
         if any(entry and entry[0] not in ('100644', '100755') for entry in (old, new)) or (old and new and old[0] != new[0]):
@@ -433,17 +386,6 @@ def lane_of(files, paths, base, head):
                     lines.append(line[1:])
             folded = unicodedata.normalize('NFKC', '\n'.join(lines)).lower()
             if re.search(r'secret|token|credential|password|oauth|identity|impersonat|daemon|rupd|api key|auth|author-agent|reviewed-by|verdict|architect|approve|merger|rpc|seam|(?<!\w)(card|loop|key)(?!\w)', folded):
-                return 'block'
-        if path == '.work/queue.md':
-            for ref in (start, head):
-                entry = tree_entry(ref, path)
-                if not entry:
-                    return 'block'
-            old_text, new_text = (git('show', ref+':'+path) for ref in (start, head))
-            heading = '## Swarm protocol'
-            if heading not in old_text.splitlines() or heading not in new_text.splitlines():
-                return 'block'
-            if old_text[old_text.index(heading):] != new_text[new_text.index(heading):]:
                 return 'block'
     return 'post'
 
@@ -639,6 +581,50 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
+# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, unspecified, waiting or ready.
+ready() {
+  python3 - <<'PY'
+import glob, re, subprocess, sys
+files = sorted(glob.glob('scenarios/*.md'))
+heads = {m for f in files for m in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', open(f).read(), re.M)}
+def ids(text):
+    out = []
+    for a, b in re.findall(r'\b([A-Z][0-9]+)(?:\s*(?:–|-|to)\s*[A-Z]?([0-9]+))?\b', text):
+        if b:
+            out += [a[0] + str(n) for n in range(int(a[1:]), int(b) + 1)]
+        else:
+            out.append(a)
+    return out
+def tested(i):
+    if i[0] == 'L':
+        args = ['git', 'grep', '-qE', r'\b' + i + r'\b', '--', 'loop/*.test.sh']
+    else:
+        args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
+    return subprocess.run(args).returncode == 0
+for f in files:
+    lines = open(f).read().split('\n')
+    if '## Work' not in lines:
+        continue
+    rows = [l for l in lines[lines.index('## Work'):] if l.startswith('|')]
+    header = [c.strip() for c in rows[0].strip('|').split('|')] if rows else []
+    if header != ['Ids', 'Item', 'Owns', 'Keeps green', 'After']:
+        print(f'{f}: Work table needs Ids, Item, Owns, Keeps green, After', file=sys.stderr)
+        sys.exit(2)
+    for row in rows[2:]:
+        cells = [c.strip() for c in row.strip().strip('|').split('|')]
+        own = ids(cells[0])
+        if own and all(tested(i) for i in own):
+            state = 'done'
+        elif not own or any(i not in heads for i in own):
+            state = 'unspecified'
+        elif any(not tested(i) for i in ids(cells[4])):
+            state = 'waiting'
+        else:
+            state = 'ready'
+        print(state, cells[0], f)
+PY
+}
+
 case "${1:-}" in
   base | class | rounds | merge-ready | proof | ci-trailers)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
@@ -646,6 +632,7 @@ case "${1:-}" in
   size) size ;;
   trailers) pr_rule trailers "$base" ;;
   vocab) vocab ;;
+  ready) ready ;;
   delta) delta "${2:-}" "${3:-}" ;;
   carry) carry "${2:-}" "${3:-origin/main}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;

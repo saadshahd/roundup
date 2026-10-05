@@ -15,7 +15,7 @@ const GLYPHS: Record<Kind, Glyph> = {
   done: { icon: "check", tone: "grey" },
 };
 
-/** Most urgent first, as listed under Kind in CONTEXT.md; the type forces every Kind to have a rank. */
+/** Most urgent first, as listed under Kind in GLOSSARY.md; the type forces every Kind to have a rank. */
 const URGENCY_RANK: Record<Kind, number> = {
   error: 0,
   "needs-you": 1,

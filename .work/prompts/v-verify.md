@@ -1,9 +1,7 @@
-You are a Builder (`.agents/builder.md`). Build scenarios Y1, Y2 and Y3 in `scenarios/ui-verify.md`, and nothing else. Read `AGENTS.md`, `CONTEXT.md`, `PRINCIPLES.md`, `scenarios/ui-verify.md`, `scenarios/ui-drawer.md` (U111), `scenarios/ui.md` (U26) and `.claude/sound/` first.
+Builder. `/compose sound:prime to load the taste rules, tdd to land Y2, Y1 and Y3 red then green`
 
-Edit only `apps/desktop/src/testing/**`, `apps/desktop/harness.html`, the three scenario files named below, `apps/desktop/package.json` (the `axe-core` dependency, MPL-2.0, from the npm registry, pinned to the 4.13 line), `loop/rules.sh` and `loop/rules.test.sh`. Edit scenario files only for those three lines, and do not edit `loop/rules.sh` outside the new `laws` subcommand. Use the library: do not write a contrast or ARIA checker of your own, and do not add a second implementation of D1 to D10 (U137's module stays the one).
+Scenarios Y1–Y3 in `scenarios/ui-verify.md`; owns as its Work row says. One commit each, in the order Y2, Y1, Y3.
 
-Build, test first, in this order, one commit each: (1) Y2's sampler as one function in `apps/desktop/src/testing/` and the `y2_` tests; (2) `window.__axe()` and the `y1_` tests, with a fixture page for each case the scenario lists; (3) `loop/rules.sh laws` and the `y3_` tests, with the three first laws added as `Law:` and `Check:` lines under U111 in `scenarios/ui-drawer.md`, U131 in `scenarios/ui-visual.md` and U41 in `scenarios/ui.md`; no other file, and `docs/design-system.md` is not edited. Add a `Law:` line only where the scenario names it; do not invent laws.
-
-Observer: `just check` green; the `y1_` to `y3_` tests; drive `just harness first-run` in `agent-browser` on a VM with auto-destroy (never a window on the user's machine) and report the `window.__axe()` result and the sampler's frame count for a Todo Drawer open and close at 1280 by 800. Say plainly what jsdom could not show.
-
-Report: the test names, the axe-core version, the `window.__axe()` output for the three seeds, how many frames the sampler read, and the laws sheet's output.
+- Use `axe-core` 4.13 (MPL-2.0) for contrast and ARIA; write no checker of your own, and no second D1–D10 (U137's module stays the one).
+- `loop/rules.sh laws` is the only edit to `loop/rules.sh`. Add `Law:` and `Check:` lines only under U111, U131 and U41, where the scenarios name them.
+- Report `window.__axe()` for the three seeds and the sampler's frame count for a Todo Drawer open and close at 1280×800, from a VM; say what jsdom could not show.

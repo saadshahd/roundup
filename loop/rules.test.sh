@@ -14,7 +14,7 @@ new_repo() {
   git config user.name t
   mkdir loop crates contracts
   cp "$script" loop/rules.sh
-  printf '_Avoid:_ session, bot, process.\n_Avoid:_ parent agent.\n' >CONTEXT.md
+  printf '_Avoid_: session, bot, process\n_Avoid_: parent agent\n' >GLOSSARY.md
   echo 'pub fn ok() {}' >crates/a.rs
   git add -A
   git commit -qm base
@@ -94,14 +94,14 @@ for decl in 'pub fn session_id() {}' 'pub const fn session_id() {}' 'pub struct 
   new_repo; printf '%b\n' "$decl" >crates/b.rs; commit x
   expect fail "L3 vocab: $decl" rules vocab
 done
-new_repo; mkdir -p crates/agents/claude_code; echo 'pub fn session_id() {}' >crates/agents/claude_code/a.rs; commit x
+new_repo; mkdir -p crates/agents/src/claude_code; echo 'pub fn session_id() {}' >crates/agents/src/claude_code/a.rs; commit x
 expect pass "L3 vocab: claude_code adapter is exempt" rules vocab
 new_repo; mkdir -p crates/other/claude_code; echo 'pub fn session_id() {}' >crates/other/claude_code/a.rs; commit x
 expect fail "L3 vocab: another claude_code dir is not exempt" rules vocab
 new_repo; echo 'export type SessionId = string;' >contracts/a.ts; commit x
 expect fail "L3 vocab: TS export" rules vocab
-new_repo; rm CONTEXT.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
-expect fail "L3 vocab: missing CONTEXT.md fails loudly" rules vocab
+new_repo; rm GLOSSARY.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
+expect fail "L3 vocab: missing GLOSSARY.md fails loudly" rules vocab
 
 # delta
 expect_exit() {
@@ -183,89 +183,13 @@ merge_main() { git merge -q --no-commit --no-ff origin/main >/dev/null 2>&1 || t
 finish_merge() { git add -A && git commit -qm "Merge main" -m "${1-Author-Agent: t}"; }
 carry() { git rev-parse HEAD >gh-head; loop/rules.sh carry 7; }
 carry_code() { local want=$1 name=$2 why=${3:-} got=0 out; out=$(carry 2>&1) || got=$?; if [ "$got" -eq "$want" ] && [[ $out == *"$why"* ]]; then echo "ok:   $name"; else echo "FAIL: $name (wanted exit $want, got $got: $out)"; failures=$((failures + 1)); fi; }
-queue_with() { printf '| id | item |\n|---|---|\n%s' "$1"; }
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"; approval=$(git rev-parse HEAD)
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-| L3 | three |
-' >.work/queue.md; finish_merge
-carry_code 0 "L54 carry: a merge that conflicts only in queue rows and keeps both carries"
+carry_repo; main_commit other.txt x; merge_main; finish_merge
+carry_code 0 "L54 carry: a conflict-free merge of main carries"
 out=$(carry 2>&1 || true); if [[ $out == "carried $approval "* ]]; then echo "ok:   L54 carry prints carried <A> <H>"; else echo "FAIL: L54 carry prints carried <A> <H> ($out)"; failures=$((failures + 1)); fi
 
-carry_repo; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a merge that drops a row main added exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a merge that keeps a row main removed exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm "my row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | mine |
-| L3 | three |
-| L7 | invented |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a merge that invents a row exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | main |
-')"; echo "| L9 | mine |" >>.work/queue.md; git add -A; git commit -qm mine -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-
-| L9 | mine |
-| L3 | main |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: an invented blank line exits 1 (rule b)" "rule b"
-
-carry_repo; printf '| L2 | two |\n' >>.work/queue.md; git add -A; git commit -qm duplicate -m 'Author-Agent: t'; git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: r'
-main_commit .work/queue.md "$(queue_with '| L1 | one |
-')"; merge_main; queue_with '| L1 | one |
-| L2 | two |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a duplicated row removed by main exits 1 (rule b)" "rule b"
-
-carry_repo; main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-')"; printf '| L3 | three |\n' >>.work/queue.md; git add -A; git commit -qm "same row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L3 | three |
-' >.work/queue.md; finish_merge
-carry_code 0 "L54 carry: a row both sides added appears once and carries"
-
-carry_repo; printf '| L9 | both |\n| L9 | both |\n' >>.work/queue.md; git add -A; git commit -qm "duplicate shared row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-main_commit .work/queue.md "$(queue_with '| L1 | one |
-| L2 | two |
-| L9 | both |
-')"; merge_main; queue_with '| L1 | one |
-| L2 | two |
-| L9 | both |
-| L9 | both |
-' >.work/queue.md; finish_merge
-carry_code 1 "L54 carry: a row both sides added cannot remain duplicated (rule b)" "rule b"
+carry_repo; main_commit .work/queue.md changed; echo mine >>.work/queue.md; git add -A; git commit -qm "edit queue" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
+merge_main; echo resolved >.work/queue.md; finish_merge
+carry_code 1 "L54 carry: a conflict in any file exits 1 (rule a)" "rule a"
 
 carry_repo; git checkout -q -b offmain main; echo x >off.txt; git add -A; git commit -qm off -m "Author-Agent: t"; git checkout -q pr
 git merge -q --no-ff offmain -m "Merge offmain" -m "Author-Agent: t" >/dev/null
@@ -299,7 +223,7 @@ if [ "$got" -eq 4 ] && grep -q gh err; then echo "ok:   L54 carry: a gh failure 
 got=0; loop/rules.sh carry x >/dev/null 2>&1 || got=$?
 if [ "$got" -eq 2 ]; then echo "ok:   L54 carry: a non-numeric <pr> exits 2"; else echo "FAIL: L54 carry: a non-numeric <pr> exits 2 (got $got)"; failures=$((failures + 1)); fi
 
-# Further L54 carry cases: fail closed, the allowed paths, an empty chain, other shapes of commit.
+# Further L54 carry cases: fail closed, an empty chain, other shapes of commit.
 carry_repo; git checkout -q --orphan unrelated; git rm -rqf . >/dev/null; echo r >root.txt; git add -A; git commit -qm root -m "Author-Agent: t"
 git update-ref refs/remotes/origin/main HEAD; git checkout -q pr
 git merge -q --no-ff --allow-unrelated-histories --no-edit origin/main -m "Merge main" -m "Author-Agent: t" >/dev/null 2>&1 || true
@@ -308,10 +232,6 @@ carry_code 1 "L54 carry: a merge of unrelated history exits 1, merge-tree failin
 carry_repo
 carry_code 0 "L54 carry: an empty chain (head is the approval) carries" "carried $approval $approval"
 
-carry_repo; git checkout -q main; mkdir -p .work/queue; printf '| id |\n|---|\n| A1 |\n' >.work/queue/daemon.md; git add -A; git commit -qm "squad file" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-echo "| A2 |" >>.work/queue/daemon.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-main_commit .work/queue/daemon.md "$(printf '| id |\n|---|\n| A1 |\n| A3 |\n')"; merge_main; printf '| id |\n|---|\n| A1 |\n| A2 |\n| A3 |\n' >.work/queue/daemon.md; finish_merge
-carry_code 0 "L54 carry: a conflict in a .work/queue/ squad file that keeps both carries"
 
 carry_repo; git checkout -q main; printf '| id |\n|---|\n| A1 |\n' >scenarios/README.md; git add -A; git commit -qm readme -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
 echo "| A2 |" >>scenarios/README.md; git add -A; git commit -qm "row" -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
@@ -323,9 +243,6 @@ echo 'PR prose' >>scenarios/README.md; git add -A; git commit -qm prose -m 'Auth
 main_commit scenarios/README.md "$(printf 'Intro\nShared prose\nMain prose\n')"; merge_main; printf 'Intro\nShared prose\nPR prose\nMain prose\n' >scenarios/README.md; finish_merge
 carry_code 1 "L54 carry: README prose conflict exits 1 (rule a)" "rule a"
 
-carry_repo; git checkout -q main; mkdir -p .work/queue; echo base >.work/queue/a.md; git add -A; git commit -qm a -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; git merge -q --no-edit -m "Merge main" -m "Author-Agent: t" origin/main >/dev/null; echo more >>.work/queue/a.md; git add -A; git commit -qm edit -m "Author-Agent: t"; git commit -q --allow-empty -m "review: approve" -m "Reviewed-by-Agent: r"
-git checkout -q main; git rm -q .work/queue/a.md; git commit -qm "delete" -m "Author-Agent: t"; git update-ref refs/remotes/origin/main HEAD; git checkout -q pr; merge_main; git rm -qf .work/queue/a.md 2>/dev/null || true; finish_merge
-carry_code 1 "L54 carry: a queue file main deleted that the PR edited exits 1, naming the deletion" "gone from the merge"
 
 carry_repo; main_commit other.txt x; git checkout -q -b side main; echo s >side.txt; git add -A; git commit -qm side -m "Author-Agent: t"; git checkout -q pr; git update-ref refs/remotes/origin/main main
 git merge -q --no-ff -m "Octopus" -m "Author-Agent: t" main side >/dev/null 2>&1 || true
@@ -631,15 +548,14 @@ expect_exit 1 'L46 approval with changed content fails' gate merge-ready 12
 
 gate_repo
 git reset -q --hard main
-mkdir -p .work/queue
-for path in docs/notes.md .work/queue/notes.md scenarios/notes.md; do
+for path in docs/notes.md scenarios/notes.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo 'plain prose' >"$path"
   commit prose 'Author-Agent: builder'
   expect_output post "L44 allowed $path is post" gate class 12
 done
-for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md .work/queue/.hidden.md; do
+for path in docs/CLAUDE.md scenarios/CLAUDE.md docs/AGENTS.md docs/.hidden.md docs/.hidden/a.md docs/adr/new.md docs/boxd.md docs/design-system.md docs/development-loop.md scenarios/app.md scenarios/mcp.md scenarios/daemon.md scenarios/loop-rules.md .work/queue.md .work/queue/notes.md .work/queue/.hidden.md; do
   git reset -q --hard main
   mkdir -p "$(dirname "$path")"
   echo prose >"$path"
@@ -691,19 +607,6 @@ git branch -f main HEAD
 git mv docs/notes.md crates/notes.md
 commit rename 'Author-Agent: builder'
 expect_output block 'L44 rename out of docs blocks' gate class 12
-
-gate_repo
-git reset -q --hard main
-mkdir -p .work
-printf 'rows\n## Swarm protocol\nfixed\n' >.work/queue.md
-commit setup
-git branch -f main HEAD
-printf 'new rows\n## Swarm protocol\nfixed\n' >.work/queue.md
-commit rows 'Author-Agent: builder'
-expect_output post 'L44 queue rows above protocol are post' gate class 12
-printf 'new rows\n## Swarm protocol\nchanged\n' >.work/queue.md
-commit protocol 'Author-Agent: builder'
-expect_output block 'L44 protocol changes block' gate class 12
 
 gate_repo
 git reset -q --hard main
@@ -823,7 +726,7 @@ expect_exit 1 'L53 specification missing consistency review fails' gate proof 12
 gate_specification
 gate_set '.body |= sub("Proof scope: specification"; "Proof scope: implementation")'
 expect_exit 1 'L53 unknown explicit proof scope fails' gate proof 12
-for path in crates/change.rs AGENTS.md CONTEXT.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
+for path in crates/change.rs AGENTS.md GLOSSARY.md PRINCIPLES.md scenarios/loop.md scenarios/rpc.md docs/development-loop.md; do
   gate_specification
   printf 'changed\n' >>"$path"
   commit mixed 'Author-Agent: builder'
@@ -1024,5 +927,42 @@ cd "$trusted"
 expect fail 'L46 trusted checkout initially lacks PR objects' git cat-file -e "$pr_head^{commit}"
 expect_output "ready $pr_head" 'L46 fetches missing PR objects as data' gate merge-ready 12
 expect_output main 'L46 leaves the trusted branch checked out' git branch --show-current
+
+ready_repo() {
+  new_repo
+  mkdir -p scenarios apps
+  printf '%s\n' '**U1 one.** a' '**U2 two.** b' '**U3 three.** c' '' '## Work' '' \
+    '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' \
+    '| U1 | first | `a` | — | — |' '| U2 | second | `b` | — | after U3 |' '| U3 | third | `c` | — | — |' \
+    '| U9 | unwritten | — | — | — |' '| U1, U3 | both | — | — | — |' >scenarios/ui.md
+  echo 'test("u1_works", () => {});' >apps/u1.test.ts
+  commit x
+}
+ready() { loop/rules.sh ready; }
+
+ready_repo
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 ready prints each Work row with its state' ready
+
+ready_repo
+echo 'test("u3_works", () => {});' >apps/u3.test.ts; commit x
+expect_output "done U1 scenarios/ui.md
+ready U2 scenarios/ui.md
+done U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+done U1, U3 scenarios/ui.md" 'L34 a done After frees the row' ready
+
+ready_repo
+printf '%s\n' '**L7 x.** a' '## Work' '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' '| L7 | x | — | — | — |' '| U4–U5 | y | — | — | — |' '**U4 a.** x' '**U5 b.** y' >scenarios/loop.md
+printf 'echo L7\n' >loop/x.test.sh; echo 'fn u4_a() {} fn u5_b() {}' >crates/u.rs; commit x
+expect_output "done L7 scenarios/loop.md
+done U4–U5 scenarios/loop.md" 'L34 L ids read loop tests; a range needs every id' bash -c 'loop/rules.sh ready | grep loop.md'
+
+ready_repo
+printf '%s\n' '## Work' '| Ids | Item |' '|---|---|' '| U1 | x |' >scenarios/bad.md; commit x
+expect_exit 2 'L34 a Work table missing a column exits 2' ready
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
