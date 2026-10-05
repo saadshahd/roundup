@@ -206,4 +206,4 @@ Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
 | U58 | an Agent's Pads under it, on demand (Moves: D1, D2, D4, D6) | new `apps/desktop/src/rail/pads/**`, one line in `RailRow.tsx`, `src/pads/**`, one case in `src/keys/**` | `u20_` tests; narrows two named `u18_` tests | after U31, U33, U36, U41, U50 and U56; stacking allowed |
 | U60 | an Agent's Todos under it (Moves: D1, D2, D4) | new `apps/desktop/src/rail/pads/**` (shared with U58), `apps/desktop/src/todos/**` | `u15_`, `u17_`, `u35_`, U58's tests | after T8 on main; may stack on U58's branch |
 | U59 | the terminal blends with the app (Moves: D1, D5) | `apps/desktop/src/terminal/**` and its stylesheet | `u11_` to `u13_` tests; QA screenshots in `artifacts/ux/U59/` (not gating) | after U103 and the contrast tokens merge |
-| U37 | reopen, webview half (Moves: D3, D5, D6, D7) | `apps/desktop/src/app/**` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
+| U37 | reopen, webview half (Moves: D3, D5, D6, D7) | `apps/desktop/src/app/**`, `apps/desktop/src/App.tsx`, `apps/desktop/src/state/project.ts` | `u25_daemon_gone.test.tsx` before a reopen | after S5 merges |
