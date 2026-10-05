@@ -10,7 +10,7 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_run:
-    workflows: [check, loop]
+    workflows: [check, loop, visual]
     types: [completed]
 
 permissions:

@@ -1,6 +1,6 @@
 # Harness
 
-Data for QA, the Design critic and the Builder's visual proof.
+Data for QA, the Design critic and the Percy build: `loop/percy.sh` (L36) snapshots every seed in the table below.
 
 `just harness <seed> <port>` (defaults `tree-40`, `5199`, strict port) serves the App on a fake Daemon at `http://localhost:<port>/harness.html?seed=<seed>` (U26). It checks no Route, Block or Provenance and says nothing about macOS rendering or timing: read the DOM, never the numbers.
 

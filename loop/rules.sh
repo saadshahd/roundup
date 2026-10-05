@@ -174,7 +174,6 @@ import subprocess
 import sys
 import unicodedata
 from pathlib import PurePosixPath
-from urllib.parse import unquote
 
 command, number = sys.argv[1:]
 if command != 'trailers' and not re.fullmatch(r'[0-9]+', number):
@@ -320,20 +319,19 @@ def comments(authors, head, base, records):
             explicit = re.findall(r'^(?:Reviewed-head|Head): ([0-9a-f]{40})\s*$', body, re.M)
             named = explicit if explicit else re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body)
             if len(set(named)) == 1:
-                events.append((verdict[1], named[0] if named[0] in current_heads else None,
-                               'Visual: unchanged' in body.splitlines()))
+                events.append((verdict[1], named[0] if named[0] in current_heads else None))
             elif named and verdict[1] == 'reject':
                 target = next((candidate for candidate in reversed(ordered_heads) if candidate in named), None)
-                events.append(('reject', target, False))
+                events.append(('reject', target))
         pick = re.match(r'ARCHITECT: (split|amend|retire)\b', body)
         ids = re.findall(r'^Architect: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
         if pick and len(ids) == 1 and ids[0] in architects - authors:
-            events.append((pick[1], None, False))
+            events.append((pick[1], None))
     return events
 
 def rounds(events):
     count = 0
-    for event, _, _ in events:
+    for event, _ in events:
         require(event != 'retire', 'retired')
         if event in ('split', 'amend'):
             count = 0
@@ -398,10 +396,10 @@ def fences(text):
     return re.findall(r'^```[^\n]*\n(.*?)^```[ \t]*$', text, re.M | re.S)
 
 def latest_tree_verdict(events, head):
-    for verdict, reviewed, unchanged in reversed(events):
+    for verdict, reviewed in reversed(events):
         if reviewed and ancestor(reviewed, head) and git('rev-parse', reviewed+'^{tree}') == git('rev-parse', head+'^{tree}'):
-            return verdict, unchanged
-    return None, False
+            return verdict
+    return None
 
 def proof(pr, paths, head, base, events=None):
     body = pr['body']
@@ -421,7 +419,6 @@ def proof(pr, paths, head, base, events=None):
     require(ids, 'proof: no scenario ids')
     scopes = re.findall(r'^Proof scope: (.*)$', body, re.M)
     require(not scopes or scopes == ['specification'], 'proof: invalid or repeated Proof scope')
-    visible = any(path.startswith(('apps/desktop/src/', 'crates/desktop/')) or path in ('docs/motion.md', 'docs/design-system.md') for path in paths)
     texts = {}
     for path in git('ls-tree', '-r', '--name-only', head, '--', 'scenarios').splitlines():
         if path.endswith('.md'):
@@ -430,10 +427,6 @@ def proof(pr, paths, head, base, events=None):
                 if match[1] in ids:
                     texts[match[1]] = match[0]
     require(ids <= texts.keys(), 'proof: unknown scenario ids: '+', '.join(sorted(ids - texts.keys())))
-    windows = {id_: set(re.findall(r'\b(\d+)\s*(?:×|by|x)\s*(\d+)\b', text)) for id_, text in texts.items()}
-    visual_ids = {id_ for id_, text in texts.items() if not id_.startswith('L') and
-                  (windows[id_] or re.search(r'screenshot|motion|viewport', text, re.I))}
-    visible |= bool(visual_ids)
     output = '\n'.join(fences(evidence))
     require(head in evidence, 'proof: test output must name the head SHA')
     if scopes:
@@ -460,58 +453,24 @@ def proof(pr, paths, head, base, events=None):
         if events is None:
             authors, records = history(base, head)
             events = comments(authors, head, base, records)
-        require(latest_tree_verdict(events, head)[0] == 'approve',
+        require(latest_tree_verdict(events, head) == 'approve',
                 'proof: specification needs an independent approval on this tree')
         return
     for id_ in sorted(ids):
         require(re.search(r'^.*\b'+id_+r'(?:\b|_).*\b(?:ok|passed)\b|^.*\b(?:ok|passed)\b.*\b'+id_+r'(?:\b|_)', output, re.M | re.I), 'proof: missing test output for '+id_)
-    if not visible:
-        return
-    if events is None:
-        authors, records = history(base, head)
-        events = comments(authors, head, base, records)
-    if latest_tree_verdict(events, head) == ('approve', True):
-        return
-    require(visual_ids, 'proof: visible PR needs a named visual scenario')
-    for id_ in sorted(visual_ids):
-        require(windows[id_], 'proof: visual scenario has no window size: '+id_)
-    require(re.search(r'^Shows: .+', evidence, re.M), 'proof: missing Shows:')
-    captions = re.sub(r'^```[^\n]*\n.*?^```[ \t]*$', '', evidence, flags=re.M | re.S)
-    require(not re.search(r'/Users/|/home/|secret|token|credential|password|oauth', captions, re.I), 'proof: private path or secret word in caption')
-    repository = one(repo)['full_name']
-    require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository), 'proof: invalid repository')
-    branch = f'proof/pr-{number}'
-    tree = one(f'{repo}/git/trees/{branch}?recursive=1')
-    require(tree.get('truncated') is False and isinstance(tree.get('tree'), list), 'proof: incomplete branch tree')
-    blobs = {}
-    for item in tree['tree']:
-        require(item['path'] == 'proof' or item['path'].startswith('proof/'), 'proof: file outside proof/')
-        if item['type'] == 'tree':
-            continue
-        require(item['type'] == 'blob' and item['mode'] == '100644' and isinstance(item['size'], int), 'proof: invalid file')
-        require(PurePosixPath(item['path']).suffix in ('.png', '.webp', '.mp4', '.webm'), 'proof: unsupported file')
-        require(0 < item['size'] <= 5*1024*1024, 'proof: file exceeds 5 MiB or is empty')
-        blobs[item['path']] = item
-    require(sum(item['size'] for item in blobs.values()) <= 20*1024*1024, 'proof: branch exceeds 20 MiB')
-    for id_ in sorted(visual_ids):
-        for when in ('before', 'after'):
-            found = False
-            for line in evidence.splitlines():
-                if not re.search(r'\b'+id_+r'\b', line) or not re.search(r'\b'+when+r'\b', line, re.I):
-                    continue
-                link = re.search(r'https://github\.com/'+re.escape(repository)+r'/(?:blob|raw)/'+re.escape(branch)+r'/([^\s)]+)\)\s+(\d+)×(\d+)', line)
-                if link and unquote(link[1]) in blobs:
-                    width, height = link.group(2, 3)
-                    require((width, height) in windows[id_], 'proof: window size not in '+id_)
-                    found = True
-            require(found, f'proof: missing {id_} {when} image/video and window size')
+    # L76: Percy renders apps/desktop/src in Chromium; WKWebView on macOS stays a laptop check.
+    if any(path.startswith('apps/desktop/src/') for path in paths):
+        checks(head, ('percy',))
+        require(re.search(r'^Percy: https://percy\.io/\S+/builds/\d+\s*$', evidence, re.M), 'proof: missing Percy: build link')
+    if any(path.startswith('crates/desktop/') for path in paths):
+        require(re.search(r'^macOS: \S.+$', evidence, re.M), 'proof: missing macOS: laptop check')
 
-def checks(head):
+def checks(head, names=('check', 'rules')):
     pages = gh(f'{repo}/commits/{head}/check-runs?per_page=100&filter=latest')
     require(all(isinstance(page, dict) and isinstance(page.get('check_runs'), list) for page in pages), 'invalid check runs')
     runs = [run for page in pages for run in page['check_runs']]
     require(all(isinstance(run, dict) for run in runs), 'invalid check run')
-    for name in ('check', 'rules'):
+    for name in names:
         matches = [run for run in runs if run.get('name') == name]
         require(matches and all(run.get('head_sha') == head and run.get('status') == 'completed'
                 and run.get('conclusion') == 'success' and run.get('app', {}).get('slug') == 'github-actions'
@@ -557,7 +516,7 @@ try:
             gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
             gate(lambda: rounds(events))
             rejected = set()
-            for event, named_head, _ in events:
+            for event, named_head in events:
                 if named_head and event == 'reject':
                     rejected.add(named_head)
                 elif named_head and event == 'approve':

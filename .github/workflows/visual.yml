@@ -1,0 +1,34 @@
+name: visual
+
+# L36: the Percy build of every harness seed is a visible PR's visual proof (L76); builds on main are its baseline.
+on:
+  pull_request:
+    paths: ['apps/desktop/src/**']
+  push:
+    branches: [main]
+    paths: ['apps/desktop/src/**']
+  workflow_dispatch:
+
+concurrency:
+  group: visual-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  percy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: taiki-e/install-action@just
+      - run: pnpm install --frozen-lockfile
+      - run: loop/percy.sh
+        env:
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+          PERCY_CLIENT_ERROR_LOGS: "false"

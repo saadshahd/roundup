@@ -7,9 +7,9 @@ Data for the Builder, and for the Reviewer judging a body.
 - `Scenarios: <ids>` and the `PRINCIPLES.md` ids it serves.
 - `## Shape`: the smallest call, component or file tree, sequence or diff that makes the change clear, at most 40 lines (`show-me`).
 - `## Proof`: the full head SHA and a fenced test-output block with a passing line per scenario id.
-  - Visible change: a `Shows:` line and one line per scenario and capture, e.g. `U1 before [image](https://github.com/OWNER/REPO/blob/proof/pr-12/proof/before.png) 1280×800`, at a window size the scenario names. `proof/pr-<n>` holds only media under `proof/`.
+  - `apps/desktop/src` change (L76): `Percy: https://percy.io/…/builds/<n>`, the link the head's `percy` job writes to its summary (L36). No images.
+  - `crates/desktop` change (L76): `macOS: <what you saw in just app>`; Percy renders Chromium only, so WKWebView is the one laptop check.
   - Specification only: `Proof scope: specification`, fenced output with `just check: exit 0`, `Specification consistency: <review>`, one `Pending <id>: <observer>` per scenario. Never for production, contract, glossary, policy or mixed changes.
-  - Unchanged rendering (L76): no proof branch when the independent approve carries `Visual: unchanged`, `Reviewed-head: <sha>` and `Reviewed-by-Agent: <id>` on an ancestor with the head's tree.
 - `Moves: D<n>, …` for a change under `apps/desktop/src` (rule 8).
 
 ## Labels (L57, by hand)

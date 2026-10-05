@@ -1,6 +1,6 @@
 # Loop rules
 
-Module: `loop/rules.sh`. Each id's cases are its `L<n>` tests in `loop/rules.test.sh` and `loop/merge-ready.test.sh`.
+Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L<n>` tests in `loop/rules.test.sh`, `loop/merge-ready.test.sh` and `loop/percy.test.sh`.
 
 | Exit | Means |
 |---|---|
@@ -19,6 +19,8 @@ Module: `loop/rules.sh`. Each id's cases are its `L<n>` tests in `loop/rules.tes
 
 **L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as `done` (every id has a test), `unspecified` (an id has no heading), `waiting` (an `After` id is not done) or `ready`.
 
+**L36 Percy build.** On every PR touching `apps/desktop/src/`, and on each such push to `main` as Percy's baseline, the `visual` workflow's `percy` job serves `just harness` and runs `percy snapshot` on each seed of `.agents/data/harness.md` at 700 and 1280 px wide; it fails without `PERCY_TOKEN`, when the harness never answers, when Percy fails, or when its output has no build link, and writes that link to the job summary.
+
 **L42 delta.** `delta <base-dir> <head-dir>` prints `<step> <id> fixed|regressed|still-failing|still-passing` per check and fails on any `regressed`; a check missing on one side is exit 2, never a pass.
 
 **L44 class.** `class <pr>` prints `post` only when every changed file is docs prose or a scenario passing the content screen; anything else, or any doubt, is `block`.
@@ -27,11 +29,11 @@ Module: `loop/rules.sh`. Each id's cases are its `L<n>` tests in `loop/rules.tes
 
 **L46 merge-ready.** `merge-ready <pr>` prints `ready <head SHA>` only when `base`, `rounds`, the lane's trailer rule and `proof` hold and `check` and `rules` passed on that exact head.
 
-**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`, with images for a visible PR.
+**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`; a visible PR adds L76's lines, never images.
 
 **L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge.
 
-**L76 unchanged rendering.** A visible-path PR needs no proof branch when the newest independent approve on the same tree carries `Visual: unchanged`.
+**L76 Percy proof.** A PR touching `apps/desktop/src/` passes `proof` only when the `percy` check (L36) succeeded on its exact head and Proof has a `Percy: https://percy.io/…/builds/<n>` line; one touching `crates/desktop/` needs a `macOS: <what was seen>` line, WKWebView being the one laptop check. No other path, scenario text or verdict asks for visual proof.
 
 **L78 auto-merge.** The merge-ready workflow disarms auto-merge on a `.github/` PR only when it is enabled, and fails closed on a read or disarm error.
 
