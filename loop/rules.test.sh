@@ -207,7 +207,7 @@ carry_repo; main_commit other.txt x; merge_main; echo sneaky >>scenarios/loop.md
 carry_code 1 "L54 carry: a merge that also edits another file exits 1 (rule c)" "rule c"
 
 carry_repo; main_commit other.txt x; merge_main; finish_merge "no trailer here"
-carry_code 1 "L54 carry: a merge with no Author-Agent exits 1" "Author-Agent"
+carry_code 0 "L54 carry: a clean merge of main needs no Author-Agent"
 
 carry_repo; echo more >more.txt; git add -A; git commit -qm "later work" -m "Author-Agent: t"
 carry_code 1 "L54 carry: a non-merge commit after the approval exits 1" "not a merge"
@@ -356,7 +356,7 @@ for merge_trailer in missing authored self-review approval invalid-id; do
   git checkout -q work
   want=1
   case $merge_trailer in
-    missing) trailer='' ;;
+    missing) trailer=''; want=0 ;;
     authored) trailer='Author-Agent: builder'; want=0 ;;
     self-review) trailer='Author-Agent: reviewer' ;;
     approval) trailer='Reviewed-by-Agent: reviewer' ;;
@@ -381,6 +381,21 @@ git checkout -q work
 git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 expect_output "ready $(git rev-parse HEAD)" 'L46 L54-carried approval passes' gate merge-ready 12
 expect_exit 1 'L2 local approval requires newest commit even when L54 carries remotely' rules trailers
+
+gate_repo
+git checkout -q main
+printf 'main update\n' >docs/main.md
+commit main-update
+git checkout -q work
+git merge -q --no-ff main -m 'merge main without a trailer'
+expect_exit 0 'L46 block allows an untrailed clean merge of main in CI' gate ci-trailers 12
+expect_output "ready $(git rev-parse HEAD)" 'L46 block carries an approval across an untrailed clean merge' gate merge-ready 12
+git reset -q --hard HEAD^
+git merge -q --no-ff --no-commit main
+echo sneaky >>crates/change.rs
+git add -A
+git commit -qm 'merge main and edit'
+expect_exit 1 'L46 block still needs Author-Agent on a merge that changes more than main' gate ci-trailers 12
 
 gate_repo
 git reset -q --hard HEAD^

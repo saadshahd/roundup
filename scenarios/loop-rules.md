@@ -11,7 +11,7 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 
 **L1 size.** `size` prints an advisory and still exits 0 when a PR spans more than one module directory or about 2000 changed lines, lockfiles and `generated/` excluded.
 
-**L2 approval.** `trailers` passes when every commit carries `Author-Agent` and the newest is an empty `Reviewed-by-Agent` commit whose id differs from every author.
+**L2 approval.** `trailers` passes when every commit but a clean merge of `main` carries `Author-Agent` and the newest is an empty `Reviewed-by-Agent` commit whose id differs from every author.
 
 **L3 vocabulary.** `vocab` fails naming the word when a public Rust item, TS export or `contracts/` name holds a `GLOSSARY.md` _Avoid_ word, except under `crates/agents/claude_code/`.
 
@@ -31,7 +31,7 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 
 **L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`; a visible PR adds L76's lines, never images.
 
-**L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge.
+**L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge (`clean-merge <commit>`); such a merge needs no `Author-Agent`, so a human can merge `main` in from GitHub.
 
 **L76 Percy proof.** A PR touching `apps/desktop/src/` passes `proof` only when the `percy` check (L36) succeeded on its exact head and Proof has a `Percy: https://percy.io/…/builds/<n>` line; one touching `crates/desktop/` needs a `macOS: <what was seen>` line, WKWebView being the one laptop check. No other path, scenario text or verdict asks for visual proof.
 

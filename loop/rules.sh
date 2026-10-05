@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready [--offline] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
+# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready [--offline] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr> | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -130,12 +130,13 @@ delta() {
 }
 
 # L54: does a PR's approval still hold after conflict-free merges of main? Prints `carried <A> <H>` or names the commit and rule.
-carry_one() {
+# A clean merge of main: two parents, the second on main, no conflict, and nothing beyond the trial merge.
+# It adds no authored content, so it needs no Author-Agent in either lane (L46) and carries an approval (L54).
+clean_merge() {
   local c=$1 main_ref=$2 p1 p2 extra trial conflicted f
   read -r _ p1 p2 extra <<<"$(git rev-list --parents -n 1 "$c")"
   { [ -n "${p2:-}" ] && [ -z "${extra:-}" ]; } || { echo "carry: $c: not a merge of main" >&2; return 1; }
   git merge-base --is-ancestor "$p2" "$main_ref" || { echo "carry: $c: not a merge of main (second parent is not on $main_ref)" >&2; return 1; }
-  git log -1 --format=%B "$c" | grep -q '^Author-Agent: ' || { echo "carry: $c: no Author-Agent trailer" >&2; return 1; }
   local mt_rc=0
   trial=$(git merge-tree --write-tree --name-only --no-messages "$p1" "$p2" 2>/dev/null) || mt_rc=$?
   { [ "$mt_rc" -le 1 ] && [ -n "$trial" ]; } || { echo "carry: $c: merge-tree failed (exit $mt_rc)" >&2; return 1; }
@@ -159,7 +160,7 @@ carry() {
     chain=("$c" ${chain[@]+"${chain[@]}"})
   done
   [ -n "${approval:-}" ] || { echo "carry: no approval commit on $head" >&2; return 1; }
-  for c in "${chain[@]+"${chain[@]}"}"; do carry_one "$c" "$main_ref" || return 1; done
+  for c in "${chain[@]+"${chain[@]}"}"; do clean_merge "$c" "$main_ref" || return 1; done
   echo "carried $approval $head"
 }
 
@@ -260,10 +261,17 @@ def history(base, head):
     require(authors, 'no Author-Agent trailers')
     return authors, records
 
+def clean_merge(commit, base):
+    try:
+        return subprocess.run(['bash', 'loop/rules.sh', 'clean-merge', commit, base], stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=limit).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
 def trailer_gate(records, authors, lane, head, base):
     for commit, parents, author, reviewer in records:
         if len(parents) != 1:
-            require(not reviewer and (lane == 'post' or author),
+            require(not reviewer and (lane == 'post' or author or clean_merge(commit, base)),
                     f'trailers: merge {commit} has an invalid trailer')
         elif lane == 'post':
             require(author and not reviewer, f'trailers: {commit} needs Author-Agent only')
@@ -611,5 +619,7 @@ case "${1:-}" in
     ready "${@:2}" ;;
   delta) delta "${2:-}" "${3:-}" ;;
   carry) carry "${2:-}" "${3:-origin/main}" ;;
+  clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
+    clean_merge "$2" "${3:-origin/main}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;
 esac
