@@ -287,6 +287,25 @@ def clean_merge(commit, base):
     except subprocess.TimeoutExpired:
         return False
 
+def same_tree(commit, parent):
+    return git('rev-parse', commit+'^{tree}') == git('rev-parse', parent+'^{tree}')
+
+# L53: Proof's SHA is the head, or an ancestor after which the first-parent line holds only clean merges of main
+# (L54) and empty Reviewed-by-Agent commits, so an approval or a merge of main never invalidates the proof.
+def proven(named, head, base):
+    if named == head:
+        return True
+    if subprocess.run(['git', 'cat-file', '-e', named+'^{commit}'], stderr=subprocess.DEVNULL).returncode or not ancestor(named, head):
+        return False
+    for commit in git('rev-list', '--first-parent', named+'..'+head).splitlines():
+        parents = git('rev-list', '--parents', '-n', '1', commit).split()[1:]
+        if len(parents) != 1:
+            if not clean_merge(commit, base):
+                return False
+        elif not (trailers(commit, 'Reviewed-by-Agent') and not trailers(commit, 'Author-Agent') and same_tree(commit, parents[0])):
+            return False
+    return True
+
 def trailer_gate(records, authors, lane, head, base):
     for commit, parents, author, reviewer in records:
         if len(parents) != 1:
@@ -295,8 +314,7 @@ def trailer_gate(records, authors, lane, head, base):
         elif lane == 'post':
             require(author and not reviewer, f'trailers: {commit} needs Author-Agent only')
         elif reviewer:
-            require(not author and not (reviewer & authors) and 'copilot' not in reviewer and
-                    git('rev-parse', commit+'^{tree}') == git('rev-parse', parents[0]+'^{tree}'),
+            require(not author and not (reviewer & authors) and 'copilot' not in reviewer and same_tree(commit, parents[0]),
                     f'trailers: {commit} is not a clean independent approval')
         else:
             require(author, f'trailers: {commit} has no Author-Agent')
@@ -455,7 +473,8 @@ def proof(pr, paths, head, base, events=None):
                     texts[match[1]] = match[0]
     require(ids <= texts.keys(), 'proof: unknown scenario ids: '+', '.join(sorted(ids - texts.keys())))
     output = '\n'.join(fences(evidence))
-    require(head in evidence, 'proof: test output must name the head SHA')
+    require(any(proven(named, head, base) for named in set(re.findall(r'\b[0-9a-f]{40}\b', evidence))),
+            'proof: Proof must name the head SHA, or an ancestor followed only by clean merges of main and empty approvals')
     if scopes:
         excluded = {'daemon.md', 'rpc.md', 'control.md', 'README.md', 'AGENTS.md', 'CLAUDE.md'}
         start = git('merge-base', base, head)

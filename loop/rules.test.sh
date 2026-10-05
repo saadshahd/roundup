@@ -486,6 +486,29 @@ expect_exit 0 'L53 context ids do not create extra proof obligations' gate proof
 gate_set '.body="Scenarios: L46\n## Shape\n```\na\n```\n## Proof\nNo output"'
 expect_exit 1 'L53 absent test output fails' gate proof 12
 
+# L53: Proof may name an ancestor of head when every later first-parent commit is a clean merge of main or an empty approval.
+proof_names() { gate_set --arg sha "$1" --arg p "$2" '.body="Scenarios: L46\n"+$p+"## Shape\n```\na\n```\n## Proof\nHead: "+$sha+"\n```\nok L46_gate\n```\n"'; }
+gate_repo
+proof_names "$(git rev-parse HEAD)" $'Principles: P1\n'
+expect_exit 0 'L53 a Principles line is never read as a scenario id' gate proof 12
+proven=$(git rev-parse HEAD^)
+proof_names "$proven" ''
+expect_exit 0 'L53 proof names the commit an empty approval follows' gate proof 12
+git checkout -q main; printf 'main update\n' >docs/main.md; commit main-update; git checkout -q work
+git merge -q --no-ff main -m 'merge main without a trailer'
+expect_exit 0 'L53 proof survives a clean merge of main after the approval' gate proof 12
+proof_names "$(git rev-parse main)" ''
+expect_exit 1 'L53 a main commit is not a proven head' gate proof 12
+proof_names 0123456789abcdef0123456789abcdef01234567 ''
+expect_exit 1 'L53 an unknown SHA is not a proven head' gate proof 12
+proof_names "$proven" ''
+git reset -q --hard HEAD^; git merge -q --no-ff --no-commit main; echo sneaky >>crates/change.rs; git add -A; git commit -qm 'merge main and edit'
+expect_exit 1 'L53 a merge that changes more than main moves the proven head' gate proof 12
+git reset -q --hard HEAD^; echo more >>crates/change.rs; commit more 'Author-Agent: builder'
+expect_exit 1 'L53 an authored commit after the named SHA fails' gate proof 12
+git reset -q --hard HEAD^; git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer' -m 'Author-Agent: builder'
+expect_exit 1 'L53 an empty commit carrying Author-Agent is not an approval' gate proof 12
+
 gate_repo
 printf '**L46 screenshots are proof of a loop rule.** Given a PR, when checked, then it passes.\n' >scenarios/loop.md
 commit scenario 'Author-Agent: builder'

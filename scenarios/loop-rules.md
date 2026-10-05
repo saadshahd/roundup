@@ -43,7 +43,7 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 
 **L46 merge-ready.** `merge-ready <pr>` prints `ready <head SHA>` only when `base`, `rounds`, the lane's trailer rule and `proof` hold and `check` and `rules` passed on that exact head.
 
-**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`; a visible PR adds L76's lines, and a Proof image link fails it.
+**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`, Proof naming the head SHA or an ancestor followed on the first-parent line only by clean merges of `main` (L54) and empty `Reviewed-by-Agent` commits; a `Principles:` line is optional and never read as scenario ids; a visible PR adds L76's lines, and a Proof image link fails it.
 
 **L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge (`clean-merge <commit>`); such a merge needs no `Author-Agent`, so a human can merge `main` in from GitHub.
 
