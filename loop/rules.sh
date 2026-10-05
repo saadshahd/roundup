@@ -189,7 +189,7 @@ def require(ok, reason):
         raise Refused(reason)
 
 try:
-    limit = int(os.environ.get('BOXD_GH_TIMEOUT', '20'))
+    limit = float(os.environ.get('BOXD_GH_TIMEOUT', '20'))
     require(limit > 0, 'BOXD_GH_TIMEOUT must be positive')
 except (ValueError, Refused) as error:
     print(error, file=sys.stderr)
@@ -601,7 +601,7 @@ prs = []
 if sys.argv[1:] != ['--offline']:
     try:
         result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,title'],
-                                text=True, stdout=subprocess.PIPE, timeout=int(os.environ.get('BOXD_GH_TIMEOUT', '20')), check=True)
+                                text=True, stdout=subprocess.PIPE, timeout=float(os.environ.get('BOXD_GH_TIMEOUT', '20')), check=True)
         prs = [(pr['number'], set(ids(pr['title']))) for pr in json.loads(result.stdout)]
     except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError) as error:
         print(f'gh: pr list: {error}', file=sys.stderr)

@@ -37,7 +37,7 @@ Module: `loop/boxd.sh`. Each id's cases are its `L<n>` tests in `loop/boxd.test.
 
 **L17 run logs.** Each run logs to its own `loop/out/runs/<name>-<UTC>-<pid>.*`.
 
-**L18 slot wait.** `BOXD_SLOT_WAIT` seconds of waiting for a free slot before failing; `swarm` waits 900.
+**L18 slot wait.** `BOXD_SLOT_WAIT` seconds of waiting for a free slot before failing; `swarm` waits 900. Every wait polls each `BOXD_POLL` seconds (1), and the slot and lock waits count polls.
 
 **L19 retry.** A VM that never answers, or an early upload failure, is retried once on a fresh VM before the agent starts; retries, silent runs and deadlines go to `loop/out/events.log`.
 

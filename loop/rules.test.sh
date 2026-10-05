@@ -382,7 +382,9 @@ expect_exit 4 'L33 gh failure is not success' gate base 12
 expect_exit 2 'L33 missing number fails before gh' gate base
 expect_exit 2 'L33 nonnumeric number fails before gh' gate base 12a
 gate_set '.failure=false | .hang=true'
-expect_exit 4 'L33 gh timeout is bounded' env BOXD_GH_TIMEOUT=1 loop/rules.sh base 12
+expect_exit 4 'L33 gh timeout is bounded' env BOXD_GH_TIMEOUT=0.2 loop/rules.sh base 12
+gate_set '.hang=false | .base="main"'
+expect_exit 0 'L33 a fractional BOXD_GH_TIMEOUT is honoured' env BOXD_GH_TIMEOUT=0.5 loop/rules.sh base 12
 
 gate_repo
 expect_output block 'L44 source is block' gate class 12
@@ -911,7 +913,7 @@ for command in class rounds proof merge-ready; do
   expect_exit 4 "L33 $command propagates gh failure" gate "$command" 12
 done
 gate_set '.failure=false | .hang=true'
-expect pass 'L33 timeout names gh on stderr' gate_error_contains gh env BOXD_GH_TIMEOUT=1 loop/rules.sh base 12
+expect pass 'L33 timeout names gh on stderr' gate_error_contains gh env BOXD_GH_TIMEOUT=0.2 loop/rules.sh base 12
 
 gate_repo
 git reset -q --hard main
@@ -968,7 +970,7 @@ ready_repo() {
   commit x
   # A fake `gh pr list` printing gh-prs, failing on GH_FAIL and hanging on GH_HANG.
   mkdir -p .git/ready-bin
-  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
+  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || exec sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
   chmod +x .git/ready-bin/gh
   echo '[]' >.git/gh-prs
   export PATH="$PWD/.git/ready-bin:$PATH"
@@ -1018,7 +1020,8 @@ ready U1, U3 scenarios/ui.md" 'L34 no open PR leaves every state' ready
 ready_repo
 expect_exit 4 'L34 gh failure exits 4' env GH_FAIL=1 loop/rules.sh ready
 expect pass 'L34 gh failure names gh' gate_error_contains gh env GH_FAIL=1 loop/rules.sh ready
-expect pass 'L34 gh slower than BOXD_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 BOXD_GH_TIMEOUT=1 loop/rules.sh ready
+expect pass 'L34 gh slower than BOXD_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 BOXD_GH_TIMEOUT=0.2 loop/rules.sh ready
+expect pass 'L34 a fractional BOXD_GH_TIMEOUT is honoured' env BOXD_GH_TIMEOUT=0.5 loop/rules.sh ready
 mkdir .git/no-gh-bin
 for tool in bash dirname python3 git; do ln -s "$(command -v "$tool")" .git/no-gh-bin/; done
 expect_exit 4 'L34 gh missing exits 4' env PATH="$PWD/.git/no-gh-bin" loop/rules.sh ready

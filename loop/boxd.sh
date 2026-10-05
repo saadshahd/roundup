@@ -38,6 +38,8 @@ AGENT_KIND=claude
 PARTIAL_TMP=
 LOCK=$OUT/lock
 LOCK_WAIT=${BOXD_LOCK_WAIT:-60}
+# Every wait polls once per BOXD_POLL s (default 1); the slot and lock waits count polls, so a test can shrink them.
+POLL=${BOXD_POLL:-1}
 lock_held=0
 # The ru-toolchain snapshot carries a stray /node_modules/@types/node at the filesystem root (observed on ru-tsc-gate):
 # tsc's ambient @types lookup walks up every parent of ~/roundup and finds it, so a package that never declares
@@ -124,7 +126,7 @@ acquire_lock() {
   local _
   for _ in $(seq "$LOCK_WAIT"); do
     if mkdir "$LOCK" 2>/dev/null; then lock_held=1; return 0; fi
-    sleep 1
+    sleep "$POLL"
   done
   echo "boxd.sh: $LOCK is held; remove it if no other run is active" >&2
   exit 1
@@ -194,7 +196,7 @@ create_vm() {
   while [ "$(vm_count)" -ge "$MAX_VMS" ]; do
     if [ "$waited" -ge "$SLOT_WAIT" ]; then echo "boxd.sh: $MAX_VMS ru- VMs already exist (cap BOXD_MAX_VMS=$MAX_VMS); no slot freed within ${SLOT_WAIT} s" >&2; exit 1; fi
     release_lock
-    sleep 1
+    sleep "$POLL"
     waited=$((waited + 1))
     acquire_lock
   done
@@ -215,7 +217,7 @@ await_reboot() {
   local _
   for _ in $(seq "$REBOOT_ATTEMPTS"); do
     boxd machine exec "$VM" --timeout 5 -- true </dev/null >/dev/null 2>&1 && return 0
-    sleep 1
+    sleep "$POLL"
   done
   return 3
 }
@@ -493,7 +495,7 @@ swarm() {
   trap 'stop_swarm "${pids[@]+"${pids[@]}"}"' INT TERM
   for i in "${!prompts[@]}"; do
     n=$((n + 1))
-    while [ "$(running_children ${pids[@]+"${pids[@]}"})" -ge "$MAX_VMS" ]; do sleep 1; done
+    while [ "$(running_children ${pids[@]+"${pids[@]}"})" -ge "$MAX_VMS" ]; do sleep "$POLL"; done
     names+=("$prefix-$n")
     if [ "$role" = review ]; then "$0" review "$prefix-$n" "${prompts[$i]}" "${refs[$i]}" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &
     else "$0" build "$prefix-$n" "${prompts[$i]}" </dev/null >"$OUT/runs/swarm-$$-$n.log" 2>&1 &

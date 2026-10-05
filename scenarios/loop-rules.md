@@ -7,7 +7,7 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 | 0 | holds |
 | 1 | a rule is broken; stderr names it |
 | 2 | bad input or usage, before any network call |
-| 4 | `gh` failed or exceeded `BOXD_GH_TIMEOUT` (20 s); never read as a pass |
+| 4 | `gh` failed or exceeded `BOXD_GH_TIMEOUT` (20 s, fractions allowed); never read as a pass |
 
 **L1 size.** `size` prints an advisory and still exits 0 when a PR spans more than one module directory or about 2000 changed lines, lockfiles and `generated/` excluded.
 
