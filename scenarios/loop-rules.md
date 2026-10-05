@@ -1,6 +1,6 @@
 # Loop rules
 
-Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L<n>` tests in `loop/rules.test.sh`, `loop/merge-ready.test.sh` and `loop/percy.test.sh`.
+Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. Each id's cases are its `L<n>` tests in `loop/rules.test.sh`, `loop/merge-ready.test.sh`, `loop/percy.test.sh` and `loop/stalls.test.sh`.
 
 | Exit | Means |
 |---|---|
@@ -14,6 +14,18 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 **L2 approval.** `trailers` passes when every commit but a clean merge of `main` (L54) or a Copilot Autofix commit (L37) carries `Author-Agent` and the newest is an empty `Reviewed-by-Agent` commit whose id differs from every author.
 
 **L3 vocabulary.** `vocab` fails naming the word when a public Rust item, TS export or `contracts/` name holds a `GLOSSARY.md` _Avoid_ word, except under `crates/agents/claude_code/`.
+
+**L28 stalls.** `loop/stalls.sh check` writes `loop/out/stalls/<kind>-<subject>` for each Stall below that holds and deletes each file whose Stall no longer holds. It exits 1 listing the files, or 0 printing nothing when none holds. A file holds `since` (UTC, kept from the earlier run while the file exists), `owner`, and `deadline` (`since` plus 30 minutes). An independent verdict is one `rounds` (L45) counts, read by the same code.
+
+| Kind | Holds when | Subject | Owner |
+|---|---|---|---|
+| a | the newest run of `check` or `rules` on `main` failed | `main` | Triage |
+| b | `merge-ready <pr>` prints `ready` and the PR's newest independent approve is 20 minutes old or more | PR number | Merger |
+| c | `rounds <pr>` fails and no `ARCHITECT: retire` names the PR | PR number | an Architect who is not a PR author; the file adds `except <author ids>` |
+| d | a `loop/out/verdicts/` file holding an open PR's full head SHA was written 5 minutes ago or more, and the PR has no independent verdict on that head | PR number | Driver |
+| e | a PR merged in the last 7 days, which `class` prints `post` for, has no independent verdict 60 minutes after its merge | PR number | Driver |
+
+Every `gh` read finishes before any file changes; `gh` failing or slower than `BOXD_GH_TIMEOUT` exits 4 naming it and changes nothing. `loop/stalls.sh report` prints `<kind> <subject> owner <owner> due <deadline>` once for each file it has not printed before; a file deleted and written again prints again. The tests use a fake `gh` and set file times: one case per kind, one with none holding, `since` kept across runs, a cleared file deleted, `report` run twice, and a `gh` failure and timeout.
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 
