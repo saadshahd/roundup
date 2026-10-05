@@ -3,3 +3,4 @@ target/
 !.agents/skills/target/
 dist/
 .roundup/
+.percy/

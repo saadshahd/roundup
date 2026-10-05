@@ -21,4 +21,5 @@ jobs:
       - run: loop/rules.sh vocab
       - run: loop/rules.test.sh
       - run: loop/merge-ready.test.sh
+      - run: loop/percy.test.sh
       - run: loop/boxd.test.sh

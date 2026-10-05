@@ -12,6 +12,7 @@
   ],
   "ignoreDependencies": [
     "@oxlint/plugins",
-    "@boxd/run"
+    "@boxd/run",
+    "@percy/cli"
   ]
 }

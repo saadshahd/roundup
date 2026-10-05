@@ -207,7 +207,7 @@ carry_repo; main_commit other.txt x; merge_main; echo sneaky >>scenarios/loop.md
 carry_code 1 "L54 carry: a merge that also edits another file exits 1 (rule c)" "rule c"
 
 carry_repo; main_commit other.txt x; merge_main; finish_merge "no trailer here"
-carry_code 1 "L54 carry: a merge with no Author-Agent exits 1" "Author-Agent"
+carry_code 0 "L54 carry: a clean merge of main needs no Author-Agent"
 
 carry_repo; echo more >more.txt; git add -A; git commit -qm "later work" -m "Author-Agent: t"
 carry_code 1 "L54 carry: a non-merge commit after the approval exits 1" "not a merge"
@@ -308,18 +308,10 @@ elif '/pulls/' in route:
     out = [pr]
 elif '/issues/' in route:
     out = d.get('comments', [[]])
-elif route == 'repos/{owner}/{repo}':
-    out = [{'full_name': 'example/roundup'}]
-elif '/git/trees/proof/' in route:
-    if d.get('no_proof_branch'):
-        sys.exit(1)
-    out = [d.get('tree', {'truncated': False, 'tree': [
-        {'path': 'proof/'+name+'.png', 'mode': '100644', 'type': 'blob', 'size': 1024}
-        for name in ['before', 'after']]})]
 elif '/check-runs' in route:
     out = d.get('checks', [{'check_runs': [{'id': i, 'name': name, 'head_sha': head,
         'status': 'completed', 'conclusion': 'success', 'app': {'slug': 'github-actions'}}
-        for i, name in enumerate(['check', 'rules'], 1)]}])
+        for i, name in enumerate(['check', 'rules', 'percy'], 1)]}])
 else:
     print('unexpected gh route: '+route, file=sys.stderr)
     sys.exit(1)
@@ -330,6 +322,56 @@ GH
 }
 gate_set() { jq "$@" "$GATE_DATA" >"$GATE_DATA.tmp"; mv "$GATE_DATA.tmp" "$GATE_DATA"; }
 gate() { loop/rules.sh "$@"; }
+
+# L37: a GitHub-signed Copilot Autofix commit is authored by `copilot`. A throwaway key stands in for web-flow.
+copilot_repo() {
+  gate_repo
+  git reset -q --hard main
+  GNUPGHOME=$(mktemp -d)
+  export GNUPGHOME
+  gpg --batch -q --passphrase '' --quick-gen-key 'GitHub <noreply@github.com>' ed25519 sign never 2>/dev/null
+  gpg --batch -q --passphrase '' --quick-gen-key 'Other <other@example.com>' ed25519 sign never 2>/dev/null
+  gpg --armor --export noreply@github.com >loop/web-flow.asc
+  commit web-flow
+  git branch -f main HEAD
+  echo changed >crates/change.rs
+  commit change 'Author-Agent: builder'
+}
+copilot_fix() {
+  local key=${1-noreply@github.com} committer=${2:-noreply@github.com} trailer=${3-Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>}
+  local sign=--no-gpg-sign
+  [ -z "$key" ] || sign=-S
+  echo fix >>crates/change.rs
+  git add -A
+  GIT_COMMITTER_NAME=GitHub GIT_COMMITTER_EMAIL=$committer git -c gpg.format=openpgp -c user.signingkey="$key" commit -q "$sign" \
+    -m 'Potential fix for pull request finding' ${trailer:+-m "$trailer"}
+  git commit -q --allow-empty -m approval -m "Reviewed-by-Agent: ${4:-reviewer}"
+}
+copilot_repo; copilot_fix
+expect_exit 0 'L37 a GitHub-signed Copilot Autofix commit needs no Author-Agent in CI' gate ci-trailers 12
+expect_output "ready $(git rev-parse HEAD)" 'L37 merge-ready accepts a Copilot Autofix commit' gate merge-ready 12
+expect_exit 0 'L37 local trailers agree on a review checkout' rules trailers
+copilot_repo; copilot_fix ''
+expect_exit 1 'L37 an unsigned commit claiming Copilot fails' gate ci-trailers 12
+copilot_repo; copilot_fix other@example.com
+expect_exit 1 'L37 a Copilot claim signed by another key fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com noreply@github.com ''
+expect_exit 1 'L37 a GitHub-signed commit without the Copilot Autofix trailer fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com someone@example.com
+expect_exit 1 'L37 a Copilot claim GitHub did not commit fails' gate ci-trailers 12
+copilot_repo; copilot_fix noreply@github.com noreply@github.com 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>' copilot
+expect_exit 1 'L37 copilot cannot approve its own fix' gate ci-trailers 12
+gate_repo
+git commit -q --amend --allow-empty -m approval -m 'Reviewed-by-Agent: copilot'
+expect_exit 1 'L37 copilot cannot approve a PR it did not touch in CI' gate ci-trailers 12
+expect_exit 1 'L37 copilot cannot approve a PR it did not touch at merge' gate merge-ready 12
+copilot_repo
+git checkout -q main; echo m >docs/main.md; git add -A; git commit -qm main-update; git checkout -q work
+git merge -q --no-ff --no-commit main; echo extra >>crates/change.rs; git add -A
+GIT_COMMITTER_NAME=GitHub GIT_COMMITTER_EMAIL=noreply@github.com git -c gpg.format=openpgp -c user.signingkey=noreply@github.com commit -q -S -m 'merge main' -m 'Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>'
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L37 a signed Copilot merge that changes more than main still needs Author-Agent' gate ci-trailers 12
+unset GNUPGHOME
 
 gate_repo
 expect_exit 0 'L33 base main passes' gate base 12
@@ -364,7 +406,7 @@ for merge_trailer in missing authored self-review approval invalid-id; do
   git checkout -q work
   want=1
   case $merge_trailer in
-    missing) trailer='' ;;
+    missing) trailer=''; want=0 ;;
     authored) trailer='Author-Agent: builder'; want=0 ;;
     self-review) trailer='Author-Agent: reviewer' ;;
     approval) trailer='Reviewed-by-Agent: reviewer' ;;
@@ -389,6 +431,24 @@ git checkout -q work
 git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
 expect_output "ready $(git rev-parse HEAD)" 'L46 L54-carried approval passes' gate merge-ready 12
 expect_exit 1 'L2 local approval requires newest commit even when L54 carries remotely' rules trailers
+
+gate_repo
+git checkout -q main
+printf 'main update\n' >docs/main.md
+commit main-update
+git checkout -q work
+git merge -q --no-ff main -m 'merge main without a trailer'
+expect_exit 0 'L46 block allows an untrailed clean merge of main in CI' gate ci-trailers 12
+expect_output "ready $(git rev-parse HEAD)" 'L46 block carries an approval across an untrailed clean merge' gate merge-ready 12
+git reset -q --hard HEAD^
+git merge -q --no-ff --no-commit main
+echo sneaky >>crates/change.rs
+git add -A
+git commit -qm 'merge main and edit'
+expect_exit 1 'L46 block still needs Author-Agent on a merge that changes more than main' gate ci-trailers 12
+git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer'
+expect_exit 1 'L2 an untrailed merge that changes more than main fails before an approval' gate ci-trailers 12
+expect_exit 1 'L2 local trailers refuse an untrailed merge that changes more than main' rules trailers
 
 gate_repo
 git reset -q --hard HEAD^
@@ -620,6 +680,7 @@ commit source 'Author-Agent: builder'
 gate_set '.files=[[{filename:"docs/notes.md",patch:"p"}],[{filename:"crates/more.rs",patch:"p"}]]'
 expect_output block 'L44 block path on page two blocks' gate class 12
 
+# L76: a PR touching apps/desktop/src proves its look with the percy check on its head and a Percy build link.
 gate_visible() {
   gate_repo
   git reset -q --hard main
@@ -630,73 +691,70 @@ gate_visible() {
   echo visible >apps/desktop/src/view.tsx
   commit visible 'Author-Agent: builder'
   git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
-  gate_set '.body="Scenarios: U1\n## Shape\n```\na -> b\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok U1_visible\n```\nU1 before [image](https://github.com/example/roundup/blob/proof/pr-12/proof/before.png) 1280×800\nU1 after [image](https://github.com/example/roundup/blob/proof/pr-12/proof/after.png) 1280×800\nShows: layout"'
+  gate_set '.body="Scenarios: U1\n## Shape\n```\na -> b\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok U1_visible\n```\nPercy: https://percy.io/abc/web/roundup/builds/42"'
 }
-l76_unchanged() {
-  gate_visible
-  gate_set '.body |= sub("U1 before[\\s\\S]*"; "Visual: unchanged") | .no_proof_branch=true'
-  gate_set --arg head "$(git rev-parse HEAD^)" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nVisual: unchanged\nReviewed-by-Agent: reviewer")}]]'
+gate_percy() {
+  gate_set --arg head "$(git rev-parse HEAD)" --arg conclusion "$1" --arg at "${2:-$(git rev-parse HEAD)}" \
+    '.checks=[{check_runs:([("check","rules")|{name:.,head_sha:$head,status:"completed",conclusion:"success",app:{slug:"github-actions"}}] + [{name:"percy",head_sha:$at,status:"completed",conclusion:$conclusion,app:{slug:"github-actions"}}])}]'
 }
-l76_unchanged
-expect_exit 0 'L76 unchanged tree across empty approval needs no proof branch' gate proof 12
-expect_exit 0 'L76 unchanged attestation passes merge-ready' gate merge-ready 12
-gate_set '.comments=[[]]'
-expect_exit 1 'L76 author body claim alone fails' gate proof 12
-l76_unchanged
-gate_set --arg head "$(git rev-parse main)" '.comments[0][0].body += "\nHead: "+$head'
-expect_exit 1 'L76 ambiguous reviewed head fails' gate proof 12
-l76_unchanged
-git reset -q --hard HEAD^
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 0 'L76 attestation can be checked before approval commit' gate proof 12
-expect_exit 1 'L76 attestation does not replace approval commit' gate merge-ready 12
-l76_unchanged
-gate_set '.comments[0][0].body |= sub("reviewer"; "builder")'
-expect_exit 1 'L76 author verdict fails' gate proof 12
-l76_unchanged
-gate_set '.comments[0][0].body += "\nReviewed-by-Agent: another"'
-expect_exit 1 'L76 multiple reviewer ids fail' gate proof 12
-l76_unchanged
-gate_set '.comments[0][0].body |= sub("Visual: unchanged"; "Visual: unchanged maybe")'
-expect_exit 1 'L76 attestation must be explicit' gate proof 12
-l76_unchanged
-gate_set --arg head "$(git rev-parse HEAD^)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 test output must name exact approval head' gate proof 12
-l76_unchanged
-for verdict in reject approve; do
-  gate_set --arg verdict "$verdict" --arg head "$(git rev-parse HEAD)" '.comments[1]=[{id:2,created_at:"2026-10-03T00:01:00Z",body:("VERDICT: "+$verdict+"\nReviewed-head: "+$head+"\nReviewed-by-Agent: another")}]'
-  expect_exit 1 "L76 newer $verdict without attestation supersedes it" gate proof 12
-done
-l76_unchanged
-echo changed >>apps/desktop/src/view.tsx
-commit followup 'Author-Agent: another'
-git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 changed code invalidates earlier attestation' gate proof 12
-l76_unchanged
-git commit -q --allow-empty -m coauthor -m 'Author-Agent: reviewer'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 reviewer must differ from every author' gate proof 12
+export PERCY_PROJECT=abc/web/roundup
+gate_visible
+expect_exit 0 'L76 a green percy check on the head and a Percy link pass' gate proof 12
+expect_exit 1 'L76 an unset PERCY_PROJECT fails closed' env -u PERCY_PROJECT loop/rules.sh proof 12
+gate_set '.body |= sub("percy.io/abc/web/roundup/builds/42"; "percy.io//builds/1")'
+expect_exit 1 'L76 an empty PERCY_PROJECT fails closed even on an empty-project link' env PERCY_PROJECT= loop/rules.sh proof 12
+gate_visible
+gate_set '.body += "\nU1 after [image](https://github.com/example/roundup/blob/proof/pr-12/proof/after.png)"'
+expect_exit 1 'L53 a visible PR with an image in Proof fails' gate proof 12
+gate_visible
+gate_set '.body |= sub("percy.io/abc/web/roundup"; "percy.io/other/web/roundup")'
+expect_exit 1 'L76 a link to another Percy project fails' gate proof 12
+gate_visible
+expect_exit 0 'L76 a green Percy build passes merge-ready' gate merge-ready 12
+gate_set '.body |= sub("Percy: [^\n]*"; "")'
+expect_exit 1 'L76 a visible PR without a Percy link fails' gate proof 12
+gate_visible
+gate_set '.body |= sub("https://percy.io/abc/web/roundup/builds/42"; "https://example.com/builds/42")'
+expect_exit 1 'L76 a link outside percy.io fails' gate proof 12
+gate_visible
+gate_percy failure
+expect_exit 1 'L76 a failed percy check fails' gate proof 12
+gate_percy success 0000000000000000000000000000000000000000
+expect_exit 1 'L76 a percy check on another head fails' gate proof 12
+gate_set '.checks=[{check_runs:[("check","rules")|{name:.,head_sha:"'"$(git rev-parse HEAD)"'",status:"completed",conclusion:"success",app:{slug:"github-actions"}}]}]'
+expect_exit 1 'L76 no percy check fails' gate proof 12
+gate_visible
+gate_set '.body |= sub("Percy: [^\n]*"; "U1 before [image](https://github.com/example/roundup/blob/proof/pr-12/proof/before.png) 1280×800\nShows: layout")'
+expect_exit 1 'L76 images on a proof branch are not visual proof' gate proof 12
+gate_set --arg head "$(git rev-parse HEAD^)" '.comments=[[{id:1,created_at:"2026-10-03T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nVisual: unchanged\nReviewed-by-Agent: reviewer")}]]'
+expect_exit 1 'L76 Visual: unchanged no longer replaces a Percy build' gate proof 12
 
-l76_unchanged
-gate_set '.body |= sub("Visual: unchanged"; "")'
-expect_exit 0 'L76 reviewer attestation needs no author visibility claim' gate proof 12
-l76_unchanged
-git checkout -q main
-echo main >crates/from-main.rs
-commit main
-git checkout -q work
-git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L76 carried approval does not carry attestation across changed tree' gate proof 12
-expect_exit 1 'L76 merge-ready still needs proof after changed-tree carry' gate merge-ready 12
-l76_unchanged
-git checkout -q main
-git commit -q --allow-empty -m main
-git checkout -q work
-git merge -q --no-ff main -m 'merge main' -m 'Author-Agent: builder'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 0 'L76 same-tree carry retains attestation' gate merge-ready 12
+gate_desktop() {
+  gate_repo
+  git reset -q --hard main
+  mkdir -p crates/desktop
+  echo shell >crates/desktop/window.rs
+  commit desktop 'Author-Agent: builder'
+  git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+}
+gate_desktop
+expect_exit 1 'L76 a crates/desktop change without a macOS line fails' gate proof 12
+gate_set --arg head "$(git rev-parse HEAD)" '.body="Scenarios: L46\n## Shape\n```\na\n```\n## Proof\nHead: "+$head+"\n```\nok L46_gate\n```\nmacOS: the window opens at 1280×800 in just app"'
+expect_exit 0 'L76 a crates/desktop change needs only the macOS laptop check' gate proof 12
+
+gate_repo
+git reset -q --hard main
+echo prose >docs/design-system.md
+commit docs 'Author-Agent: builder'
+git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+expect_exit 0 'L76 a docs-only change needs no Percy build' gate proof 12
+
+gate_repo
+printf '**U1 a visible change.** Given a 1280 by 800 window, when opened, then a screenshot shows it.\n' >scenarios/ui.md
+commit scenario 'Author-Agent: builder'
+git commit -q --allow-empty -m approve -m 'Reviewed-by-Agent: reviewer'
+gate_set --arg head "$(git rev-parse HEAD)" '.body="Scenarios: U1\n## Shape\n```\na\n```\n## Proof\nHead: "+$head+"\n```\nok U1_visible\n```"'
+expect_exit 0 'L76 naming a visual scenario outside apps/desktop/src needs no Percy build' gate proof 12
 
 gate_specification_head() {
   gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .comments=[[{id:1,created_at:"2026-10-04T00:00:00Z",body:("VERDICT: approve\nReviewed-head: "+$head+"\nReviewed-by-Agent: reviewer")}]]'
@@ -715,6 +773,9 @@ gate_specification() {
 gate_specification
 expect_exit 0 'L53 specification baseline and future observer pass without invented scenario execution' gate proof 12
 expect_exit 0 'L53 specification still passes the ordinary merge gates' gate merge-ready 12
+gate_set '.comments[0][0].body |= sub("Reviewed-by-Agent: reviewer"; "Reviewed-by-Agent: copilot")'
+expect_exit 1 'L37 a copilot verdict is not an independent approval' gate proof 12
+gate_specification
 gate_set '.body |= sub("just check: exit 0"; "checks planned")'
 expect_exit 1 'L53 specification missing baseline fails' gate proof 12
 gate_specification
@@ -787,39 +848,10 @@ gate_visible
 printf '**A7 backend lifecycle.** Given an Agent, when stopped, then its record remains.\n' >scenarios/agents.md
 commit backend 'Author-Agent: builder'
 gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .body |= sub("Scenarios: U1"; "Scenarios: U1 A7") | .body |= sub("ok U1_visible"; "ok U1_visible\nok A7_lifecycle")'
-expect_exit 0 'L53 mixed proof requires backend tests but only visual images' gate proof 12
+expect_exit 0 'L53 mixed proof needs backend test output beside the Percy build' gate proof 12
 gate_set '.body |= sub("ok A7_lifecycle"; "")'
 expect_exit 1 'L53 mixed proof still requires backend test output' gate proof 12
-gate_set '.body |= sub("Scenarios: U1 A7"; "Scenarios: A7") | .body |= sub("ok U1_visible"; "ok A7_lifecycle")'
-expect_exit 1 'L53 visible paths cannot name only backend scenarios' gate proof 12
 
-gate_visible
-printf '**U2 another view.** Given a 1280 by 800 window, when opened, then its content fits.\n' >>scenarios/ui.md
-commit second_view 'Author-Agent: builder'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head) | .body |= sub("Scenarios: U1"; "Scenarios: U1 U2") | .body |= sub("ok U1_visible"; "ok U1_visible\nok U2_view")'
-expect_exit 1 'L53 every visual scenario needs images' gate proof 12
-
-gate_visible
-printf '**U1 a visible change.** Given a window, when opened, then a screenshot shows it.\n' >scenarios/ui.md
-commit missing_size 'Author-Agent: builder'
-gate_set --arg head "$(git rev-parse HEAD)" '.body |= sub("Head: [a-f0-9]+"; "Head: "+$head)'
-expect_exit 1 'L53 visual scenario without window dimensions fails' gate proof 12
-
-gate_visible
-expect_exit 0 'L53 visible before and after evidence passes' gate proof 12
-gate_set '.body |= sub("U1 before[^\n]*\n"; "")'
-expect_exit 1 'L53 missing before fails' gate proof 12
-gate_visible
-gate_set '.tree={truncated:false,tree:[]}'
-expect_exit 1 'L53 absent linked file fails' gate proof 12
-gate_set '.tree={truncated:false,tree:[{path:"proof/before.png",type:"blob",mode:"100644",size:6291456},{path:"proof/after.png",type:"blob",mode:"100644",size:1024}]}'
-expect_exit 1 'L53 six MiB file fails' gate proof 12
-gate_visible
-gate_set '.body += "\nShows: /Users/private"'
-expect_exit 1 'L53 private caption path fails' gate proof 12
-gate_visible
-gate_set '.body |= sub("1280×800"; "640×400")'
-expect_exit 1 'L53 wrong window size fails' gate proof 12
 gate_visible
 gate_set '.body |= sub("## Shape"; "## Other")'
 expect_exit 1 'L53 missing shape fails' gate proof 12
@@ -848,14 +880,6 @@ gate_repo
 gate_rejects 1
 gate_set '.comments += [[{id: 100, created_at: "2026-10-03T03:00:00Z", body: "VERDICT: approve\n'"$(git rev-parse HEAD)"'\nReviewed-by-Agent: reviewer"}]]'
 expect_exit 0 'L46 newer independent approve clears head reject' gate merge-ready 12
-
-gate_visible
-gate_set '.tree={truncated:true,tree:[]}'
-expect_exit 1 'L53 truncated proof tree fails' gate proof 12
-
-gate_visible
-gate_set '.tree={truncated:false,tree:([{path:"proof/before.png",type:"blob",mode:"100644",size:5242880},{path:"proof/after.png",type:"blob",mode:"100644",size:5242880}] + [range(3)|{path:("proof/extra-"+tostring+".png"),type:"blob",mode:"100644",size:5242880}])}'
-expect_exit 1 'L53 branch exceeding twenty MiB fails' gate proof 12
 
 gate_repo
 gate_set '.body="Scenarios: L46\n## Shape\n```\n$(touch /tmp/roundup-gate-executed)\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok L46_gate\n```"'
@@ -912,10 +936,6 @@ expect_exit 1 'L53 test output for another scenario fails' gate proof 12
 gate_repo
 gate_set '.body="Scenarios: L46\n## Shape\n```\n" + ([range(40)|"line"]|join("\n")) + "\n```\n## Proof\nHead: '"$(git rev-parse HEAD)"'\n```\nok L46_gate\n```"'
 expect_exit 0 'L53 forty shape lines pass' gate proof 12
-
-gate_visible
-gate_set '.tree={truncated:false,tree:[{path:"outside.png",type:"blob",mode:"100644",size:1}]}'
-expect_exit 1 'L53 proof file outside proof directory fails' gate proof 12
 
 
 gate_repo

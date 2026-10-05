@@ -217,6 +217,10 @@ The one loop role answering for a Stall: Triage, Merger, Architect or Driver.
 **Merger**:
 The Driver while it merges a PR.
 
+**Percy build**:
+Percy's Chromium render of every harness seed for one PR head, made by the `percy` job (L36); the visual proof of a PR touching `apps/desktop/src/` (L76). Its images are not Snapshots.
+_Avoid_: proof branch
+
 **VM tool**:
 A Claude Code plugin, skill, hook or MCP server the agent uses on a boxd VM; not an Extension.
 _Avoid_: plugin
