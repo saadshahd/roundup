@@ -226,14 +226,18 @@ beforeAll(async () => {
 afterAll(async () => {
   if (child) {
     const exited = new Promise((resolve) => child.once("exit", resolve));
+    // Browser.close lets Chrome stop its helper processes, which still write the profile after a SIGKILL of the main one.
+    const closed = browser.send("Browser.close").then(() => "closed");
+    const late = new Promise((resolve) => setTimeout(resolve, 10_000, "late"));
 
-    child.kill("SIGKILL");
+    if ((await Promise.race([closed, late])) === "late") child.kill("SIGKILL");
+
     await exited;
   }
 
   await server?.close();
 
-  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 const run = found ? describe : describe.skip;
