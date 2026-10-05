@@ -1,14 +1,14 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { exitedTerminal, glyphOf, mountRail, rowNames, rowOf } from "./railFixture";
-import { agent, event, group, terminal } from "../testing/nodes";
+import { agent, event, room, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 
 describe("u6 rows", () => {
   it("u6_each_node_is_one_row_in_order_indented_2_per_depth_under_its_parent", async () => {
     await mountRail([
-      group("migrate", { order: 1 }),
+      room("migrate", { order: 1 }),
       agent("rename-cols", "working", "writing", { parent: "migrate", order: 1 }),
       agent("backfill", "idle", "idle", { parent: "migrate", order: 0 }),
       agent("checkout", "working", "planning", { order: 0 }),
@@ -25,15 +25,15 @@ describe("u6 rows", () => {
   });
 
   it("u6_a_meta_agent_shows_its_status_glyph", async () => {
-    await mountRail([group("checkout", { meta: true, status: { kind: "idle", label: "idle", since: 0 } })]);
+    await mountRail([room("checkout", { attempt: "1", status: { kind: "idle", label: "idle", since: 0 } })]);
 
     expect(glyphOf("checkout").getAttribute("aria-label")).toBe("idle");
   });
 
   it("u6_a_plain_group_shows_a_down_triangle", async () => {
-    await mountRail([group("migrate")]);
+    await mountRail([room("migrate")]);
 
-    expect(glyphOf("migrate").querySelector("svg.lucide-chevron-down")).not.toBeNull();
+    expect(rowOf("migrate").querySelector("button[aria-label=collapse] svg.lucide-chevron-down")).not.toBeNull();
   });
 
   it("u6_a_running_terminal_shows_a_circle", async () => {
@@ -79,7 +79,7 @@ describe("u6 rows", () => {
       agent("b", "working", "w", { order: 1 }),
     ]);
 
-    app.emit(event({ name: "agent.status", data: { id: "b", status: { kind: "error", label: "x", since: 2 } } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", attempt: "1", id: "b", status: { kind: "error", label: "x", since: 2 } } }));
     await rail.settled();
 
     expect([rowNames(), glyphOf("b").getAttribute("aria-label")]).toEqual([["a", "b"], "error"]);

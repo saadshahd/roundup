@@ -50,7 +50,7 @@ describe("u25 the Daemon is gone", () => {
 
     app.exitDaemon({ code: 1 });
 
-    for (const word of ["agent", "terminal", "group"]) {
+    for (const word of ["agent", "terminal", "room"]) {
       expect(screen.getByRole("button", { name: word }).hasAttribute("disabled")).toBe(true);
     }
   });

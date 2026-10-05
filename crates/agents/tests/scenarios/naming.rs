@@ -8,9 +8,12 @@ use crate::common::{Fixture, hold_starts, release};
 impl Fixture {
     async fn submit(&self, id: &str, prompt: &str) {
         let payload = json!({"hook_event_name": "UserPromptSubmit", "prompt": prompt});
-        self.call("agent.signal", json!({"id": id, "payload": payload}))
-            .await
-            .unwrap();
+        self.call(
+            "agent.signal",
+            json!({"id": id, "attempt": self.attempt(id).await, "payload": payload}),
+        )
+        .await
+        .unwrap();
     }
 
     async fn name_of(&self, id: &str) -> String {
@@ -75,10 +78,10 @@ async fn a9_a_rename_before_the_first_prompt_wins() {
 }
 
 #[tokio::test]
-async fn a9_a_meta_agent_keeps_its_groups_name() {
+async fn a9_a_door_keeps_its_rooms_name() {
     let f = Fixture::running("sleep 30");
-    let team = f.group("team", None).await;
-    f.call("rail.promote", json!({"id": team})).await.unwrap();
+    let team = f.room("team", None).await;
+    f.call("rail.startDoor", json!({"id": team})).await.unwrap();
 
     f.submit(&team, "fix the build").await;
 

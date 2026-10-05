@@ -14,7 +14,7 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
     let node = f.spawn(None, None).await.unwrap();
 
     assert_eq!(node.kind, NodeKind::Agent);
-    assert!(node.terminal_id.is_some() && !node.meta);
+    assert!(node.terminal_id.is_some());
     assert_eq!(node.status.as_ref().map(|s| s.kind), Some(Kind::Working));
     assert_eq!(f.tree().await, std::slice::from_ref(&node));
     assert_eq!(f.changed(), 1);
@@ -30,7 +30,7 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
     assert_eq!(
         settings["hooks"]["Stop"][0]["hooks"][0]["command"],
         format!(
-            "'{}' signal '{}'",
+            "ROUNDUP_ATTEMPT='1' '{}' signal '{}'",
             f.dir.path().join("rup").display(),
             node.id
         )
@@ -46,11 +46,11 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
 }
 
 #[tokio::test]
-async fn a4_spawn_nests_under_a_group_and_never_under_an_agent() {
+async fn a4_spawn_nests_under_a_room_and_never_under_an_agent() {
     let f = Fixture::running("sleep 30");
-    let group = f.group("team", None).await;
-    let child = f.spawn(Some(&group), None).await.unwrap();
-    assert_eq!(child.parent.as_deref(), Some(group.as_str()));
+    let room = f.room("team", None).await;
+    let child = f.spawn(Some(&room), None).await.unwrap();
+    assert_eq!(child.parent.as_deref(), Some(room.as_str()));
 
     let err = f.spawn(Some(&child.id), None).await.unwrap_err();
     assert_eq!(err.code, code::CONFLICT);

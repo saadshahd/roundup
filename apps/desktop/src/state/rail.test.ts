@@ -5,7 +5,7 @@ import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { connectEvents } from "../app/events";
 import { RpcError } from "../app/seam";
 import { createFakeApp } from "../testing/fakeApp";
-import { event, info, node, USER } from "../testing/nodes";
+import { event, info, node, room, door, USER } from "../testing/nodes";
 import { createRailState } from "./rail";
 
 const status = (label: string): Status => ({ kind: "working", label, since: 1 });
@@ -53,7 +53,7 @@ describe("u3 Rail state", () => {
   it("u3_agent_status_replaces_one_nodes_status", async () => {
     const { app, rail } = await open([node("a"), node("b")]);
 
-    app.emit(event({ name: "agent.status", data: { id: "b", status: status("editing") } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", attempt: "1", id: "b", status: status("editing") } }));
 
     expect(rail.nodes.map((each) => each.status?.label)).toEqual(["starting", "editing"]);
   });
@@ -86,19 +86,19 @@ describe("u3 Rail state", () => {
     expect(rail.exitOf(node("a"))).toEqual({ kind: "code", code: 1 });
   });
 
-  it("u3_terminal_exited_marks_a_meta_agent_whose_terminal_ended", async () => {
-    const meta = node("m", { kind: "group", meta: true });
-    const { app, rail } = await open([meta]);
+  it("u3_terminal_exited_marks_a_door_whose_terminal_ended", async () => {
+    const room = node("m", { kind: "room", attempt: "1" });
+    const { app, rail } = await open([room]);
 
     app.emit(event({ name: "terminal.exited", data: { id: "t-m", code: 2 } }));
 
-    expect(rail.exitOf(meta)).toEqual({ kind: "code", code: 2 });
+    expect(rail.exitOf(room)).toEqual({ kind: "code", code: 2 });
   });
 
-  it("u3_a_plain_group_is_never_exited", async () => {
+  it("u3_a_stopped_room_has_no_live_terminal", async () => {
     const { rail } = await open([]);
 
-    expect(rail.exitOf(node("g", { kind: "group", status: null, terminal_id: null }))).toBeNull();
+    expect(rail.exitOf(node("g", { kind: "room", status: null, terminal_id: null }))).toEqual({ kind: "unknown" });
   });
 
   it("u3_events_during_an_in_flight_rail_tree_are_applied_after_it", async () => {
@@ -108,7 +108,7 @@ describe("u3 Rail state", () => {
     const events = await connectEvents(app);
     const rail = createRailState(app, events);
 
-    app.emit(event({ name: "agent.status", data: { id: "a", status: status("early") } }));
+    app.emit(event({ name: "agent.status", data: { status_revision: "2", attempt: "1", id: "a", status: status("early") } }));
     pending.resolve([node("a")]);
     await rail.settled();
 
@@ -198,5 +198,74 @@ describe("u3 Rail state", () => {
     const { rail } = await open([node("a")]);
 
     expect(rail.nameOf(actor)).toBe(actor.id);
+  });
+});
+
+
+it("u62_old_status_cannot_overwrite_a_restarted_door", async () => {
+  const current = node("room", { kind: "room", attempt: "2", terminal_id: "new" });
+  const { app, rail } = await open([current]);
+  app.emit(event({ name: "agent.status", data: { status_revision: "2", id: "room", attempt: "1", status: { kind: "done", label: "old exit", since: 1 } } }));
+  expect(rail.nodes[0]).toEqual(current);
+  app.emit(event({ name: "agent.status", data: { status_revision: "2", id: "room", attempt: "2", status: status("new work") } }));
+  expect(rail.nodes[0]?.status?.label).toBe("new work");
+});
+
+it("a7_delayed_same_attempt_status_cannot_replace_a_later_revision", async () => {
+  const current = node("door", { kind: "room", attempt: "1", status_revision: "3", status: status("recovered") });
+  const { app, rail } = await open([current]);
+  app.emit(event({ name: "agent.status", data: { id: "door", attempt: "1", status_revision: "2", status: { kind: "error", label: "old failure", since: 0 } } }));
+  expect(rail.nodes[0]?.status?.label).toBe("recovered");
+  app.emit(event({ name: "agent.status", data: { id: "door", attempt: "1", status_revision: "4", status: status("new work") } }));
+  expect(rail.nodes[0]?.status?.label).toBe("new work");
+});
+
+
+describe("u62 Door launch failures", () => {
+  it("u62_external_start_clears_the_failed_attempt_but_ordinary_refresh_retains_it", async () => {
+    const { app, rail } = await open([room("r", { attempt: "1", status_revision: "2" })]);
+    app.handlers["rail.startDoor"] = () => Promise.reject(new Error("launch failed"));
+    await rail.startDoor("r");
+    await rail.refresh();
+    expect(rail.doorFailure("r")).toBe("launch failed");
+    app.handlers["rail.tree"] = () => [door("r", "working", "ready", { attempt: "2" })];
+    app.emit(event({ name: "rail.changed" }));
+    await rail.settled();
+    expect(rail.doorFailure("r")).toBeNull();
+  });
+
+  it("u62_a_newer_ended_attempt_clears_the_obsolete_start_failure", async () => {
+    const { app, rail } = await open([room("r", { attempt: "1" })]);
+    app.handlers["rail.startDoor"] = () => Promise.reject(new Error("launch failed"));
+    await rail.startDoor("r");
+    app.handlers["rail.tree"] = () => [room("r", { attempt: "2" })];
+    await rail.refresh();
+    expect(rail.doorFailure("r")).toBeNull();
+  });
+
+  it("u62_a_late_start_rejection_does_not_cover_an_external_run_that_already_ended", async () => {
+    const { app, rail } = await open([room("r")]);
+    let reject!: (error: Error) => void;
+    app.handlers["rail.startDoor"] = () => new Promise((_, fail) => { reject = fail; });
+    const starting = rail.startDoor("r");
+    app.handlers["rail.tree"] = () => [door("r", "working", "ready", { attempt: "2" })];
+    await rail.refresh();
+    app.handlers["rail.tree"] = () => [room("r", { attempt: "2" })];
+    await rail.refresh();
+    reject(new Error("old launch failed"));
+    await starting;
+    expect(rail.doorFailure("r")).toBeNull();
+  });
+
+  it("u62_a_late_start_rejection_does_not_cover_an_external_success", async () => {
+    const { app, rail } = await open([room("r")]);
+    let reject!: (error: Error) => void;
+    app.handlers["rail.startDoor"] = () => new Promise((_, fail) => { reject = fail; });
+    const starting = rail.startDoor("r");
+    app.handlers["rail.tree"] = () => [door("r", "working", "ready", { attempt: "2" })];
+    await rail.refresh();
+    reject(new Error("old launch failed"));
+    await starting;
+    expect(rail.doorFailure("r")).toBeNull();
   });
 });

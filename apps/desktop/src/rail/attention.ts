@@ -1,6 +1,6 @@
 import type { RailNode } from "@contracts/agent/RailNode";
 
-/** Agents and Meta-agents that need the user, most urgent first: Kind `error` before `needs-you`, then the oldest Status. Terminals have no Kind and never count. */
+/** Agents and Doors that need the user, most urgent first: Kind `error` before `needs-you`, then the oldest Status. Terminals have no Kind and never count. */
 const attentionOrder = (nodes: readonly RailNode[]): RailNode[] =>
   nodes
     .flatMap((node) => {

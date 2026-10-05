@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { RpcError } from "../../app/seam";
-import { agent, group, metaAgent, terminal } from "../../testing/nodes";
+import { agent, room, door, terminal } from "../../testing/nodes";
 import { exitedTerminal, mountRail, rowOf } from "../railFixture";
 
 afterEach(cleanup);
@@ -12,7 +12,7 @@ const item = (name: string) => screen.getByRole("menuitem", { name });
 
 describe("u56 remove from the Rail", () => {
   it("u56_right_click_selects_the_row_and_opens_a_menu_at_the_pointer", async () => {
-    const { rail } = await mountRail([group("g")]);
+    const { rail } = await mountRail([room("g")]);
 
     openAt("g");
 
@@ -30,7 +30,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_a_done_meta_agent_and_an_exited_terminal_offer_remove_only", async () => {
-    await mountRail([metaAgent("m", "done", "done"), terminal("t")], [exitedTerminal("t", 0)]);
+    await mountRail([door("m", "done", "done"), terminal("t")], [exitedTerminal("t", 0)]);
 
     openAt("m");
     expect(screen.getAllByRole("menuitem").map((each) => each.textContent)).toEqual(["remove"]);
@@ -61,7 +61,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_removing_a_group_calls_rail_remove_without_stopping_children", async () => {
-    const { app } = await mountRail([group("g"), agent("child", "working", "busy", { parent: "g" })]);
+    const { app } = await mountRail([room("g"), agent("child", "working", "busy", { parent: "g" })]);
     app.handlers["rail.remove"] = () => null;
     openAt("g");
 
@@ -72,7 +72,7 @@ describe("u56 remove from the Rail", () => {
     ]);
   });
 
-  it("u56_a_working_agent_asks_before_any_call_and_stops_before_removal", async () => {
+  it("u56_a_working_agent_asks_before_backend_checked_removal", async () => {
     const { app } = await mountRail([agent("a", "working", "busy")]);
     app.handlers["agent.stop"] = () => null;
     app.handlers["rail.remove"] = () => null;
@@ -85,7 +85,6 @@ describe("u56 remove from the Rail", () => {
 
     fireEvent.click(item("remove"));
     await waitFor(() => expect(app.calls.filter((call) => ["agent.stop", "rail.remove"].includes(call.method))).toEqual([
-      { method: "agent.stop", params: { id: "a" } },
       { method: "rail.remove", params: { id: "a" } },
     ]));
   });
@@ -101,7 +100,7 @@ describe("u56 remove from the Rail", () => {
     expect(app.calls.filter((call) => call.method === "rail.remove")).toEqual([]);
   });
 
-  it("u56_idle_agent_removal_goes_at_once_after_stop", async () => {
+  it("u56_idle_agent_removal_goes_at_once_to_the_backend", async () => {
     const { app } = await mountRail([agent("a", "idle", "idle")]);
     app.handlers["agent.stop"] = () => null;
     app.handlers["rail.remove"] = () => null;
@@ -110,12 +109,11 @@ describe("u56 remove from the Rail", () => {
     fireEvent.click(item("remove"));
 
     await waitFor(() => expect(app.calls.filter((call) => ["agent.stop", "rail.remove"].includes(call.method))).toEqual([
-      { method: "agent.stop", params: { id: "a" } },
       { method: "rail.remove", params: { id: "a" } },
     ]));
   });
 
-  it("u56_a_running_terminal_asks_before_kill_then_removes_its_row", async () => {
+  it("u56_a_running_terminal_asks_before_backend_checked_removal", async () => {
     const { app } = await mountRail([terminal("t")]);
     app.handlers["terminal.kill"] = () => null;
     app.handlers["rail.remove"] = () => null;
@@ -128,13 +126,12 @@ describe("u56 remove from the Rail", () => {
 
     fireEvent.click(item("remove"));
     await waitFor(() => expect(app.calls.filter((call) => ["terminal.kill", "rail.remove"].includes(call.method))).toEqual([
-      { method: "terminal.kill", params: { id: "t-t" } },
       { method: "rail.remove", params: { id: "t" } },
     ]));
   });
 
   it("u56_context_menu_key_opens_under_the_focused_row_and_esc_closes_it", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
     rowOf("g").focus();
 
     fireEvent.keyDown(rowOf("g"), { key: "ContextMenu" });
@@ -147,7 +144,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_shift_f10_in_the_rail_opens_the_menu", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
     rowOf("g").focus();
 
     fireEvent.keyDown(rowOf("g"), { key: "F10", shiftKey: true });
@@ -156,7 +153,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_a_pointer_down_outside_the_menu_closes_it", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
     openAt("g");
 
     fireEvent.pointerDown(document.body);
@@ -165,7 +162,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_shift_f10_in_the_pane_does_not_open_a_rail_menu", async () => {
-    await mountRail([group("g")]);
+    await mountRail([room("g")]);
 
     fireEvent.keyDown(document.body, { key: "F10", shiftKey: true });
 
@@ -186,7 +183,7 @@ describe("u56 remove from the Rail", () => {
   });
 
   it("u56_not_found_refetches_rail_tree_and_does_not_show_an_error", async () => {
-    const { app, rail } = await mountRail([group("g")]);
+    const { app, rail } = await mountRail([room("g")]);
     app.handlers["rail.remove"] = () => Promise.reject(new RpcError(-32001, "gone"));
     app.handlers["rail.tree"] = () => [];
     openAt("g");
@@ -197,8 +194,23 @@ describe("u56 remove from the Rail", () => {
     expect(screen.queryByText("gone")).toBeNull();
   });
 
+  it("u56_unlanded_room_removal_leaves_the_live_door_running", async () => {
+    const { app, rail } = await mountRail([door("r", "working", "busy")]);
+    app.handlers["agent.stop"] = () => null;
+    app.handlers["rail.remove"] = () => Promise.reject(new RpcError(-32003, "worktree_unlanded: dirty 1, ahead 0"));
+    openAt("r");
+    fireEvent.click(item("remove"));
+    fireEvent.click(item("remove"));
+
+    await screen.findByText("worktree_unlanded: dirty 1, ahead 0");
+    expect(app.calls.filter((call) => ["agent.stop", "rail.remove"].includes(call.method))).toEqual([
+      { method: "rail.remove", params: { id: "r" } },
+    ]);
+    expect(rail.nodes[0]?.terminal_id).toBe("t-r");
+  });
+
   it("u56_other_remove_error_uses_the_rail_failure_line", async () => {
-    const { app } = await mountRail([group("g")]);
+    const { app } = await mountRail([room("g")]);
     app.handlers["rail.remove"] = () => Promise.reject(new RpcError(-32603, "cannot remove"));
     openAt("g");
 

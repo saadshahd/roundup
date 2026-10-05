@@ -7,7 +7,7 @@ roundup supervises coding Agents in one Project from a macOS App. Names use thes
 ### Project and its nodes
 
 **Project**:
-A folder roundup is opened on; it owns its Agents, Terminals, Todos, Pads and Routes.
+A folder roundup is opened on; it owns its Rooms, Agents, Terminals, Todos, Pads and Routes.
 
 **Agent**:
 One Claude Code process that roundup started and supervises; it has a Status.
@@ -20,16 +20,22 @@ _Avoid_: process, console
 **Snapshot**:
 A bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.
 
-**Group**:
-A named, process-less node holding Agents, Terminals, Todos, Pads, views and Groups; the user places what is in it.
+**Room**:
+The persistent place for one body of work, with exactly one Door and its Agents, Terminals, Todos and Sketches. Stopping its Door neither removes the Room nor moves its contents. Room nesting and cross-Room dependencies are open.
 _Avoid_: folder
 
 **Home**:
-The one Group or Meta-agent an item sits in; the Project is the root Home.
+Where an item sits: a Room, or the Project root. Each item has one Home the user can change. The Shelf is still Project-wide; Room-scoped Todos and Sketches are follow-up work.
 
-**Meta-agent**:
-A Group promoted so a live Agent sits at it and receives its children's events. The user's own term.
-_Avoid_: parent agent, lead
+**Door**:
+The coordinating Agent role of one Room, with a system prompt tuned to that role. Its Rail id is the Room id; its program may be starting, running or stopped without changing the Room. Direct access to any Agent remains (P1).
+_Avoid_: meta-agent, parent agent, lead
+
+**Attempt**:
+One launch of an Agent's program, numbered per Agent from `1` in launch order (A20). It travels in the hook command, `SignalParams`, `StatusEvent` and `RailNode.attempt` as a canonical positive decimal string within SQLite's signed 64-bit range; a client may compare two of one Agent and reads nothing else from it. Never a Rail identity or a vendor conversation id; the last one survives stop, failure and reopen.
+
+**Status revision**:
+The strictly increasing ordinal of published Status transitions within one Attempt, `1` at Starting. A canonical positive decimal string on the wire; absent after reopen. Never stands in for an Attempt or Terminal liveness.
 
 **Worktree**:
 The git worktree roundup makes for one Agent when the Project's `worktrees` setting is on: its own directory, branch and working directory (`docs/worktrees.md`).
@@ -49,10 +55,10 @@ The macOS window; it starts a Daemon for one Project and hosts the webview, a cl
 The few Tauri commands and events between the App and its webview (`scenarios/app.md`); not a Daemon contract.
 
 **Rail**:
-The tree of Groups, Meta-agents, Agents and Terminals.
+The tree of Rooms, Agents and Terminals.
 
 **Shelf**:
-The Todo and Pad column; it shows the selected node's Home, with a one-click view of the whole Project.
+The Todo and Pad column, Project-wide for now; Room scoping is follow-up work.
 
 **Inbox**:
 The time-ordered Drawer of Messages to the user.
@@ -69,6 +75,9 @@ The panel `?` opens over the centre pane, listing each chord and what it does.
 **Todo**:
 An item with an optional blocker list of other Todos, with a Home.
 _Avoid_: task, ticket
+
+**Sketch**:
+The accepted destination for user- or Agent-made rich Markdown holding Mermaid diagrams or tldraw visuals; storage, embedding and ownership are open, and Pad contracts are unchanged.
 
 **Pad**:
 A markdown note owned by an Agent or the user. "Scratchpad" is the product word in prose only.
@@ -144,17 +153,14 @@ A small model run inside the Daemon for a routine judgement at no frontier-model
 ### Messages and Cards
 
 **Thread**:
-The conversation the user has with one Meta-agent about its Home.
+The conversation with a Room's Door about that Room's work, not a second container; today it is the Door's Terminal.
 _Avoid_: chat, main agent
-
-**Door**:
-The Thread as the default way in, never the only one: the user can always open any Agent and type into it. Name provisional.
 
 **Message**:
 A typed envelope `{from, to, kind, body, replyTo}` between Actors, with a status of `pending`, `held`, `delivered` or `dropped`.
 
 **Digest**:
-The fixed, bounded entry `{name, kind, last, todos, pads}` telling a Meta-agent about one child.
+The fixed, bounded entry `{name, kind, last, todos, pads}` telling a Door about one child.
 
 **Route**:
 A sender→receiver pair with a delivery value: `auto | ask-first | drop`.

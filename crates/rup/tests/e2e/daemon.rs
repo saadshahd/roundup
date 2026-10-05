@@ -28,7 +28,10 @@ pub struct Project {
 /// Start `rupd --attached` and return once it is serving. `fake` is the environment the fake
 /// `claude` reads.
 pub fn start(fake: &[(&str, &str)]) -> Project {
-    let dir = tempfile::tempdir().unwrap();
+    start_in(tempfile::tempdir().unwrap(), fake)
+}
+
+fn start_in(dir: tempfile::TempDir, fake: &[(&str, &str)]) -> Project {
     let rup = PathBuf::from(env!("CARGO_BIN_EXE_rup"));
     let rupd = rup.with_file_name("rupd");
     assert!(
@@ -69,6 +72,22 @@ fn socket(dir: &Path) -> PathBuf {
 }
 
 impl Project {
+    pub fn crash(&mut self) {
+        if self.daemon.try_wait().unwrap().is_none() {
+            self.daemon.kill().unwrap();
+        }
+        self.daemon.wait().unwrap();
+        self.stdin.take();
+    }
+
+    pub fn restart(&mut self, fake: &[(&str, &str)]) {
+        self.crash();
+        let placeholder = tempfile::tempdir().unwrap();
+        let dir = std::mem::replace(&mut self.dir, placeholder);
+        let restarted = start_in(dir, fake);
+        *self = restarted;
+    }
+
     pub fn pid(&self) -> u32 {
         self.daemon.id()
     }
@@ -139,12 +158,20 @@ pub async fn next_kind(client: &mut Client) -> Kind {
 /// Hand Agent `id` a Signal directly over RPC, the way `rup signal` does, bypassing the fake
 /// `claude` process so a test can drive one Agent's Status without the others.
 pub async fn signal(client: &Client, id: &str, payload: Value) {
+    let attempt = rail_tree(client)
+        .await
+        .into_iter()
+        .find(|n| n.id == id)
+        .unwrap()
+        .attempt
+        .unwrap();
     tokio::time::timeout(
         BOUND,
         client.request(
             "agent.signal",
             SignalParams {
                 id: id.to_owned(),
+                attempt,
                 payload,
             },
         ),

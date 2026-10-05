@@ -1,5 +1,5 @@
-//! The Rail: Groups, Meta-agents, Agents and Terminals as a tree in SQLite (WAL).
-//! Sibling `order` values are contiguous from 0; only Groups (and so Meta-agents) hold children.
+//! The Rail: Rooms, Agents and Terminals as a tree in SQLite (WAL).
+//! Sibling `order` values are contiguous from 0; only Rooms hold children.
 
 use std::path::Path;
 
@@ -36,6 +36,9 @@ impl Rail {
         // SQLite's `ALTER TABLE` has no `ADD COLUMN IF NOT EXISTS`, so a column a Project's
         // `agents.db` already has (from before G2) is skipped by hand.
         for (column, decl) in [
+            ("attempt", "INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0)"),
+            ("worktree_owner", "TEXT"),
+            ("worktree_commit", "TEXT"),
             ("worktree_path", "TEXT"),
             ("worktree_branch", "TEXT"),
             ("worktree_base", "TEXT"),
@@ -59,7 +62,7 @@ impl Rail {
         Ok(out)
     }
 
-    /// Append a node under `parent` (`None` is the root). Only a Group can be a parent.
+    /// Append a node under `parent` (`None` is the root). Only a Room can be a parent.
     pub fn insert(
         &mut self,
         kind: NodeKind,
@@ -125,45 +128,34 @@ impl Rail {
         tx.commit().map_err(sql)
     }
 
-    /// Mark plain Group `id` as a Meta-agent before its Agent starts, so a second promote of the
-    /// same Group finds it taken. `CONFLICT` if it is not a plain Group.
-    pub fn reserve_meta(&mut self, id: &str) -> Result<(), RpcError> {
-        // SQLite would match "01" to node 1; only the exact id names a node.
+    pub fn allocate_attempt(&mut self, id: &str) -> Result<String, RpcError> {
         let node = self.node(id)?;
-        if node.kind != NodeKind::Group || node.meta {
-            return Err(RpcError::conflict(format!("{id} is not a plain Group")));
-        }
+        let previous = node
+            .attempt
+            .as_deref()
+            .unwrap_or("0")
+            .parse::<i64>()
+            .map_err(sql_ordinal)?;
+        let next = previous
+            .checked_add(1)
+            .ok_or_else(|| RpcError::internal("Attempt exhausted"))?;
         self.db
-            .execute("UPDATE nodes SET meta = 1 WHERE id = ?", params![node.id])
+            .execute(
+                "UPDATE nodes SET attempt = ? WHERE id = ?",
+                params![next, id],
+            )
             .map_err(sql)?;
-        Ok(())
+        Ok(next.to_string())
     }
 
-    /// Give back a reservation whose Agent never started.
-    pub fn release_meta(&mut self, id: &str) -> Result<(), RpcError> {
+    pub fn detach_terminal(&mut self, id: &str) -> Result<(), RpcError> {
         self.db
-            .execute("UPDATE nodes SET meta = 0 WHERE id = ?", params![id])
+            .execute(
+                "UPDATE nodes SET terminal_id = NULL WHERE id = ?",
+                params![id],
+            )
             .map_err(sql)?;
         Ok(())
-    }
-
-    /// Move the children of `id` up into its parent, in order, where `id` stood; `id` follows them.
-    /// Whether any child moved.
-    pub fn lift_children(&mut self, id: &str) -> Result<bool, RpcError> {
-        let tx = self.db.transaction().map_err(sql)?;
-        let nodes = load(&tx)?;
-        let parent = find(&nodes, id)?.parent.as_deref();
-        let mut ids = siblings(&nodes, parent);
-        let at = ids
-            .iter()
-            .position(|sibling| sibling == id)
-            .unwrap_or(ids.len());
-        let children = siblings(&nodes, Some(id));
-        let moved = !children.is_empty();
-        ids.splice(at..at, children);
-        place(&tx, parent, &ids)?;
-        tx.commit().map_err(sql)?;
-        Ok(moved)
     }
 
     /// Record which Terminal runs the Agent `id`.
@@ -181,7 +173,7 @@ impl Rail {
         Ok(())
     }
 
-    /// Delete `id`. Its children (only a Group, so a Meta-agent, ever has any) move to its own
+    /// Delete `id`. Its children (only a Room, so a Door, ever has any) move to its own
     /// parent, at its place, in order, first; one transaction, so a failed delete leaves them
     /// still under `id`.
     pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {
@@ -244,12 +236,55 @@ impl Rail {
         Ok(())
     }
 
-    /// Mark `id` as provisioning a Worktree, before `git` runs (G2, G6).
-    pub fn mark_worktree_provisioning(&mut self, id: &str) -> Result<(), RpcError> {
+    pub fn mark_worktree_provisioning(
+        &mut self,
+        id: &str,
+        plan: &super::worktree::Provision,
+    ) -> Result<(), RpcError> {
+        self.db.execute("UPDATE nodes SET worktree_state='provisioning', worktree_path=?, worktree_branch=?, worktree_base=?, worktree_owner=?, worktree_commit=? WHERE id=?", params![plan.worktree.path.to_string_lossy(), plan.worktree.branch, plan.worktree.base, plan.owner, plan.commit, id]).map_err(sql)?;
+        Ok(())
+    }
+
+    /// Each node with a Worktree record still owned by provisioning, with its plan and whether
+    /// it reached `ready`; the plan is `None` for a legacy record with no ownership proof (G6),
+    /// which no caller may clean up.
+    pub fn provisioning(
+        &self,
+    ) -> Result<Vec<(RailNode, Option<super::worktree::Provision>, bool)>, RpcError> {
+        let mut records = Vec::new();
+        for node in self.tree()? {
+            let (state, owner, commit): (Option<String>, Option<String>, Option<String>) = self
+                .db
+                .query_row(
+                    "SELECT worktree_state, worktree_owner, worktree_commit FROM nodes WHERE id=?",
+                    [&node.id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(sql)?;
+            if state.as_deref() == Some("provisioning") && owner.is_none() {
+                records.push((node.clone(), None, false));
+                continue;
+            }
+            if let (Some(owner), Some(commit), Some(worktree)) = (owner, commit, &node.worktree) {
+                records.push((
+                    node.clone(),
+                    Some(super::worktree::Provision {
+                        worktree: super::worktree::Worktree::from(worktree),
+                        owner,
+                        commit,
+                    }),
+                    state.as_deref() == Some("ready"),
+                ));
+            }
+        }
+        Ok(records)
+    }
+
+    pub fn clear_provisioning_owner(&mut self, id: &str) -> Result<(), RpcError> {
         self.db
             .execute(
-                "UPDATE nodes SET worktree_state = 'provisioning' WHERE id = ?",
-                params![id],
+                "UPDATE nodes SET worktree_owner=NULL, worktree_commit=NULL WHERE id=?",
+                [id],
             )
             .map_err(sql)?;
         Ok(())
@@ -269,17 +304,21 @@ impl Rail {
     }
 
     /// Undo `mark_worktree_provisioning`/`set_worktree` for a node that keeps its place on the
-    /// Rail (`rail.promote`'s own failure path; a failed `agent.spawn` deletes the node outright).
+    /// Rail (`rail.startDoor`'s own failure path; a failed `agent.spawn` deletes the node outright).
     pub fn clear_worktree(&mut self, id: &str) -> Result<(), RpcError> {
         self.db
             .execute(
                 "UPDATE nodes SET worktree_path = NULL, worktree_branch = NULL,
-                    worktree_base = NULL, worktree_state = NULL WHERE id = ?",
+                    worktree_base = NULL, worktree_state = NULL, worktree_owner=NULL, worktree_commit=NULL WHERE id = ?",
                 params![id],
             )
             .map_err(sql)?;
         Ok(())
     }
+}
+
+fn sql_ordinal(err: std::num::ParseIntError) -> RpcError {
+    RpcError::internal(err)
 }
 
 fn sql(err: rusqlite::Error) -> RpcError {
@@ -310,7 +349,7 @@ fn add_column_if_missing(
 
 fn kind_name(kind: NodeKind) -> &'static str {
     match kind {
-        NodeKind::Group => "group",
+        NodeKind::Room => "room",
         NodeKind::Agent => "agent",
         NodeKind::Terminal => "terminal",
     }
@@ -319,14 +358,14 @@ fn kind_name(kind: NodeKind) -> &'static str {
 fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let mut query = db
         .prepare(
-            "SELECT id, kind, name, parent, ord, meta, terminal_id,
+            "SELECT id, kind, name, parent, ord, attempt, terminal_id,
                 worktree_path, worktree_branch, worktree_base FROM nodes",
         )
         .map_err(sql)?;
     let rows = query
         .query_map([], |row| {
             let kind = match row.get::<_, String>(1)?.as_str() {
-                "group" => NodeKind::Group,
+                "group" | "room" => NodeKind::Room,
                 "agent" => NodeKind::Agent,
                 _ => NodeKind::Terminal,
             };
@@ -345,7 +384,11 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 parent: row.get::<_, Option<i64>>(3)?.map(|id| id.to_string()),
                 order: row.get(4)?,
                 status: None,
-                meta: row.get(5)?,
+                status_revision: None,
+                attempt: match row.get::<_, i64>(5)? {
+                    0 => None,
+                    n => Some(n.to_string()),
+                },
                 terminal_id: row.get(6)?,
                 worktree,
             })
@@ -380,8 +423,8 @@ fn descend(nodes: &[RailNode], parent: Option<&str>, out: &mut Vec<RailNode>) {
 
 fn check_parent(nodes: &[RailNode], parent: Option<&str>) -> Result<(), RpcError> {
     match parent.map(|id| find(nodes, id)).transpose()? {
-        Some(node) if node.kind != NodeKind::Group => Err(RpcError::conflict(format!(
-            "{} is not a Group: only Groups and Meta-agents hold children",
+        Some(node) if node.kind != NodeKind::Room => Err(RpcError::conflict(format!(
+            "{} is not a Room: only Rooms hold children",
             node.id
         ))),
         _ => Ok(()),
@@ -429,13 +472,61 @@ mod tests {
     }
 
     #[test]
+    fn a8_legacy_plain_and_live_groups_keep_ids_order_and_children_as_rooms() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("agents.db");
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch("CREATE TABLE nodes (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, name TEXT NOT NULL, parent INTEGER, ord INTEGER NOT NULL, meta INTEGER NOT NULL DEFAULT 0, terminal_id TEXT); INSERT INTO nodes VALUES (1,'group','plain',NULL,0,0,NULL),(2,'group','coordinator',NULL,1,1,'99'),(3,'agent','child',2,0,0,'100');").unwrap();
+        drop(db);
+        let mut rail = Rail::open(&path).unwrap();
+        let tree = rail.tree().unwrap();
+        assert_eq!(
+            tree.iter()
+                .map(|n| (n.id.as_str(), n.name.as_str(), n.order))
+                .collect::<Vec<_>>(),
+            [
+                ("1", "plain", 0),
+                ("2", "coordinator", 1),
+                ("3", "child", 0)
+            ]
+        );
+        assert_eq!(tree[0].kind, NodeKind::Room);
+        assert_eq!(tree[1].kind, NodeKind::Room);
+        assert_eq!(tree[2].parent.as_deref(), Some("2"));
+        assert!(
+            tree.iter()
+                .all(|n| n.attempt.is_none() && n.terminal_id.is_none())
+        );
+        assert_eq!(rail.allocate_attempt("2").unwrap(), "1");
+        drop(rail);
+        let mut rail = Rail::open(&path).unwrap();
+        assert_eq!(rail.allocate_attempt("2").unwrap(), "2");
+        assert_eq!(rail.node("3").unwrap().parent.as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn a7_attempt_exhaustion_does_not_wrap_or_change_the_node() {
+        let (_dir, mut rail) = rail();
+        let node = rail.insert(NodeKind::Room, "room", None, None).unwrap();
+        rail.db
+            .execute("UPDATE nodes SET attempt = ?", [i64::MAX])
+            .unwrap();
+        let before = rail.node(&node.id).unwrap();
+        assert_eq!(
+            rail.allocate_attempt(&node.id).unwrap_err().code,
+            code::INTERNAL
+        );
+        assert_eq!(rail.node(&node.id).unwrap(), before);
+    }
+
+    #[test]
     fn a6_nothing_nests_under_an_agent_or_a_terminal() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
         for kind in [NodeKind::Agent, NodeKind::Terminal] {
             let leaf = rail.insert(kind, "leaf", None, Some("1")).unwrap();
             let inserted = rail
-                .insert(NodeKind::Group, "x", Some(&leaf.id), None)
+                .insert(NodeKind::Room, "x", Some(&leaf.id), None)
                 .unwrap_err();
             let moved = rail.move_node(&group.id, Some(&leaf.id), 0).unwrap_err();
             assert_eq!(
@@ -449,7 +540,7 @@ mod tests {
     #[test]
     fn a6_rename_needs_the_exact_id() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
         let err = rail.rename(&format!("0{}", group.id), "other").unwrap_err();
         assert_eq!(err.code, code::NOT_FOUND);
         assert_eq!(rail.tree().unwrap()[0].name, "g");
@@ -478,7 +569,7 @@ mod tests {
     fn a6_removing_a_node_closes_the_gap_among_its_siblings() {
         let (_dir, mut rail) = rail();
         let ids: Vec<_> = ["a", "b", "c"]
-            .map(|name| rail.insert(NodeKind::Group, name, None, None).unwrap().id)
+            .map(|name| rail.insert(NodeKind::Room, name, None, None).unwrap().id)
             .into();
         rail.remove(&ids[1]).unwrap();
         let tree = rail.tree().unwrap();
@@ -486,16 +577,16 @@ mod tests {
         assert_eq!(rest, [("a", 0), ("c", 1)]);
     }
 
-    /// A16: moving a Group's children and deleting the Group are one transaction. A trigger
+    /// A16: moving a Room's children and deleting the Room are one transaction. A trigger
     /// that only rejects the DELETE (the UPDATEs `place` runs are untouched) tells this apart
     /// from a mutant that commits the move before deleting in a second transaction: there, the
     /// move would survive even though the delete failed.
     #[test]
     fn a16_a_groups_delete_failing_after_a_successful_move_rolls_both_back() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Group, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
         let child = rail
-            .insert(NodeKind::Group, "child", Some(&group.id), None)
+            .insert(NodeKind::Room, "child", Some(&group.id), None)
             .unwrap();
         rail.db
             .execute_batch(

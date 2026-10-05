@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Kind } from "@contracts/Kind";
 import chipStyles from "./attentionChip.styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
-import { agent, group, metaAgent, MINUTE, NOW, terminal } from "../testing/nodes";
+import { agent, room, door, MINUTE, NOW, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -53,7 +53,7 @@ describe("u30 jump", () => {
   });
 
   it("u30_a_meta_agent_that_needs_you_is_visited", async () => {
-    const { rail } = await mountRail([metaAgent("lead", "needs-you", "x")]);
+    const { rail } = await mountRail([door("lead", "needs-you", "x")]);
 
     jump();
 
@@ -136,7 +136,7 @@ describe("u30 jump", () => {
   });
 
   it("u30_a_collapsed_group_expands_to_show_the_row", async () => {
-    await mountRail([group("g"), since("a", "needs-you", 1, { parent: "g" })]);
+    await mountRail([room("g"), since("a", "needs-you", 1, { parent: "g" })]);
     fireEvent.click(screen.getByRole("button", { name: "collapse" }));
 
     jump();

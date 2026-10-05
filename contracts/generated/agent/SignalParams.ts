@@ -3,4 +3,4 @@
 /**
  * One adapter-specific Signal for an Agent; for Claude Code, a hook payload.
  */
-export type SignalParams = { id: string, payload: Record<string, unknown>, };
+export type SignalParams = { id: string, attempt: string, payload: Record<string, unknown>, };

@@ -1,4 +1,4 @@
-//! Agents and the Rail: the tree of Groups, Meta-agents, Agents and Terminals.
+//! Agents and the Rail: the tree of Rooms, Agents and Terminals.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,11 +6,19 @@ use ts_rs::TS;
 
 use crate::common::Status;
 
+/// Parse the wire ordinal without accepting aliases such as leading zeroes or signs.
+pub fn parse_positive_ordinal(value: &str) -> Option<i64> {
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|n| *n > 0 && n.to_string() == value)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "agent/")]
 pub enum NodeKind {
-    Group,
+    Room,
     Agent,
     Terminal,
 }
@@ -34,13 +42,15 @@ pub struct RailNode {
     pub parent: Option<String>,
     /// Position among siblings; lower first.
     pub order: u32,
-    /// `None` for Groups and Terminals.
+    /// `None` for Terminals.
     pub status: Option<Status>,
-    /// A Group with a live Agent sitting at it.
-    pub meta: bool,
+    /// Last allocated program attempt; present even after stop or reopen.
+    pub attempt: Option<String>,
+    /// Status transition within the current Attempt; absent after reopen.
+    pub status_revision: Option<String>,
     /// The Terminal behind an Agent or Terminal node.
     pub terminal_id: Option<String>,
-    /// `None` for a Terminal, a plain Group, or when the Project's `worktrees` setting was off.
+    /// `None` for a Terminal, or when the Project's `worktrees` setting was off.
     pub worktree: Option<Worktree>,
 }
 
@@ -71,13 +81,14 @@ pub struct NodeId {
 #[ts(export, export_to = "agent/")]
 pub struct SignalParams {
     pub id: String,
+    pub attempt: String,
     #[ts(type = "Record<string, unknown>")]
     pub payload: Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
-pub struct CreateGroupParams {
+pub struct CreateRoomParams {
     pub name: String,
     pub parent: Option<String>,
 }
@@ -102,5 +113,7 @@ pub struct RenameParams {
 #[ts(export, export_to = "agent/")]
 pub struct StatusEvent {
     pub id: String,
+    pub attempt: String,
+    pub status_revision: String,
     pub status: Status,
 }

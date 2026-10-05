@@ -1,7 +1,6 @@
 import type { AppSeam } from "../app/seam";
 import { toBase64 } from "../terminal/base64";
 import { createXtermEmulators } from "../terminal/emulator";
-import type { EmulatorFactory } from "../terminal/emulator";
 import { PATIENCE_MS, WARMUP_KEYS, createKeystrokeProbe, typeKeys } from "./keystrokes";
 import type { Summary } from "./keystrokes";
 

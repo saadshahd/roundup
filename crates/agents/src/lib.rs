@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateGroupParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
+    CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
     SpawnParams, SpawnTerminalParams, StatusEvent,
 };
 use contracts::project::{ProjectSettings, Worktrees};
@@ -46,6 +46,21 @@ pub enum Observation {
     Dismissed,
 }
 
+impl Observation {
+    /// The word a log line names this Observation by; a Signal by its vendor event.
+    fn name(&self) -> &str {
+        match self {
+            Self::Signal(payload) => claude_code::event_name(payload),
+            Self::Title(_) => "title",
+            Self::Tick => "tick",
+            Self::Stopped => "stop",
+            Self::Exit { .. } => "exit",
+            Self::Answered => "answer",
+            Self::Dismissed => "dismissal",
+        }
+    }
+}
+
 /// Turns one vendor's program into an Agent's Status. It emits `error`, `needs-you`, `working`,
 /// `idle` and `done`, never `blocked`: that Kind is the Daemon's, from Todos and Routes.
 pub trait AgentAdapter {
@@ -55,6 +70,8 @@ pub trait AgentAdapter {
 
 /// State the Terminal watchers and the RPC calls share.
 struct Shared {
+    git: worktree::Git,
+    project_dir: PathBuf,
     rail: Mutex<rail::Rail>,
     /// A node is marked `Starting`, and unmarked on failure, in the same Rail critical section
     /// that creates or reserves it, so `agent.stop` never finds a starting node unmarked.
@@ -150,11 +167,12 @@ impl Shared {
         self.runs.lock().expect("runs lock")
     }
 
-    fn mark_starting(&self, id: &str) {
+    fn mark_starting(&self, id: &str, attempt: String) {
         let since = (self.clock)();
         self.runs().insert(
             id.to_owned(),
             Slot::Starting {
+                attempt,
                 since,
                 named: false,
                 held: VecDeque::new(),
@@ -162,19 +180,24 @@ impl Shared {
         );
     }
 
-    /// An Agent, or a Meta-agent, has a Status: its live one; `working` while it starts; else
+    /// An Agent, or a Door, has a Status: its live one; `working` while it starts; else
     /// `done`, because the Daemon that ran it is gone and its Terminal with it. Every node that
     /// leaves the module passes through here.
-    fn present(&self, mut node: RailNode) -> RailNode {
-        if node.kind == NodeKind::Agent || node.meta {
-            let live = match self.runs().get(&node.id) {
+    fn present(&self, mut node: RailNode, runs: &HashMap<String, Slot>) -> RailNode {
+        if node.kind != NodeKind::Terminal {
+            node.status_revision = match runs.get(&node.id) {
+                Some(Slot::Running(run)) => Some(run.status_revision.to_string()),
+                Some(Slot::Starting { .. }) => Some("1".into()),
+                _ => None,
+            };
+            let live = match runs.get(&node.id) {
                 Some(Slot::Running(run)) => run.adapter.status().cloned(),
                 Some(Slot::Starting { since, .. }) => Some(Status {
                     kind: Kind::Working,
                     label: "starting".into(),
                     since: *since,
                 }),
-                None => None,
+                None | Some(Slot::Closing) => None,
             };
             node.status = Some(live.unwrap_or_else(|| Status {
                 kind: Kind::Done,
@@ -185,6 +208,22 @@ impl Shared {
         node
     }
 
+    fn node(&self, id: &str) -> Result<RailNode, RpcError> {
+        let rail = self.rail();
+        let runs = self.runs();
+        Ok(self.present(rail.node(id)?, &runs))
+    }
+
+    fn tree(&self) -> Result<Vec<RailNode>, RpcError> {
+        let rail = self.rail();
+        let runs = self.runs();
+        Ok(rail
+            .tree()?
+            .into_iter()
+            .map(|node| self.present(node, &runs))
+            .collect())
+    }
+
     /// Fold `observation` into Agent `id`'s Status. A change is announced as `agent.status`, and
     /// the first idle types the prompt the Agent was spawned with. Returns when, on `clock`, the
     /// adapter wants its next `Observation::Tick`.
@@ -192,6 +231,7 @@ impl Shared {
         &self,
         actor: Actor,
         id: &str,
+        attempt: &str,
         observation: Observation,
     ) -> Result<Option<i64>, RpcError> {
         let first_prompt = match &observation {
@@ -201,9 +241,21 @@ impl Shared {
             _ => None,
         };
         // Taken before `runs`, as every other path does, so a rename and a prompt cannot deadlock.
-        let mut rail = first_prompt.is_some().then(|| self.rail());
+        let mut rail = (first_prompt.is_some() || matches!(observation, Observation::Exit { .. }))
+            .then(|| self.rail());
         let (prompt, tick_at) = {
             let mut runs = self.runs();
+            // A20: an Observation from an earlier Attempt is ignored, never an error to its sender.
+            if runs.get(id).is_some_and(|slot| slot.attempt() != attempt) {
+                eprintln!(
+                    "agents: {id}: ignored {} from earlier Attempt {attempt}",
+                    observation.name()
+                );
+                return Ok(None);
+            }
+            if runs.get(id).is_some_and(Slot::closing) {
+                return Err(RpcError::conflict(format!("agent {id} is stopping")));
+            }
             let run = match runs.get_mut(id) {
                 Some(Slot::Running(run)) => run,
                 // A14: a Signal here is held, in arrival order, for when the Agent is
@@ -217,7 +269,13 @@ impl Shared {
                     return Ok(None);
                 }
                 None => return Err(RpcError::not_found(format!("agent {id}"))),
+                Some(Slot::Closing) => {
+                    return Err(RpcError::conflict(format!("agent {id} is stopping")));
+                }
             };
+            if run.ended {
+                return Err(RpcError::not_found(format!("agent {id} has ended")));
+            }
             self.apply(
                 rail.as_deref_mut(),
                 run,
@@ -242,22 +300,35 @@ impl Shared {
     /// one `rail`-then-`runs` lock section (`finish_starting`) is never asked to lock it twice.
     fn apply(
         &self,
-        rail: Option<&mut rail::Rail>,
+        mut rail: Option<&mut rail::Rail>,
         run: &mut Run,
         id: &str,
         actor: &Actor,
         observation: Observation,
         first_prompt: Option<Option<String>>,
     ) -> Result<Applied, RpcError> {
+        let exited = matches!(observation, Observation::Exit { .. });
         let changed = run.adapter.observe(observation);
+        if exited {
+            run.ended = true;
+            if let Some(rail) = rail.as_deref_mut() {
+                rail.detach_terminal(id)?;
+            }
+        }
         let idle = changed
             .as_ref()
             .is_some_and(|status| status.kind == Kind::Idle);
         // Announced while `runs` is held, so announcements leave in the order the Status
         // changed; `emit` never blocks.
         if let Some(status) = changed {
+            run.status_revision = run
+                .status_revision
+                .checked_add(1)
+                .expect("Status revision exhausted");
             let event = StatusEvent {
                 id: id.to_owned(),
+                attempt: run.attempt.clone(),
+                status_revision: run.status_revision.to_string(),
                 status,
             };
             self.bus.emit(actor.clone(), EventData::AgentStatus(event));
@@ -265,7 +336,7 @@ impl Shared {
         if let (Some(rail), Some(name)) = (rail, first_prompt)
             && !std::mem::replace(&mut run.named, true)
             && let Some(name) = name
-            && !rail.node(id)?.meta
+            && rail.node(id)?.kind == NodeKind::Agent
         {
             rail.rename(id, &name)?;
             self.bus.emit(actor.clone(), EventData::RailChanged);
@@ -284,9 +355,20 @@ impl Shared {
     /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
     /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
     /// that left the Agent idle, to type once the locks are let go.
-    fn finish_starting(&self, id: &str, build: impl FnOnce(bool) -> Run) -> Vec<(String, String)> {
+    fn finish_starting(
+        &self,
+        id: &str,
+        attempt: &str,
+        build: impl FnOnce(bool) -> Run,
+    ) -> Result<Vec<(String, String)>, RpcError> {
         let mut rail = self.rail();
         let mut runs = self.runs();
+        if !matches!(runs.get(id), Some(Slot::Starting { attempt: active, .. }) if active == attempt)
+        {
+            return Err(RpcError::conflict(format!(
+                "agent {id}: stale start completion"
+            )));
+        }
         let Some(Slot::Starting { named, held, .. }) = runs.remove(id) else {
             unreachable!("spawn marks {id} Starting before run_agent runs")
         };
@@ -314,61 +396,136 @@ impl Shared {
             }
         }
         runs.insert(id.to_owned(), Slot::Running(run));
-        prompts
+        Ok(prompts)
     }
 
-    /// Stop an Agent's program; it stays in the Rail as `done`, unless its program had already
-    /// ended, in which case it keeps the Status that ending gave it. A Meta-agent's children
-    /// move up to where it was and keep running (A7).
+    fn release_closing(&self, id: &str, ended: bool) {
+        let mut runs = self.runs();
+        if let Some(Slot::Running(run)) = runs.get_mut(id) {
+            run.closing = false;
+            run.ended |= ended;
+        } else {
+            runs.remove(id);
+        }
+    }
+
     async fn stop(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
-        let (node, run) = {
-            let rail = self.rail();
-            let node = rail.node(id)?;
-            let run = self.runs().get(id).map(|slot| match slot {
-                Slot::Running(run) => Some(run.terminal_id.clone()),
-                Slot::Starting { .. } => None,
-            });
-            (node, run)
-        };
-        if node.kind == NodeKind::Terminal || (node.kind == NodeKind::Group && !node.meta) {
-            return Err(RpcError::conflict(format!("{id} is not an Agent")));
-        }
-        match run {
-            Some(Some(terminal_id)) => {
-                self.observe(actor.clone(), id, Observation::Stopped)?;
-                kill_or_already_gone(&*self.kill, &self.terminals, &terminal_id).await?;
-            }
-            Some(None) => return Err(RpcError::conflict(format!("{id} is still starting"))),
-            // An earlier Daemon ran it; its Terminal ended with that Daemon.
-            None => {}
-        }
-        if node.kind == NodeKind::Group && self.rail().lift_children(id)? {
-            self.bus.emit(actor, EventData::RailChanged);
-        }
-        Ok(())
+        self.end(actor, id, false).await
     }
 
-    /// Delete a node from the Rail (A16). An Agent or a Meta-agent is stopped first, as `stop`
-    /// does (A7's lift of a Meta-agent's children included); a plain Terminal is killed instead,
-    /// since `stop` refuses one. Either failing returns its error and deletes nothing, so a
-    /// second `rail.remove` can retry. A plain Group's children move to its own parent, at its
-    /// place, with the delete itself in one transaction (`Rail::remove`): a failed delete there
-    /// leaves them still under it. A Meta-agent's children are already lifted by `stop` by the
-    /// time the delete runs, so a failed delete after that just leaves the node `done` on the
-    /// Rail with no children of its own left to lose. A successful delete also drops `id` from
-    /// `runs`, so a removed Agent's Slot does not sit there forever and a later `agent.signal`
-    /// for it is `NOT_FOUND` again, instead of quietly applying to a node no longer on the Rail.
     async fn remove(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
-        let node = self.rail().node(id)?;
-        if node.kind == NodeKind::Agent || node.meta {
-            self.stop(actor.clone(), id).await?;
-        } else if node.kind == NodeKind::Terminal
-            && let Some(terminal_id) = &node.terminal_id
+        self.end(actor, id, true).await
+    }
+
+    async fn end(&self, actor: Actor, id: &str, remove: bool) -> Result<(), RpcError> {
+        let checked_node = if remove {
+            Some(self.rail().node(id)?)
+        } else {
+            None
+        };
+        if let Some(worktree) = checked_node
+            .as_ref()
+            .and_then(|node| node.worktree.as_ref())
         {
-            kill_or_already_gone(&*self.kill, &self.terminals, terminal_id).await?;
+            let git = self.git.clone();
+            let project = self.project_dir.clone();
+            let worktree = worktree::Worktree::from(worktree);
+            tokio::task::spawn_blocking(move || git.require_landed(&project, &worktree))
+                .await
+                .map_err(RpcError::internal)??;
         }
-        self.rail().remove(id)?;
-        self.runs().remove(id);
+        let (terminal_id, worktree) = {
+            let rail = self.rail();
+            let mut node = rail.node(id)?;
+            if checked_node.as_ref().is_some_and(|checked| {
+                checked.attempt != node.attempt || checked.worktree != node.worktree
+            }) {
+                return Err(RpcError::conflict(format!(
+                    "{id} changed during Worktree precheck"
+                )));
+            }
+            if !remove && node.kind == NodeKind::Terminal {
+                return Err(RpcError::conflict(format!("{id} is not an Agent")));
+            }
+            let mut runs = self.runs();
+            if !remove
+                && node.terminal_id.is_none()
+                && runs
+                    .get(id)
+                    .is_none_or(|s| matches!(s, Slot::Running(r) if r.ended))
+            {
+                return Ok(());
+            }
+            match runs.get_mut(id) {
+                Some(Slot::Starting { .. }) => {
+                    return Err(RpcError::conflict(format!("{id} is still starting")));
+                }
+                Some(Slot::Running(run)) => {
+                    if run.closing {
+                        return Err(RpcError::conflict(format!("{id} is stopping")));
+                    }
+                    run.closing = true;
+                    node.terminal_id = Some(run.terminal_id.clone());
+                }
+                None => {
+                    runs.insert(id.to_owned(), Slot::Closing);
+                }
+                Some(Slot::Closing) => {
+                    return Err(RpcError::conflict(format!("{id} is being removed")));
+                }
+            }
+            (node.terminal_id, remove.then_some(node.worktree).flatten())
+        };
+        if let Some(Slot::Running(run)) = self.runs().get_mut(id) {
+            self.apply(None, run, id, &actor, Observation::Stopped, None)?;
+        }
+        let killed = match terminal_id {
+            Some(terminal_id) => {
+                kill_or_already_gone(&*self.kill, &self.terminals, &terminal_id).await
+            }
+            None => Ok(()),
+        };
+        if killed.is_ok()
+            && let Some(worktree) = worktree
+        {
+            let git = self.git.clone();
+            let project = self.project_dir.clone();
+            let worktree = worktree::Worktree::from(&worktree);
+            let removed =
+                tokio::task::spawn_blocking(move || git.remove_landed(&project, &worktree))
+                    .await
+                    .map_err(RpcError::internal)?;
+            if let Err(err) = removed {
+                self.rail().detach_terminal(id)?;
+                self.release_closing(id, true);
+                self.bus.emit(actor, EventData::RailChanged);
+                return Err(err);
+            }
+        }
+        let mut rail = self.rail();
+        let mut runs = self.runs();
+        if let Err(err) = killed {
+            if let Some(Slot::Running(run)) = runs.get_mut(id) {
+                run.closing = false;
+            } else {
+                runs.remove(id);
+            }
+            return Err(err);
+        }
+        let result = if remove {
+            rail.remove(id)
+        } else {
+            rail.detach_terminal(id)
+        };
+        if remove {
+            runs.remove(id);
+        } else if let Some(Slot::Running(run)) = runs.get_mut(id) {
+            run.closing = false;
+            run.ended = true;
+        } else {
+            runs.remove(id);
+        }
+        result?;
         self.bus.emit(actor, EventData::RailChanged);
         Ok(())
     }
@@ -378,6 +535,7 @@ impl Shared {
 enum Slot {
     /// Its Terminal is starting; `since` is when, on `clock`, it was marked.
     Starting {
+        attempt: String,
         since: i64,
         /// A `rail.rename` came while it started; its first prompt must not undo it.
         named: bool,
@@ -386,14 +544,27 @@ enum Slot {
         held: VecDeque<(Actor, Value)>,
     },
     Running(Run),
+    Closing,
 }
 
 impl Slot {
+    fn attempt(&self) -> &str {
+        match self {
+            Self::Starting { attempt, .. } => attempt,
+            Self::Running(run) => &run.attempt,
+            Self::Closing => "",
+        }
+    }
+    fn closing(&self) -> bool {
+        matches!(self, Self::Closing) || matches!(self, Self::Running(run) if run.closing)
+    }
+
     /// The node's name is final: no prompt renames it.
     fn settle_name(&mut self) {
         match self {
             Self::Running(run) => run.named = true,
             Self::Starting { named, .. } => *named = true,
+            Self::Closing => {}
         }
     }
 }
@@ -415,6 +586,10 @@ fn hold(id: &str, held: &mut VecDeque<(Actor, Value)>, actor: Actor, payload: Va
 
 /// An Agent's program and what is left to tell it.
 struct Run {
+    attempt: String,
+    status_revision: i64,
+    closing: bool,
+    ended: bool,
     adapter: ClaudeCode,
     /// Typed into the Terminal at the first idle, then gone.
     prompt: Option<String>,
@@ -441,10 +616,12 @@ async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: Str
 
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
 const REGISTERED: &str = "a watched Agent is registered";
+/// G6: a legacy Worktree record from before ownership proofs; nothing may clean it up.
+const UNPROVEN: &str = "unfinished legacy provisioning has no ownership proof";
 
 /// Feed one Terminal's titles and its exit to the Agent behind it, and a Tick at the time its
 /// adapter asks for one. Only a held star asks, so the watcher of an idle Agent never wakes.
-async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>) {
+async fn watch(shared: Arc<Shared>, id: String, attempt: String, mut events: Receiver<EventData>) {
     let mut tick: Option<Instant> = None;
     loop {
         let observation = tokio::select! {
@@ -458,11 +635,11 @@ async fn watch(shared: Arc<Shared>, id: String, mut events: Receiver<EventData>)
             () = sleep_until(tick.unwrap_or_else(Instant::now)), if tick.is_some() => Observation::Tick,
         };
         let exited = matches!(observation, Observation::Exit { .. });
-        let tick_at = match shared.observe(Actor::daemon(), &id, observation) {
+        let tick_at = match shared.observe(Actor::daemon(), &id, &attempt, observation) {
             Ok(tick_at) => tick_at,
             // `rail.remove` evicts `id` from `runs` once it deletes the node (A16); an Exit
             // already in flight when that happened has nothing left to watch.
-            Err(err) if err.code == code::NOT_FOUND => return,
+            Err(err) if matches!(err.code, code::NOT_FOUND | code::CONFLICT) => return,
             Err(err) => panic!("{REGISTERED}: {err}"),
         };
         if exited {
@@ -479,7 +656,6 @@ pub struct Agents {
     shared: Arc<Shared>,
     dir: PathBuf,
     launcher: Launcher,
-    git: worktree::Git,
 }
 
 impl Agents {
@@ -502,9 +678,36 @@ impl Agents {
         launcher: Launcher,
         git: worktree::Git,
     ) -> Result<Self, OpenError> {
+        let project = dir.parent().unwrap_or(dir);
+        let mut rail = rail::Rail::open(&dir.join("agents.db"))?;
+        for (node, plan, ready) in rail.provisioning()? {
+            let Some(plan) = plan else {
+                eprintln!("agents: {}: {UNPROVEN}; kept", node.id);
+                continue;
+            };
+            let settled = if ready {
+                git.finish(project, &plan)
+                    .and_then(|()| rail.clear_provisioning_owner(&node.id))
+            } else {
+                git.recover(project, &plan).and_then(|()| {
+                    Launcher::discard(dir, &node.id).map_err(RpcError::internal)?;
+                    if node.kind == NodeKind::Agent {
+                        rail.remove(&node.id)
+                    } else {
+                        rail.clear_worktree(&node.id)
+                    }
+                })
+            };
+            // G6: a record recovery refuses keeps its work and its row; the Project still opens.
+            if let Err(error) = settled {
+                eprintln!("agents: {}: {}; kept", node.id, error.message);
+            }
+        }
         Ok(Self {
             shared: Arc::new(Shared {
-                rail: Mutex::new(rail::Rail::open(&dir.join("agents.db"))?),
+                git,
+                project_dir: dir.parent().unwrap_or(dir).to_owned(),
+                rail: Mutex::new(rail),
                 runs: Mutex::new(HashMap::new()),
                 bus,
                 kill: Arc::clone(&terminals) as Arc<dyn KillsTerminals>,
@@ -514,19 +717,18 @@ impl Agents {
             }),
             dir: dir.to_owned(),
             launcher,
-            git,
         })
     }
 
     /// The Project folder: `.roundup/`'s parent, where its git repository (if any) lives.
     fn project_dir(&self) -> &Path {
-        self.dir.parent().unwrap_or(&self.dir)
+        &self.shared.project_dir
     }
 
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
     async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
         let cwd = Path::new(&params.cwd);
-        let id = {
+        let (id, attempt) = {
             let mut rail = self.shared.rail();
             let node = rail.insert(
                 NodeKind::Agent,
@@ -534,24 +736,26 @@ impl Agents {
                 params.parent.as_deref(),
                 None,
             )?;
-            self.shared.mark_starting(&node.id);
-            node.id
+            let attempt = rail.allocate_attempt(&node.id)?;
+            self.shared.mark_starting(&node.id, attempt.clone());
+            (node.id, attempt)
         };
-        let terminal_id = match self.run_agent(&id, cwd, params.prompt).await {
-            Ok(terminal_id) => terminal_id,
+        match self.run_agent(&id, &attempt, cwd, params.prompt).await {
+            Ok(_) => {}
             Err(err) => {
                 let mut rail = self.shared.rail();
-                self.shared.runs().remove(&id);
-                report_undo("remove the Agent from the Rail", rail.remove(&id));
+                let mut runs = self.shared.runs();
+                if runs.get(&id).is_some_and(|slot| slot.attempt() == attempt) {
+                    runs.remove(&id);
+                    if rail.node(&id)?.worktree.is_none() {
+                        report_undo("remove the Agent from the Rail", rail.remove(&id));
+                    }
+                }
                 return Err(err);
             }
         };
         ctx.emit(EventData::RailChanged);
-        let node = self.shared.rail().node(&id)?;
-        Ok(self.shared.present(RailNode {
-            terminal_id: Some(terminal_id),
-            ..node
-        }))
+        self.shared.node(&id)
     }
 
     /// Put a Terminal running the user's login shell in the Rail, last under `parent`.
@@ -586,27 +790,60 @@ impl Agents {
         })
     }
 
-    /// Make a Group a Meta-agent: start a live Agent that sits at it, in the Project's folder.
-    async fn promote(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
-        {
+    async fn start_door(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
+        let attempt = {
             let mut rail = self.shared.rail();
-            rail.reserve_meta(id)?;
-            self.shared.mark_starting(id);
-        }
+            let node = rail.node(id)?;
+            if node.kind != NodeKind::Room {
+                return Err(RpcError::conflict(format!("{id} is not a Room")));
+            }
+            let mut runs = self.shared.runs();
+            if let Some(slot) = runs.get(id) {
+                let live = match slot {
+                    Slot::Running(run) => {
+                        run.closing
+                            || self
+                                .shared
+                                .terminals
+                                .list()
+                                .iter()
+                                .any(|t| t.id == run.terminal_id && t.running)
+                    }
+                    _ => true,
+                };
+                if live {
+                    return Err(RpcError::conflict(format!("Door {id} is already active")));
+                }
+            }
+            let attempt = rail.allocate_attempt(id)?;
+            runs.insert(
+                id.to_owned(),
+                Slot::Starting {
+                    attempt: attempt.clone(),
+                    since: (self.shared.clock)(),
+                    named: true,
+                    held: VecDeque::new(),
+                },
+            );
+            attempt
+        };
         let project = self.project_dir().to_owned();
-        if let Err(err) = self.run_agent(id, &project, None).await {
+        if let Err(err) = self.run_agent(id, &attempt, &project, None).await {
             let mut rail = self.shared.rail();
-            self.shared.runs().remove(id);
-            report_undo("give the Group back its plain state", rail.release_meta(id));
+            let mut runs = self.shared.runs();
+            if runs.get(id).is_some_and(|slot| slot.attempt() == attempt) {
+                runs.remove(id);
+                rail.detach_terminal(id)?;
+            }
             return Err(err);
         }
         ctx.emit(EventData::RailChanged);
-        Ok(self.shared.present(self.shared.rail().node(id)?))
+        self.shared.node(id)
     }
 
     /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
     /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
-    /// here leaves no branch, no worktree directory and no Worktree recorded on the node.
+    /// retains its ownership record when cleanup cannot safely remove the new Worktree.
     async fn provision_worktree(
         &self,
         id: &str,
@@ -617,19 +854,25 @@ impl Agents {
         }
         let project = self.project_dir().to_owned();
         let (real_project, real_cwd) = real_paths(&project, cwd)?;
-        self.shared.rail().mark_worktree_provisioning(id)?;
-        let (git, provisioning_id) = (self.git.clone(), id.to_owned());
+        let attempt = self
+            .shared
+            .rail()
+            .node(id)?
+            .attempt
+            .expect("reserved Attempt");
+        let plan = self.shared.git.plan(&project, id, &attempt)?;
+        self.shared.rail().mark_worktree_provisioning(id, &plan)?;
+        let (git, provisioning_plan) = (self.shared.git.clone(), plan.clone());
         let made =
-            match tokio::task::spawn_blocking(move || git.provision(&project, &provisioning_id))
+            match tokio::task::spawn_blocking(move || git.provision(&project, &provisioning_plan))
                 .await
                 .map_err(RpcError::internal)?
             {
                 Ok(made) => made,
                 Err(err) => {
-                    report_undo(
-                        "clear the Agent's worktree",
-                        self.shared.rail().clear_worktree(id),
-                    );
+                    if self.shared.git.recover(self.project_dir(), &plan).is_ok() {
+                        self.shared.rail().clear_worktree(id)?;
+                    }
                     return Err(err);
                 }
             };
@@ -646,44 +889,68 @@ impl Agents {
                 ));
             }
         };
-        let recorded = contracts::agent::Worktree {
-            path: made.path.to_string_lossy().into_owned(),
-            branch: made.branch.clone(),
-            base: made.base.clone(),
-        };
-        let recorded_ok = self.shared.rail().set_worktree(id, &recorded);
-        if let Err(err) = recorded_ok {
-            self.discard_worktree(id, made).await;
-            return Err(err);
-        }
         Ok(Some((mapped, made)))
     }
 
     /// Undo a Worktree `provision_worktree` made and clear the node's record of it: used when a
     /// later step (the cwd check, or starting the Agent itself) fails.
     async fn discard_worktree(&self, id: &str, worktree: worktree::Worktree) {
-        let (git, project) = (self.git.clone(), self.project_dir().to_owned());
-        let _ = tokio::task::spawn_blocking(move || git.discard(&project, &worktree)).await;
-        report_undo(
-            "clear the Agent's worktree",
-            self.shared.rail().clear_worktree(id),
-        );
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let pending = match self.shared.rail().provisioning() {
+            Ok(records) => records.into_iter().find(|(node, _, _)| node.id == id),
+            Err(err) => {
+                eprintln!("agents: could not read Worktree ownership for {id}: {err}");
+                return;
+            }
+        };
+        let undone = tokio::task::spawn_blocking(move || match pending {
+            Some((_, Some(plan), _)) => git.recover(&project, &plan),
+            Some((_, None, _)) => Err(RpcError::internal(format!("worktree_failed: {UNPROVEN}"))),
+            None => git.remove_landed(&project, &worktree),
+        })
+        .await
+        .map_err(RpcError::internal)
+        .and_then(|result| result);
+        match undone {
+            Ok(()) => report_undo(
+                "clear the Agent's worktree",
+                self.shared.rail().clear_worktree(id),
+            ),
+            Err(err) => eprintln!("agents: could not undo Worktree for {id}: {err}"),
+        }
     }
 
     /// Start Claude Code for node `id`, marked as starting, in a Terminal recorded in the Rail,
-    /// then register and watch it; returns the Terminal's id. A failure leaves no settings file,
-    /// no Terminal and no Worktree, and the caller unmarks `id`.
+    /// then register and watch it; returns the Terminal's id. Failed cleanup keeps its Worktree
+    /// ownership record so reopening can recover it without deleting unrelated work.
     async fn run_agent(
         &self,
         id: &str,
+        attempt: &str,
         cwd: &Path,
         prompt: Option<String>,
     ) -> Result<String, RpcError> {
-        let provisioned = self.provision_worktree(id, cwd).await?;
-        let effective_cwd = provisioned
-            .as_ref()
-            .map_or_else(|| cwd.to_owned(), |(cwd, _)| cwd.clone());
-        let spawned = match self.start(id, &effective_cwd).await {
+        let node = self.shared.rail().node(id)?;
+
+        let retained = node.worktree.map(|w| PathBuf::from(w.path));
+        if let Some(path) = &retained
+            && !path.is_dir()
+        {
+            return Err(RpcError::internal(format!(
+                "worktree_missing: {}",
+                path.display()
+            )));
+        }
+        let provisioned = if retained.is_none() {
+            self.provision_worktree(id, cwd).await?
+        } else {
+            None
+        };
+        let effective_cwd = provisioned.as_ref().map_or_else(
+            || retained.unwrap_or_else(|| cwd.to_owned()),
+            |(cwd, _)| cwd.clone(),
+        );
+        let spawned = match self.start(id, attempt, &effective_cwd).await {
             Ok(spawned) => spawned,
             Err(err) => {
                 report_undo(
@@ -698,12 +965,26 @@ impl Agents {
         };
         let clock = Arc::clone(&self.shared.clock);
         let terminal_id = spawned.id.clone();
-        let prompts = self.shared.finish_starting(id, move |named| Run {
+        let prompts = self.shared.finish_starting(id, attempt, |named| Run {
+            attempt: attempt.to_owned(),
+            status_revision: 1,
+            closing: false,
+            ended: false,
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
             named,
             terminal_id,
         });
+        let prompts = match prompts {
+            Ok(prompts) => prompts,
+            Err(err) => {
+                report_undo(
+                    "kill obsolete start Terminal",
+                    self.shared.terminals.kill(&spawned.id).await,
+                );
+                return Err(err);
+            }
+        };
         for (terminal_id, prompt) in prompts {
             tokio::spawn(type_prompt(
                 Arc::clone(&self.shared.terminals),
@@ -714,22 +995,45 @@ impl Agents {
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),
+            attempt.to_owned(),
             spawned.events,
         ));
         Ok(spawned.id)
     }
 
-    async fn start(&self, id: &str, cwd: &Path) -> Result<terminal::Spawned, RpcError> {
+    async fn start(
+        &self,
+        id: &str,
+        attempt: &str,
+        cwd: &Path,
+    ) -> Result<terminal::Spawned, RpcError> {
         // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
-        let (launcher, dir, node, folder) = (
+        let (launcher, dir, node, folder, attempt) = (
             self.launcher.clone(),
             self.dir.clone(),
             id.to_owned(),
             cwd.to_owned(),
+            attempt.to_owned(),
         );
-        let argv = tokio::task::spawn_blocking(move || launcher.prepare(&dir, &node, &folder))
-            .await
-            .map_err(RpcError::internal)??;
+        let argv =
+            tokio::task::spawn_blocking(move || launcher.prepare(&dir, &node, &attempt, &folder))
+                .await
+                .map_err(RpcError::internal)??;
+        let pending = self
+            .shared
+            .rail()
+            .provisioning()?
+            .into_iter()
+            .find(|(node, _, _)| node.id == id);
+        if let Some((node, plan, _)) = pending {
+            let plan =
+                plan.ok_or_else(|| RpcError::internal(format!("worktree_failed: {UNPROVEN}")))?;
+            self.shared
+                .rail()
+                .set_worktree(id, &node.worktree.expect("provisioned Worktree"))?;
+            self.shared.git.finish(self.project_dir(), &plan)?;
+            self.shared.rail().clear_provisioning_owner(id)?;
+        }
         self.spawn_behind(id, cwd, Some(argv)).await
     }
 
@@ -825,31 +1129,38 @@ impl Module for Agents {
                 shared.stop(ctx.actor.clone(), &id).await?;
                 reply(&())
             }
-            "rail.promote" => {
+            "rail.startDoor" => {
                 let NodeId { id } = params(value)?;
-                reply(&self.promote(ctx, &id).await?)
+                reply(&self.start_door(ctx, &id).await?)
             }
             "agent.signal" => {
-                let SignalParams { id, payload } = params(value)?;
-                shared.observe(ctx.actor.clone(), &id, Observation::Signal(payload))?;
+                let SignalParams {
+                    id,
+                    attempt,
+                    payload,
+                } = params(value)?;
+                if contracts::agent::parse_positive_ordinal(&attempt).is_none() {
+                    return Err(RpcError::new(
+                        code::INVALID_PARAMS,
+                        "attempt must be a canonical positive decimal within signed 64-bit range",
+                    ));
+                }
+                shared.observe(
+                    ctx.actor.clone(),
+                    &id,
+                    &attempt,
+                    Observation::Signal(payload),
+                )?;
                 reply(&())
             }
-            "rail.tree" => {
-                let nodes = shared.rail().tree()?;
-                reply(
-                    &nodes
-                        .into_iter()
-                        .map(|node| shared.present(node))
-                        .collect::<Vec<_>>(),
-                )
-            }
-            "rail.createGroup" => {
-                let CreateGroupParams { name, parent } = params(value)?;
+            "rail.tree" => reply(&shared.tree()?),
+            "rail.createRoom" => {
+                let CreateRoomParams { name, parent } = params(value)?;
                 let node = shared
                     .rail()
-                    .insert(NodeKind::Group, &name, parent.as_deref(), None)?;
+                    .insert(NodeKind::Room, &name, parent.as_deref(), None)?;
                 ctx.emit(EventData::RailChanged);
-                reply(&shared.present(node))
+                reply(&shared.node(&node.id)?)
             }
             "rail.rename" => {
                 let RenameParams { id, name } = params(value)?;
@@ -862,7 +1173,7 @@ impl Module for Agents {
                     node
                 };
                 ctx.emit(EventData::RailChanged);
-                reply(&shared.present(node))
+                reply(&shared.node(&node.id)?)
             }
             "rail.spawnTerminal" => reply(&self.spawn_terminal(ctx, params(value)?).await?),
             "project.setWorktrees" => {
@@ -916,7 +1227,9 @@ mod tests {
     use tokio::time::Instant;
 
     use super::claude_code::ClaudeCode;
-    use super::{Clock, KillsTerminals, Observation, Run, Shared, Slot, rail, shell_name, watch};
+    use super::{
+        Clock, KillsTerminals, Observation, Run, Shared, Slot, rail, shell_name, watch, worktree,
+    };
 
     const PATIENCE: Duration = Duration::from_secs(60);
     /// Spelled out, not `STAR_HOLD`, so a changed hold fails these tests.
@@ -929,6 +1242,8 @@ mod tests {
         let bus = Bus::new();
         let terminals = Arc::new(Terminals::open(dir.path(), bus.clone()).unwrap());
         let shared = Arc::new(Shared {
+            git: worktree::Git::from_env(),
+            project_dir: dir.path().to_owned(),
             rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
             runs: Mutex::new(HashMap::new()),
             bus: bus.clone(),
@@ -957,6 +1272,10 @@ mod tests {
             let adapter_clock = Arc::clone(&clock);
             let (dir, bus, shared) = shared_over_temp_dir(clock);
             let run = Run {
+                attempt: "1".into(),
+                status_revision: 1,
+                closing: false,
+                ended: false,
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
                 named: false,
@@ -965,7 +1284,12 @@ mod tests {
             shared.runs().insert("1".into(), Slot::Running(run));
             let (terminal, terminal_events) = broadcast::channel(16);
             let events = bus.subscribe();
-            let watcher = tokio::spawn(watch(Arc::clone(&shared), "1".into(), terminal_events));
+            let watcher = tokio::spawn(watch(
+                Arc::clone(&shared),
+                "1".into(),
+                "1".into(),
+                terminal_events,
+            ));
             Self {
                 _dir: dir,
                 shared,
@@ -978,7 +1302,7 @@ mod tests {
         fn signal(&self, event: &str) {
             let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
             self.shared
-                .observe(Actor::daemon(), "1", Observation::Signal(payload))
+                .observe(Actor::daemon(), "1", "1", Observation::Signal(payload))
                 .unwrap();
         }
 
@@ -1081,6 +1405,7 @@ mod tests {
         shared.runs().insert(
             "1".into(),
             Slot::Starting {
+                attempt: "1".into(),
                 since: 0,
                 named: false,
                 held: VecDeque::new(),
@@ -1088,7 +1413,7 @@ mod tests {
         );
 
         let err = shared
-            .observe(Actor::daemon(), "1", Observation::Tick)
+            .observe(Actor::daemon(), "1", "1", Observation::Tick)
             .unwrap_err();
 
         assert_eq!(err.code, rpc::code::NOT_FOUND);
@@ -1114,7 +1439,7 @@ mod tests {
             .insert(contracts::agent::NodeKind::Agent, "new-agent", None, None)
             .unwrap()
             .id;
-        shared.mark_starting(&id);
+        shared.mark_starting(&id, "1".into());
         if let Some(Slot::Starting { held, .. }) = shared.runs().get_mut(&id) {
             held.push_back((
                 Actor::daemon(),
@@ -1123,7 +1448,11 @@ mod tests {
         }
         let lock = lock_db_for_writes(dir.path());
 
-        let prompts = shared.finish_starting(&id, |named| Run {
+        let prompts = shared.finish_starting(&id, "1", |named| Run {
+            attempt: "1".into(),
+            status_revision: 1,
+            closing: false,
+            ended: false,
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
             named,
@@ -1131,7 +1460,7 @@ mod tests {
         });
 
         drop(lock);
-        assert_eq!(prompts, Vec::new());
+        assert_eq!(prompts.unwrap(), Vec::new());
         // Neither lock was poisoned by the failed write: both can still be acquired.
         assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
         shared.rail().tree().unwrap();
@@ -1166,6 +1495,7 @@ mod tests {
             shared.runs().insert(
                 id.clone(),
                 Slot::Starting {
+                    attempt: "1".into(),
                     since: 0,
                     named: false,
                     held: VecDeque::from([(
@@ -1183,10 +1513,14 @@ mod tests {
                 let shared = Arc::clone(&shared);
                 let id = id.clone();
                 thread::spawn(move || {
-                    shared.finish_starting(&id, |named| {
+                    shared.finish_starting(&id, "1", |named| {
                         holding_tx.send(()).unwrap();
                         go_rx.recv().unwrap();
                         Run {
+                            attempt: "1".into(),
+                            status_revision: 1,
+                            closing: false,
+                            ended: false,
                             adapter: ClaudeCode::starting(|| 0),
                             prompt: None,
                             named,
@@ -1208,6 +1542,7 @@ mod tests {
                     shared.observe(
                         Actor::daemon(),
                         &id,
+                        "1",
                         Observation::Signal(
                             json!({"hook_event_name": "Stop", "tool_name": "Bash"}),
                         ),
@@ -1217,7 +1552,7 @@ mod tests {
             about_rx.recv().unwrap();
             go_tx.send(()).unwrap();
 
-            registering.join().unwrap();
+            registering.join().unwrap().unwrap();
             late.join().unwrap().unwrap();
 
             let mut kinds = vec![];
@@ -1249,6 +1584,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bus = Bus::new();
         Arc::new(Shared {
+            git: worktree::Git::from_env(),
+            project_dir: dir.path().to_owned(),
             rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
             runs: Mutex::new(HashMap::new()),
             bus: bus.clone(),
@@ -1270,6 +1607,10 @@ mod tests {
         shared.runs().insert(
             id.clone(),
             Slot::Running(Run {
+                attempt: "1".into(),
+                status_revision: 1,
+                closing: false,
+                ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 named: true,
@@ -1290,20 +1631,24 @@ mod tests {
         assert_eq!(shared.rail().tree().unwrap().len(), 1);
     }
 
-    /// A Meta-agent whose kill fails must not have its children lifted either: `stop` returning
+    /// A Door whose kill fails must not have its children lifted either: `stop` returning
     /// early before it calls `lift_children` is what this proves.
     #[tokio::test]
-    async fn a16_a_failed_stop_of_a_meta_agent_leaves_its_children_in_place() {
+    async fn a16_a_failed_stop_of_a_door_leaves_its_children_in_place() {
         let shared = shared_with_a_failing_kill();
         let group = shared
             .rail()
-            .insert(NodeKind::Group, "g", None, None)
+            .insert(NodeKind::Room, "g", None, None)
             .unwrap()
             .id;
-        shared.rail().reserve_meta(&group).unwrap();
+        shared.rail().allocate_attempt(&group).unwrap();
         shared.runs().insert(
             group.clone(),
             Slot::Running(Run {
+                attempt: "1".into(),
+                status_revision: 1,
+                closing: false,
+                ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 named: true,
@@ -1312,7 +1657,7 @@ mod tests {
         );
         let child = shared
             .rail()
-            .insert(NodeKind::Group, "child", Some(&group), None)
+            .insert(NodeKind::Room, "child", Some(&group), None)
             .unwrap()
             .id;
 
@@ -1321,6 +1666,81 @@ mod tests {
         let tree = shared.rail().tree().unwrap();
         let child_node = tree.iter().find(|n| n.id == child).unwrap();
         assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a7_old_title_tick_exit_and_signal_do_not_change_a_new_run() {
+        let mut watched = Watched::start();
+        {
+            let mut runs = watched.shared.runs();
+            let Some(Slot::Running(run)) = runs.get_mut("1") else {
+                panic!("Running")
+            };
+            run.attempt = "2".into();
+            run.terminal_id = "new-terminal".into();
+        }
+        for observation in [
+            Observation::Title("old title".into()),
+            Observation::Tick,
+            Observation::Exit { code: Some(1) },
+            Observation::Signal(json!({"hook_event_name":"Stop"})),
+        ] {
+            // A20: ignored, never an error to the sender.
+            let ignored = watched
+                .shared
+                .observe(Actor::daemon(), "1", "1", observation)
+                .unwrap();
+            assert_eq!(ignored, None);
+        }
+        assert!(watched.events.try_recv().is_err());
+        let runs = watched.shared.runs();
+        let Some(Slot::Running(run)) = runs.get("1") else {
+            panic!("Running")
+        };
+        assert_eq!(run.attempt, "2");
+        assert_eq!(run.terminal_id, "new-terminal");
+        assert!(!run.ended);
+        assert_eq!(run.adapter.status().unwrap().kind, Kind::Working);
+    }
+
+    #[tokio::test]
+    async fn a7_status_revisions_order_transitions_even_when_the_clock_ties() {
+        let (_dir, bus, shared) = shared_over_temp_dir(Arc::new(|| 0));
+        let id = running_agent(&shared, None);
+        shared.rail().allocate_attempt(&id).unwrap();
+        let mut events = bus.subscribe();
+        for (index, event) in [
+            "UserPromptSubmit",
+            "Stop",
+            "StopFailure",
+            "UserPromptSubmit",
+        ]
+        .iter()
+        .enumerate()
+        {
+            shared
+                .observe(
+                    Actor::daemon(),
+                    &id,
+                    "1",
+                    Observation::Signal(json!({"hook_event_name":event})),
+                )
+                .unwrap();
+            let status = loop {
+                if let EventData::AgentStatus(status) = events.try_recv().unwrap().data {
+                    break status;
+                }
+            };
+            assert_eq!(status.status_revision, (index + 2).to_string());
+            assert_eq!(status.status.since, 0);
+            let node = shared.node(&id).unwrap();
+            assert_eq!(node.attempt.as_deref(), Some(status.attempt.as_str()));
+            assert_eq!(
+                node.status_revision.as_deref(),
+                Some(status.status_revision.as_str())
+            );
+            assert_eq!(node.status, Some(status.status));
+        }
     }
 
     /// A plain Terminal node, with no watcher, for a test that drives `remove` directly.
@@ -1363,6 +1783,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bus = Bus::new();
         let shared = Arc::new(Shared {
+            git: worktree::Git::from_env(),
+            project_dir: dir.path().to_owned(),
             rail: Mutex::new(rail::Rail::open(&dir.path().join("agents.db")).unwrap()),
             runs: Mutex::new(HashMap::new()),
             bus: bus.clone(),
@@ -1385,7 +1807,7 @@ mod tests {
         let err = shared.remove(Actor::daemon(), &id).await.unwrap_err();
 
         assert_eq!(err.code, rpc::code::INTERNAL);
-        let node = shared.present(shared.rail().node(&id).unwrap());
+        let node = shared.node(&id).unwrap();
         assert_eq!(node.status.unwrap().kind, Kind::Done);
 
         shared.remove(Actor::daemon(), &id).await.unwrap();

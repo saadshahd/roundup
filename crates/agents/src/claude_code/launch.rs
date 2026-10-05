@@ -110,7 +110,13 @@ impl Launcher {
     /// Write Agent `id`'s settings and MCP config under `dir` (the Project's `.roundup/`), trust
     /// `cwd`, and return the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
     /// is the user's, and this is the only grant roundup makes in it.
-    pub fn prepare(&self, dir: &Path, id: &str, cwd: &Path) -> Result<Vec<String>, RpcError> {
+    pub fn prepare(
+        &self,
+        dir: &Path,
+        id: &str,
+        attempt: &str,
+        cwd: &Path,
+    ) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
         let id = parse_id(id).ok_or_else(|| invalid(format!("{id:?} is not a node id")))?;
         let cwd = cwd
@@ -158,7 +164,7 @@ impl Launcher {
         }
         let settings = settings_path(&dir, id);
         let mcp_config = mcp_config_path(&dir, id);
-        replace_file(&settings, &self.settings_json(id)).map_err(RpcError::internal)?;
+        replace_file(&settings, &self.settings_json(id, attempt)).map_err(RpcError::internal)?;
         replace_file(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
         // No `--strict-mcp-config`: the Agent keeps the user's own servers.
@@ -198,9 +204,11 @@ impl Launcher {
         .map_err(RpcError::internal)
     }
 
-    fn settings_json(&self, id: u64) -> Value {
+    /// A20: the hook command, not the program, carries the launch's Attempt.
+    fn settings_json(&self, id: u64, attempt: &str) -> Value {
         let command = format!(
-            "{} signal {}",
+            "ROUNDUP_ATTEMPT={} {} signal {}",
+            shell_quote(attempt),
             shell_quote(&self.rup.to_string_lossy()),
             shell_quote(&id.to_string())
         );

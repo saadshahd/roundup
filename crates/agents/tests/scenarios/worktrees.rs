@@ -32,8 +32,8 @@ async fn spawn_in(
     Ok(serde_json::from_value(node).unwrap())
 }
 
-async fn promote(f: &Fixture, id: &str) -> Result<RailNode, rpc::RpcError> {
-    let node = f.call("rail.promote", json!({"id": id})).await?;
+async fn start_door(f: &Fixture, id: &str) -> Result<RailNode, rpc::RpcError> {
+    let node = f.call("rail.startDoor", json!({"id": id})).await?;
     Ok(serde_json::from_value(node).unwrap())
 }
 
@@ -327,11 +327,11 @@ async fn g2_two_spawns_have_different_cwds() {
 }
 
 #[tokio::test]
-async fn g2_two_promotes_have_different_cwds() {
+async fn g2_two_start_doors_have_different_cwds() {
     let f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
-    let g1 = f.group("g1", None).await;
-    let g2 = f.group("g2", None).await;
+    let g1 = f.room("g1", None).await;
+    let g2 = f.room("g2", None).await;
     let cwd_of = |f: &Fixture, node: &RailNode| {
         f.terminals
             .list()
@@ -341,8 +341,8 @@ async fn g2_two_promotes_have_different_cwds() {
             .cwd
     };
 
-    let a = promote(&f, &g1).await.unwrap();
-    let b = promote(&f, &g2).await.unwrap();
+    let a = start_door(&f, &g1).await.unwrap();
+    let b = start_door(&f, &g2).await.unwrap();
 
     assert_ne!(cwd_of(&f, &a), cwd_of(&f, &b));
     assert_ne!(a.worktree.unwrap().path, b.worktree.unwrap().path);
@@ -402,42 +402,42 @@ async fn g2_failed_call_emits_no_event() {
 }
 
 #[tokio::test]
-async fn g2_failed_promote_leaves_a_plain_group() {
+async fn g2_failed_start_door_leaves_a_stopped_room() {
     let wrapper = tempfile::tempdir().unwrap();
     let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
-    let group = f.group("team", None).await;
+    let room = f.room("team", None).await;
     let before = git_state(f.dir.path());
 
-    let err = promote(&f, &group).await.unwrap_err();
+    let err = start_door(&f, &room).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
     assert_eq!(tree.len(), 1);
-    assert_eq!(tree[0].kind, NodeKind::Group);
-    assert!(!tree[0].meta);
+    assert_eq!(tree[0].kind, NodeKind::Room);
+    assert!(tree[0].terminal_id.is_none());
     assert_eq!(tree[0].worktree, None);
     assert_eq!(git_state(f.dir.path()), before);
 }
 
 #[tokio::test]
-async fn g2_failed_promote_leaves_children_where_they_were() {
+async fn g2_failed_start_door_leaves_children_where_they_were() {
     let wrapper = tempfile::tempdir().unwrap();
     let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
-    let group = f.group("team", None).await;
-    let child = f.group("child", Some(&group)).await;
+    let room = f.room("team", None).await;
+    let child = f.room("child", Some(&room)).await;
     let before = git_state(f.dir.path());
 
-    let err = promote(&f, &group).await.unwrap_err();
+    let err = start_door(&f, &room).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
-    let group_node = tree.iter().find(|node| node.id == group).unwrap();
-    assert_eq!(group_node.kind, NodeKind::Group);
-    assert!(!group_node.meta);
+    let group_node = tree.iter().find(|node| node.id == room).unwrap();
+    assert_eq!(group_node.kind, NodeKind::Room);
+    assert!(group_node.terminal_id.is_none());
     let child_node = tree.iter().find(|node| node.id == child).unwrap();
-    assert_eq!(child_node.parent.as_deref(), Some(group.as_str()));
+    assert_eq!(child_node.parent.as_deref(), Some(room.as_str()));
     assert_eq!(git_state(f.dir.path()), before);
 }
 
@@ -535,21 +535,21 @@ async fn g2_terminal_gets_no_worktree() {
 }
 
 #[tokio::test]
-async fn g2_start_failure_of_promote_leaves_a_plain_group() {
+async fn g2_start_failure_of_start_door_leaves_a_stopped_room() {
     let mut f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
-    let group = f.group("team", None).await;
+    let room = f.room("team", None).await;
     let before = git_state(f.dir.path());
     f.changed();
     std::fs::remove_file(f.dir.path().join(".roundup/rup")).unwrap();
 
-    let err = promote(&f, &group).await.unwrap_err();
+    let err = start_door(&f, &room).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
     assert_eq!(tree.len(), 1);
-    assert_eq!(tree[0].kind, NodeKind::Group);
-    assert!(!tree[0].meta);
+    assert_eq!(tree[0].kind, NodeKind::Room);
+    assert!(tree[0].terminal_id.is_none());
     assert_eq!(tree[0].worktree, None);
     assert_eq!(git_state(f.dir.path()), before);
     assert_eq!(f.changed(), 0);
@@ -586,7 +586,10 @@ async fn g2_concurrent_provisions_never_run_two_git_commands_at_once() {
         let handles: Vec<_> = (0..4)
             .map(|n| {
                 let (git, project) = (&git, f.dir.path());
-                scope.spawn(move || git.provision(project, &format!("agent-{n}")))
+                scope.spawn(move || {
+                    let plan = git.plan(project, &format!("agent-{n}"), "1")?;
+                    git.provision(project, &plan)
+                })
             })
             .collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()
@@ -713,7 +716,7 @@ async fn g2_a_failure_locating_the_exclude_file_leaves_nothing() {
 }
 
 #[tokio::test]
-async fn g2_when_git_cannot_remove_a_worktree_its_directory_and_registration_still_go() {
+async fn g2_g6_failed_cleanup_retains_ownership_until_reopen_recovers_it() {
     let wrapper = tempfile::tempdir().unwrap();
     let removal_fails = "[ \"$1\" = worktree ] && [ \"$2\" = remove ]";
     let f = Fixture::in_git_project(
@@ -728,8 +731,12 @@ async fn g2_when_git_cannot_remove_a_worktree_its_directory_and_registration_sti
 
     f.spawn(None, None).await.unwrap_err();
 
+    assert_ne!(git_state(f.dir.path()), before);
+    assert!(f.dir.path().join(".roundup/worktrees/agent-1").exists());
+    assert!(f.tree().await[0].worktree.is_some());
+    let f = f.reopen();
     assert_eq!(git_state(f.dir.path()), before);
-    assert!(!f.dir.path().join(".roundup/worktrees/agent-1").exists());
+    assert!(f.tree().await.is_empty());
 }
 
 #[tokio::test]
@@ -781,14 +788,14 @@ async fn g2_a_symlink_to_the_project_is_a_cwd_inside_it() {
 }
 
 #[tokio::test]
-async fn g2_a_failed_promote_emits_no_event() {
+async fn g2_a_failed_start_door_emits_no_event() {
     let wrapper = tempfile::tempdir().unwrap();
     let mut f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
-    let group = f.group("team", None).await;
+    let room = f.room("team", None).await;
     f.changed();
 
-    promote(&f, &group).await.unwrap_err();
+    start_door(&f, &room).await.unwrap_err();
 
     assert_eq!(f.changed(), 0);
 }
@@ -816,5 +823,422 @@ async fn g2_a_project_opened_through_a_symlink_accepts_its_own_folder() {
         let worktree = std::fs::canonicalize(node.worktree.clone().unwrap().path).unwrap();
         let cwd = std::fs::canonicalize(terminal_cwd(&f, node).await).unwrap();
         assert_eq!(cwd, worktree);
+    }
+}
+
+#[tokio::test]
+async fn g2_g6_door_retry_reuses_recorded_worktree_and_preserves_uncommitted_files() {
+    let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+    f.call("project.setWorktrees", json!({"on":true,"check":null}))
+        .await
+        .unwrap();
+    let room = f
+        .call("rail.createRoom", json!({"name":"room","parent":null}))
+        .await
+        .unwrap();
+    let id = room["id"].as_str().unwrap();
+    let first = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
+    let path = std::path::PathBuf::from(first["worktree"]["path"].as_str().unwrap());
+    std::fs::write(path.join("uncommitted.txt"), "keep me").unwrap();
+    f.call("agent.stop", json!({"id":id})).await.unwrap();
+    let rup = f.dir.path().join(".roundup/rup");
+    std::fs::remove_file(&rup).unwrap();
+    assert!(f.call("rail.startDoor", json!({"id":id})).await.is_err());
+    assert_eq!(
+        std::fs::read_to_string(path.join("uncommitted.txt")).unwrap(),
+        "keep me"
+    );
+    std::fs::write(rup, "").unwrap();
+    let second = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
+    assert_eq!(second["worktree"], first["worktree"]);
+    assert_eq!(second["attempt"], "3");
+    f.call("agent.stop", json!({"id":id})).await.unwrap();
+    let renamed = path.with_extension("retained");
+    std::fs::rename(&path, &renamed).unwrap();
+    let err = f
+        .call("rail.startDoor", json!({"id":id}))
+        .await
+        .unwrap_err();
+    assert!(err.message.starts_with("worktree_missing:"));
+    let tree = f.call("rail.tree", Value::Null).await.unwrap();
+    assert_eq!(tree[0]["worktree"], first["worktree"]);
+    std::fs::rename(renamed, path).unwrap();
+}
+
+#[tokio::test]
+async fn g5_removing_unlanded_work_refuses_before_stopping_the_door() {
+    for (dirty, ahead) in [(true, false), (false, true), (true, true)] {
+        let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+        set_worktrees(&f, true, None).await;
+        let room = f
+            .call("rail.createRoom", json!({"name":"room","parent":null}))
+            .await
+            .unwrap();
+        let id = room["id"].as_str().unwrap();
+        let node = start_door(&f, id).await.unwrap();
+        let worktree = node.worktree.clone().unwrap();
+        let path = Path::new(&worktree.path);
+        if ahead {
+            std::fs::write(path.join("committed"), "keep").unwrap();
+            git_output(path, &["add", "committed"]);
+            git_output(path, &["commit", "-qm", "keep"]);
+        }
+        if dirty {
+            std::fs::write(path.join("dirty"), "keep").unwrap();
+        }
+        let before = git_state(f.dir.path());
+        let err = f.call("rail.remove", json!({"id":id})).await.unwrap_err();
+        assert_eq!(err.code, code::CONFLICT);
+        assert!(err.message.starts_with("worktree_unlanded:"));
+        assert_eq!(err.message.contains("dirty 1"), dirty);
+        assert_eq!(err.message.contains("ahead 1"), ahead);
+        assert_eq!(git_state(f.dir.path()), before);
+        assert!(
+            f.terminals
+                .list()
+                .iter()
+                .any(|t| Some(&t.id) == node.terminal_id.as_ref() && t.running)
+        );
+        f.call("agent.stop", json!({"id":id})).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn g5_removing_clean_room_removes_only_its_worktree() {
+    let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let before = git_state(f.dir.path());
+    let room = f
+        .call("rail.createRoom", json!({"name":"room","parent":null}))
+        .await
+        .unwrap();
+    let id = room["id"].as_str().unwrap();
+    let node = start_door(&f, id).await.unwrap();
+    f.call("rail.remove", json!({"id":id})).await.unwrap();
+    assert_eq!(git_state(f.dir.path()), before);
+    assert!(!Path::new(&node.worktree.unwrap().path).exists());
+}
+
+#[tokio::test]
+async fn g5_a_write_during_stop_keeps_the_stopped_door_and_worktree() {
+    let f = Fixture::in_git_project(
+        "trap 'echo keep > stopped-write; exit' HUP\necho ready > ready\nwhile :; do read line; done",
+        Git::from_env(),
+    );
+    set_worktrees(&f, true, None).await;
+    let room = f
+        .call("rail.createRoom", json!({"name":"room","parent":null}))
+        .await
+        .unwrap();
+    let id = room["id"].as_str().unwrap();
+    let node = start_door(&f, id).await.unwrap();
+    let worktree = node.worktree.unwrap();
+    let path = Path::new(&worktree.path);
+    crate::common::until_file(&path.join("ready")).await;
+    std::fs::remove_file(path.join("ready")).unwrap();
+    let err = f.call("rail.remove", json!({"id":id})).await.unwrap_err();
+    assert!(err.message.starts_with("worktree_unlanded:"));
+    let retained = f
+        .tree()
+        .await
+        .into_iter()
+        .find(|node| node.id == id)
+        .unwrap();
+    assert_eq!(retained.terminal_id, None);
+    assert_eq!(retained.status.unwrap().kind, contracts::Kind::Done);
+    assert_eq!(retained.worktree, Some(worktree.clone()));
+    assert_eq!(
+        std::fs::read_to_string(path.join("stopped-write")).unwrap(),
+        "keep\n"
+    );
+}
+
+#[tokio::test]
+async fn g5_missing_worktree_does_not_allow_deleting_an_ahead_branch() {
+    let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let room = f
+        .call("rail.createRoom", json!({"name":"room","parent":null}))
+        .await
+        .unwrap();
+    let id = room["id"].as_str().unwrap();
+    let node = start_door(&f, id).await.unwrap();
+    f.call("agent.stop", json!({"id":id})).await.unwrap();
+    let worktree = node.worktree.unwrap();
+    let path = Path::new(&worktree.path);
+    git_output(path, &["commit", "--allow-empty", "-qm", "keep"]);
+    std::fs::remove_dir_all(path).unwrap();
+    let err = f.call("rail.remove", json!({"id":id})).await.unwrap_err();
+    assert!(err.message.contains("ahead 1"));
+    assert_eq!(f.tree().await[0].worktree, Some(worktree.clone()));
+    git_output(
+        f.dir.path(),
+        &[
+            "update-ref",
+            &format!("refs/heads/{}", worktree.branch),
+            git_output(f.dir.path(), &["rev-parse", &worktree.base]).trim(),
+        ],
+    );
+    f.call("rail.remove", json!({"id":id})).await.unwrap();
+    assert!(f.tree().await.is_empty());
+    assert!(!git_output(f.dir.path(), &["branch", "--list"]).contains(&worktree.branch));
+}
+
+#[tokio::test]
+async fn g6_reopened_door_reuses_commits_and_dirty_files_without_launching_on_open() {
+    let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+    set_worktrees(&f, true, None).await;
+    let room = f
+        .call("rail.createRoom", json!({"name":"room","parent":null}))
+        .await
+        .unwrap();
+    let id = room["id"].as_str().unwrap().to_owned();
+    let node = start_door(&f, &id).await.unwrap();
+    let worktree = node.worktree.unwrap();
+    let path = Path::new(&worktree.path);
+    git_output(path, &["commit", "--allow-empty", "-qm", "keep"]);
+    std::fs::write(path.join("dirty"), "keep").unwrap();
+    let head = git_output(path, &["rev-parse", "HEAD"]);
+    f.call("agent.stop", json!({"id":id})).await.unwrap();
+    let f = f.reopen();
+    assert!(f.terminals.list().is_empty());
+    set_worktrees(&f, false, None).await;
+    let next = start_door(&f, &id).await.unwrap();
+    assert_eq!(next.worktree, Some(worktree.clone()));
+    assert_eq!(git_output(path, &["rev-parse", "HEAD"]), head);
+    assert_eq!(std::fs::read_to_string(path.join("dirty")).unwrap(), "keep");
+    f.call("agent.stop", json!({"id":id})).await.unwrap();
+}
+
+#[tokio::test]
+async fn g6_recovery_preserves_changed_or_unowned_provisioning_resources() {
+    for change in ["dirty", "commit", "owner"] {
+        let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+        let git = Git::from_env();
+        let plan = git.plan(f.dir.path(), "owned", "1").unwrap();
+        let worktree = git.provision(f.dir.path(), &plan).unwrap();
+        match change {
+            "dirty" => std::fs::write(worktree.path.join("keep"), "user work").unwrap(),
+            "commit" => {
+                git_output(
+                    &worktree.path,
+                    &["commit", "--allow-empty", "-qm", "user work"],
+                );
+            }
+            "owner" => {
+                git_output(f.dir.path(), &["update-ref", "-d", &plan.owner]);
+            }
+            _ => unreachable!(),
+        }
+        let before = git_state(f.dir.path());
+        let head = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+        let err = git.recover(f.dir.path(), &plan).unwrap_err();
+        assert!(err.message.starts_with("worktree_failed:"));
+        assert_eq!(git_state(f.dir.path()), before);
+        assert_eq!(git_output(&worktree.path, &["rev-parse", "HEAD"]), head);
+        if change == "dirty" {
+            assert_eq!(
+                std::fs::read_to_string(worktree.path.join("keep")).unwrap(),
+                "user work"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
+    use std::sync::Arc;
+    use std::time::Duration;
+    let guard = tempfile::tempdir().unwrap();
+    let held = guard.path().join("held");
+    let release = guard.path().join("release");
+    let git = wrapped_git(
+        guard.path(),
+        &format!(
+            "if [ \"$1\" = status ]; then echo held > '{}'; while [ ! -e '{}' ]; do sleep 0.01; done; fi\nexec \"$REAL\" \"$@\"",
+            held.display(),
+            release.display()
+        ),
+    );
+    let f = Arc::new(Fixture::in_git_project(
+        "echo ready > ready\nwhile read line; do if [ \"$line\" = exit ]; then exit 0; fi; printf '\\033]0;◐ Claude Code\\007'; done",
+        git,
+    ));
+    set_worktrees(&f, true, None).await;
+    let id = f.room("room", None).await;
+    let node = start_door(&f, &id).await.unwrap();
+    let path = PathBuf::from(node.worktree.unwrap().path);
+    crate::common::until_file(&path.join("ready")).await;
+    std::fs::remove_file(path.join("ready")).unwrap();
+    std::fs::write(path.join("dirty"), "keep").unwrap();
+    f.call(
+        "agent.signal",
+        json!({"id":id,"attempt":node.attempt,"payload":{"hook_event_name":"Stop"}}),
+    )
+    .await
+    .unwrap();
+    let removing = {
+        let f = Arc::clone(&f);
+        let id = id.clone();
+        tokio::spawn(async move { f.call("rail.remove", json!({"id":id})).await })
+    };
+    crate::common::until_file(&held).await;
+    let mut titles = f
+        .terminals
+        .subscribe(node.terminal_id.as_ref().unwrap())
+        .unwrap();
+    f.terminals
+        .write(node.terminal_id.as_ref().unwrap(), b"title\n")
+        .await
+        .unwrap();
+    let mut title_received = false;
+    let observed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if matches!(titles.recv().await.unwrap(), contracts::EventData::TerminalTitle(ref title) if title.title.starts_with('◐')) {
+                title_received = true;
+                break;
+            }
+        }
+        loop {
+            if f.tree().await[0].status.as_ref().unwrap().kind == contracts::Kind::Working {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    std::fs::write(release, "go").unwrap();
+    let refused = removing.await.unwrap().unwrap_err();
+    assert!(refused.message.starts_with("worktree_unlanded:"));
+    f.terminals
+        .write(node.terminal_id.as_ref().unwrap(), b"exit\n")
+        .await
+        .unwrap();
+    assert!(
+        observed.is_ok(),
+        "a rejected removal must not revoke its live watcher; title_received={title_received}; tree={:?}; terminal={:?}",
+        f.tree().await,
+        f.terminals.snapshot(node.terminal_id.as_ref().unwrap())
+    );
+    f.until(|tree| tree[0].status.as_ref().unwrap().kind == contracts::Kind::Done)
+        .await;
+}
+
+#[tokio::test]
+async fn g5_retry_finishes_a_partial_worktree_removal() {
+    let guard = tempfile::tempdir().unwrap();
+    let fail = guard.path().join("fail");
+    let git = wrapped_git(
+        guard.path(),
+        &format!(
+            "if [ \"$1\" = update-ref ] && [ \"$2\" = -d ] && [ -e '{}' ]; then case \"$3\" in refs/heads/*) rm '{}'; echo refused >&2; exit 1;; esac; fi\nexec \"$REAL\" \"$@\"",
+            fail.display(),
+            fail.display()
+        ),
+    );
+    let f = Fixture::in_git_project("exec sleep 30", git);
+    set_worktrees(&f, true, None).await;
+    let before = git_state(f.dir.path());
+    let id = f.room("room", None).await;
+    let node = start_door(&f, &id).await.unwrap();
+    std::fs::write(fail, "once").unwrap();
+    f.call("rail.remove", json!({"id":id})).await.unwrap_err();
+    assert!(!Path::new(&node.worktree.as_ref().unwrap().path).exists());
+    assert_eq!(f.tree().await[0].worktree, node.worktree);
+    f.call("rail.remove", json!({"id":id})).await.unwrap();
+    assert!(f.tree().await.is_empty());
+    assert_eq!(git_state(f.dir.path()), before);
+}
+
+#[tokio::test]
+async fn g5_branch_advance_after_safety_check_is_not_deleted() {
+    let guard = tempfile::tempdir().unwrap();
+    let advance = guard.path().join("advance");
+    let count = guard.path().join("count");
+    let git = wrapped_git(
+        guard.path(),
+        &format!(
+            "if [ \"$1\" = rev-list ]; then n=0; [ ! -e '{}' ] || read n < '{}'; n=$((n+1)); echo \"$n\" > '{}'; if [ \"$n\" = 2 ]; then \"$REAL\" \"$@\" || exit; read branch commit < '{}'; \"$REAL\" update-ref \"$branch\" \"$commit\"; exit; fi; fi\nexec \"$REAL\" \"$@\"",
+            count.display(),
+            count.display(),
+            count.display(),
+            advance.display()
+        ),
+    );
+    let f = Fixture::in_git_project("exec sleep 30", git);
+    set_worktrees(&f, true, None).await;
+    let id = f.room("room", None).await;
+    let node = start_door(&f, &id).await.unwrap();
+    let worktree = node.worktree.unwrap();
+    let commit = git_output(
+        f.dir.path(),
+        &[
+            "commit-tree",
+            "HEAD^{tree}",
+            "-p",
+            "HEAD",
+            "-m",
+            "keep concurrent work",
+        ],
+    );
+    std::fs::write(
+        advance,
+        format!("refs/heads/{} {}\n", worktree.branch, commit.trim()),
+    )
+    .unwrap();
+    f.call("rail.remove", json!({"id":id})).await.unwrap_err();
+    assert_eq!(
+        git_output(f.dir.path(), &["rev-parse", &worktree.branch]),
+        commit
+    );
+    assert_eq!(f.tree().await[0].worktree, Some(worktree));
+    assert!(
+        f.call("rail.remove", json!({"id":id}))
+            .await
+            .unwrap_err()
+            .message
+            .contains("ahead 1")
+    );
+}
+
+#[tokio::test]
+async fn g6_a_record_recovery_refuses_keeps_its_work_and_the_project_opens() {
+    for record in ["legacy", "unowned"] {
+        let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
+        set_worktrees(&f, true, None).await;
+        let node = f.spawn(None, None).await.unwrap();
+        let path = PathBuf::from(node.worktree.clone().unwrap().path);
+        std::fs::write(path.join("keep"), "user work").unwrap();
+        f.call("agent.stop", json!({"id": node.id})).await.unwrap();
+        // A crash during `git` leaves the row provisioning: before ownership proofs with no
+        // owner at all, or with an owner ref that no longer proves the destination is ours.
+        let owner = if record == "legacy" {
+            "NULL"
+        } else {
+            "'refs/roundup/gone'"
+        };
+        rusqlite::Connection::open(f.dir.path().join(".roundup/agents.db"))
+            .unwrap()
+            .execute(
+                &format!(
+                    "UPDATE nodes SET worktree_state = 'provisioning', worktree_owner = {owner},
+                     worktree_commit = 'deadbeef' WHERE id = ?"
+                ),
+                [&node.id],
+            )
+            .unwrap();
+        let before = git_state(f.dir.path());
+
+        let f = f.reopen();
+
+        let kept = f.tree().await.into_iter().find(|n| n.id == node.id);
+        assert_eq!(kept.and_then(|n| n.worktree), node.worktree, "{record}");
+        assert_eq!(git_state(f.dir.path()), before, "{record}");
+        assert_eq!(
+            std::fs::read_to_string(path.join("keep")).unwrap(),
+            "user work"
+        );
+        let other = f.spawn(None, None).await.unwrap();
+        f.call("agent.stop", json!({"id": other.id})).await.unwrap();
     }
 }

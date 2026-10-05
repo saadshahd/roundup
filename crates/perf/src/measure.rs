@@ -149,6 +149,7 @@ pub async fn hook_calls(
     rup: &Path,
     socket: &Path,
     id: &str,
+    attempt: &str,
     payloads: &[&Path],
     calls: usize,
 ) -> io::Result<Duration> {
@@ -158,6 +159,7 @@ pub async fn hook_calls(
         let payload = payloads[call % payloads.len()];
         let status = Command::new(rup)
             .args(["signal", id])
+            .env("ROUNDUP_ATTEMPT", attempt)
             .env("RUPD_SOCKET", socket)
             .stdin(std::fs::File::open(payload)?)
             .stdout(std::process::Stdio::null())
@@ -213,13 +215,23 @@ async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
         .as_str()
         .ok_or_else(|| io::Error::other("agent.spawn returned no id"))?;
 
-    let elapsed = hook_calls(rup, &socket, id, &[&pre, &post], HOOK_LOOP_CALLS).await;
+    let elapsed = hook_calls(
+        rup,
+        &socket,
+        id,
+        agent["attempt"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("agent.spawn returned no Attempt"))?,
+        &[&pre, &post],
+        HOOK_LOOP_CALLS,
+    )
+    .await;
     ask(&client, "rail.remove", json!({ "id": id })).await?;
 
     Ok(ms(elapsed?))
 }
 
-/// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Groups on the Rail.
+/// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Rooms on the Rail.
 pub async fn one_run(rupd: &Path, rup: &Path, calls: usize) -> io::Result<Sample> {
     let dir = tempfile::tempdir()?;
     let socket = dir.path().join("rupd.sock");
@@ -267,7 +279,7 @@ pub async fn one_run(rupd: &Path, rup: &Path, calls: usize) -> io::Result<Sample
         for index in nodes..size {
             ask(
                 &client,
-                "rail.createGroup",
+                "rail.createRoom",
                 json!({ "name": format!("g{index}"), "parent": null }),
             )
             .await?;

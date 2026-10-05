@@ -520,3 +520,172 @@ async fn h15_a_signal_reaches_a_subscribed_client_as_a_status_event() {
 
     assert_eq!(next_kind(&mut client).await, Kind::Idle);
 }
+
+fn git_at(project: &std::path::Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(project)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+async fn interrupted_worktree(room: bool) {
+    use std::os::unix::fs::PermissionsExt;
+    let wrapper = tempfile::tempdir().unwrap();
+    let real_git = String::from_utf8(
+        Command::new("sh")
+            .args(["-c", "command -v git"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let marker = wrapper.path().join("wrapper-pid");
+    let fifo = wrapper.path().join("hold");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let script = format!(
+        "#!/bin/sh\nREAL='{}'\nif [ \"$1\" = worktree ] && [ \"$2\" = add ]; then\n \"$REAL\" \"$@\" || exit $?\n echo $$ > '{}'\n read release < '{}'\nelse exec \"$REAL\" \"$@\"; fi\n",
+        real_git.trim(),
+        marker.display(),
+        fifo.display()
+    );
+    let executable = wrapper.path().join("git");
+    std::fs::write(&executable, script).unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        wrapper.path().display(),
+        std::env::var("PATH").unwrap()
+    );
+    let mut project = start(&[("PATH", &path)]);
+    let root = project.dir.path();
+    git_at(root, &["init", "-q", "-b", "main"]);
+    git_at(root, &["config", "user.name", "roundup"]);
+    git_at(root, &["config", "user.email", "roundup@example.com"]);
+    std::fs::write(root.join("README"), "keep").unwrap();
+    git_at(root, &["add", "README"]);
+    git_at(root, &["commit", "-qm", "base"]);
+    let unrelated = wrapper.path().join("user-worktree");
+    git_at(
+        root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "user-owned",
+            unrelated.to_str().unwrap(),
+        ],
+    );
+    let before = (
+        git_at(root, &["branch", "--list"]),
+        git_at(root, &["worktree", "list"]),
+    );
+    let client = project.client().await;
+    let ids = if room {
+        let parent = client
+            .request("rail.createRoom", json!({"name":"room","parent":null}))
+            .await
+            .unwrap();
+        let child = client
+            .request(
+                "rail.createRoom",
+                json!({"name":"child","parent":parent["id"]}),
+            )
+            .await
+            .unwrap();
+        Some((parent["id"].clone(), child["id"].clone()))
+    } else {
+        None
+    };
+    client
+        .request("project.setWorktrees", json!({"on":true,"check":null}))
+        .await
+        .unwrap();
+    let pending = if let Some((id, _)) = &ids {
+        let id = id.clone();
+        tokio::spawn(async move { client.request("rail.startDoor", json!({"id":id})).await })
+    } else {
+        let cwd = root.to_str().unwrap().to_owned();
+        tokio::spawn(async move {
+            client
+                .request(
+                    "agent.spawn",
+                    json!({"cwd":cwd,"parent":null,"prompt":null}),
+                )
+                .await
+        })
+    };
+    let pid = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(pid) = std::fs::read_to_string(&marker) {
+                break pid.trim().parse::<u32>().unwrap();
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    project.crash();
+    assert!(
+        Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let _ = pending.await;
+    project.restart(&[]);
+    let root = project.dir.path();
+    assert_eq!(
+        (
+            git_at(root, &["branch", "--list"]),
+            git_at(root, &["worktree", "list"])
+        ),
+        before
+    );
+    assert!(git_at(root, &["for-each-ref", "refs/roundup/provisioning/"]).is_empty());
+    let client = project.client().await;
+    let nodes = rail_tree(&client).await;
+    if let Some((parent, child)) = ids {
+        assert_eq!(nodes.len(), 2);
+        assert!(
+            nodes
+                .iter()
+                .all(|n| n.terminal_id.is_none() && n.worktree.is_none())
+        );
+        assert_eq!(
+            nodes
+                .iter()
+                .find(|n| json!(n.id) == child)
+                .unwrap()
+                .parent
+                .as_deref(),
+            parent.as_str()
+        );
+    } else {
+        assert!(nodes.is_empty());
+    }
+    assert!(unrelated.join("README").exists());
+}
+
+#[tokio::test]
+async fn g6_crashed_agent_provision_is_recovered_without_touching_user_worktree() {
+    interrupted_worktree(false).await;
+}
+
+#[tokio::test]
+async fn g6_crashed_door_provision_retains_room_and_children() {
+    interrupted_worktree(true).await;
+}

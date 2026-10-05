@@ -9,18 +9,22 @@ export type RailNode = { id: string, kind: NodeKind, name: string, parent: strin
  */
 order: number, 
 /**
- * `None` for Groups and Terminals.
+ * `None` for Terminals.
  */
 status: Status | null, 
 /**
- * A Group with a live Agent sitting at it.
+ * Last allocated program attempt; present even after stop or reopen.
  */
-meta: boolean, 
+attempt: string | null, 
+/**
+ * Status transition within the current Attempt; absent after reopen.
+ */
+status_revision: string | null, 
 /**
  * The Terminal behind an Agent or Terminal node.
  */
 terminal_id: string | null, 
 /**
- * `None` for a Terminal, a plain Group, or when the Project's `worktrees` setting was off.
+ * `None` for a Terminal, or when the Project's `worktrees` setting was off.
  */
 worktree: Worktree | null, };

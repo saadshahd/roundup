@@ -128,7 +128,19 @@ impl Fixture {
             .join("fake-claude")
             .to_string_lossy()
             .into_owned();
-        Self::over(dir, bus, &bin)
+        if dir.path().join(".roundup").is_dir() {
+            let events = bus.subscribe();
+            let (agents, terminals) = open_in(&dir.path().join(".roundup"), &bus, &bin);
+            Self {
+                dir,
+                bus,
+                events,
+                agents,
+                terminals,
+            }
+        } else {
+            Self::over(dir, bus, &bin)
+        }
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
@@ -155,12 +167,21 @@ impl Fixture {
         Ok(serde_json::from_value(node).unwrap())
     }
 
-    pub async fn group(&self, name: &str, parent: Option<&str>) -> String {
+    pub async fn room(&self, name: &str, parent: Option<&str>) -> String {
         let node = self
-            .call("rail.createGroup", json!({"name": name, "parent": parent}))
+            .call("rail.createRoom", json!({"name": name, "parent": parent}))
             .await
             .unwrap();
         node["id"].as_str().unwrap().to_owned()
+    }
+
+    pub async fn attempt(&self, id: &str) -> String {
+        self.tree()
+            .await
+            .into_iter()
+            .find(|n| n.id == id)
+            .and_then(|n| n.attempt)
+            .unwrap_or_else(|| "1".into())
     }
 
     pub async fn tree(&self) -> Vec<RailNode> {

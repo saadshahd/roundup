@@ -14,8 +14,11 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 async fn signal(f: &Fixture, id: &str, event: &str) -> Result<Value, RpcError> {
     let payload = json!({"hook_event_name": event, "tool_name": "Bash"});
-    f.call("agent.signal", json!({"id": id, "payload": payload}))
-        .await
+    f.call(
+        "agent.signal",
+        json!({"id": id, "attempt": f.attempt(id).await, "payload": payload}),
+    )
+    .await
 }
 
 /// The next `n` `agent.status` Kinds announced on `events`.
@@ -79,7 +82,10 @@ async fn a14_a_held_user_prompt_submit_still_names_the_agent() {
 
     let payload = json!({"hook_event_name": "UserPromptSubmit", "prompt": "fix the build"});
     let held = f
-        .call("agent.signal", json!({"id": id, "payload": payload}))
+        .call(
+            "agent.signal",
+            json!({"id": id, "attempt": f.attempt(&id).await, "payload": payload}),
+        )
         .await;
 
     release(config).await;

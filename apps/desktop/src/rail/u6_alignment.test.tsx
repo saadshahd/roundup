@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
 import { withStylesheets } from "../testing/contrast";
-import { agent, group, metaAgent, terminal } from "../testing/nodes";
+import { agent, room, door, terminal } from "../testing/nodes";
 import { exitedTerminal, mountRail } from "./railFixture";
 
 afterEach(cleanup);
@@ -12,8 +12,8 @@ it.each([0, 1, 2])("u6_row_contents_stay_centered_in_the_selection_band_at_depth
     const parent = depth === 0 ? null : `home-${depth - 1}`;
 
     const nodes = [
-      group("group", { parent }),
-      metaAgent("meta", "working", "writing", { parent }),
+      room("room", { parent }),
+      door("meta", "working", "writing", { parent }),
       terminal("running", { parent }),
       terminal("exited", { parent }),
       ...kinds.map((kind) => agent(kind, kind, "writing", { parent })),
@@ -21,7 +21,7 @@ it.each([0, 1, 2])("u6_row_contents_stay_centered_in_the_selection_band_at_depth
 
     const { rail } = await mountRail([
       ...Array.from({ length: depth }, (_, index) =>
-        group(`home-${index}`, { parent: index === 0 ? null : `home-${index - 1}` })),
+        room(`home-${index}`, { parent: index === 0 ? null : `home-${index - 1}` })),
       ...nodes,
     ], [exitedTerminal("exited", 0)]);
 

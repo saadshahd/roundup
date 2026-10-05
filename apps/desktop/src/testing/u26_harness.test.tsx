@@ -65,8 +65,8 @@ describe("u26 the harness seeds", () => {
     await within(await rail()).findByText("agent-1");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await expect(app.rpc("rail.createGroup", { name: "x", parent: null })).rejects.toMatchObject({ code: -32003 });
-    await expect(app.rpc("rail.createGroup", { name: "x", parent: null })).resolves.toMatchObject({ name: "x" });
+    await expect(app.rpc("rail.createRoom", { name: "x", parent: null })).rejects.toMatchObject({ code: -32003 });
+    await expect(app.rpc("rail.createRoom", { name: "x", parent: null })).resolves.toMatchObject({ name: "x" });
   });
 
   it("u26_a_pad_the_agent_owns_takes_an_append_and_shows_the_new_text", async () => {
@@ -168,7 +168,7 @@ describe("u26 the Daemon's rail methods", () => {
   it("u26_creating_a_group_adds_a_group_with_the_name", async () => {
     const { app, names } = await daemon();
 
-    await app.rpc("rail.createGroup", { name: "infra", parent: null });
+    await app.rpc("rail.createRoom", { name: "infra", parent: null });
 
     expect(await names()).toContain("infra");
   });
@@ -184,9 +184,9 @@ describe("u26 the Daemon's rail methods", () => {
   it("u26_promoting_a_group_makes_it_a_meta_agent_with_a_terminal", async () => {
     const { app } = await daemon();
 
-    const promoted = await app.rpc("rail.promote", { id: "backend" });
+    const promoted = await app.rpc("rail.startDoor", { id: "backend" });
 
-    expect([promoted.meta, promoted.terminal_id]).toEqual([true, "t-backend"]);
+    expect([promoted.kind, promoted.terminal_id]).toEqual(["room", "t-backend-1"]);
   });
 
   it("u26_moving_a_node_re_parents_it_at_the_index", async () => {
@@ -218,6 +218,30 @@ describe("u26 the Daemon's rail methods", () => {
     const listed = (await app.rpc("terminal.list", null)).find((info) => info.id === "t-shell");
 
     expect([listed?.running, seen]).toEqual([false, [event({ name: "terminal.exited", data: { id: "t-shell", code: null } })]]);
+  });
+
+  it("u26_plain_terminal_snapshots_have_no_agent_attempt_or_revision", async () => {
+    const { app } = await daemon();
+    const terminals = (await app.rpc("rail.tree", null)).filter((node) => node.kind === "terminal");
+    expect(terminals.length).toBeGreaterThan(0);
+
+    for (const node of terminals) {
+      expect([node.status, node.attempt, node.status_revision]).toEqual([null, null, null]);
+    }
+  });
+
+  it("u26_stop_advances_the_status_revision_once_and_repeated_stop_is_inert", async () => {
+    const { app, seen } = await daemon();
+    const before = (await app.rpc("rail.tree", null)).find((node) => node.id === "tokens")!;
+    await app.rpc("agent.stop", { id: "tokens" });
+    const stopped = (await app.rpc("rail.tree", null)).find((node) => node.id === "tokens")!;
+    expect(stopped.attempt).toBe(before.attempt);
+    expect(stopped.status_revision).toBe(String(BigInt(before.status_revision!) + 1n));
+    expect(stopped.status?.kind).toBe("done");
+    seen.length = 0;
+    await app.rpc("agent.stop", { id: "tokens" });
+    expect((await app.rpc("rail.tree", null)).find((node) => node.id === "tokens")).toEqual(stopped);
+    expect(seen).toEqual([]);
   });
 
   it("u26_stopping_an_agent_exits_its_terminal", async () => {
