@@ -29,7 +29,7 @@ Module: `loop/rules.sh`. Each id's cases are its `L<n>` tests in `loop/rules.tes
 
 **L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`, with images for a visible PR.
 
-**L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict in no file (its queue-line allowance names files that no longer exist).
+**L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge.
 
 **L76 unchanged rendering.** A visible-path PR needs no proof branch when the newest independent approve on the same tree carries `Visual: unchanged`.
 

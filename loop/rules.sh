@@ -129,48 +129,7 @@ delta() {
   return "$regressed"
 }
 
-# L54: does a PR's approval still hold after merges of main? Prints `carried <A> <H>` or names the commit and rule.
-carry_allowed() { case $1 in .work/queue.md | .work/queue/*) return 0 ;; *) return 1 ;; esac; }
-
-# Rule b for one file of merge $1 (parents $2 and $3): the result holds exactly the first parent's lines that main
-# did not remove, plus the lines main added, each at most as often as either side has it.
-carry_rule_b() {
-  local merge=$1 p1=$2 p2=$3 file=$4 base
-  base=$(git merge-base "$p1" "$p2")
-  python3 - "$merge" "$p1" "$p2" "$base" "$file" <<'PY'
-from collections import Counter
-import subprocess
-import sys
-
-merge, first_ref, main_ref, base_ref, path = sys.argv[1:]
-
-def lines(ref):
-    result = subprocess.run(['git', 'show', f'{ref}:{path}'], capture_output=True)
-    if result.returncode:
-        return None
-    content = result.stdout.split(b'\n')
-    if content[-1] == b'':
-        content.pop()
-    return Counter(content)
-
-result = lines(merge)
-if result is None:
-    sys.exit(f'carry: {merge}: rule b: {path} conflicted and is gone from the merge (one side deleted it)')
-base = lines(base_ref) or Counter()
-first = lines(first_ref) or Counter()
-main = lines(main_ref) or Counter()
-keep = (set(first) - (set(base) - set(main))) | (set(main) - set(base))
-for line, count in result.items():
-    if line not in keep:
-        sys.exit(f'carry: {merge}: rule b: {path} holds a line neither side may keep: {line!r}')
-    cap = 1 if not base[line] and first[line] and main[line] else max(first[line], main[line])
-    if count > cap:
-        sys.exit(f'carry: {merge}: rule b: {path} repeats a line: {line!r}')
-for line in keep - set(result):
-    sys.exit(f'carry: {merge}: rule b: {path} lost a line a side keeps: {line!r}')
-PY
-}
-
+# L54: does a PR's approval still hold after conflict-free merges of main? Prints `carried <A> <H>` or names the commit and rule.
 carry_one() {
   local c=$1 main_ref=$2 p1 p2 extra trial conflicted f
   read -r _ p1 p2 extra <<<"$(git rev-list --parents -n 1 "$c")"
@@ -182,17 +141,12 @@ carry_one() {
   { [ "$mt_rc" -le 1 ] && [ -n "$trial" ]; } || { echo "carry: $c: merge-tree failed (exit $mt_rc)" >&2; return 1; }
   conflicted=$(sed 1d <<<"$trial" | sed '/^$/d')
   trial=$(head -n 1 <<<"$trial")
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    carry_allowed "$f" || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
-    carry_rule_b "$c" "$p1" "$p2" "$f" || return 1
-  done <<<"$conflicted"
+  f=$(head -n 1 <<<"$conflicted")
+  [ -z "$f" ] || { echo "carry: $c: rule a: a conflict in $f" >&2; return 1; }
   local differs
   differs=$(git diff --name-only "$trial" "$c") || { echo "carry: $c: could not compare with the trial merge" >&2; return 1; }
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    grep -qxF -- "$f" <<<"$conflicted" || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
-  done <<<"$differs"
+  f=$(head -n 1 <<<"$differs")
+  [ -z "$f" ] || { echo "carry: $c: rule c: $f differs from the trial merge" >&2; return 1; }
 }
 
 carry() {
