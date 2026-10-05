@@ -343,9 +343,21 @@ run("u142 the Rail selects rows, not browser text", () => {
     it(`u142_${at}_dragging_in_the_rename_input_selects_its_text_and_moves_no_row`, async () => {
       await load(size);
       await editName(2);
+      // The field opens with its whole name selected, and a press inside a selection starts a text drag on macOS; Home puts the caret at the start first.
+      await browser.key("Home", { code: "Home", windowsVirtualKeyCode: 36 });
+      expect(await browser.eval<boolean>(`document.querySelector(".rail-row input").selectionEnd === document.querySelector(".rail-row input").selectionStart`)).toBe(true);
       await browser.drag(await pointOf(".rail-row input", { dx: 2 }), await pointOf(".rail-row input", { dx: 30 }));
       expect(await browser.eval<boolean>(`document.querySelector(".rail-row input").selectionEnd > document.querySelector(".rail-row input").selectionStart`)).toBe(true);
       expect(await calls("rail.move")).toEqual([]);
+    }, 30_000);
+
+    it(`u142_${at}_the_rename_input_the_error_line_and_the_menu_stay_selectable`, async () => {
+      await load(size);
+      await editName(2);
+      await browser.eval(`document.querySelector(".rail-tree").insertAdjacentHTML("beforeend", '<p role="alert" id="u142-alert">failed</p><div class="rail-menu" id="u142-menu">menu</div>')`);
+      const modes = await browser.eval<string[]>(`[".rail-row input", "#u142-alert", "#u142-menu"].map((selector) => getComputedStyle(document.querySelector(selector)).userSelect)`);
+
+      expect(modes).toEqual(["text", "text", "text"]);
     }, 30_000);
 
     it(`u142_${at}_typing_in_the_rename_input_replaces_the_selected_name`, async () => {
