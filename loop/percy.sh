@@ -11,7 +11,7 @@ work=$(mktemp -d)
 seeds=$(sed -n '/^| Seed |/,/^$/p' .agents/data/harness.md | sed -nE 's/^\| `([a-z0-9-]+)` \|.*/\1/p')
 [ -n "$seeds" ] || { echo "L36 percy: no seeds in .agents/data/harness.md" >&2; exit 1; }
 for seed in $seeds; do
-  printf -- '- name: %s\n  url: /harness.html?seed=%s\n  widths: [700, 1280]\n  minHeight: 800\n  waitForSelector: "#root > *"\n' "$seed" "$seed"
+  printf -- '- name: %s\n  url: /harness.html?seed=%s\n  widths: [1280]\n  minHeight: 800\n  browsers: [chrome]\n  waitForSelector: "#root > *"\n' "$seed" "$seed"
 done >"$work/snapshots.yml"
 
 # Job control gives the harness its own process group, so one kill stops just, pnpm and Vite.

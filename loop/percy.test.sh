@@ -54,6 +54,7 @@ seeds=$(sed -n '/^| Seed |/,/^$/p' "$root/.agents/data/harness.md" | sed -nE 's/
 check 'harness.md lists the five seeds' '[ "$(printf "%s\n" "$seeds" | wc -l | tr -d " ")" = 5 ]'
 check 'one snapshot per harness.md seed' '[ "$(sed -n "s/^- name: //p" "$SNAPSHOTS" | sort)" = "$seeds" ]'
 check 'each snapshot loads its seed' '[ "$(grep -c "url: /harness.html?seed=" "$SNAPSHOTS")" = 5 ]'
+check 'each snapshot is 1280 wide in Chrome only' '[ "$(grep -c "^  widths: \[1280\]$" "$SNAPSHOTS")" = 5 ] && [ "$(grep -c "^  browsers: \[chrome\]$" "$SNAPSHOTS")" = 5 ]'
 check 'build link reaches the job summary' 'grep -q "https://percy.io/abc/web/roundup/builds/42" "$GITHUB_STEP_SUMMARY"'
 
 l36_run harness_dies 1
