@@ -97,6 +97,7 @@ class Browser {
   /** Runs a constant function declaration in the page with `args` passed as data, so no value is ever spliced into source. */
   async call<T>(declaration: string, ...args: Json[]): Promise<T> {
     const { result: page } = await this.page<{ result: { objectId: string } }>("Runtime.evaluate", { expression: "globalThis" });
+
     const out = await this.page<{ result: { value: T }; exceptionDetails?: { text: string; exception?: { description: string } } }>("Runtime.callFunctionOn", {
       objectId: page.objectId,
       functionDeclaration: declaration,
