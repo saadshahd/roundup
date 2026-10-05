@@ -17,7 +17,7 @@ Module: `loop/rules.sh`, and `loop/percy.sh` for L36. Each id's cases are its `L
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 
-**L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as `done` (every id has a test), `unspecified` (an id has no heading), `waiting` (an `After` id is not done) or `ready`.
+**L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as the first that holds of `done` (every id has a test), `in-flight #<pr>` (an open PR's title names an id; gh missing, failing or slower than `BOXD_GH_TIMEOUT` exits 4, and `--offline` skips gh), `unspecified` (an id has no heading), `waiting` (an `After` id is not done) or `ready`.
 
 **L36 Percy build.** On every PR touching `apps/desktop/src/`, and on each such push to `main` as Percy's baseline, the `visual` workflow's `percy` job serves `just harness` and runs `percy snapshot` on each seed of `.agents/data/harness.md` at 700 and 1280 px wide; it fails without `PERCY_TOKEN`, when the harness never answers, when Percy fails, or when its output has no build link, and writes that link to the job summary.
 

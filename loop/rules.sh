@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
+# Machine checks for AGENTS.md. Usage: loop/rules.sh size|trailers|vocab [base-ref] | ready [--offline] | delta <base-dir> <head-dir> | base|class|rounds|merge-ready|proof|carry <pr>
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -540,10 +540,10 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
-# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, unspecified, waiting or ready.
+# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, in-flight, unspecified, waiting or ready.
 ready() {
-  python3 - <<'PY'
-import glob, re, subprocess, sys
+  python3 - "$@" <<'PY'
+import glob, json, os, re, subprocess, sys
 files = sorted(glob.glob('scenarios/*.md'))
 heads = {m for f in files for m in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', open(f).read(), re.M)}
 def ids(text):
@@ -560,6 +560,15 @@ def tested(i):
     else:
         args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
     return subprocess.run(args).returncode == 0
+prs = []
+if sys.argv[1:] != ['--offline']:
+    try:
+        result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,title'],
+                                text=True, stdout=subprocess.PIPE, timeout=int(os.environ.get('BOXD_GH_TIMEOUT', '20')), check=True)
+        prs = [(pr['number'], set(ids(pr['title']))) for pr in json.loads(result.stdout)]
+    except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError) as error:
+        print(f'gh: pr list: {error}', file=sys.stderr)
+        sys.exit(4)
 for f in files:
     lines = open(f).read().split('\n')
     if '## Work' not in lines:
@@ -572,15 +581,18 @@ for f in files:
     for row in rows[2:]:
         cells = [c.strip() for c in row.strip().strip('|').split('|')]
         own = ids(cells[0])
+        open_prs = ' '.join(f'#{n}' for n, named in prs if named & set(own))
         if own and all(tested(i) for i in own):
             state = 'done'
+        elif open_prs:
+            state = 'in-flight'
         elif not own or any(i not in heads for i in own):
             state = 'unspecified'
         elif any(not tested(i) for i in ids(cells[4])):
             state = 'waiting'
         else:
             state = 'ready'
-        print(state, cells[0], f)
+        print(state, cells[0], f, *([open_prs] if state == 'in-flight' else []))
 PY
 }
 
@@ -591,7 +603,9 @@ case "${1:-}" in
   size) size ;;
   trailers) pr_rule trailers "$base" ;;
   vocab) vocab ;;
-  ready) ready ;;
+  ready)
+    [[ -z ${2:-} || $2 == --offline ]] || { echo "usage: loop/rules.sh ready [--offline]" >&2; exit 2; }
+    ready "${@:2}" ;;
   delta) delta "${2:-}" "${3:-}" ;;
   carry) carry "${2:-}" "${3:-origin/main}" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;

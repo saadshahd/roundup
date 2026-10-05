@@ -875,8 +875,14 @@ ready_repo() {
     '| U9 | unwritten | — | — | — |' '| U1, U3 | both | — | — | — |' >scenarios/ui.md
   echo 'test("u1_works", () => {});' >apps/u1.test.ts
   commit x
+  # A fake `gh pr list` printing gh-prs, failing on GH_FAIL and hanging on GH_HANG.
+  mkdir -p .git/ready-bin
+  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
+  chmod +x .git/ready-bin/gh
+  echo '[]' >.git/gh-prs
+  export PATH="$PWD/.git/ready-bin:$PATH"
 }
-ready() { loop/rules.sh ready; }
+ready() { loop/rules.sh ready "$@"; }
 
 ready_repo
 expect_output "done U1 scenarios/ui.md
@@ -902,5 +908,36 @@ done U4–U5 scenarios/loop.md" 'L34 L ids read loop tests; a range needs every 
 ready_repo
 printf '%s\n' '## Work' '| Ids | Item |' '|---|---|' '| U1 | x |' >scenarios/bad.md; commit x
 expect_exit 2 'L34 a Work table missing a column exits 2' ready
+
+ready_repo
+echo '[{"number":301,"title":"U3 and U9: third"},{"number":302,"title":"U31 elsewhere"},{"number":303,"title":"U1 again"}]' >.git/gh-prs
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+in-flight U3 scenarios/ui.md #301
+in-flight U9 scenarios/ui.md #301
+in-flight U1, U3 scenarios/ui.md #301 #303" 'L34 an open PR naming a row id makes it in-flight after done; every naming PR is listed' ready
+
+ready_repo
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 no open PR leaves every state' ready
+
+ready_repo
+expect_exit 4 'L34 gh failure exits 4' env GH_FAIL=1 loop/rules.sh ready
+expect pass 'L34 gh failure names gh' gate_error_contains gh env GH_FAIL=1 loop/rules.sh ready
+expect pass 'L34 gh slower than BOXD_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 BOXD_GH_TIMEOUT=1 loop/rules.sh ready
+mkdir .git/no-gh-bin
+for tool in bash dirname python3 git; do ln -s "$(command -v "$tool")" .git/no-gh-bin/; done
+expect_exit 4 'L34 gh missing exits 4' env PATH="$PWD/.git/no-gh-bin" loop/rules.sh ready
+
+ready_repo
+echo '[{"number":301,"title":"U3"}]' >.git/gh-prs
+expect_output "done U1 scenarios/ui.md
+waiting U2 scenarios/ui.md
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 --offline skips gh and keeps the four states' env GH_FAIL=1 loop/rules.sh ready --offline
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
