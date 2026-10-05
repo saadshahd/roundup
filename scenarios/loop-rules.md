@@ -17,7 +17,7 @@ Module: `loop/rules.sh`. Each id's cases are its `L<n>` tests in `loop/rules.tes
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 
-**L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as `done` (every id has a test), `unspecified` (an id has no heading), `waiting` (an `After` id is not done) or `ready`.
+**L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as the first that holds of `done` (every id has a test), `in-flight #<pr>` (an open PR's title names an id; gh missing, failing or slower than `BOXD_GH_TIMEOUT` exits 4, and `--offline` skips gh), `unspecified` (an id has no heading), `waiting` (an `After` id is not done) or `ready`.
 
 **L42 delta.** `delta <base-dir> <head-dir>` prints `<step> <id> fixed|regressed|still-failing|still-passing` per check and fails on any `regressed`; a check missing on one side is exit 2, never a pass.
 
