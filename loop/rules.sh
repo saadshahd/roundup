@@ -461,8 +461,10 @@ def proof(pr, paths, head, base, events=None):
     # L76: Percy renders apps/desktop/src in Chromium; WKWebView on macOS stays a laptop check.
     if any(path.startswith('apps/desktop/src/') for path in paths):
         checks(head, ('percy',))
-        percy_repo = re.escape(repo)
-        require(re.search(r'^Percy: https://percy\.io/'+percy_repo+r'/builds/\d+/?\s*$', evidence, re.M), 'proof: missing Percy: build link for expected project')
+        percy_project = os.environ.get('PERCY_PROJECT')
+        require(isinstance(percy_project, str) and percy_project.strip(), 'proof: missing PERCY_PROJECT configuration for Percy project path')
+        percy_project = re.escape(percy_project.strip())
+        require(re.search(r'^Percy: https://percy\.io/'+percy_project+r'/builds/\d+/?\s*$', evidence, re.M), 'proof: missing Percy: build link for expected project')
     if any(path.startswith('crates/desktop/') for path in paths):
         require(re.search(r'^macOS: \S.+$', evidence, re.M), 'proof: missing macOS: laptop check')
 
