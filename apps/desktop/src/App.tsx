@@ -1,7 +1,8 @@
-import { createMemo, createResource, ErrorBoundary, Show } from "solid-js";
+import { createMemo, createResource, ErrorBoundary, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { ChooseProject, EmptyRail, EmptyShelf } from "./app/FirstRun";
 import { Layout } from "./app/Layout";
+import { Reopen } from "./app/Reopen";
 import type { AppSeam, DaemonExit, Project } from "./app/seam";
 import { DrawerHost } from "./drawer/DrawerHost";
 import { ErrorLine, failureLine } from "./ink/ErrorLine";
@@ -26,6 +27,9 @@ const OpenProject = (props: {
   app: AppSeam;
   project: Project;
   daemonExit: DaemonExit | null;
+  reopenFailure: string | null;
+  onReopen: () => void;
+  reopening: boolean;
   reducedMotion: Accessor<boolean>;
   now: Accessor<number>;
   createEmulator?: EmulatorFactory | undefined;
@@ -49,7 +53,8 @@ const OpenProject = (props: {
                     {(exit) => (
                       <>
                         {"   "}
-                        <ErrorLine message={daemonExitText(exit())} />
+                        <ErrorLine message={props.reopenFailure ?? daemonExitText(exit())} />
+                        <Reopen onReopen={props.onReopen} busy={props.reopening} />
                       </>
                     )}
                   </Show>
@@ -110,14 +115,21 @@ export const App = (props: {
       </Show>
       <Show when={open()}>
         {(phase) => (
-          <OpenProject
-            app={props.app}
-            project={phase().project}
-            daemonExit={phase().daemonExit}
-            reducedMotion={props.reducedMotion}
-            now={now}
-            createEmulator={props.createEmulator}
-          />
+          <For each={[phase().generation]}>
+            {() => (
+              <OpenProject
+                app={props.app}
+                project={phase().project}
+                daemonExit={phase().daemonGone?.exit ?? null}
+                reopenFailure={phase().daemonGone?.reopenFailure ?? null}
+                onReopen={() => void project.reopen()}
+                reopening={project.reopening()}
+                reducedMotion={props.reducedMotion}
+                now={now}
+                createEmulator={props.createEmulator}
+              />
+            )}
+          </For>
         )}
       </Show>
     </>

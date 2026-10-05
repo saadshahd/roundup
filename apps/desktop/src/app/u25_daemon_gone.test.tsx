@@ -25,7 +25,7 @@ describe("u25 the Daemon is gone", () => {
 
     app.exitDaemon({ code: 1 });
 
-    expect(header.textContent).toBe("roundup   payments-api   daemon exited 1");
+    expect(header.textContent).toBe("roundup   payments-api   daemon exited 1   reopen");
     expect(within(header).getByText("daemon exited 1").className).toBe("ink");
   });
 
