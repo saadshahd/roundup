@@ -478,13 +478,12 @@ impl Shared {
     }
 
     /// A22: `id`'s slot is `Resuming` and `payload` is a Signal (`observe`'s own match already
-    /// checked both). A non-ack Signal is held exactly as `Starting`'s (A14); the ack — a
-    /// `SessionStart` naming source `resume` and the saved conversation id — attaches the new
-    /// Terminal (never before this moment: `can_resume` and the old `terminal_id` must read
-    /// unchanged until it), re-saves the conversation (A21), applies every earlier held Signal
-    /// in arrival order and then this one, and wakes the pending `agent.resume`. `rail` is
-    /// locked by the caller whenever `payload` could be the ack (it names a conversation, so
-    /// `observe`'s own condition already guarantees it).
+    /// checked both). A non-ack Signal is held exactly as `Starting`'s (A14); so is an ack that
+    /// arrives before `agent.resume` has recorded the Terminal it started (a race only an
+    /// implausibly fast hook could win, but one `promote_resuming` must never be asked to attach
+    /// a Terminal id it does not have): `promote_held_resume_ack` is what notices, once that id
+    /// is recorded, that the wait is already over. Otherwise the ack — a `SessionStart` naming
+    /// source `resume` and the saved conversation id — promotes it now.
     fn finish_resuming(
         &self,
         rail: Option<&mut rail::Rail>,
@@ -506,7 +505,7 @@ impl Shared {
         else {
             unreachable!("observe matched a Resuming slot for {id}");
         };
-        if !is_resume_ack(&payload, &conversation_id) {
+        if !is_resume_ack(&payload, &conversation_id) || terminal_id.is_none() {
             hold(id, &mut held, actor, payload);
             runs.insert(
                 id.to_owned(),
@@ -523,9 +522,93 @@ impl Shared {
             );
             return Ok((None, None));
         }
-        let terminal_id =
-            terminal_id.expect("a Signal cannot name a Terminal that was never spawned");
+        let terminal_id = terminal_id.expect("checked above");
         let rail = rail.expect("rail locked for a conversation Signal");
+        self.promote_resuming(
+            rail,
+            runs,
+            id,
+            attempt,
+            old,
+            cwd,
+            terminal_id,
+            held,
+            done,
+            actor,
+            payload,
+        )
+    }
+
+    /// A22: once a pending resume's Terminal id is recorded (`agent.resume`'s own `claimed`
+    /// step), promote it at once if its ack arrived and was held only because that id was not
+    /// yet known — the one case `finish_resuming` cannot act on by itself — instead of leaving it
+    /// held until the 10 s timeout rolls a resume back that in fact already succeeded.
+    fn promote_held_resume_ack(&self, id: &str) {
+        let mut rail = self.rail();
+        let mut runs = self.runs();
+        let found = match runs.get(id) {
+            Some(Slot::Resuming {
+                conversation_id,
+                held,
+                ..
+            }) => held
+                .iter()
+                .position(|(_, payload)| is_resume_ack(payload, conversation_id)),
+            _ => None,
+        };
+        let Some(position) = found else { return };
+        let Some(Slot::Resuming {
+            attempt,
+            old,
+            cwd,
+            terminal_id,
+            mut held,
+            done,
+            ..
+        }) = runs.remove(id)
+        else {
+            unreachable!("checked above, under the same lock")
+        };
+        let (ack_actor, ack_payload) = held
+            .remove(position)
+            .expect("position came from this held, under the same lock");
+        let terminal_id = terminal_id.expect("promote_held_resume_ack only runs once it is Some");
+        if let Err(err) = self.promote_resuming(
+            &mut rail,
+            &mut runs,
+            id,
+            attempt,
+            old,
+            cwd,
+            terminal_id,
+            held,
+            done,
+            ack_actor,
+            ack_payload,
+        ) {
+            eprintln!("agents: could not promote {id}'s already-held resume ack: {err}");
+        }
+    }
+
+    /// A22's ack confirmed for `id`: attach the Terminal `agent.resume` started (never before
+    /// this moment), re-save the conversation (A21), apply every earlier held Signal in arrival
+    /// order and then the ack itself, and wake the pending `agent.resume`. On failure, restore
+    /// `old` and stop the Terminal, same as a failed launch.
+    #[allow(clippy::too_many_arguments)]
+    fn promote_resuming(
+        &self,
+        rail: &mut rail::Rail,
+        runs: &mut HashMap<String, Slot>,
+        id: &str,
+        attempt: String,
+        old: Option<Box<Run>>,
+        cwd: String,
+        terminal_id: String,
+        held: VecDeque<(Actor, Value)>,
+        done: oneshot::Sender<Result<(), RpcError>>,
+        actor: Actor,
+        payload: Value,
+    ) -> Result<Applied, RpcError> {
         if let Err(err) = rail.attach_terminal(id, &terminal_id) {
             if let Some(old) = old {
                 runs.insert(id.to_owned(), Slot::Running(*old));
@@ -536,7 +619,7 @@ impl Shared {
         }
         let clock = Arc::clone(&self.clock);
         let mut run = Run {
-            attempt: attempt.clone(),
+            attempt,
             status_revision: 1,
             closing: false,
             ended: false,
@@ -1205,8 +1288,12 @@ impl Agents {
             return Err(err);
         }
 
-        let effective_cwd =
-            worktree.map_or_else(|| PathBuf::from(&saved_cwd), |w| PathBuf::from(w.path));
+        // A21 already saved the effective cwd the original run launched in: when a Worktree is
+        // retained, that is some path under it (A21's own cwd is captured after Worktree
+        // mapping, any subdirectory kept), never the Worktree's root by itself. `worktree` above
+        // is only for `verify_resumable`'s Git check; the directory to launch into is always
+        // `saved_cwd` as recorded.
+        let effective_cwd = PathBuf::from(&saved_cwd);
         let spawned = match self
             .start(id, &attempt, &effective_cwd, Some(&conversation_id), false)
             .await
@@ -1248,6 +1335,9 @@ impl Agents {
                 "{id}: resume no longer pending"
             )));
         }
+        // An ack that raced ahead of this very claim (held because the Terminal id was not yet
+        // recorded) is acted on now, rather than left held until the 10 s timeout.
+        self.shared.promote_held_resume_ack(id);
         tokio::spawn(watch(
             Arc::clone(&self.shared),
             id.to_owned(),

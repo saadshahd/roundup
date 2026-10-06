@@ -417,3 +417,124 @@ async fn a22_no_acknowledgement_within_ten_seconds_times_out_and_rolls_back() {
     assert!(after.can_resume);
     assert_eq!(after.terminal_id, None);
 }
+
+/// A `SessionStart` is the ack only with source `resume` naming the saved id; anything else is
+/// held exactly as a non-`SessionStart` Signal is, never promoting the pending resume. Proven by
+/// timing it out (success would mean the mismatched ack was mistaken for the real one) rather
+/// than by only sending the real one afterward, which would pass even if the check were a no-op.
+async fn held_as_not_the_ack(session_id: &str, source: &str) {
+    let f = Fixture::running("sleep 30");
+    let node = exited_with_conversation(&f, CONVERSATION).await;
+    let f = Arc::new(f);
+    let old_attempt = node.attempt.clone().unwrap();
+    let id = node.id.clone();
+    let resuming = {
+        let f = Arc::clone(&f);
+        let id = id.clone();
+        tokio::spawn(async move { f.resume(&id).await })
+    };
+    f.until_attempt_changed(&id, &old_attempt).await;
+
+    f.session_start(&id, session_id, source).await.unwrap();
+    tokio::time::advance(Duration::from_secs(11)).await;
+
+    let err = resuming.await.unwrap().unwrap_err();
+    assert_eq!(err.code, code::CONFLICT);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a22_an_ack_with_the_wrong_source_is_held_not_promoted() {
+    held_as_not_the_ack(CONVERSATION, "startup").await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a22_an_ack_naming_a_different_conversation_is_held_not_promoted() {
+    held_as_not_the_ack(OTHER_CONVERSATION, "resume").await;
+}
+
+/// A non-ack held first, then the real ack: proves a mismatch is held (not rejected outright)
+/// and the resume still resolves once the real one arrives.
+#[tokio::test]
+async fn a22_a_mismatched_signal_held_before_the_real_ack_still_lets_it_resolve() {
+    let f = Fixture::running("sleep 30");
+    let node = exited_with_conversation(&f, CONVERSATION).await;
+    let f = Arc::new(f);
+    let old_attempt = node.attempt.clone().unwrap();
+    let id = node.id.clone();
+    let resuming = {
+        let f = Arc::clone(&f);
+        let id = id.clone();
+        tokio::spawn(async move { f.resume(&id).await })
+    };
+    f.until_attempt_changed(&id, &old_attempt).await;
+
+    f.session_start(&id, OTHER_CONVERSATION, "resume")
+        .await
+        .unwrap();
+    f.session_start(&id, CONVERSATION, "resume").await.unwrap();
+
+    let resumed = resuming.await.unwrap().unwrap();
+    assert!(resumed.terminal_id.is_some());
+}
+
+#[tokio::test]
+async fn a22_resume_in_a_worktree_subfolder_keeps_the_saved_subfolder_not_the_worktree_root() {
+    let f = Fixture::in_git_project("sleep 30", agents::worktree::Git::from_env());
+    f.call(
+        "project.setWorktrees",
+        json!({"on": true, "check": Value::Null}),
+    )
+    .await
+    .unwrap();
+    let sub = f.dir.path().join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join("keep.txt"), "x").unwrap();
+    let git = |args: &[&str]| {
+        assert!(
+            std::process::Command::new("git")
+                .current_dir(f.dir.path())
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    };
+    git(&["add", "sub/keep.txt"]);
+    git(&["commit", "-q", "-m", "add sub"]);
+
+    let spawned = f
+        .call(
+            "agent.spawn",
+            json!({"cwd": sub.to_string_lossy(), "prompt": Value::Null, "parent": Value::Null}),
+        )
+        .await
+        .unwrap();
+    let node: RailNode = serde_json::from_value(spawned).unwrap();
+    let worktree_path = std::path::PathBuf::from(&node.worktree.as_ref().unwrap().path);
+    f.session_start(&node.id, CONVERSATION, "startup")
+        .await
+        .unwrap();
+    f.call("agent.stop", json!({"id": node.id})).await.unwrap();
+    let f = Arc::new(f);
+    let old_attempt = node.attempt.clone().unwrap();
+    let id = node.id.clone();
+    let resuming = {
+        let f = Arc::clone(&f);
+        let id = id.clone();
+        tokio::spawn(async move { f.resume(&id).await })
+    };
+    f.until_attempt_changed(&id, &old_attempt).await;
+    f.session_start(&id, CONVERSATION, "resume").await.unwrap();
+
+    let resumed = resuming.await.unwrap().unwrap();
+
+    let terminal_id = resumed.terminal_id.clone().unwrap();
+    let cwd = f
+        .terminals
+        .list()
+        .into_iter()
+        .find(|t| t.id == terminal_id)
+        .unwrap()
+        .cwd;
+    assert_eq!(cwd, worktree_path.join("sub").to_string_lossy());
+}
