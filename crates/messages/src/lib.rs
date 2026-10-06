@@ -803,6 +803,7 @@ mod tests {
             status_revision: Some("1".into()),
             terminal_id: None,
             worktree: None,
+            can_resume: false,
         }
     }
 

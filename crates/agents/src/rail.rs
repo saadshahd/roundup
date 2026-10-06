@@ -45,6 +45,11 @@ impl Rail {
             // 'provisioning' from before `git worktree add` runs until the Terminal is about to
             // start, then 'ready'; no RPC returns it (G2, G6).
             ("worktree_state", "TEXT"),
+            // A21: the vendor conversation id and the effective cwd it was launched in, from the
+            // latest Signal of the current Attempt that named one. Never read outside this module
+            // and `agent.resume`; no vendor id reaches a public name or the webview.
+            ("conversation_id", "TEXT"),
+            ("conversation_cwd", "TEXT"),
         ] {
             add_column_if_missing(&db, "nodes", column, decl)?;
         }
@@ -315,6 +320,50 @@ impl Rail {
             .map_err(sql)?;
         Ok(())
     }
+
+    /// A21: save the vendor conversation id and the effective cwd it was launched in, replacing
+    /// any earlier save. `id` must already name a node.
+    pub fn save_conversation(
+        &mut self,
+        id: &str,
+        conversation_id: &str,
+        cwd: &str,
+    ) -> Result<(), RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE nodes SET conversation_id = ?, conversation_cwd = ? WHERE id = ?",
+                params![conversation_id, cwd, id],
+            )
+            .map_err(sql)?;
+        if changed == 0 {
+            return Err(RpcError::not_found(format!("node {id}")));
+        }
+        Ok(())
+    }
+
+    /// The saved conversation id and cwd (A21), if any.
+    pub fn conversation(&self, id: &str) -> Result<Option<(String, String)>, RpcError> {
+        let found: (Option<String>, Option<String>) = self
+            .db
+            .query_row(
+                "SELECT conversation_id, conversation_cwd FROM nodes WHERE id = ?",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(sql)?
+            .ok_or_else(|| RpcError::not_found(format!("node {id}")))?;
+        Ok(match found {
+            (Some(conversation_id), Some(cwd)) => Some((conversation_id, cwd)),
+            _ => None,
+        })
+    }
+
+    /// Whether `id` has A21 data; used to compute `can_resume` without exposing the id itself.
+    pub fn has_conversation(&self, id: &str) -> Result<bool, RpcError> {
+        Ok(self.conversation(id)?.is_some())
+    }
 }
 
 fn sql_ordinal(err: std::num::ParseIntError) -> RpcError {
@@ -391,6 +440,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 },
                 terminal_id: row.get(6)?,
                 worktree,
+                can_resume: false,
             })
         })
         .map_err(sql)?;

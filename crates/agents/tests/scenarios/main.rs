@@ -4,6 +4,7 @@ mod held_signal;
 mod naming;
 mod rail;
 mod remove;
+mod resume;
 mod signal;
 mod spawn;
 mod terminal_node;

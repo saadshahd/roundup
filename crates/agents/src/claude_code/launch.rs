@@ -109,13 +109,15 @@ impl Launcher {
 
     /// Write Agent `id`'s settings and MCP config under `dir` (the Project's `.roundup/`), trust
     /// `cwd`, and return the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
-    /// is the user's, and this is the only grant roundup makes in it.
+    /// is the user's, and this is the only grant roundup makes in it. A22: `resume` is the saved
+    /// conversation id to continue, added to argv as `--resume <id>`; `None` starts fresh.
     pub fn prepare(
         &self,
         dir: &Path,
         id: &str,
         attempt: &str,
         cwd: &Path,
+        resume: Option<&str>,
     ) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
         let id = parse_id(id).ok_or_else(|| invalid(format!("{id:?} is not a node id")))?;
@@ -168,13 +170,18 @@ impl Launcher {
         replace_file(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
         // No `--strict-mcp-config`: the Agent keeps the user's own servers.
-        Ok(vec![
+        let mut argv = vec![
             self.bin.clone(),
             "--settings".into(),
             settings.to_string_lossy().into_owned(),
             "--mcp-config".into(),
             mcp_config.to_string_lossy().into_owned(),
-        ])
+        ];
+        if let Some(conversation_id) = resume {
+            argv.push("--resume".into());
+            argv.push(conversation_id.to_owned());
+        }
+        Ok(argv)
     }
 
     /// Set `hasTrustDialogAccepted` for `cwd`, under its NFC form (the key Claude Code looks up), keeping every other key. A config that cannot be

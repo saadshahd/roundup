@@ -96,6 +96,7 @@ pub const METHODS: &[Method] = &[
     m("takeover.begin", "message_TakeoverParams", "null"),
     m("takeover.end", "message_TakeoverParams", "null"),
     m("rail.remove", "agent_NodeId", "null"),
+    m("agent.resume", "agent_NodeId", "agent_RailNode"),
 ];
 
 /// Render `METHODS` as `contracts/generated/methods.ts`.

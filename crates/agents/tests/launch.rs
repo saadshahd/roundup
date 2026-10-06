@@ -72,7 +72,7 @@ impl Setup {
     }
 
     fn prepare(&self, id: &str) -> Result<Vec<String>, rpc::RpcError> {
-        self.launcher().prepare(&self.dir, id, "1", &self.cwd)
+        self.launcher().prepare(&self.dir, id, "1", &self.cwd, None)
     }
 
     fn real(&self, path: &Path) -> String {
@@ -212,7 +212,7 @@ fn a4_a_config_folder_that_does_not_exist_yet_is_created() {
     let s = setup();
     let config = s.root.path().join("config dir").join(".claude.json");
     let launcher = Launcher::new("fake-claude", config.clone(), s.rup.clone(), None);
-    launcher.prepare(&s.dir, "1", "1", &s.cwd).unwrap();
+    launcher.prepare(&s.dir, "1", "1", &s.cwd, None).unwrap();
     assert_eq!(
         read(&config)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
         true
@@ -224,7 +224,7 @@ fn a4_a_symlinked_cwd_is_trusted_under_its_resolved_path() {
     let s = setup();
     let link = s.cwd.parent().unwrap().join("link");
     std::os::unix::fs::symlink(&s.cwd, &link).unwrap();
-    s.launcher().prepare(&s.dir, "1", "1", &link).unwrap();
+    s.launcher().prepare(&s.dir, "1", "1", &link, None).unwrap();
     let config = read(&s.claude_json);
     let keys: Vec<_> = config["projects"]
         .as_object()
@@ -330,7 +330,7 @@ fn a4_concurrent_spawns_each_get_their_cwd_trusted() {
                 gate.wait();
                 for (n, cwd) in mine.iter().enumerate() {
                     launcher
-                        .prepare(&dir, &(spawner * 10 + n).to_string(), "1", cwd)
+                        .prepare(&dir, &(spawner * 10 + n).to_string(), "1", cwd, None)
                         .unwrap();
                 }
             })
@@ -353,7 +353,7 @@ fn a4_only_a_cwd_inside_the_project_folder_is_trusted() {
     std::fs::create_dir(&elsewhere).unwrap();
     let err = s
         .launcher()
-        .prepare(&s.dir, "1", "1", &elsewhere)
+        .prepare(&s.dir, "1", "1", &elsewhere, None)
         .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(!s.claude_json.exists());
@@ -377,7 +377,10 @@ fn a4_a_cwd_that_is_a_file_is_the_callers_error() {
     let s = setup();
     let file = s.cwd.join("notes.txt");
     std::fs::write(&file, "").unwrap();
-    let err = s.launcher().prepare(&s.dir, "1", "1", &file).unwrap_err();
+    let err = s
+        .launcher()
+        .prepare(&s.dir, "1", "1", &file, None)
+        .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(!s.claude_json.exists());
 }
@@ -394,7 +397,7 @@ fn a4_a_relative_project_dir_still_gives_claude_an_absolute_settings_path() {
     let launcher = Launcher::new("fake-claude", root.path().join("claude.json"), rup, None);
 
     let argv = launcher
-        .prepare(dir.strip_prefix(&here).unwrap(), "1", "1", &cwd)
+        .prepare(dir.strip_prefix(&here).unwrap(), "1", "1", &cwd, None)
         .unwrap();
 
     assert!(Path::new(&argv[2]).is_absolute(), "{}", argv[2]);
@@ -462,7 +465,7 @@ fn a4_trust_waits_while_claude_holds_its_config_lock() {
     let mut saving = read(&s.claude_json);
     let trusting = {
         let (launcher, dir, cwd) = (s.launcher(), s.dir.clone(), s.cwd.clone());
-        std::thread::spawn(move || launcher.prepare(&dir, "1", "1", &cwd))
+        std::thread::spawn(move || launcher.prepare(&dir, "1", "1", &cwd, None))
     };
 
     // An observation window: while the lock is held, trust must not write.
@@ -505,7 +508,7 @@ fn a4_a_cwd_that_does_not_exist_is_the_callers_error() {
     let s = setup();
     let err = s
         .launcher()
-        .prepare(&s.dir, "1", "1", &s.cwd.join("missing"))
+        .prepare(&s.dir, "1", "1", &s.cwd.join("missing"), None)
         .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
 }
@@ -608,7 +611,9 @@ fn a4_a_cwd_that_is_not_in_nfc_is_trusted_under_its_nfc_name() {
     let decomposed = s.cwd.parent().unwrap().join("cafe\u{301}");
     std::fs::create_dir(&decomposed).unwrap();
 
-    s.launcher().prepare(&s.dir, "1", "1", &decomposed).unwrap();
+    s.launcher()
+        .prepare(&s.dir, "1", "1", &decomposed, None)
+        .unwrap();
 
     let config = read(&s.claude_json);
     let keys: Vec<_> = config["projects"].as_object().unwrap().keys().collect();
@@ -627,12 +632,14 @@ fn a4_the_home_folder_is_refused_and_never_trusted() {
         Some(project.to_owned()),
     );
 
-    let err = launcher.prepare(&s.dir, "1", "1", project).unwrap_err();
+    let err = launcher
+        .prepare(&s.dir, "1", "1", project, None)
+        .unwrap_err();
 
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(!s.claude_json.exists());
     assert!(!s.dir.join("agents").exists());
-    launcher.prepare(&s.dir, "1", "1", &s.cwd).unwrap();
+    launcher.prepare(&s.dir, "1", "1", &s.cwd, None).unwrap();
 }
 
 #[test]

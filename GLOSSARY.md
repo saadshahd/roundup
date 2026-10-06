@@ -10,7 +10,7 @@ roundup supervises coding Agents in one Project from a macOS App. Names use thes
 A folder roundup is opened on; it owns its Rooms, Agents, Terminals, Todos, Pads and Routes.
 
 **Agent**:
-One Claude Code process that roundup started and supervises; it has a Status.
+One supervised identity on the Rail, with a Status; each launch of its program is an Attempt, and at most one runs at a time.
 _Avoid_: session, bot, worker
 
 **Terminal**:
@@ -36,6 +36,9 @@ One launch of an Agent's program, numbered per Agent from `1` in launch order (A
 
 **Status revision**:
 The strictly increasing ordinal of published Status transitions within one Attempt, `1` at Starting. A canonical positive decimal string on the wire; absent after reopen. Never stands in for an Attempt or Terminal liveness.
+
+**Resume**:
+Starting an exited Agent's next Attempt in its saved conversation.
 
 **Worktree**:
 The git worktree roundup makes for one Agent when the Project's `worktrees` setting is on: its own directory, branch and working directory (`docs/worktrees.md`).

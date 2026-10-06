@@ -25,6 +25,7 @@ export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   status_revision: "1",
   terminal_id: `t-${id}`,
   worktree: null,
+  can_resume: false,
   ...over,
 });
 

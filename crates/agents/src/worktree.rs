@@ -254,6 +254,40 @@ impl Git {
         self.finish(project, plan)
     }
 
+    /// A22: the saved Worktree still names a real directory on its saved branch, checked against
+    /// Git itself rather than trusted from the record. The directory's cleanliness is not this
+    /// check's concern (resume never cares whether it is landed).
+    pub fn verify_resumable(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {
+        if !worktree.path.is_dir() {
+            return Err(RpcError::conflict(format!(
+                "worktree_missing: {}",
+                worktree.path.display()
+            )));
+        }
+        let branch_ref = format!("refs/heads/{}", worktree.branch);
+        if self.reference(project, &branch_ref)?.is_none() {
+            return Err(RpcError::conflict(format!(
+                "worktree_branch_missing: {}",
+                worktree.branch
+            )));
+        }
+        let expected_path = canonical_path(&worktree.path);
+        match self
+            .registered_worktrees(project)?
+            .into_iter()
+            .find(|(path, _)| *path == expected_path)
+        {
+            Some((_, Some(reference))) if reference == branch_ref => Ok(()),
+            Some((_, Some(_))) => Err(RpcError::conflict(
+                "worktree_mismatched: registered to another branch",
+            )),
+            Some((_, None)) => Err(RpcError::conflict(
+                "worktree_detached: no branch checked out",
+            )),
+            None => Err(RpcError::conflict("worktree_unregistered")),
+        }
+    }
+
     pub fn require_landed(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {
         let dirty = if worktree.path.exists() {
             self.run(
