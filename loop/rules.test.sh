@@ -382,7 +382,9 @@ expect_exit 4 'L33 gh failure is not success' gate base 12
 expect_exit 2 'L33 missing number fails before gh' gate base
 expect_exit 2 'L33 nonnumeric number fails before gh' gate base 12a
 gate_set '.failure=false | .hang=true'
-expect_exit 4 'L33 gh timeout is bounded' env BOXD_GH_TIMEOUT=1 loop/rules.sh base 12
+expect_exit 4 'L33 gh timeout is bounded' env BOXD_GH_TIMEOUT=0.2 loop/rules.sh base 12
+gate_set '.hang=false | .base="main"'
+expect_exit 0 'L33 a fractional BOXD_GH_TIMEOUT is honoured' env BOXD_GH_TIMEOUT=0.5 loop/rules.sh base 12
 
 gate_repo
 expect_output block 'L44 source is block' gate class 12
@@ -483,6 +485,29 @@ gate_set --arg head "$(git rev-parse HEAD)" '.body="Scenarios: L46\n## Shape\n``
 expect_exit 0 'L53 context ids do not create extra proof obligations' gate proof 12
 gate_set '.body="Scenarios: L46\n## Shape\n```\na\n```\n## Proof\nNo output"'
 expect_exit 1 'L53 absent test output fails' gate proof 12
+
+# L53: Proof may name an ancestor of head when every later first-parent commit is a clean merge of main or an empty approval.
+proof_names() { gate_set --arg sha "$1" --arg p "$2" '.body="Scenarios: L46\n"+$p+"## Shape\n```\na\n```\n## Proof\nHead: "+$sha+"\n```\nok L46_gate\n```\n"'; }
+gate_repo
+proof_names "$(git rev-parse HEAD)" $'Principles: P1\n'
+expect_exit 0 'L53 a Principles line is never read as a scenario id' gate proof 12
+proven=$(git rev-parse HEAD^)
+proof_names "$proven" ''
+expect_exit 0 'L53 proof names the commit an empty approval follows' gate proof 12
+git checkout -q main; printf 'main update\n' >docs/main.md; commit main-update; git checkout -q work
+git merge -q --no-ff main -m 'merge main without a trailer'
+expect_exit 0 'L53 proof survives a clean merge of main after the approval' gate proof 12
+proof_names "$(git rev-parse main)" ''
+expect_exit 1 'L53 a main commit is not a proven head' gate proof 12
+proof_names 0123456789abcdef0123456789abcdef01234567 ''
+expect_exit 1 'L53 an unknown SHA is not a proven head' gate proof 12
+proof_names "$proven" ''
+git reset -q --hard HEAD^; git merge -q --no-ff --no-commit main; echo sneaky >>crates/change.rs; git add -A; git commit -qm 'merge main and edit'
+expect_exit 1 'L53 a merge that changes more than main moves the proven head' gate proof 12
+git reset -q --hard HEAD^; echo more >>crates/change.rs; commit more 'Author-Agent: builder'
+expect_exit 1 'L53 an authored commit after the named SHA fails' gate proof 12
+git reset -q --hard HEAD^; git commit -q --allow-empty -m approval -m 'Reviewed-by-Agent: reviewer' -m 'Author-Agent: builder'
+expect_exit 1 'L53 an empty commit carrying Author-Agent is not an approval' gate proof 12
 
 gate_repo
 printf '**L46 screenshots are proof of a loop rule.** Given a PR, when checked, then it passes.\n' >scenarios/loop.md
@@ -911,7 +936,7 @@ for command in class rounds proof merge-ready; do
   expect_exit 4 "L33 $command propagates gh failure" gate "$command" 12
 done
 gate_set '.failure=false | .hang=true'
-expect pass 'L33 timeout names gh on stderr' gate_error_contains gh env BOXD_GH_TIMEOUT=1 loop/rules.sh base 12
+expect pass 'L33 timeout names gh on stderr' gate_error_contains gh env BOXD_GH_TIMEOUT=0.2 loop/rules.sh base 12
 
 gate_repo
 git reset -q --hard main
@@ -968,7 +993,7 @@ ready_repo() {
   commit x
   # A fake `gh pr list` printing gh-prs, failing on GH_FAIL and hanging on GH_HANG.
   mkdir -p .git/ready-bin
-  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
+  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || exec sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
   chmod +x .git/ready-bin/gh
   echo '[]' >.git/gh-prs
   export PATH="$PWD/.git/ready-bin:$PATH"
@@ -1018,7 +1043,8 @@ ready U1, U3 scenarios/ui.md" 'L34 no open PR leaves every state' ready
 ready_repo
 expect_exit 4 'L34 gh failure exits 4' env GH_FAIL=1 loop/rules.sh ready
 expect pass 'L34 gh failure names gh' gate_error_contains gh env GH_FAIL=1 loop/rules.sh ready
-expect pass 'L34 gh slower than BOXD_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 BOXD_GH_TIMEOUT=1 loop/rules.sh ready
+expect pass 'L34 gh slower than BOXD_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 BOXD_GH_TIMEOUT=0.2 loop/rules.sh ready
+expect pass 'L34 a fractional BOXD_GH_TIMEOUT is honoured' env BOXD_GH_TIMEOUT=0.5 loop/rules.sh ready
 mkdir .git/no-gh-bin
 for tool in bash dirname python3 git; do ln -s "$(command -v "$tool")" .git/no-gh-bin/; done
 expect_exit 4 'L34 gh missing exits 4' env PATH="$PWD/.git/no-gh-bin" loop/rules.sh ready

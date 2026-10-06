@@ -8,7 +8,7 @@ A Claude Code permission prompt becomes a Decision (`GLOSSARY.md`). The user ans
 
 - The hook already reaches the Daemon: `rup signal` delivers each hook payload as `agent.signal`, and `PermissionRequest` gives the Kind `needs-you` (ADR 0006, A1).
 - The hook cannot reply: `rup signal` prints nothing and returns at once, with a 5-second `timeout` on every event (`crates/agents/src/claude_code/launch.rs`).
-- Missing: a Decision type, `decision.*` methods and events, a Decision store, a hook that waits for an answer, and any UI.
+- Missing: the handlers for `agent.permission` and `decision.*` (their types are in `crates/contracts/src/decision.rs`), a Decision store, `rup permission`, and any UI.
 
 ## Flow
 

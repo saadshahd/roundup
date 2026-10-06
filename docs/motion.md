@@ -1,6 +1,6 @@
 # Motion
 
-Terms from the animation vocabulary. The more often a change is seen, the shorter (or absent) its animation. Every row is asserted by a Playwright test; reduced motion disables all but the instant changes.
+Terms from the animation vocabulary. The more often a change is seen, the shorter (or absent) its animation. Check D9 (`docs/design-system.md`) measures each duration against this table.
 
 | Trigger | Term | Duration / easing | Notes |
 |---|---|---|---|
@@ -13,4 +13,4 @@ Terms from the animation vocabulary. The more often a change is seen, the shorte
 | Needs-you arrival | Pulse | one cycle, ~400 ms | Then still. An ambient loop would break the calm rule. |
 | Rejected Inbox action | Shake / wiggle | ~250 ms | On the row. |
 
-**Reduced motion** (`prefers-reduced-motion`) turns off every row above except the instant state changes. A Playwright test asserts it.
+**Reduced motion** (`prefers-reduced-motion`) turns off every row above except the instant state changes.

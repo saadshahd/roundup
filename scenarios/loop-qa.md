@@ -1,6 +1,6 @@
 # Loop QA
 
-Module: `loop/qa-sweep.sh`, `loop/qa-coordinator*.ts`. Each id's cases are its tests in `loop/qa-sweep.test.sh` and `loop/qa-coordinator.test.ts`; the runbook is `docs/qa-coordinator.md`.
+Module: `loop/qa-sweep.sh`, `loop/qa-coordinator*.ts`. Each id's cases are its tests in `loop/qa-sweep.test.sh`, which the `rules` job of `.github/workflows/loop.yml` runs, and `loop/qa-coordinator.test.ts`; the runbook is `docs/qa-coordinator.md`.
 
 **L52 sweep.** `qa-sweep.sh` drives `just harness` in `agent-browser` at 640×400 and 1280×800 with each Drawer opened and closed, and writes `loop/out/qa/sweep-<UTC>.json`: `{head, started, viewports, scenarios, findings}`, each finding `{id, text, at, scenario, test}`.
 

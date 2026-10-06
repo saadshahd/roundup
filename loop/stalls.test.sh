@@ -159,4 +159,7 @@ expect "L28 a gh failure exits 4 naming gh and changes no file" test "$code" -eq
 rm "$fix/fail-closed"; touch "$fix/hang"; code=0; err=$(BOXD_GH_TIMEOUT=1 stalls check 2>&1 >/dev/null) || code=$?
 expect "L28 a gh timeout exits 4 and changes no file" test "$code" -eq 4 -a -f loop/out/stalls/b-5 -a -n "$(grep -F gh <<<"$err")"
 
+# the Driver is the caller
+expect "L28 the Driver runs check and report each tick" grep -qF 'loop/stalls.sh check' "$(dirname "$script")/../.agents/driver.md"
+
 [ "$failures" -eq 0 ]

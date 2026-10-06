@@ -47,9 +47,9 @@ Note on `agent.status`: the glyph is the most urgent Kind. Hooks add labels and 
 
 Typed Messages `{from: Actor, to: Actor, kind, body, replyTo}`. Subscriptions are by event (`todo.unblocked`, `agent.idle`, `pad.changed`), never by clock. Hooks never start a turn; delivery is a queued prompt the Agent consumes at its next safe point. Anything addressed to the user pre-fills and never submits.
 
-## Meta-agents
+## Doors
 
-An Agent node has `parent`. A Meta-agent is an Agent whose children are Agents; it receives child events and can message them. Users drag to reorder (writes `parent` + `order`); Extensions use `$.agents.move(id, {parent, index})`. `rail.group` proposes, manual placement wins.
+An Agent node has `parent`. A Door is an Agent whose children are Agents; it receives child events and can message them. Users drag to reorder (writes `parent` + `order`); Extensions use `$.agents.move(id, {parent, index})`. `rail.group` proposes, manual placement wins.
 
 ## Out of scope for v0
 

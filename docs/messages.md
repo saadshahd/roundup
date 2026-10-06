@@ -22,7 +22,7 @@ Default Route is `auto`. A Held Message never blocks a later one (B7). Delivery 
 | Module | Change |
 |---|---|
 | `crates/contracts` | `Message` (with `passedFrom`), `MessageKind`, `MessageStatus`, `Held` reason, `Route`, `Delivery` (moved out of `contracts/hooks.ts`, which imports it); methods `message.send`, `message.pass`, `message.get`, `message.list`, `message.deliver`, `message.drop`, `route.set`, `route.list`, `takeover.begin`, `takeover.end`; events `message.sent`, `message.held`, `message.delivered`, `message.dropped`, `route.changed`, `takeover.changed`; `generated/` is regenerated, never edited |
-| `crates/messages` (new) | stores Messages and Routes in `.roundup/roundup.db` (ADR 0004), holds Takeovers in memory, listens to `agent.status` on the bus, and types through `Agents::prompt` |
+| `crates/messages` (new) | stores Messages and Routes in `.roundup/messages.db` (ADR 0004), holds Takeovers in memory, listens to `agent.status` on the bus, and types through `Agents::prompt` |
 | `crates/agents` | none: delivery calls `Agents::prompt` (H11, `scenarios/control.md`), the Adapter's one input seam, so no fourth seam (P4) |
 | `crates/rupd` | registers the module |
 | `crates/rup` | MCP tools `message_send`, `message_get`, `message_list`, `message_pass` (B12) |

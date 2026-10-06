@@ -9,7 +9,7 @@ roundup is a Claude Code workbench: Terminals, Agents (Claude Code only), Todos,
                               │
                         rupd (Rust)
       ┌────────────┬─────────┴───────┬──────────────┐
-   terminals     agents           todos         scratchpads
+   terminals     agents           todos         pads
    (PTY mgr)  (adapter+state)  (SQLite+deps)  (md files+index)
                               │
                        event bus (typed, replayable)
@@ -30,10 +30,10 @@ The App is a Rust crate under `crates/`, not under `apps/`. A Cargo workspace me
 | `crates/agents` | agents | `AgentAdapter`, Status classifier; `claude_code/` adapter |
 | `crates/todos` | todos | SQLite (WAL), blocker graph |
 | `crates/pads` | pads | Pads as `.md` files, SQLite index |
-| `crates/rupd` | core | Daemon: socket, Provenance log, bus, MCP |
+| `crates/rupd` | core | Daemon: socket, Provenance log, bus |
+| `crates/rup` | core | the `rup` CLI and the MCP server (`src/mcp.rs`) |
 | `crates/desktop` | ui | The App: the Tauri 2 shell that starts `rupd` for one Project and passes calls and events to the webview (`scenarios/app.md`) |
 | `apps/desktop` | ui | The webview: Solid + xterm.js, a client of `rupd` through the App |
-| `ext/` | ext | Extension host, SDK, example |
 
 ## Agent adapter contract
 
@@ -53,7 +53,7 @@ enum AdapterKind { NeedsYou, Error, Working, Idle, Done } // never Blocked
 
 ## Data
 
-- Todos, Pad index, Touch log, Routes, Agent tree (`parent` + `order`): SQLite in WAL mode, one DB per Project at `.roundup/roundup.db`.
+- Todos, Pad index, Touch log, Routes, Agent tree (`parent` + `order`): SQLite in WAL mode, one DB per module in the Project's `.roundup/` (`agents.db`, `todos.db`, `pads.db`, `messages.db`, `provenance.db`).
 - Pads: plain `.md` files. App-only by default (stored in the DB); per-Project setting stores them as files in `.roundup/pads/`.
 - Touch log is append-only; `readBy` / `touchedBy` are derived, never maintained by hand.
 
@@ -61,10 +61,6 @@ enum AdapterKind { NeedsYou, Error, Working, Idle, Done } // never Blocked
 
 Typed Messages `{from, to, kind, body, replyTo}`. Delivery to a Claude Code Agent happens at its next safe point (its idle signal, or a prompt-submit injection), tagged with a sender header. Anything addressed to the user pre-fills and never submits. A Route's value comes from `bus.route`; a user's click wins.
 
-## Perf budget (CI-measured; a regression above 10% fails)
-
-Cold start < 300 ms; keystroke-to-render < 16 ms p95; 10 idle Agents < 150 MB extra RSS.
-
 ## Boundaries
 
-Local only. The MVP targets macOS, so the shipped app, perf numbers and the macOS gate run locally and on GitHub macOS runners. boxd VMs are optional: unattended Builders and Linux or web-UI QA runs. See `.agents/data/boxd.md` for what they can and cannot do.
+Local only. The MVP targets macOS, so the shipped app, perf numbers (`docs/perf.md`) and the macOS gate run locally and on GitHub macOS runners. boxd VMs are optional: unattended Builders and Linux or web-UI QA runs. See `.agents/data/boxd.md` for what they can and cannot do.

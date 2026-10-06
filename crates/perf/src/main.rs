@@ -16,15 +16,20 @@ struct Args {
     /// Calls per latency measurement.
     #[arg(long, default_value_t = 1000)]
     calls: usize,
-    #[arg(long, default_value = "target/release/rupd")]
+    #[arg(long, default_value = "target/release/rupd", value_parser = absolute)]
     rupd: PathBuf,
     /// The built `rup`, run as Claude Code's hook command (H15's `hook_loop_ms`).
-    #[arg(long, default_value = "target/release/rup")]
+    #[arg(long, default_value = "target/release/rup", value_parser = absolute)]
     rup: PathBuf,
     #[arg(long, default_value = "crates/perf/budgets.json")]
     budgets: PathBuf,
     #[arg(long, default_value = "target/perf.json")]
     out: PathBuf,
+}
+
+/// The launcher takes only an absolute `rup` (R14), so a relative path is joined to the current directory.
+fn absolute(path: &str) -> std::io::Result<PathBuf> {
+    std::path::absolute(path)
 }
 
 async fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
@@ -56,5 +61,29 @@ async fn main() -> ExitCode {
             eprintln!("perf: {err}");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn r14_the_default_rupd_and_rup_paths_are_absolute_and_name_the_same_files() {
+        let args = Args::parse_from(["perf"]);
+        let cwd = std::env::current_dir().unwrap();
+
+        assert!(args.rupd.is_absolute(), "{}", args.rupd.display());
+        assert!(args.rup.is_absolute(), "{}", args.rup.display());
+        assert_eq!(args.rupd, cwd.join("target/release/rupd"));
+        assert_eq!(args.rup, cwd.join("target/release/rup"));
+    }
+
+    #[test]
+    fn r14_a_relative_flag_becomes_absolute_under_the_current_directory() {
+        let args = Args::parse_from(["perf", "--rup", "bin/rup", "--rupd", "/opt/rupd"]);
+
+        assert_eq!(args.rup, std::env::current_dir().unwrap().join("bin/rup"));
+        assert_eq!(args.rupd, PathBuf::from("/opt/rupd"));
     }
 }

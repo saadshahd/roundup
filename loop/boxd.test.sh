@@ -36,6 +36,7 @@ else cat >/dev/null 2>&1 || true; fi
 case "$1 $2" in
   "env list") if [ "${STUB_MODE:-}" = no-secret ]; then echo '[]'; else echo '[{"name":"CLAUDE_CODE_OAUTH_TOKEN"}]'; fi ;;
   "machine list")
+    [ "${STUB_MODE:-}" != list-fails ] || exit 1
     if [ -n "${STUB_BUSY_LISTS:-}" ] && { echo x >>"$STUB_DIR/listcalls"; [ "$(wc -l <"$STUB_DIR/listcalls")" -le "$STUB_BUSY_LISTS" ]; }; then jq -nc --argjson n "${BOXD_MAX_VMS:-12}" '[range($n) | {name: "ru-other-\(.)"}]'
     elif [ -n "${STUB_RU:-}" ]; then jq -nc --argjson n "$STUB_RU" '[range($n) | {name: "ru-\(.)"}] + [{name: "db"}, {name: "web-1"}, {name: "ru"}]'
     elif [ "${STUB_MODE:-}" = full ]; then echo '[{"name":"ru-1"},{"name":"ru-2"},{"name":"ru-3"},{"name":"ru-4"}]'
@@ -99,12 +100,12 @@ case "$1 $2" in
           limit) echo '{"type":"result","is_error":true,"api_error_status":429,"result":"x"}'; exit 1 ;;
           events-forever)
             echo $$ >"$STUB_DIR/exec-$3.pid"
-            timeout "$timeout_s" bash -c 'i=0; while :; do i=$((i + 1)); echo "{\"type\":\"progress\",\"n\":$i}"; sleep 1; done' ;;
+            timeout "$timeout_s" bash -c 'i=0; while :; do i=$((i + 1)); echo "{\"type\":\"progress\",\"n\":$i}"; sleep 0.2; done' ;;
           events-forever-ignoring-boxd-timeout)
             # Unlike events-forever, this never stops itself: it stands in for a real boxd whose --timeout is a
             # no-output deadline that a steady stream of events never trips, so only our own wall-clock cutoff ends it.
             echo $$ >"$STUB_DIR/exec-$3.pid"
-            i=0; while :; do i=$((i + 1)); echo "{\"type\":\"progress\",\"n\":$i}"; sleep 1; done ;;
+            i=0; while :; do i=$((i + 1)); echo "{\"type\":\"progress\",\"n\":$i}"; sleep 0.2; done ;;
           events-then-exit)
             echo '{"type":"progress","n":1}' ;;
           progress-then-result)
@@ -147,13 +148,13 @@ case "$1 $2" in
       *"git diff --cached base"*)
         [ -n "${STUB_DIFF_EMPTY:-}" ] || echo "partial-diff-against-base"
         [ -z "${STUB_DIFF_FAILS:-}" ] || exit 1
-        [ -z "${STUB_DIFF_HANG:-}" ] || { trap '' TERM; sleep 3; exit 1; } ;;
+        [ -z "${STUB_DIFF_HANG:-}" ] || { trap '' TERM; sleep 1; exit 1; } ;;
       *format-patch*) echo "patch"; [ "${STUB_MODE:-}" != final-patch-fails ] || exit 7 ;;
     esac ;;
 esac
 S
   chmod +x bin/boxd
-  export BOXD_LOCK_WAIT=1 PATH="$PWD/bin:$PATH" STUB_LOG="$PWD/log" STUB_DIR="$PWD/cp"
+  export BOXD_LOCK_WAIT=1 BOXD_POLL=0.05 PATH="$PWD/bin:$PATH" STUB_LOG="$PWD/log" STUB_DIR="$PWD/cp"
   mkdir cp
   : >log
 }
@@ -646,8 +647,10 @@ expect_true "L18 the failed wait names the cap" grep -q 'cap BOXD_MAX_VMS=2' err
 if grep -q 'machine new' log; then echo "FAIL: L18 VM created without a slot"; failures=$((failures + 1)); else echo "ok:   L18 no VM without a slot"; fi
 started=$SECONDS; new_repo; BOXD_MAX_VMS=2 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 a single run does not wait by default"
 expect_true "L18 the default wait is 0 s, not a pause" test $((SECONDS - started)) -lt 3
+started=$SECONDS; new_repo; BOXD_MAX_VMS=2 BOXD_SLOT_WAIT=20 STUB_BUSY_LISTS=99 STUB_MODE='' expect_code 1 "L18 BOXD_POLL sets the poll interval: 20 polls of 0.05 s"
+expect_true "L18 a 20-poll wait at BOXD_POLL=0.05 takes about a second, not 20" test $((SECONDS - started)) -lt 5
 new_repo; BOXD_SLOT_WAIT=x STUB_MODE='' expect_code 2 "L18 non-numeric BOXD_SLOT_WAIT is refused"
-new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
+new_repo; export BOXD_LOCK_WAIT=600; echo p >p2.md
 BOXD_MAX_VMS=2 STUB_BUSY_LISTS=4 loop/boxd.sh swarm build prompt.md p2.md >out 2>err || true
 expect_true "L18 swarm children wait for a slot an outside VM holds" test "$(grep -c ' ok$' out)" = 2
 
@@ -670,14 +673,14 @@ new_repo; STUB_TARFAIL=1 STUB_MODE='' expect_code 0 "L19 a tar failure in the fi
 expect_true "L19 the tar retry made a second VM" test "$(count_log 'machine new ru-t ')" = 2
 expect_true "L19 the upload retry is visible in the output" grep -q 'upload to ru-t failed within 30 s (exit 2); retrying once' err
 new_repo; STUB_TARFAIL=99 STUB_MODE='' expect_code 1 "L19 two tar failures fail the run"
-new_repo; BOXD_RETRY_WITHIN=1 STUB_TARFAIL=1 STUB_TARFAIL_SLEEP=2 STUB_MODE='' expect_code 2 "L19 a late upload failure is not retried"
+new_repo; BOXD_RETRY_WITHIN=0 STUB_TARFAIL=1 STUB_TARFAIL_SLEEP=1.1 STUB_MODE='' expect_code 2 "L19 a late upload failure is not retried"
 expect_true "L19 a late failure made one VM" test "$(count_log 'machine new ru-t ')" = 1
 new_repo; STUB_MODE=no-output expect_code 1 "L19 a run whose agent produced nothing is not retried"
 expect_true "L19 no second VM after the agent ran" test "$(count_log 'machine new ru-t ')" = 1
 expect_true "L19 the no-output event is recorded with VM and phase" grep -q ' ru-t agent no-output' loop/out/events.log
 new_repo; STUB_MODE=deadline expect_code 1 "L19 a wedged agent run fails"
 expect_true "L19 the deadline event is recorded, not retried" bash -c "grep -q ' ru-t agent deadline-exceeded' loop/out/events.log && test \"\$(grep -c 'machine new ru-t ' log)\" = 1"
-new_repo; BOXD_AGENT_TIMEOUT=8 STUB_CLAUDE_SLEEP=5 STUB_MODE=deadline expect_code 1 "L21 a silent run that the boxd stub ends with DeadlineExceeded after 5 s fails, inside a longer BOXD_AGENT_TIMEOUT"
+new_repo; BOXD_AGENT_TIMEOUT=3 STUB_CLAUDE_SLEEP=1 STUB_MODE=deadline expect_code 1 "L21 a silent run that the boxd stub ends with DeadlineExceeded after 1 s fails, inside a longer BOXD_AGENT_TIMEOUT"
 expect_true "L21 no timeout message when the deadline came from boxd" bash -c '! grep -q "agent timed out after" err'
 expect_true "L21 the no-output message is used" grep -q "agent produced no output" err
 expect_true "L21 the deadline event is recorded for that run" grep -q " ru-t agent deadline-exceeded" loop/out/events.log
@@ -692,14 +695,14 @@ expect_true "L19 the build check's deadline event is recorded with VM and phase"
 
 # L20: each swarm review prompt may carry its own ref after an @; without one it uses BOXD_REF.
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
-export BOXD_LOCK_WAIT=30
+export BOXD_LOCK_WAIT=600
 loop/boxd.sh swarm review prompt.md@feat p2.md >out 2>err
 replay_on_vm "$dir/vm1" ru-reviewer-1
 replay_on_vm "$dir/vm2" ru-reviewer-2
 expect_true "L20 the prompt with @feat reviews feat" test -e "$dir/vm1/roundup/g"
 expect_true "L20 the prompt without a ref reviews HEAD" bash -c "! test -e '$dir/vm2/roundup/g'"
 new_repo; git switch -qc feat; echo y >g; git add g; git commit -qm feat; git switch -q main; git update-ref refs/remotes/origin/main main; echo p >p2.md
-export BOXD_LOCK_WAIT=30
+export BOXD_LOCK_WAIT=600
 BOXD_REF=feat loop/boxd.sh swarm review prompt.md@main p2.md >out 2>err
 replay_on_vm "$dir/vm1" ru-reviewer-1
 replay_on_vm "$dir/vm2" ru-reviewer-2
@@ -712,7 +715,7 @@ expect_true "L20 an unknown ref is refused" test "$got" -eq 2
 if grep -q 'machine new' log; then echo "FAIL: L20 VM created for an unknown ref"; failures=$((failures + 1)); else echo "ok:   L20 no VM for an unknown ref"; fi
 
 # swarm, status, kill
-new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md; echo p >p3.md
+new_repo; export BOXD_LOCK_WAIT=600; echo p >p2.md; echo p >p3.md
 if STUB_MODE='' loop/boxd.sh swarm build prompt.md p2.md p3.md >out 2>err; then echo "ok:   L12 swarm exits 0 when every agent succeeds"; else echo "FAIL: L12 swarm exit"; failures=$((failures + 1)); fi
 for n in 1 2 3; do
   expect_true "L12 status line for ru-builder-$n" grep -qx "ru-builder-$n ok" out
@@ -722,13 +725,13 @@ expect_true "L12 exactly one line per VM" test "$(wc -l <out | tr -d ' ')" = 3
 
 # At most BOXD_MAX_VMS agents at once, counted from the VMs that actually exist; 2 proves they do overlap.
 for cap in 1 2; do
-  new_repo; export BOXD_LOCK_WAIT=60; echo p >p2.md; echo p >p3.md
-  BOXD_MAX_VMS=$cap STUB_CLAUDE_SLEEP=2 loop/boxd.sh swarm build prompt.md p2.md p3.md >out 2>err || true
+  new_repo; export BOXD_LOCK_WAIT=1200; echo p >p2.md; echo p >p3.md
+  BOXD_MAX_VMS=$cap STUB_CLAUDE_SLEEP=1 loop/boxd.sh swarm build prompt.md p2.md p3.md >out 2>err || true
   expect_true "L12 cap $cap: all three agents ran" test "$(grep -c ' ok$' out)" = 3
   expect_true "L12 cap $cap: never more than $cap VMs at once" test "$(sort -n cp/maxlog | tail -1)" = "$cap"
 done
 
-new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
+new_repo; export BOXD_LOCK_WAIT=600; echo p >p2.md
 if STUB_MODE=check-fails loop/boxd.sh swarm build prompt.md p2.md >out 2>err; then echo "FAIL: L12 failing agents reported ok"; failures=$((failures + 1)); else echo "ok:   L12 failing agents fail the swarm"; fi
 expect_true "L12 each failing agent gets its own failed line" test "$(grep -c 'failed rc=7 (see loop/out/runs/swarm-[0-9]*-[12].log)' out)" = 2
 expect_true "L12 the two lines name different VMs" test "$(grep -c '^ru-builder-1 failed' out)$(grep -c '^ru-builder-2 failed' out)" = 11
@@ -747,7 +750,7 @@ refused "L12 swarm with an unknown role" swarm nope prompt.md
 refused "L12 swarm with no prompt files" swarm build
 
 # SIGTERM: the swarm removes its VMs and its children die, instead of burning quota to the end.
-new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md
+new_repo; export BOXD_LOCK_WAIT=600; echo p >p2.md
 STUB_CLAUDE_SLEEP=30 loop/boxd.sh swarm build prompt.md p2.md >out 2>err &
 swarm_pid=$!
 for _ in $(seq 100); do [ "$(find cp -name 'exec-*.pid' | wc -l | tr -d ' ')" = 2 ] && break; sleep 0.1; done
@@ -761,7 +764,7 @@ expect_log 'machine remove ru-builder-2' "L12 interrupt removes ru-builder-2"
 expect_true "L12 interrupt stops the agents" bash -c "for f in cp/exec-*.pid; do ! kill -0 \$(cat \$f) 2>/dev/null || exit 1; done"
 
 # A name that already exists is someone else's: an interrupted swarm must not remove it.
-new_repo; export BOXD_LOCK_WAIT=30; echo p >p2.md; touch cp/alive-ru-builder-1
+new_repo; export BOXD_LOCK_WAIT=600; echo p >p2.md; touch cp/alive-ru-builder-1
 STUB_CLAUDE_SLEEP=30 loop/boxd.sh swarm build prompt.md p2.md >out 2>err &
 swarm_pid=$!
 for _ in $(seq 100); do [ -e cp/exec-ru-builder-2.pid ] && break; sleep 0.1; done
@@ -775,6 +778,11 @@ expect_true "L13 status shows agent-running" grep -qx 'ru-builder-1 agent-runnin
 expect_true "L13 status shows idle" grep -qx 'ru-reviewer-2 idle' out
 expect_true "L13 status shows unreachable" grep -qx 'ru-x8-1 unreachable' out
 expect_true "L13 status lists every ru- VM" test "$(wc -l <out | tr -d ' ')" = 8
+new_repo; got=0; STUB_MODE=list-fails loop/boxd.sh status >out 2>err || got=$?
+expect_true "L13 a failed machine list exits 1 naming it" bash -c "test $got = 1 && grep -q 'boxd machine list failed' err"
+new_repo; nobox=$(tr : '\n' <<<"$PATH" | while read -r p; do [ -x "$p/boxd" ] || printf '%s:' "$p"; done)
+got=0; PATH=${nobox%:} loop/boxd.sh status >out 2>err || got=$?
+expect_true "L13 a missing boxd exits 1 naming it" bash -c "test $got = 1 && grep -q 'boxd machine list failed' err"
 new_repo; STUB_MODE=codex-running loop/boxd.sh status >out 2>err
 expect_true "L64 status reports a running Codex Builder" grep -qx 'ru-codex-1 agent-running' out
 
@@ -802,7 +810,7 @@ expect_log 'output-format stream-json --verbose' "L21 claude is run with streame
 # Run in the background so the stream can be read while the fake claude (events-forever) is still running: the
 # stub's exec-<vm>.pid file is the bound the stub emits for "still running".
 new_repo
-BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err &
+BOXD_AGENT_TIMEOUT=2 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err &
 build_pid=$!
 stream=
 for _ in $(seq 100); do
@@ -813,7 +821,7 @@ done
 expect_true "L21 the first event is in the event stream while the stub still runs" bash -c "[ -n '$stream' ] && [ -s '$stream' ] && kill -0 \$(cat cp/exec-ru-t.pid) 2>/dev/null"
 got=0; wait "$build_pid" || got=$?
 if [ "$got" -eq 1 ]; then echo "ok:   L21 an agent still producing events at the timeout exits 1"; else echo "FAIL: L21 an agent still producing events at the timeout exits 1 (wanted exit 1, got $got)"; failures=$((failures + 1)); fi
-expect_true "L21 the timeout message names the seconds and the stream" grep -qE 'agent timed out after 3 s: loop/out/runs/t-.*\.jsonl' err
+expect_true "L21 the timeout message names the seconds and the stream" grep -qE 'agent timed out after 2 s: loop/out/runs/t-.*\.jsonl' err
 expect_true "L21 a timed-out build skips the check" bash -c '! grep -q "just check" log'
 expect_true "L21 a timed-out build saves the diff so far as a partial patch" test -e loop/out/patches/t.partial.patch
 expect_true "L21 a timed-out build writes no final patch" bash -c '! test -e loop/out/patches/t.patch'
@@ -822,10 +830,10 @@ expect_true "L21 the partial patch diffs against base, so a commit the Builder a
 
 # boxd's own --timeout is a no-output deadline: a stub that keeps streaming, and never stops itself, stands in for
 # a real boxd that would otherwise run forever. The outer `timeout 15` only bounds this test against a regression;
-# the assertion is that the run ends at BOXD_AGENT_TIMEOUT=3, not at 15.
-new_repo; got=0; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever-ignoring-boxd-timeout timeout 15 loop/boxd.sh build t prompt.md >out 2>err || got=$?
+# the assertion is that the run ends at BOXD_AGENT_TIMEOUT=1, not at 15.
+new_repo; got=0; BOXD_AGENT_TIMEOUT=1 STUB_MODE=events-forever-ignoring-boxd-timeout timeout 15 loop/boxd.sh build t prompt.md >out 2>err || got=$?
 if [ "$got" -eq 1 ]; then echo "ok:   L21 a wall-clock cutoff ends a run boxd's own --timeout never would"; else echo "FAIL: L21 a wall-clock cutoff ends a run boxd's own --timeout never would (wanted exit 1, got $got)"; failures=$((failures + 1)); fi
-expect_true "L21 that cutoff reports a timeout, naming the seconds" grep -qE 'agent timed out after 3 s: loop/out/runs/t-.*\.jsonl' err
+expect_true "L21 that cutoff reports a timeout, naming the seconds" grep -qE 'agent timed out after 1 s: loop/out/runs/t-.*\.jsonl' err
 expect_true "L21 that cutoff still saves the diff so far as a partial patch" test -e loop/out/patches/t.partial.patch
 
 new_repo; got=0; STUB_MODE=progress-then-result loop/boxd.sh review r prompt.md >out 2>err || got=$?
@@ -862,7 +870,7 @@ expect_true "L21 no PAUSED from a result-less run" bash -c '! test -e loop/out/P
 # successful run removes the stale partial, so the result file is always from the latest run.
 new_repo; STUB_MODE='' loop/boxd.sh build t prompt.md >out 2>err
 expect_true "L21 setup: a successful build writes the stable patch" test -e loop/out/patches/t.patch
-BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
+BOXD_AGENT_TIMEOUT=1 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
 expect_true "L21 a timed-out run after a successful one removes the stale patch" bash -c '! test -e loop/out/patches/t.patch'
 STUB_MODE='' loop/boxd.sh build t prompt.md >out 2>err
 expect_true "L21 a successful run after a timed-out one removes the stale partial patch" bash -c '! test -e loop/out/patches/t.partial.patch'
@@ -881,7 +889,7 @@ got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
 expect_true "L21 a failed check keeps its exit code (2)" test "$got" -eq 7
 expect_true "L21 a failed check after a successful build removes the stale patch" bash -c '! test -e loop/out/patches/t.patch'
 
-new_repo; BOXD_AGENT_TIMEOUT=3 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
+new_repo; BOXD_AGENT_TIMEOUT=1 STUB_MODE=events-forever loop/boxd.sh build t prompt.md >out 2>err || true
 expect_true "L21 setup: a timed-out build writes the partial patch" test -e loop/out/patches/t.partial.patch
 got=0; STUB_MODE=check-fails loop/boxd.sh build t prompt.md >out 2>err || got=$?
 expect_true "L21 a failed check after a timed-out build replaces the candidate patch" test -s loop/out/patches/t.partial.patch

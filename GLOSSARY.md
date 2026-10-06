@@ -1,6 +1,6 @@
 # roundup
 
-roundup supervises coding Agents in one Project from a macOS App. Names use these terms (`AGENTS.md` rule 6); _Avoid_ words are allowed only under `crates/agents/claude_code/`, where Claude Code's own terms live.
+roundup supervises coding Agents in one Project from a macOS App. Names use these terms (`AGENTS.md` rule 6); _Avoid_ words are allowed only under `crates/agents/src/claude_code/`, where Claude Code's own terms live.
 
 ## Language
 

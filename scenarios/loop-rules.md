@@ -7,7 +7,7 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 | 0 | holds |
 | 1 | a rule is broken; stderr names it |
 | 2 | bad input or usage, before any network call |
-| 4 | `gh` failed or exceeded `BOXD_GH_TIMEOUT` (20 s); never read as a pass |
+| 4 | `gh` failed or exceeded `BOXD_GH_TIMEOUT` (20 s, fractions allowed); never read as a pass |
 
 **L1 size.** `size` prints an advisory and still exits 0 when a PR spans more than one module directory or about 2000 changed lines, lockfiles and `generated/` excluded.
 
@@ -25,7 +25,7 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 | d | a `loop/out/verdicts/` file holding an open PR's full head SHA was written 5 minutes ago or more, and no verdict names that head | PR number | `Driver` |
 | e | a PR merged after `loop/stalls.sh` landed, which `class` prints `post` for, has no verdict on its merged head 60 minutes after merge | PR number | `Driver` |
 
-`check` reads all of `gh` before changing a file; `gh` failing or slower than `BOXD_GH_TIMEOUT` exits 4 naming it and changes nothing. `report` prints `<kind> <subject> owner <owner> due <deadline>` once per file not yet printed; a file deleted and written again prints again. Tests use a fake `gh` and set file times: one case per kind, none holding, `since` kept, a cleared file deleted, `report` twice, a `gh` failure and a timeout.
+`check` reads all of `gh` before changing a file; `gh` failing or slower than `BOXD_GH_TIMEOUT` exits 4 naming it and changes nothing. `report` prints `<kind> <subject> owner <owner> due <deadline>` once per file not yet printed; a file deleted and written again prints again. The Driver runs `check` then `report` each tick (`.agents/driver.md`). Tests use a fake `gh` and set file times: one case per kind, none holding, `since` kept, a cleared file deleted, `report` twice, a `gh` failure and a timeout.
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 
@@ -43,7 +43,7 @@ Module: `loop/rules.sh`, `loop/percy.sh` for L36 and `loop/stalls.sh` for L28. E
 
 **L46 merge-ready.** `merge-ready <pr>` prints `ready <head SHA>` only when `base`, `rounds`, the lane's trailer rule and `proof` hold and `check` and `rules` passed on that exact head.
 
-**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`; a visible PR adds L76's lines, and a Proof image link fails it.
+**L53 proof.** `proof <pr>` passes only when the body has `## Shape` and `## Proof` in the format of `.agents/data/pr.md`, Proof naming the head SHA or an ancestor followed on the first-parent line only by clean merges of `main` (L54) and empty `Reviewed-by-Agent` commits; a `Principles:` line is optional and never read as scenario ids; a visible PR adds L76's lines, and a Proof image link fails it.
 
 **L54 carry.** `carry <pr>` keeps an approval across later merges of `main` that conflict nowhere and change nothing beyond the clean merge (`clean-merge <commit>`); such a merge needs no `Author-Agent`, so a human can merge `main` in from GitHub.
 

@@ -4,13 +4,14 @@ Data for the Builder, and for the Reviewer judging a body.
 
 ## Body
 
-- `Scenarios: <ids>` and the `PRINCIPLES.md` ids it serves.
+- `Scenarios: <ids>`; a `Principles: <ids>` line only when a `PRINCIPLES.md` id applies.
 - `## Shape`: the smallest call, component or file tree, sequence or diff that makes the change clear, at most 40 lines (`show-me`).
-- `## Proof`: the full head SHA and a fenced test-output block with a passing line per scenario id.
+- `## Proof`: the full SHA tested (the head, or an ancestor followed only by clean merges of `main` and empty approvals, L53) and a fenced test-output block with a passing line per scenario id.
   - `apps/desktop/src` change (L76): `Percy: https://percy.io/…/builds/<n>`, the link the head's `percy` job writes to its summary (L36). No images.
   - `crates/desktop` change (L76): `macOS: <what you saw in just app>`; Percy renders Chromium only, so WKWebView is the one laptop check.
   - Specification only: `Proof scope: specification`, fenced output with `just check: exit 0`, `Specification consistency: <review>`, one `Pending <id>: <observer>` per scenario. Never for production, contract, glossary, policy or mixed changes.
 - `Moves: D<n>, …` for a change under `apps/desktop/src` (rule 8).
+- Nothing else: no boilerplate, sandbox-failure notes, history or section this list does not name; one footer.
 
 ## Labels (L57, by hand)
 

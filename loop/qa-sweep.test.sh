@@ -143,6 +143,9 @@ JUST
   done
   printf 'l52_consecutive_sweeps_release_harness_passed\n'
 
+  grep -qx '      - run: loop/qa-sweep.test.sh' "$root/.github/workflows/loop.yml"
+  printf 'l52_loop_workflow_runs_these_tests_passed\n'
+
   if [[ ${QA_SWEEP_LIVE:-0} == 1 ]]; then
     [[ -n $real_browser ]] || { echo 'agent-browser is required for live visibility test' >&2; exit 1; }
     mkdir -p "$scratch/live-bin"
