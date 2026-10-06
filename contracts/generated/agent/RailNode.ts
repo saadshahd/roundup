@@ -27,4 +27,9 @@ terminal_id: string | null,
 /**
  * `None` for a Terminal, or when the Project's `worktrees` setting was off.
  */
-worktree: Worktree | null, };
+worktree: Worktree | null, 
+/**
+ * A22: true only for an exited Agent or Door with saved conversation data (A21) and no
+ * start in flight. `false` for a Terminal.
+ */
+can_resume: boolean, };

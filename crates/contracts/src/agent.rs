@@ -52,6 +52,9 @@ pub struct RailNode {
     pub terminal_id: Option<String>,
     /// `None` for a Terminal, or when the Project's `worktrees` setting was off.
     pub worktree: Option<Worktree>,
+    /// A22: true only for an exited Agent or Door with saved conversation data (A21) and no
+    /// start in flight. `false` for a Terminal.
+    pub can_resume: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

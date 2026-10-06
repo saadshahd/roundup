@@ -39,6 +39,9 @@ enum Ending {
     Exited,
     /// Roundup killed it on purpose, so the exit that follows is not an error.
     Stopped,
+    /// A21: roundup could not save the Agent's conversation. Final like `Stopped`: the Exit that
+    /// follows (roundup kills the Terminal once this is set) must not overwrite the error.
+    Failed,
 }
 
 pub struct ClaudeCode {
@@ -137,7 +140,7 @@ impl ClaudeCode {
 
     fn exit(&mut self, code: Option<i32>) -> Option<Status> {
         self.star_held_since = None;
-        if self.ending == Ending::Stopped {
+        if matches!(self.ending, Ending::Stopped | Ending::Failed) {
             return None;
         }
         self.ending = Ending::Exited;
@@ -147,6 +150,17 @@ impl ClaudeCode {
             Some(code) => self.settle(Kind::Error, format!("exited {code}")),
             None => self.settle(Kind::Error, "exited by signal".into()),
         }
+    }
+
+    /// A21: roundup itself could not save the Agent's conversation. Final: no later Observation
+    /// changes the Status again, the Exit that follows the Terminal being stopped included.
+    pub fn fail(&mut self, label: String) -> Option<Status> {
+        if self.ending != Ending::Running {
+            return None;
+        }
+        self.ending = Ending::Failed;
+        self.star_held_since = None;
+        self.settle(Kind::Error, label)
     }
 }
 
@@ -194,6 +208,36 @@ pub fn event_name(payload: &Value) -> &str {
 pub fn submitted_prompt(payload: &Value) -> Option<&str> {
     (payload["hook_event_name"] == "UserPromptSubmit")
         .then(|| payload["prompt"].as_str().unwrap_or_default())
+}
+
+/// A21: the conversation a `SessionStart` payload names, accepted only as a UUID; `None` for any
+/// other payload, or one whose `session_id` is not a UUID.
+pub fn conversation_id(payload: &Value) -> Option<String> {
+    (payload["hook_event_name"] == "SessionStart")
+        .then(|| payload["session_id"].as_str())
+        .flatten()
+        .filter(|id| is_uuid(id))
+        .map(str::to_owned)
+}
+
+/// A22: whether a `SessionStart` payload says it began with `--resume`; `None` for any other
+/// payload.
+pub fn session_source(payload: &Value) -> Option<&str> {
+    (payload["hook_event_name"] == "SessionStart")
+        .then(|| payload["source"].as_str())
+        .flatten()
+}
+
+/// `8-4-4-4-12` lowercase or uppercase hex, dashes at those exact positions; no other form (no
+/// braces, no `urn:uuid:`) is accepted as a conversation id.
+fn is_uuid(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    bytes.len() == 36
+        && [8, 13, 18, 23].iter().all(|&i| bytes[i] == b'-')
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| matches!(i, 8 | 13 | 18 | 23) || b.is_ascii_hexdigit())
 }
 
 /// What one hook payload says about the Agent. `None` for events that say nothing: the late

@@ -96,6 +96,7 @@ export type RpcMethods = {
   "takeover.begin": { params: message_TakeoverParams; result: null };
   "takeover.end": { params: message_TakeoverParams; result: null };
   "rail.remove": { params: agent_NodeId; result: null };
+  "agent.resume": { params: agent_NodeId; result: agent_RailNode };
 };
 
 export type RpcMethodName = keyof RpcMethods;

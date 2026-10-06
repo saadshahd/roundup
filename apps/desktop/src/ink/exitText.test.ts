@@ -29,6 +29,7 @@ describe("u7 exited wording", () => {
       attempt: "1", status_revision: null,
       terminal_id: id === "none" ? null : `t-${id}`,
       worktree: null,
+      can_resume: false,
     }));
 
     app.handlers["rail.tree"] = () => nodes;
