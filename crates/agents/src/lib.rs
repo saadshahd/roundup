@@ -1162,7 +1162,20 @@ impl Agents {
         })
     }
 
+    /// A7: start a Room's Door. A23: a Door with A21 data resumes that conversation exactly as
+    /// `resume` does (so a saved conversation that cannot resume fails and never starts fresh);
+    /// any other Door, its first start included, starts fresh.
     async fn start_door(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
+        let saved = {
+            let rail = self.shared.rail();
+            if rail.node(id)?.kind != NodeKind::Room {
+                return Err(RpcError::conflict(format!("{id} is not a Room")));
+            }
+            rail.has_conversation(id)?
+        };
+        if saved {
+            return self.resume_saved(ctx, id).await;
+        }
         let attempt = {
             let mut rail = self.shared.rail();
             let node = rail.node(id)?;
@@ -1219,12 +1232,22 @@ impl Agents {
     /// node. `can_resume` reads false for the whole pending window (A20's Starting/Resuming
     /// mechanism already keeps `agent.stop` and `rail.remove` from claiming the id meanwhile).
     async fn resume(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
-        let (attempt, conversation_id, worktree, saved_cwd, done_rx) = {
-            let mut rail = self.shared.rail();
+        {
+            let rail = self.shared.rail();
             let node = rail.node(id)?;
             if node.kind != NodeKind::Agent {
                 return Err(RpcError::conflict(format!("{id} is not an Agent")));
             }
+        }
+        self.resume_saved(ctx, id).await
+    }
+
+    /// A22's launch, acknowledgement, rollback and serialization for an Agent (`agent.resume`) or
+    /// a Door (A23's `rail.startDoor`) whose kind the caller has checked.
+    async fn resume_saved(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
+        let (attempt, conversation_id, worktree, saved_cwd, done_rx) = {
+            let mut rail = self.shared.rail();
+            let node = rail.node(id)?;
             let mut runs = self.shared.runs();
             match runs.get(id) {
                 Some(Slot::Starting { .. }) => {
