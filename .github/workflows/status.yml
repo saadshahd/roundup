@@ -1,0 +1,53 @@
+name: status
+
+# L80: rewrites the Status issue's body each hour and after each build and review run; an edit notifies no one. At
+# 08:03 UTC, or on dispatch with daily, it also counts the tokens and posts the page as one comment, which notifies the
+# user the issue is assigned to. A PR waiting on the user pings through merge-ready's assignment (L79), not here.
+on:
+  schedule:
+    - cron: '37 * * * *'
+    - cron: '3 8 * * *'
+  workflow_run:
+    workflows: [build, review]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      daily:
+        description: Count the tokens and post the page as a comment
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# A newer page replaces a running one; the daily run has its own group, so no burst cancels its comment.
+concurrency:
+  group: status-${{ (github.event.schedule == '3 8 * * *' || inputs.daily) && 'daily' || 'page' }}
+  cancel-in-progress: ${{ !(github.event.schedule == '3 8 * * *' || inputs.daily) }}
+
+jobs:
+  page:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
+      checks: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          DAILY: ${{ github.event.schedule == '3 8 * * *' || inputs.daily }}
+        run: |
+          issue=$(loop/status.sh issue)
+          if [ "$DAILY" = true ]; then
+            loop/status.sh page --cost >"$RUNNER_TEMP/page.md"
+          else
+            gh issue view "$issue" --json body --jq .body | loop/status.sh page >"$RUNNER_TEMP/page.md"
+          fi
+          gh issue edit "$issue" --body-file "$RUNNER_TEMP/page.md"
+          if [ "$DAILY" = true ]; then gh issue comment "$issue" --body-file "$RUNNER_TEMP/page.md"; fi

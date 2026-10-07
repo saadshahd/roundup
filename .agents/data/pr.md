@@ -13,7 +13,7 @@ Data for the Builder, and for the Reviewer judging a body.
 ## Commits and branches
 
 - Every authored commit carries `Author-Agent: <id>` (`human-saad` for the user's own); a clean merge of `main` needs none (L54), and a Copilot Autofix accepted on GitHub is authored by `copilot` (L37).
-- A Builder's branch is `build/<slug>`, named in its task; a branch left behind with no open PR stops its row from building again until the user deletes it (L23).
+- A Builder's branch is `build/<slug>`, named in its task; a branch left behind with no open PR and no Builder stops its row from building again until the user deletes it; the Status issue lists it (L80).
 - Rows merge in their `After` order. A stacked PR (its scenario says "after X" or "may stack") branches from its base, touches no file the base touches, and merges after it.
 - Behind `main`: merge `origin/main` in (a stacked branch merges its base first), `just check`, push; never rebase a branch with a review in flight.
 - Lockfile conflict: take main's file and regenerate (`git checkout origin/main -- Cargo.lock && cargo update -w`; `git checkout origin/main -- pnpm-lock.yaml && pnpm install`), committed with the merge.

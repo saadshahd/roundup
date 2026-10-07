@@ -232,6 +232,9 @@ The branch `build/<slug>` the build queue pushes at `main` to hold one Work row 
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
 
+**Status issue**:
+The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it each hour and posts it as a comment at 08:03 UTC (L80).
+
 **Retro**:
 One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); the user merges it.
 

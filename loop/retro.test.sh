@@ -139,6 +139,17 @@ holds 'L27 report divides by merged product PRs' grep -qx 'Weighted tokens per m
 holds 'L27 report classifies each reject, not each approve' bash -c 'grep -qx "| real-defect | behaviour | 90%, 80% | #1 2026-10-09T00:45:00Z |" "$FIXTURES/out" && test "$(wc -l <"$FIXTURES/jev-requests")" -eq 1'
 holds 'L27 report names a PR whose verdicts it could not read' grep -qx 'Verdicts unread on PR #4: merge-ready: no Author-Agent trailers' "$FIXTURES/out"
 holds 'L27 report lists the costliest run first' bash -c 'grep -A4 "^## Costliest runs" "$FIXTURES/out" | tail -n1 | grep -qx "| 50 | builder | U3 | 3.5M | success |"'
+
+# L80 cost, on the report's PRs and Ledger
+check 'L80 cost reads merged PRs and the Ledger after since' 0 loop/retro.sh cost 2026-10-08T23:00:00Z
+holds 'L80 cost is the weighted tokens per merged product PR' test "$(cat "$FIXTURES/out")" = 1.9M
+check 'L80 cost after the last merge' 0 loop/retro.sh cost 2026-10-09T05:00:00Z
+holds 'L80 cost with no product PR merged says so' test "$(cat "$FIXTURES/out")" = 'no product PR merged'
+check 'L80 cost without a UTC time fails before reading' 2 loop/retro.sh cost yesterday
+touch "$FIXTURES/gh-fail"
+check 'L80 a cost gh failure exits 4' 4 loop/retro.sh cost 2026-10-08T23:00:00Z
+rm "$FIXTURES/gh-fail"
+
 echo 4 >"$FIXTURES/verdicts-4.code"
 check 'L27 a verdicts gh failure exits 4' 4 loop/retro.sh report
 echo 1 >"$FIXTURES/verdicts-4.code"; touch "$FIXTURES/curl-fail"
