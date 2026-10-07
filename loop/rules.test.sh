@@ -32,6 +32,16 @@ expect() {
 
 rules() { loop/rules.sh "$1"; }
 
+# L82
+workflows="$(dirname "$script")/../.github/workflows"
+pipefail_everywhere() {
+  local w
+  for w in "${1:-$workflows}"/*.yml; do
+    [ "$(grep -A2 -x 'defaults:' "$w" | tr -d ' \n')" = defaults:run:shell:bash ] || return 1
+  done
+}
+expect pass 'L82 every workflow runs its steps under bash -eo pipefail' pipefail_everywhere
+
 # vocab
 new_repo
 expect pass "L3 vocab: clean" rules vocab

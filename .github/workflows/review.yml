@@ -16,6 +16,11 @@ concurrency:
 permissions:
   contents: read
 
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # Reads main's scripts and main's Reviewer prompt, never the PR's.
   due:

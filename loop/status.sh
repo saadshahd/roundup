@@ -5,7 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
+# shellcheck source=loop/lib.sh
+. loop/lib.sh
 now=${LOOP_NOW:-$(date -u +%s)}
 at() { jq -nr --argjson t "$1" "\$t | strftime(\"$2\")"; }
 stuck_hours=6

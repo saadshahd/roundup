@@ -25,6 +25,11 @@ concurrency:
   group: status-${{ (github.event.schedule == '3 8 * * *' || inputs.daily) && 'daily' || 'page' }}
   cancel-in-progress: ${{ !(github.event.schedule == '3 8 * * *' || inputs.daily) }}
 
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   page:
     runs-on: ubuntu-latest

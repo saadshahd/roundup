@@ -51,6 +51,8 @@ Module: `loop/rules.sh`, `loop/runs.sh`, `loop/retro.sh`, `loop/status.sh`, `loo
 
 **L85 row time.** `status.sh page` adds a Row time row: the median and p90 hours, over the rows merged in the last 7 days, from a row's ready time to the merge of the PR naming its ids. A row's ready time is the later of the commit adding its ids' headings and the first commit adding a test of its last `After` id.
 
+**L82 pipefail.** Every workflow under `.github/workflows/` sets `defaults.run.shell: bash`, so GitHub runs each `run` step under `bash -eo pipefail` and a failing command left of a pipe fails the step.
+
 ## Work
 
 | Ids | Item | Owns | Keeps green | After |

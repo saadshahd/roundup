@@ -29,6 +29,11 @@ concurrency:
   group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # Not named merge-ready: a job of that name would also publish a check run with the status's name.
   compute:
@@ -59,7 +64,8 @@ jobs:
           }
           paths=$(gh pr diff "$pr" --name-only) || fail "merge-ready: cannot read the PR diff"
           # L78: the user merges loop machinery by hand, so nothing armed may merge it on green.
-          if printf '%s\n' "$paths" | loop/rules.sh touches | grep -qx loop; then
+          kinds=$(printf '%s\n' "$paths" | loop/rules.sh touches) || fail "merge-ready: cannot sort the PR's paths"
+          if grep -qx loop <<<"$kinds"; then
             auto_merge=$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null') || fail "merge-ready: cannot read auto-merge on a loop PR"
             if [ "$auto_merge" = true ]; then
               gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a loop PR"
@@ -72,7 +78,7 @@ jobs:
           state=success
           if [ "$code" -ne 0 ]; then state=failure; fi
           if [ "$code" -eq 2 ]; then out="merge-ready not built"; fi
-          desc=$(printf '%s' "$out" | head -n1 | cut -c1-140)
+          desc=$(head -n1 <<<"$out" | cut -c1-140)
           gh api "repos/$REPO/statuses/$sha" -f state="$state" -f context=merge-ready -f description="${desc:-$state}"
           # L79: a reason only the user clears labels the PR flag:needs-user, assigns the owner and keeps one comment
           # asking it; a run with none left takes the label and the assignee off. Every reason line counts, not the first.
