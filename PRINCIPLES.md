@@ -43,3 +43,10 @@ A Room holds its Door, Agents, Terminals, Todos, dependencies and Sketches, and 
 
 - Gate: does a new kind of item lack a Home the user can change, or does an Agent's placement override the user's?
 - Observer: one item of each kind made in Home A, moved to B, found only in B, the move in Provenance.
+
+## P7 A bound folds, never deletes (goal)
+
+Every cap roundup puts on what a Door or the user reads shortens it by folding older Messages into one; it never makes them unreadable. A Message that stands for others names their ids, and each stays readable through `message.get` by whoever could read it before, so the reader can always open what a summary stands for.
+
+- Gate: does a cap, merge or rollup make a Message unreadable to a reader that could read it, or replace Messages with one that does not name their ids?
+- Observer: after B22's burst of 100 changes, every pushed digest is delivered or reachable from a delivered one through the ids merges name, and `message.get` opens each for its Door.
