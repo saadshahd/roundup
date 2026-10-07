@@ -9,7 +9,7 @@ gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
 every=20
 jev_model=jev-1.13.0
 
-# L29: one Ledger row for an agent run. Turns and tokens come from the run's `result` entry; a run cut off before it
+# L29: one Ledger row for an agent run. Its models, turns and tokens come from the run's `result` entry; a run cut off before it
 # has one sums its assistant messages, each message id once, since a message repeats per content block.
 ledger() {
   local role=$1 subject=$2 file=$3 conclusion=$4
@@ -21,7 +21,8 @@ ledger() {
                 cache_write: (map(.cache_write) | add // 0), cache_read: (map(.cache_read) | add // 0)};
     (map(select(.type == "result")) | last) as $result
     | (map(select(.type == "assistant" and .message.id)) | unique_by(.message.id)) as $said
-    | {role: $role, subject: $subject, run: $run}
+    | {role: $role, subject: $subject, run: $run,
+       model: ((if $result then ($result.modelUsage // {} | keys) else ($said | map(.message.model // empty) | unique) end) | join(","))}
     + if $result then {turns: ($result.num_turns // 0), exit: ($result.subtype // $conclusion)} + ($result.usage // {} | tokens)
       else {turns: ($said | length), exit: (if length == 0 then "no-run" else $conclusion end)} + ($said | map(.message.usage // {} | tokens) | total)
       end'
@@ -103,7 +104,7 @@ ledger_rows() {
 }
 
 # L27: the Retro's input as markdown: PRs by kind, Ledger totals by role, tokens per merged product PR, each reject
-# classified, and the costliest runs. Weights: input 1, cache write 1.25, cache read 0.1, output 5.
+# classified, and the costliest runs. Runs group by role and model, so a Retro can weigh Sonnet against Opus. Weights: input 1, cache write 1.25, cache read 0.1, output 5.
 report() {
   local start prs pr kinds rows rejects unread dir code
   start=$(since)
@@ -137,8 +138,8 @@ report() {
     | "# Retro: \($prs | length) PRs merged since \($since)", "",
       "| Kind | PRs |", "|---|---|",
       ($prs | group_by(.kind)[] | "| \(.[0].kind) | \(length) |"), "",
-      "| Role | Runs | Not success | Turns | Weighted tokens |", "|---|---|---|---|---|",
-      ($rows | group_by(.role)[] | "| \(.[0].role) | \(length) | \(map(select(.exit != "success")) | length) | \(map(.turns) | add) | \(map(weighted) | add | m) |"), "",
+      "| Role | Model | Runs | Not success | Turns | Weighted tokens |", "|---|---|---|---|---|---|",
+      ($rows | group_by([.role, .model])[] | "| \(.[0].role) | \(.[0].model) | \(length) | \(map(select(.exit != "success")) | length) | \(map(.turns) | add) | \(map(weighted) | add | m) |"), "",
       "Weighted tokens per merged product PR: \(if $product > 0 then $total / $product | m else "no product PR merged" end)", "",
       "## Rejects", "",
       "| Kind | Class | Confidence | Verdict |", "|---|---|---|---|",

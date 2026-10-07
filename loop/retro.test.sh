@@ -78,14 +78,14 @@ merged() {
 
 # L29 ledger
 fresh
-printf '[{"type":"system"},{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5}}},{"type":"result","subtype":"success","num_turns":3,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40}}]\n' >"$FIXTURES/run.json"
+printf '[{"type":"system"},{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5}}},{"type":"result","subtype":"success","num_turns":3,"modelUsage":{"claude-sonnet-5-5":{},"claude-haiku-4-5":{}},"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40}}]\n' >"$FIXTURES/run.json"
 check 'L29 a finished run is one row' 0 loop/retro.sh ledger builder 'U105–U107' "$FIXTURES/run.json" success
-holds 'L29 turns and tokens come from the result entry' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U105–U107","run":"77","turns":3,"exit":"success","input":10,"output":20,"cache_write":30,"cache_read":40}'
-printf '[{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":100}}},{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":100}}},{"type":"user"},{"type":"assistant","message":{"id":"m2","usage":{"input_tokens":7,"output_tokens":2,"cache_creation_input_tokens":9}}}]\n' >"$FIXTURES/cut.json"
+holds 'L29 turns and tokens come from the result entry' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U105–U107","run":"77","model":"claude-haiku-4-5,claude-sonnet-5-5","turns":3,"exit":"success","input":10,"output":20,"cache_write":30,"cache_read":40}'
+printf '[{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":100}}},{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":100}}},{"type":"user"},{"type":"assistant","message":{"id":"m2","model":"claude-opus-5-5","usage":{"input_tokens":7,"output_tokens":2,"cache_creation_input_tokens":9}}}]\n' >"$FIXTURES/cut.json"
 check 'L29 a run cut off before its result is one row' 0 loop/retro.sh ledger reviewer 12 "$FIXTURES/cut.json" failure
-holds 'L29 each assistant message counts once' test "$(cat "$FIXTURES/out")" = '{"role":"reviewer","subject":"12","run":"77","turns":2,"exit":"failure","input":12,"output":3,"cache_write":9,"cache_read":100}'
+holds 'L29 each assistant message counts once' test "$(cat "$FIXTURES/out")" = '{"role":"reviewer","subject":"12","run":"77","model":"claude-opus-5-5","turns":2,"exit":"failure","input":12,"output":3,"cache_write":9,"cache_read":100}'
 check 'L29 a run that never started is a row' 0 loop/retro.sh ledger builder U3 '' failure
-holds 'L29 it reads no-run with no tokens' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U3","run":"77","turns":0,"exit":"no-run","input":0,"output":0,"cache_write":0,"cache_read":0}'
+holds 'L29 it reads no-run with no tokens' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U3","run":"77","model":"","turns":0,"exit":"no-run","input":0,"output":0,"cache_write":0,"cache_read":0}'
 check 'L29 an unknown role fails before reading' 2 loop/retro.sh ledger driver U3 '' failure
 
 # L27 due
@@ -126,14 +126,14 @@ jq -n '[{number: 1, title: "U3 thing", headRefName: "build/U3", mergedAt: "2026-
   {number: 4, title: "U4", headRefName: "build/U4", mergedAt: "2026-10-09T03:00:00Z", files: [{path: "apps/desktop/src/a.tsx"}]},
   {number: 5, title: "loop 2", headRefName: "l", mergedAt: "2026-10-09T04:00:00Z", files: [{path: ".agents/builder.md"}]}]' >"$FIXTURES/merged"
 printf '{"artifacts":[{"name":"ledger-50-builder-U3","expired":false,"created_at":"2026-10-09T00:30:00Z","workflow_run":{"id":50}},{"name":"ledger-51-reviewer-1","expired":false,"created_at":"2026-10-09T00:40:00Z","workflow_run":{"id":51}},{"name":"ledger-40-builder-U1","expired":false,"created_at":"2026-10-08T20:00:00Z","workflow_run":{"id":40}},{"name":"percy","expired":false,"created_at":"2026-10-09T00:40:00Z","workflow_run":{"id":52}}]}\n' >"$FIXTURES/artifacts"
-printf '{"role":"builder","subject":"U3","run":"50","turns":40,"exit":"success","input":1000000,"output":200000,"cache_write":400000,"cache_read":10000000}\n' >"$FIXTURES/ledger-50-builder-U3"
-printf '{"role":"reviewer","subject":"1","run":"51","turns":9,"exit":"error_max_turns","input":100000,"output":20000,"cache_write":0,"cache_read":1000000}\n' >"$FIXTURES/ledger-51-reviewer-1"
+printf '{"role":"builder","subject":"U3","run":"50","model":"claude-sonnet-5-5","turns":40,"exit":"success","input":1000000,"output":200000,"cache_write":400000,"cache_read":10000000}\n' >"$FIXTURES/ledger-50-builder-U3"
+printf '{"role":"reviewer","subject":"1","run":"51","model":"claude-opus-5-5","turns":9,"exit":"error_max_turns","input":100000,"output":20000,"cache_write":0,"cache_read":1000000}\n' >"$FIXTURES/ledger-51-reviewer-1"
 printf '{"verdict":"reject","at":"2026-10-09T00:45:00Z","body":"VERDICT: reject\\nrule 2: dead code"}\n{"verdict":"approve","at":"2026-10-09T00:55:00Z","body":"VERDICT: approve"}\n' >"$FIXTURES/verdicts-1"
 printf 'merge-ready: no Author-Agent trailers\n' >"$FIXTURES/verdicts-4"; echo 1 >"$FIXTURES/verdicts-4.code"
 check 'L27 report reads the Ledger, PRs and rejects' 0 loop/retro.sh report
 holds 'L27 report counts PRs merged since the last Retro' grep -qx '# Retro: 4 PRs merged since 2026-10-08T23:00:00Z' "$FIXTURES/out"
 holds 'L27 report counts each kind' bash -c 'grep -qx "| product | 2 |" "$FIXTURES/out" && grep -qx "| loop | 1 |" "$FIXTURES/out" && grep -qx "| spec | 1 |" "$FIXTURES/out"'
-holds 'L27 report sums the Ledger by role, weighted' bash -c 'grep -qx "| builder | 1 | 0 | 40 | 3.5M |" "$FIXTURES/out" && grep -qx "| reviewer | 1 | 1 | 9 | 0.3M |" "$FIXTURES/out"'
+holds 'L27 report sums the Ledger by role and model, weighted' bash -c 'grep -qx "| builder | claude-sonnet-5-5 | 1 | 0 | 40 | 3.5M |" "$FIXTURES/out" && grep -qx "| reviewer | claude-opus-5-5 | 1 | 1 | 9 | 0.3M |" "$FIXTURES/out"'
 holds 'L27 report leaves out runs before the last Retro' bash -c '! grep -q "U1" "$FIXTURES/out"'
 holds 'L27 report divides by merged product PRs' grep -qx 'Weighted tokens per merged product PR: 1.9M' "$FIXTURES/out"
 holds 'L27 report classifies each reject, not each approve' bash -c 'grep -qx "| real-defect | behaviour | 90%, 80% | #1 2026-10-09T00:45:00Z |" "$FIXTURES/out" && test "$(wc -l <"$FIXTURES/jev-requests")" -eq 1'

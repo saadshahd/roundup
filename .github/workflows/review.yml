@@ -1,7 +1,8 @@
 name: review
 
 # L24: one Reviewer run per Code PR head, once check passes on it. The Reviewer holds only a read token and answers in
-# a fixed schema; the post job publishes that answer as the verdict merge-ready trusts.
+# a fixed schema; the post job publishes that answer as the verdict merge-ready trusts. It runs on Opus, since a
+# missed defect merges; Builders and the Retro run on Sonnet, whose misses the Reviewer or the user still sees.
 on:
   workflow_run:
     workflows: [check]

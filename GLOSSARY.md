@@ -224,7 +224,7 @@ A PR touching `apps/`, `crates/` or `contracts/`; one Reviewer run reviews each 
 `loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a PR touching it waits for the user's merge (L46).
 
 **Ledger**:
-One row per agent run (role, subject, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
+One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
 
 **Retro**:
 One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); the user merges it.
