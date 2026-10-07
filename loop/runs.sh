@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The steps between GitHub's events and one-shot agent runs; each workflow step calls one subcommand.
-# Usage: loop/runs.sh queue [max] | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
+# Usage: loop/runs.sh queue [max] | claim | unclaim | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
 # Exit 4 is a gh failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -10,20 +10,64 @@ gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
 # A subject (a Work row's ids or a PR number) as one word for a branch or an artifact name.
 slug_def='def slug: gsub("[^A-Za-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-");'
 
-# L23: up to <max> ready Work rows of `loop/rules.sh ready` as the build matrix [{ids, file, slug}]. It skips loop
-# machinery (scenarios/loop-*.md: the user's or a Retro's) and a row whose branch build/<slug> exists with no open PR:
-# its Builder pushed and stopped, and a new run would pay for the same row again.
+# L23: Builder jobs (`build (…)`) still queued or running in any build.yml run; they hold slots of max across ticks.
+builders() {
+  local ids id count n=0
+  ids=$(gh_or_4 run list --workflow build.yml --limit 50 --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId') || exit 4
+  for id in $ids; do
+    count=$(gh_or_4 run view "$id" --json jobs --jq '[.jobs[] | select((.name | startswith("build (")) and .status != "completed")] | length') || exit 4
+    n=$((n + count))
+  done
+  echo "$n"
+}
+
+# L23: ready Work rows of `loop/rules.sh ready` as the build matrix [{ids, file, slug}], at most <max> less the Builders
+# still running. It skips loop machinery (scenarios/loop-*.md: the user's or a Retro's) and a row whose Claim, the
+# branch build/<slug>, exists: a Builder holds it, or stopped on its PR. Reads only; `claim` pushes.
 queue() {
-  local max=${1:-4} rows branches
+  local max=${1:-4} rows branches running
   rows=$(loop/rules.sh ready)
   branches=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
-  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$max" --arg branches "$branches" "$slug_def"'
+  running=$(builders)
+  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" "$slug_def"'
     ($branches | [scan("refs/heads/build/(\\S+)")[0]]) as $taken
     | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
        | select(.file | startswith("scenarios/loop-") | not)
        | .slug = (.ids | slug)
        | select(.slug as $s | $taken | any(. == $s) | not)]
     | .[:$max]'
+}
+
+# L23: pushes each queued row's Claim (stdin: the queue), build/<slug> at HEAD, the main commit its rows were read
+# from, and prints the rows it claimed. Only a new branch is a Claim: one that exists, even at HEAD, belongs to
+# another run, so its row is skipped. A push that fails for any other reason exits 4.
+claim() {
+  local sha claimed
+  sha=$(git rev-parse HEAD)
+  claimed=$(jq -c '.[]' | while IFS= read -r row; do
+    slug=$(jq -r .slug <<<"$row")
+    pushed=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:" origin "$sha:refs/heads/build/$slug" 2>&1) || true
+    if grep -q '^\*' <<<"$pushed"; then
+      echo "$row"
+    elif ! grep -qE '^[=!]' <<<"$pushed"; then
+      echo "git push of build/$slug failed: $pushed" >&2
+      exit 4
+    fi
+  done)
+  jq -sc . <<<"$claimed"
+}
+
+# L23: after a tick's Builders end, however they end, deletes the Claim of each row (stdin: the claimed queue) whose
+# branch has no PR, so the next tick builds that row again. A branch with a PR, open or not, stays.
+unclaim() {
+  local slugs slug prs
+  slugs=$(jq -r '.[].slug')
+  for slug in $slugs; do
+    prs=$(gh_or_4 pr list --head "build/$slug" --state all --json number --jq length)
+    [ "$prs" = 0 ] || continue
+    git push -q origin --delete "refs/heads/build/$slug" || { echo "git push --delete build/$slug failed" >&2; exit 4; }
+    echo "freed build/$slug"
+  done
 }
 
 # Sets the step output `prompt`: `.agents/<role>.md` byte for byte, then the task read from stdin, so every run of a
@@ -85,7 +129,9 @@ swept() {
 }
 
 case "${1:-}" in
-  queue) queue "${2:-4}" ;;
+  queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" ;;
+  claim) claim ;;
+  unclaim) unclaim ;;
   slug) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; jq -rn --arg s "$2" "$slug_def"' $s | slug' ;;
   prompt) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; prompt "$2" ;;
   review-due) [[ ${2:-} =~ ^[0-9]+$ && ${3:-} =~ ^[0-9a-f]{40}$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; review_due "$2" "$3" ;;

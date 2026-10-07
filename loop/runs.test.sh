@@ -34,6 +34,9 @@ case "$*" in
   'pr comment '*' --body-file -') cat >"$FIXTURES/comment" ;;
   'workflow run '*) ;;
   'run list --workflow qa.yml '*) cat "$FIXTURES/runs" ;;
+  'run list --workflow build.yml '*) jq -r "${@: -1}" "$FIXTURES/build-runs" ;;
+  'run view '*' --json jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/jobs-$3" ;;
+  'pr list --head build/'*' --state all --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 GH
@@ -61,6 +64,7 @@ fresh() {
   : >"$FIXTURES/verdicts"
   printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":"Scenarios: U3\\nMoves: D2\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
   printf 'crates/rupd/src/main.rs\nscenarios/ui.md\n' >"$FIXTURES/paths"
+  echo '[]' >"$FIXTURES/build-runs"
 }
 say() { jq -nc --arg v "$1" --argjson current "${2:-false}" '{verdict: $v, head: null, current: $current, body: ("VERDICT: " + $v + "\nfinding")}' >>"$FIXTURES/verdicts"; }
 
@@ -80,8 +84,49 @@ holds 'L23 an empty queue is an empty list' test "$(cat "$FIXTURES/out")" = '[]'
 touch "$FIXTURES/ready-fail"
 check 'L23 a failed ready exits 4' 4 loop/runs.sh queue
 rm "$FIXTURES/ready-fail"
+printf 'ready U3 scenarios/ui.md\nready U4 scenarios/ui.md\nready U7 scenarios/ui.md\nready U8 scenarios/ui.md\n' >"$FIXTURES/ready"
+echo '[{"databaseId":71,"status":"in_progress"},{"databaseId":72,"status":"queued"},{"databaseId":70,"status":"completed"}]' >"$FIXTURES/build-runs"
+echo '{"jobs":[{"name":"queue","status":"completed"},{"name":"build (U1, scenarios/ui.md, U1)","status":"in_progress"},{"name":"build (U2, scenarios/ui.md, U2)","status":"completed"},{"name":"unclaim","status":"queued"}]}' >"$FIXTURES/jobs-71"
+echo '{"jobs":[{"name":"build (U9, scenarios/ui.md, U9)","status":"queued"}]}' >"$FIXTURES/jobs-72"
+check 'L23 queue counts Builders of other runs' 0 loop/runs.sh queue 4
+holds 'L23 a queued or running Builder of any tick takes a slot of max' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U3","U4"]'
+check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
+holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
+touch "$FIXTURES/gh-fail"
+check 'L23 a failed run list exits 4' 4 loop/runs.sh queue
+rm "$FIXTURES/gh-fail"
+check 'L23 a max that is no number exits 2' 2 loop/runs.sh queue four
 check 'L23 slug of a range' 0 loop/runs.sh slug 'U105–U107, U109'
 holds 'L23 slug joins words with one dash' test "$(cat "$FIXTURES/out")" = U105-U107-U109
+
+# L23 claim
+fresh
+base=$(git rev-parse HEAD)
+check 'L23 claim pushes new branches' 0 bash -c 'echo '"'"'[{"ids":"U3","file":"scenarios/ui.md","slug":"U3"},{"ids":"U5","file":"scenarios/ui.md","slug":"U5"}]'"'"' | loop/runs.sh claim'
+holds 'L23 claim prints only the rows it claimed' test "$(jq -c 'map(.slug)' "$FIXTURES/out")" = '["U3"]'
+holds 'L23 a Claim is build/<slug> at the main commit the rows came from' test "$(git ls-remote origin refs/heads/build/U3 | cut -f1)" = "$base"
+check 'L23 claim again' 0 bash -c 'echo '"'"'[{"ids":"U3","file":"scenarios/ui.md","slug":"U3"}]'"'"' | loop/runs.sh claim'
+holds 'L23 a branch already at that commit is no Claim' test "$(cat "$FIXTURES/out")" = '[]'
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m newer
+git push -q origin HEAD:refs/heads/build/U8
+git reset -q --hard "$base"
+check 'L23 claim behind a branch' 0 bash -c 'echo '"'"'[{"ids":"U8","file":"scenarios/ui.md","slug":"U8"}]'"'"' | loop/runs.sh claim'
+holds 'L23 a branch at another commit is no Claim and stays where it was' bash -c 'test "$(cat "$FIXTURES/out")" = "[]" && test "$(git ls-remote origin refs/heads/build/U8 | cut -f1)" != "'"$base"'"'
+check 'L23 an empty queue claims nothing' 0 bash -c 'echo "[]" | loop/runs.sh claim'
+holds 'L23 nothing claimed is an empty list' test "$(cat "$FIXTURES/out")" = '[]'
+git remote set-url origin "$dir/missing.git"
+check 'L23 a failed push exits 4' 4 bash -c 'echo '"'"'[{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'"'"' | loop/runs.sh claim'
+git remote set-url origin "$dir/origin.git"
+
+# L23 unclaim
+fresh
+git push -q origin HEAD:refs/heads/build/U10 HEAD:refs/heads/build/U11
+echo 1 >"$FIXTURES/prs-U11"
+check 'L23 unclaim after the Builders end' 0 bash -c 'echo '"'"'[{"ids":"U10","file":"scenarios/ui.md","slug":"U10"},{"ids":"U11","file":"scenarios/ui.md","slug":"U11"}]'"'"' | loop/runs.sh unclaim'
+holds 'L23 a Claim with no PR is freed, one with a PR stays' bash -c 'test "$(cat "$FIXTURES/out")" = "freed build/U10" && ! git ls-remote --exit-code origin refs/heads/build/U10 >/dev/null && git ls-remote --exit-code origin refs/heads/build/U11 >/dev/null'
+touch "$FIXTURES/gh-fail"
+check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'echo '"'"'[{"ids":"U11","file":"scenarios/ui.md","slug":"U11"}]'"'"' | loop/runs.sh unclaim'
+holds 'L23 a failed PR list frees nothing' git ls-remote --exit-code origin refs/heads/build/U11
 
 # prompt
 fresh

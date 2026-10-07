@@ -223,6 +223,9 @@ A PR touching `apps/`, `crates/` or `contracts/`; one Reviewer run reviews each 
 **Loop machinery**:
 `loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a PR touching it waits for the user's merge (L46).
 
+**Claim**:
+The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23).
+
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
 
