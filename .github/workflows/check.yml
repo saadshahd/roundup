@@ -1,7 +1,9 @@
 name: check
 
 on:
+  # ready_for_review reruns check on a Builder's finished head, which starts its review (L24).
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 

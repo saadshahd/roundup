@@ -42,11 +42,13 @@ prompt() {
   } >>"$GITHUB_OUTPUT"
 }
 
-# L24: prints the Reviewer's task and exits 0 when <head> of a Code PR needs a verdict; prints why not and exits 1.
+# L24: prints the Reviewer's task and exits 0 when <head> of a ready Code PR needs a verdict; prints why not and exits 1.
+# A draft is skipped: its Builder is still pushing, and `gh pr ready` reruns check on the head it finished with.
 review_due() {
   local pr=$1 head=$2 view paths touched verdicts
-  view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body)
+  view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body,isDraft)
   [ "$(jq -r '"\(.state) \(.headRefOid)"' <<<"$view")" = "OPEN $head" ] || { echo "PR #$pr is not open at $head"; return 1; }
+  [ "$(jq -r .isDraft <<<"$view")" = false ] || { echo "PR #$pr is a draft"; return 1; }
   paths=$(gh_or_4 pr diff "$pr" --name-only)
   touched=$(printf '%s\n' "$paths" | loop/rules.sh touches)
   grep -qx code <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }

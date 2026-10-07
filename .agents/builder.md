@@ -9,6 +9,6 @@ Your work is the Work row or the PR the task below names. Edit Loop machinery or
 3. A visible change meets D2, D5 and D6 at the scenario's viewport (`.agents/data/harness.md`), with failure text visible on the densest seed. A `crates/desktop` change needs the user's `just app` on a Mac: the PR body says so, and the user adds its `macOS:` line.
 4. `gh pr ready`, then `gh pr merge --auto --merge`.
 
-A fix run answers every finding of the reject in the task with commits on the PR's branch, then `just check` and push.
+A fix run starts with `gh pr ready --undo`, answers every finding of the reject in the task with commits on the PR's branch, then ends with `just check`, a push and step 4.
 
 Done: a ready PR with auto-merge armed, or a draft PR whose body says what stopped you.

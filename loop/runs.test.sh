@@ -29,7 +29,7 @@ set -euo pipefail
 echo "gh $*" >>"$FIXTURES/trace"
 [ ! -e "$FIXTURES/gh-fail" ] || exit 1
 case "$*" in
-  'pr view '*' --json state,headRefOid,body') cat "$FIXTURES/view" ;;
+  'pr view '*' --json state,headRefOid,body,isDraft') cat "$FIXTURES/view" ;;
   'pr diff '*' --name-only') cat "$FIXTURES/paths" ;;
   'pr comment '*' --body-file -') cat >"$FIXTURES/comment" ;;
   'workflow run '*) ;;
@@ -59,7 +59,7 @@ fresh() {
   rm -f "$FIXTURES"/*
   : >"$FIXTURES/trace"
   : >"$FIXTURES/verdicts"
-  printf '{"state":"OPEN","headRefOid":"%s","body":"Scenarios: U3\\nMoves: D2\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
+  printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":"Scenarios: U3\\nMoves: D2\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
   printf 'crates/rupd/src/main.rs\nscenarios/ui.md\n' >"$FIXTURES/paths"
 }
 say() { jq -nc --arg v "$1" --argjson current "${2:-false}" '{verdict: $v, head: null, current: $current, body: ("VERDICT: " + $v + "\nfinding")}' >>"$FIXTURES/verdicts"; }
@@ -113,7 +113,10 @@ fresh; say approve true
 check 'L24 a verdict covering the head is not repeated' 1 loop/runs.sh review-due 7 "$head"
 fresh; printf 'docs/a.md\nloop/rules.sh\n' >"$FIXTURES/paths"
 check 'L24 a PR without product code is not reviewed' 1 loop/runs.sh review-due 7 "$head"
-fresh; printf '{"state":"OPEN","headRefOid":"%s","body":""}\n' "$(printf 'b%.0s' {1..40})" >"$FIXTURES/view"
+fresh; printf '{"state":"OPEN","isDraft":true,"headRefOid":"%s","body":""}\n' "$head" >"$FIXTURES/view"
+check 'L24 a draft is not reviewed' 1 loop/runs.sh review-due 7 "$head"
+holds 'L24 the draft is named' grep -qx 'PR #7 is a draft' "$FIXTURES/out"
+fresh; printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":""}\n' "$(printf 'b%.0s' {1..40})" >"$FIXTURES/view"
 check 'L24 a head that moved is not reviewed' 1 loop/runs.sh review-due 7 "$head"
 fresh; touch "$FIXTURES/gh-fail"
 check 'L24 a gh failure exits 4' 4 loop/runs.sh review-due 7 "$head"
