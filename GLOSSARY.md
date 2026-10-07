@@ -218,7 +218,10 @@ A screen the Design critic runs that no Builder's prompt lists.
 ### The loop
 
 **Code PR**:
-A PR touching `apps/`, `crates/` or `contracts/`; one Reviewer run reviews each of its heads, and it merges only on an approve (L46).
+A PR touching `apps/`, `crates/`, `contracts/` or a Build file; one Reviewer run reviews each of its heads, and it merges only on an approve (L46).
+
+**Build file**:
+What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `rust-toolchain.toml`, `tsconfig.json`, `.oxlintrc.json`, `.fallowrc.json`, `.cargo/` and `tools/` (L46).
 
 **Loop machinery**:
 `loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a PR touching it waits for the user's merge (L46).
