@@ -105,7 +105,7 @@ fresh; printf 'U5\nU7\nU8\n' >"$FIXTURES/builders"
 check 'L80 page with nothing to report' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 the body starts with its marker and the time' bash -c 'head -n2 "$FIXTURES/out" | tr "\n" " " | grep -q "^<!-- loop-status --> Loop status at 2026-10-09 12:00 UTC\."'
 holds 'L80 an empty row reads nothing' bash -c 'for r in "Needs you" Blocked Watch; do grep -qx "| $r | nothing |" "$FIXTURES/out" || exit 1; done'
-holds 'L80 with no earlier count the Tokens row says when it comes' grep -qx '| Tokens per merged product PR | counted at 08:00 UTC |' "$FIXTURES/out"
+holds 'L80 with no earlier count the Tokens row says when it comes' grep -qx '| Tokens per merged product PR | counted at 08:03 UTC |' "$FIXTURES/out"
 holds 'L80 without --cost the Ledger is not read' test ! -e "$FIXTURES/cost-since"
 
 # L80 page: merged PRs and the token count

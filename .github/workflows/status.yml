@@ -1,12 +1,12 @@
 name: status
 
 # L80: rewrites the Status issue's body each hour and after each build and review run; an edit notifies no one. At
-# 08:00 UTC, or on dispatch with daily, it also counts the tokens and posts the page as one comment, which notifies the
+# 08:03 UTC, or on dispatch with daily, it also counts the tokens and posts the page as one comment, which notifies the
 # user the issue is assigned to. A PR waiting on the user pings through merge-ready's assignment (L79), not here.
 on:
   schedule:
     - cron: '37 * * * *'
-    - cron: '0 8 * * *'
+    - cron: '3 8 * * *'
   workflow_run:
     workflows: [build, review]
     types: [completed]
@@ -22,8 +22,8 @@ permissions:
 
 # A newer page replaces a running one; the daily run has its own group, so no burst cancels its comment.
 concurrency:
-  group: status-${{ (github.event.schedule == '0 8 * * *' || inputs.daily) && 'daily' || 'page' }}
-  cancel-in-progress: ${{ !(github.event.schedule == '0 8 * * *' || inputs.daily) }}
+  group: status-${{ (github.event.schedule == '3 8 * * *' || inputs.daily) && 'daily' || 'page' }}
+  cancel-in-progress: ${{ !(github.event.schedule == '3 8 * * *' || inputs.daily) }}
 
 jobs:
   page:
@@ -41,7 +41,7 @@ jobs:
           persist-credentials: false
       - env:
           GH_TOKEN: ${{ github.token }}
-          DAILY: ${{ github.event.schedule == '0 8 * * *' || inputs.daily }}
+          DAILY: ${{ github.event.schedule == '3 8 * * *' || inputs.daily }}
         run: |
           issue=$(loop/status.sh issue)
           if [ "$DAILY" = true ]; then

@@ -29,7 +29,7 @@ page() {
     cost=$(loop/retro.sh cost "$week")
     tokens="| Tokens per merged product PR | $cost over 7 days, counted $(at "$now" '%Y-%m-%d %H:%M') UTC |"
   else
-    tokens=$(grep -m1 '^| Tokens per merged product PR |' || echo '| Tokens per merged product PR | counted at 08:00 UTC |')
+    tokens=$(grep -m1 '^| Tokens per merged product PR |' || echo '| Tokens per merged product PR | counted at 08:03 UTC |')
   fi
   merged=$(gh_or_4 pr list --state merged --search "merged:>=$week" --limit 1000 --json mergedAt |
     jq -r --arg day "$day" --arg week "$week" 'map(.mergedAt) | "\(map(select(. >= $day)) | length) today, \(map(select(. >= $week)) | length) in 7 days"')
@@ -70,7 +70,7 @@ page() {
     --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
     def cell: if length == 0 then "nothing" else map(gsub("\\|"; "\\|")) | join("<br>") end;
     "<!-- loop-status -->",
-    "Loop status at \($at) UTC. This body is rewritten each hour; at 08:00 UTC the same table lands as a comment.", "",
+    "Loop status at \($at) UTC. This body is rewritten each hour; at 08:03 UTC the same table lands as a comment.", "",
     "| Row | Now |", "|---|---|",
     "| Merged | \($merged) |", $tokens,
     "| Needs you | \($needs | cell) |", "| Blocked | \($blocked | cell) |", "| Watch | \($watch | cell) |"'
