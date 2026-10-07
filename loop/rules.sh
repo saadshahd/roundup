@@ -364,6 +364,9 @@ try:
             errors.append(str(error))
     gate(lambda: base_gate(pr))
     gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
+    # L81: a draft whose body says why its Builder stopped waits on the user.
+    stopped = re.search(r'^Stopped: *(\S.*)$', body, re.M) if pr['draft'] is True else None
+    gate(lambda: require(not stopped, 'the Builder stopped: ' + (stopped.group(1).strip() if stopped else '')))
     gate(lambda: require('loop' not in touched, 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md'))
     gate(lambda: checks(head, ('check', 'rules') + (('percy',) if 'ui' in touched else ())))
     gate(lambda: trailer_gate(records, base))

@@ -11,4 +11,4 @@ Your work is the Work row or the PR the task below names. Edit Loop machinery or
 
 A fix run starts with `gh pr ready --undo`, answers every finding of the reject in the task with commits on the PR's branch, then ends with `just check`, a push and step 4.
 
-Done: a ready PR with auto-merge armed, or a draft PR whose body says what stopped you.
+Done: a ready PR with auto-merge armed, or a draft PR whose body has a `Stopped: <what stopped you>` line, which merge-ready asks the user (L81).

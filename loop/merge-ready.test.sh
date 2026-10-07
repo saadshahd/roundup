@@ -87,23 +87,35 @@ loop='the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.
 second='second reject: the user decides'
 mac='a crates/desktop PR needs a macOS: line'
 asked_loop=$'<!-- needs-user -->\nmerge-ready waits on you:\n\n- It touches loop machinery: will you read it and merge it?'
-l79_body() {
-  if [ "$(cat "$BODY")" = "$1" ]; then echo "ok: l79_$2"; else echo "FAIL: l79_$2"; cat "$BODY"; failures=$((failures + 1)); fi
+body_is() {
+  if [ "$(cat "$BODY")" = "$1" ]; then echo "ok: $2"; else echo "FAIL: $2"; cat "$BODY"; failures=$((failures + 1)); fi
 }
 CASE=outside PR_PATH=crates/rupd/src/main.rs GATES_CODE=1
 GATES_OUT="merge-ready: check: missing or not successful on head head"$'\n'"$loop"
 expect l79_a_reason_on_a_later_line_labels_assigns_and_asks 0 $'gates\nstate=failure\nlabel\nassign\ncomment'
-l79_body "$asked_loop" the_comment_asks_the_reason_after_a_marker
+body_is "$asked_loop" l79_the_comment_asks_the_reason_after_a_marker
 ISSUE='{"labels":[{"name":"flag:needs-user"}],"assignees":[{"login":"owner"}]}'
 COMMENTS=$(jq -nc --arg b "$asked_loop" '[{id: 9, user: {login: "github-actions[bot]"}, body: $b}]')
 expect l79_a_repeat_changes_nothing 0 $'gates\nstate=failure'
 GATES_OUT="merge-ready: $second"$'\n'"$loop"$'\n'"$mac"
 COMMENTS=$(jq -nc --arg b "$asked_loop" '[{id: 5, user: {login: "someone"}, body: $b}], [{id: 9, user: {login: "github-actions[bot]"}, body: $b}]')
 expect l79_a_new_reason_edits_the_one_comment 0 $'gates\nstate=failure\nedit'
-l79_body $'<!-- needs-user -->\nmerge-ready waits on you:\n\n- It touches loop machinery: will you read it and merge it?\n- Two rejects stand: will you fix it, merge it or close it?\n- It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.' the_comment_asks_every_reason
+body_is $'<!-- needs-user -->\nmerge-ready waits on you:\n\n- It touches loop machinery: will you read it and merge it?\n- Two rejects stand: will you fix it, merge it or close it?\n- It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.' l79_the_comment_asks_every_reason
 GATES_OUT='ready head' GATES_CODE=0
 expect l79_no_reason_left_takes_the_label_and_the_assignee_off 0 $'gates\nstate=success\nunlabel\nunassign'
 GATES_OUT='merge-ready: check: missing or not successful on head head' GATES_CODE=1
 ISSUE='{"labels":[{"name":"flag:qa-finding"}],"assignees":[{"login":"someone"}]}'
 expect l79_another_reason_touches_no_label_or_assignee 0 $'gates\nstate=failure'
+
+# L81: a draft or closed PR asks only why its Builder stopped.
+draft='merge-ready: PR is closed or draft'
+COMMENTS='[]' ISSUE='{"labels":[{"name":"flag:needs-user"}],"assignees":[{"login":"owner"}]}'
+GATES_OUT="$draft"$'\n'"$loop" GATES_CODE=1
+expect l81_a_draft_touching_loop_machinery_asks_nothing_and_clears_the_label 0 $'gates\nstate=failure\nunlabel\nunassign'
+ISSUE='{"labels":[],"assignees":[]}'
+GATES_OUT="$draft"$'\n'"$second"
+expect l81_a_closed_pr_asks_nothing 0 $'gates\nstate=failure'
+GATES_OUT="$draft"$'\n'"the Builder stopped: needs a GLOSSARY term for Pin."$'\n'"$loop"
+expect l81_a_stopped_draft_labels_assigns_and_asks 0 $'gates\nstate=failure\nlabel\nassign\ncomment'
+body_is $'<!-- needs-user -->\nmerge-ready waits on you:\n\n- The Builder stopped (needs a GLOSSARY term for Pin): will you finish it, or close it and delete its branch to build it again?' l81_the_comment_asks_only_why_it_stopped
 [ "$failures" -eq 0 ]

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The steps between GitHub's events and one-shot agent runs; each workflow step calls one subcommand.
-# Usage: loop/runs.sh queue [max] | claim | unclaim | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
+# Usage: loop/runs.sh queue [max] | claim | unclaim | stopped <branch>... | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
 # Exit 4 is a gh failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -69,6 +69,23 @@ unclaim() {
   done
 }
 
+# L81: after a Builder or fix run ends, however it ends: gives the open draft PR of each <branch> that has no `Stopped:`
+# line one naming the run, as a run cut off by its time or turns leaves none, and dispatches merge-ready, which asks the
+# user (L79). A branch with no open PR, or a ready one, is left alone.
+stopped() {
+  local branch view pr body run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+  for branch in "$@"; do
+    view=$(gh_or_4 pr list --head "$branch" --state open --json number,isDraft,body --jq '.[0] // empty')
+    [ -n "$view" ] || continue
+    pr=$(jq -r .number <<<"$view")
+    body=$(jq -r '.body // ""' <<<"$view")
+    if [ "$(jq -r .isDraft <<<"$view")" != true ] || grep -q '^Stopped: *[^[:space:]]' <<<"$body"; then continue; fi
+    gh_or_4 api -X PATCH "repos/{owner}/{repo}/pulls/$pr" -f body="$body"$'\n\n'"Stopped: the run ended without marking it ready, $run." >/dev/null
+    gh_or_4 workflow run merge-ready.yml -f pr="$pr"
+    echo "stopped #$pr"
+  done
+}
+
 # Sets the step output `prompt`: `.agents/<role>.md` byte for byte, then the task read from stdin, so every run of a
 # role shares the longest prefix a prompt cache can reuse.
 prompt() {
@@ -107,7 +124,7 @@ review_due() {
 # L24: posts the Reviewer's structured output (stdin: {verdict, findings}) as the trusted comment merge-ready reads,
 # then dispatches merge-ready, and on a first reject one fix run. Lines that would forge a field are dropped.
 verdict() {
-  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects
+  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects body
   out=$(cat)
   verdict=$(jq -r '.verdict // empty' <<<"$out" 2>/dev/null) || true
   case $verdict in approve | reject) ;; *) echo "L24: the Reviewer gave no verdict: $out" >&2; exit 1 ;; esac
@@ -116,7 +133,14 @@ verdict() {
   printf 'VERDICT: %s\nHead: %s\n\n%s\n\nReviewed-by-Agent: %s\n' "$verdict" "$head" "$findings" "$reviewer" |
     gh_or_4 pr comment "$pr" --body-file -
   gh_or_4 workflow run merge-ready.yml -f pr="$pr"
-  if [ "$verdict" = reject ] && [ "$rejects" -eq 0 ]; then gh_or_4 workflow run build.yml -f pr="$pr"; fi
+  if [ "$verdict" = reject ] && [ "$rejects" -eq 0 ]; then
+    # L81: the fix run's `gh pr ready --undo` makes the PR a draft again; an old `Stopped:` line would ask the user.
+    body=$(gh_or_4 pr view "$pr" --json body --jq '.body // ""')
+    if grep -q '^Stopped:' <<<"$body"; then
+      gh_or_4 api -X PATCH "repos/{owner}/{repo}/pulls/$pr" -f body="$(grep -v '^Stopped:' <<<"$body")" >/dev/null
+    fi
+    gh_or_4 workflow run build.yml -f pr="$pr"
+  fi
   echo "$verdict"
 }
 
@@ -131,6 +155,7 @@ case "${1:-}" in
   queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" ;;
   claim) claim ;;
   unclaim) unclaim ;;
+  stopped) shift; stopped "$@" ;;
   builders) builders ;;
   slug) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; jq -rn --arg s "$2" "$slug_def"' $s | slug' ;;
   prompt) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; prompt "$2" ;;

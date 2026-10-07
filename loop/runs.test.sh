@@ -37,6 +37,9 @@ case "$*" in
   'run list --workflow build.yml '*) jq -r "${@: -1}" "$FIXTURES/build-runs" ;;
   'run view '*' --json jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/jobs-$3" ;;
   'pr list --head build/'*' --state all --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
+  'pr list --head '*' --state open --json number,isDraft,body --jq '*) jq -r "${@: -1}" "$FIXTURES/open-${4//\//-}" 2>/dev/null || jq -r "${@: -1}" <<<'[]' ;;
+  'pr view '*' --json body --jq '*) jq -r "${@: -1}" "$FIXTURES/view" ;;
+  'api -X PATCH repos/{owner}/{repo}/pulls/'*' -f body='*) printf '%s' "${6#body=}" >"$FIXTURES/patched-${4##*/}" ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 GH
@@ -191,6 +194,31 @@ check 'L24 no verdict posts nothing and fails' 1 bash -c "echo '{\"findings\":\"
 holds 'L24 nothing was posted' bash -c '! grep -q "pr comment" "$FIXTURES/trace"'
 fresh; touch "$FIXTURES/gh-fail"
 check 'L24 a failed post exits 4' 4 bash -c "echo '{\"verdict\":\"approve\",\"findings\":\"\"}' | loop/runs.sh verdict 7 $head reviewer-9"
+
+# L81 a fix run starts with no old Stopped line
+fresh
+printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":"Scenarios: U3\\nStopped: needs a term\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
+check 'L81 a first reject of a PR with a Stopped line is posted' 0 bash -c "echo '{\"verdict\":\"reject\",\"findings\":\"rule 2\"}' | loop/runs.sh verdict 7 $head reviewer-9"
+holds 'L81 the Stopped line is dropped before the fix run starts' bash -c 'test "$(cat "$FIXTURES/patched-7")" = "$(printf "Scenarios: U3\nWhy: because")" &&
+  test "$(grep -n "pulls/7" "$FIXTURES/trace" | cut -d: -f1)" -lt "$(grep -n "build.yml" "$FIXTURES/trace" | cut -d: -f1)"'
+fresh
+check 'L81 a first reject of a PR with no Stopped line is posted' 0 bash -c "echo '{\"verdict\":\"reject\",\"findings\":\"rule 2\"}' | loop/runs.sh verdict 7 $head reviewer-9"
+holds 'L81 a body with no Stopped line is not edited' test ! -e "$FIXTURES/patched-7"
+
+# L81 stopped
+fresh
+echo '[{"number":31,"isDraft":true,"body":"Scenarios: U3"}]' >"$FIXTURES/open-build-U3"
+printf '%s\n' '[{"number":32,"isDraft":true,"body":"Scenarios: U4\nStopped: needs a GLOSSARY term"}]' >"$FIXTURES/open-build-U4"
+echo '[{"number":33,"isDraft":false,"body":"Scenarios: U5"}]' >"$FIXTURES/open-build-U5"
+run_env=(env GITHUB_SERVER_URL=https://github.com GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=55)
+check 'L81 stopped reads each branch'"'"'s open PR' 0 "${run_env[@]}" loop/runs.sh stopped build/U3 build/U4 build/U5 build/U6
+holds 'L81 a draft with no Stopped line gets one naming the run' test "$(cat "$FIXTURES/patched-31")" = \
+  "$(printf 'Scenarios: U3\n\nStopped: the run ended without marking it ready, https://github.com/o/r/actions/runs/55.')"
+holds 'L81 merge-ready is dispatched for it alone' test "$(grep 'workflow run' "$FIXTURES/trace")" = 'gh workflow run merge-ready.yml -f pr=31'
+holds 'L81 a draft with its own Stopped line, a ready PR and no PR are left alone' bash -c 'test ! -e "$FIXTURES/patched-32" && test ! -e "$FIXTURES/patched-33"'
+holds 'L81 stopped names each PR it stopped' test "$(cat "$FIXTURES/out")" = 'stopped #31'
+touch "$FIXTURES/gh-fail"
+check 'L81 a stopped gh failure exits 4' 4 "${run_env[@]}" loop/runs.sh stopped build/U3
 
 # L66 swept
 fresh; printf '[{"headSha":"%s","conclusion":"failure"}]\n' "$head" >"$FIXTURES/runs"
