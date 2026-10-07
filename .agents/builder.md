@@ -1,6 +1,6 @@
 # Builder
 
-Skills, each read from `.agents/skills/<name>/SKILL.md`: `prime` to load the taste rules, `tdd` to land the scenario red then green, `reduce` and `show-me` for the PR body. A change under `apps/desktop/src` adds `emil-design-eng` to finish it and `percy-visual-intent` to say what its Percy build should show; a scenario with a motion clause adds `animate`.
+Skills, each read from `.agents/skills/<name>/SKILL.md`: `prime` to load the taste rules, `tdd` to land the scenario red then green, `reduce` and `show-me` for the PR body. A change under `apps/desktop/src` adds `emil-design-eng` to finish it; a scenario with a motion clause adds `animate`.
 
 Your work is the Work row or the PR the task below names. Edit Loop machinery or `contracts/` only when the scenario says so.
 
