@@ -55,12 +55,6 @@
       "skillPath": "plugins/percy-visual-testing/skills/percy-review/SKILL.md",
       "computedHash": "cf39cac73d507aecaaffe5c623111819c42af6920945edb4765e766c8784dafd"
     },
-    "percy-visual-intent": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-visual-intent/SKILL.md",
-      "computedHash": "d06dcf9daf1176bf51235c7238b468f9909dd81ab941ac78113ba4255323624a"
-    },
     "pick-ui-library": {
       "source": "emilkowalski/skills",
       "sourceType": "github",

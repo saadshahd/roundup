@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for loop/runs.sh with a fake `gh` and a fake `loop/rules.sh` (its `touches` is the real one). Usage: loop/runs.test.sh
+# Tests for loop/runs.sh with a fake `gh`, `loop/rules.sh` (its `touches` is the real one) and `loop/percy.sh`. Usage: loop/runs.test.sh
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,6 +23,13 @@ case $1 in
   *) exit 2 ;;
 esac
 RULES
+cat >"$dir/loop/percy.sh" <<'PERCY'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$1" = build ] || exit 2
+[ ! -e "$FIXTURES/percy-code" ] || exit "$(cat "$FIXTURES/percy-code")"
+echo "41823"
+PERCY
 cat >"$dir/bin/gh" <<'GH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -33,7 +40,7 @@ case "$*" in
   'pr diff '*' --name-only') cat "$FIXTURES/paths" ;;
   'pr comment '*' --body-file -') cat >"$FIXTURES/comment" ;;
   'workflow run '*) ;;
-  'run list --workflow qa.yml '*) cat "$FIXTURES/runs" ;;
+  'run list --workflow qa.yml '*) jq -r "${@: -1}" "$FIXTURES/runs" ;;
   'run list --workflow build.yml '*) jq -r "${@: -1}" "$FIXTURES/build-runs" ;;
   'run view '*' --json jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/jobs-$3" ;;
   'pr list --head build/'*' --state all --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
@@ -43,7 +50,7 @@ case "$*" in
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 GH
-chmod +x "$dir/bin/gh" "$dir/loop/rules.sh" "$dir/loop/runs.sh"
+chmod +x "$dir/bin/gh" "$dir/loop/rules.sh" "$dir/loop/runs.sh" "$dir/loop/percy.sh"
 export PATH="$dir/bin:$PATH" ROOT="$root" FIXTURES="$dir/fixtures"
 mkdir "$FIXTURES"
 cd "$dir"
@@ -119,6 +126,11 @@ check 'L23 claim behind a branch' 0 bash -c 'echo '"'"'[{"ids":"U8","file":"scen
 holds 'L23 a branch at another commit is no Claim and stays where it was' bash -c 'test "$(cat "$FIXTURES/out")" = "[]" && test "$(git ls-remote origin refs/heads/build/U8 | cut -f1)" != "'"$base"'"'
 check 'L23 an empty queue claims nothing' 0 bash -c 'echo "[]" | loop/runs.sh claim'
 holds 'L23 nothing claimed is an empty list' test "$(cat "$FIXTURES/out")" = '[]'
+printf '#!/bin/sh\necho "permission denied" >&2\nexit 1\n' >"$dir/origin.git/hooks/pre-receive"
+chmod +x "$dir/origin.git/hooks/pre-receive"
+check 'L23 a push the remote rejects exits 4, never an empty queue' 4 bash -c 'echo '"'"'[{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'"'"' | loop/runs.sh claim'
+holds 'L23 the remote rejection is named' grep -q 'remote rejected' "$FIXTURES/err"
+rm "$dir/origin.git/hooks/pre-receive"
 git remote set-url origin "$dir/missing.git"
 check 'L23 a failed push exits 4' 4 bash -c 'echo '"'"'[{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'"'"' | loop/runs.sh claim'
 git remote set-url origin "$dir/origin.git"
@@ -152,7 +164,14 @@ holds 'L24 the task leaves out the rest of the body' bash -c '! grep -q "because
 holds 'L24 no Percy step outside apps/desktop/src' bash -c '! grep -q percy-review "$FIXTURES/out"'
 printf 'apps/desktop/src/a.tsx\n' >"$FIXTURES/paths"
 check 'L24 a ui PR is due' 0 loop/runs.sh review-due 7 "$head"
-holds 'L24 a ui PR asks for percy-review' grep -q percy-review "$FIXTURES/out"
+holds 'L24 a ui PR gets percy-review on the Percy build of its head' grep -q 'run percy-review on Percy build 41823, made for this head' "$FIXTURES/out"
+holds 'L24 the intent is the scenarios and the Moves checks, never the author' bash -c 'grep -q "a then-clause of the scenarios above or a D check the Moves: line names; nothing the author wrote counts as intent" "$FIXTURES/out"'
+echo 1 >"$FIXTURES/percy-code"
+check 'L24 a ui PR with no Percy build is due' 0 loop/runs.sh review-due 7 "$head"
+holds 'L24 with no Percy build the Reviewer reviews the code and notes it' grep -q 'no Percy build exists for this head' "$FIXTURES/out"
+echo 4 >"$FIXTURES/percy-code"
+check 'L24 a Percy API failure exits 4' 4 loop/runs.sh review-due 7 "$head"
+rm "$FIXTURES/percy-code"
 fresh; say reject
 check 'L24 one reject leaves the next head due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 earlier verdicts reach the Reviewer' grep -q 'Earlier verdicts' "$FIXTURES/out"
@@ -221,10 +240,13 @@ touch "$FIXTURES/gh-fail"
 check 'L81 a stopped gh failure exits 4' 4 "${run_env[@]}" loop/runs.sh stopped build/U3
 
 # L66 swept
-fresh; printf '[{"headSha":"%s","conclusion":"failure"}]\n' "$head" >"$FIXTURES/runs"
-check 'L66 a head a completed run swept is skipped' 0 loop/runs.sh swept "$head"
-printf '[{"headSha":"%s","conclusion":"cancelled"}]\n' "$head" >"$FIXTURES/runs"
-check 'L66 a cancelled sweep does not count' 1 loop/runs.sh swept "$head"
+fresh; printf '[{"databaseId":81,"headSha":"%s"},{"databaseId":82,"headSha":"%s"},{"databaseId":83,"headSha":"other"}]\n' "$head" "$head" >"$FIXTURES/runs"
+echo '{"jobs":[{"name":"due","steps":[{"name":"swept","conclusion":"success"}]},{"name":"sweep","steps":[{"name":"Run pnpm install --frozen-lockfile","conclusion":"failure"},{"name":"a complete sweep record","conclusion":"failure"}]}]}' >"$FIXTURES/jobs-81"
+echo '{"jobs":[{"name":"due"},{"name":"sweep","steps":[{"name":"Run loop/qa-sweep.sh","conclusion":"failure"},{"name":"a complete sweep record","conclusion":"success"}]}]}' >"$FIXTURES/jobs-82"
+echo '{"jobs":[{"name":"sweep","steps":[{"name":"a complete sweep record","conclusion":"success"}]}]}' >"$FIXTURES/jobs-83"
+check 'L66 a head a run swept to the end is skipped, findings or not' 0 loop/runs.sh swept "$head"
+printf '[{"databaseId":81,"headSha":"%s"},{"databaseId":83,"headSha":"other"}]\n' "$head" >"$FIXTURES/runs"
+check 'L66 a run that failed before or during the sweep does not count' 1 loop/runs.sh swept "$head"
 printf '[]\n' >"$FIXTURES/runs"
 check 'L66 a head no run swept is swept' 1 loop/runs.sh swept "$head"
 touch "$FIXTURES/gh-fail"

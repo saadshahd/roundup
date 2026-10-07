@@ -27,6 +27,7 @@ mkdir -p "$shots"
 : > "$work/scenarios"
 server_pid=
 opened=0
+complete=false
 finding_count=0
 
 record_finding() {
@@ -62,11 +63,11 @@ finish() {
   fi
   record="$out/sweep-$(date -u +%Y%m%dT%H%M%SZ)-$$.json"
   jq -n \
-    --arg head "$head" --arg started "$started" \
+    --arg head "$head" --arg started "$started" --argjson complete "$complete" \
     --slurpfile viewports "$work/viewports" \
     --slurpfile scenarios "$work/scenarios" \
     --slurpfile findings "$work/findings" \
-    '{head:$head,started:$started,viewports:$viewports,scenarios:$scenarios,findings:$findings}' > "$record"
+    '{head:$head,started:$started,complete:$complete,viewports:$viewports,scenarios:$scenarios,findings:$findings}' > "$record"
   rm -rf "$work"
   printf 'L52 record: %s\n' "$record"
   exit "$code"
@@ -195,4 +196,6 @@ done
 
 for id in L52 U5 U15 U20; do jq -nc --arg id "$id" '$id' >> "$work/scenarios"; done
 printf 'l52_two_viewports_and_each_drawer_passed: %s findings\n' "$finding_count"
+# L66: every viewport and Drawer was checked; a fail() before this line leaves the record incomplete.
+complete=true
 if (( finding_count )); then exit 1; fi

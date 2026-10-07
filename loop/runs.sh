@@ -38,8 +38,9 @@ queue() {
 }
 
 # L23: pushes each queued row's Claim (stdin: the queue), build/<slug> at HEAD, the main commit its rows were read
-# from, and prints the rows it claimed. Only a new branch is a Claim: one that exists, even at HEAD, belongs to
-# another run, so its row is skipped. A push that fails for any other reason exits 4.
+# from, and prints the rows it claimed. Only a new branch is a Claim: one that exists, which git reports as up to date
+# or as a lease miss (stale info), belongs to another run, so its row is skipped. Any other result exits 4, a remote
+# rejection included, so a push the token may not make never reads as an empty queue.
 claim() {
   local sha claimed
   sha=$(git rev-parse HEAD)
@@ -48,7 +49,7 @@ claim() {
     pushed=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:" origin "$sha:refs/heads/build/$slug" 2>&1) || true
     if grep -q '^\*' <<<"$pushed"; then
       echo "$row"
-    elif ! grep -qE '^[=!]' <<<"$pushed"; then
+    elif ! grep -qE '^(=|!.*\[rejected\] \(stale info\))' <<<"$pushed"; then
       echo "git push of build/$slug failed: $pushed" >&2
       exit 4
     fi
@@ -105,7 +106,7 @@ prompt() {
 # L24: prints the Reviewer's task and exits 0 when <head> of a ready Code PR needs a verdict; prints why not and exits 1.
 # A draft is skipped: its Builder is still pushing, and `gh pr ready` reruns check on the head it finished with.
 review_due() {
-  local pr=$1 head=$2 view paths touched verdicts
+  local pr=$1 head=$2 view paths touched verdicts code build
   view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body,isDraft)
   [ "$(jq -r '"\(.state) \(.headRefOid)"' <<<"$view")" = "OPEN $head" ] || { echo "PR #$pr is not open at $head"; return 1; }
   [ "$(jq -r .isDraft <<<"$view")" = false ] || { echo "PR #$pr is a draft"; return 1; }
@@ -117,7 +118,15 @@ review_due() {
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }
-  if grep -qx ui <<<"$touched"; then echo 'It touches apps/desktop/src: read its Percy build with percy-review.'; fi
+  if grep -qx ui <<<"$touched"; then
+    code=0
+    build=$(loop/percy.sh build "$head") || code=$?
+    case $code in
+      0) printf 'It touches apps/desktop/src: run percy-review on Percy build %s, made for this head; with a build id it needs no .percy/config.yml. Each diff must match a then-clause of the scenarios above or a D check the Moves: line names; nothing the author wrote counts as intent (rule 5).\n' "$build" ;;
+      1) echo 'It touches apps/desktop/src, but no Percy build exists for this head: review the code alone and say so in a NOTE.' ;;
+      *) exit 4 ;;
+    esac
+  fi
   jq -sr 'if length == 0 then empty else "\nEarlier verdicts, oldest first:\n\n" + (map(.body) | join("\n\n---\n\n")) end' <<<"$verdicts"
 }
 
@@ -144,11 +153,16 @@ verdict() {
   echo "$verdict"
 }
 
-# L66: exits 0 when a completed qa run already swept <sha>, so a tick sweeps main only after it moved.
+# L66: exits 0 when a qa run already swept <sha> to the end, which its step `a complete sweep record` passing proves,
+# so a tick sweeps main only after it moved. A run that failed before or during the sweep does not count.
 swept() {
-  local runs
-  runs=$(gh_or_4 run list --workflow qa.yml --status completed --limit 20 --json headSha,conclusion)
-  jq -e --arg sha "$1" 'any(.[]; .headSha == $sha and (.conclusion == "success" or .conclusion == "failure"))' <<<"$runs" >/dev/null
+  local ids id complete
+  ids=$(gh_or_4 run list --workflow qa.yml --status completed --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$1\") | .databaseId")
+  for id in $ids; do
+    complete=$(gh_or_4 run view "$id" --json jobs --jq '[.jobs[].steps[]? | select(.name == "a complete sweep record" and .conclusion == "success")] | length > 0') || exit 4
+    [ "$complete" != true ] || return 0
+  done
+  return 1
 }
 
 case "${1:-}" in

@@ -9,7 +9,7 @@ Builder, Reviewer, QA and Retro runs are one-shot GitHub Actions jobs, and GitHu
 | Step | Who, where | Skills |
 |---|---|---|
 | 1 Specify | The user, or an `architect` run on request; one spec PR per batch | to-spec, grill-with-docs, anchor |
-| 2 Build | `build.yml` (L23): each hour, one Builder run per ready row, four at most | prime, tdd; UI: emil-design-eng, percy-visual-intent; motion clause: animate |
+| 2 Build | `build.yml` (L23): each hour, one Builder run per ready row, four at most | prime, tdd; UI: emil-design-eng; motion clause: animate |
 | 3 Review | `review.yml` (L24): once `check` passes on a Code PR's head; one fix run after a first reject | review, judge; UI: percy-review |
 | 4 Merge | GitHub auto-merge on `check`, `rules` and `merge-ready` (L46) | — |
 | 5 Observe | `qa.yml` (L66) sweeps `main` every six hours; a `design-critic` run on request | review-animations, break-ui |
