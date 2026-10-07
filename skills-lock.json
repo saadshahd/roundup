@@ -13,29 +13,11 @@
       "skillPath": "skills/animate/SKILL.md",
       "computedHash": "7598d33e7f60dd5c24531eaaa897621cc3bdb48e8050324211627973bc59c4ce"
     },
-    "animation-vocabulary": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/animation-vocabulary/SKILL.md",
-      "computedHash": "0058036865ecbb864fd0c4132efcc62425355d6e99c7e6ef6a936742d62a5dea"
-    },
-    "apple-design": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/apple-design/SKILL.md",
-      "computedHash": "0190417d092a0df447b000154e39733ea6d97efad6d3bec8a6ce3845aeb88914"
-    },
     "break-ui": {
       "source": "emilkowalski/skills",
       "sourceType": "github",
       "skillPath": "skills/break-ui/SKILL.md",
       "computedHash": "60ada67662925f4df5e3c6ff41cac3ab241b66f8898100a5ffcd7ba7196cb868"
-    },
-    "clarify": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/clarify/SKILL.md",
-      "computedHash": "214bc32f3b142a0cc89be3715e85f122e4a0286b261960ca8cf45a2f6f1bdcc7"
     },
     "codebase-design": {
       "source": "mattpocock/skills",
@@ -43,41 +25,11 @@
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "b2888e4f4e8c0af3bfd557575a64b905c44e6248c3101d72077816882b3a92b9"
     },
-    "compose": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/compose/SKILL.md",
-      "computedHash": "7fc40bb358f6cb16bb0e3b6d21bf9500ba3fd0f48bf26f3216a89e40cebff250"
-    },
-    "consult": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/consult/SKILL.md",
-      "computedHash": "4d31c67c815fdfc60f5f7ff2de0fa03f9bebfbd3f7899076804ad5abbfd8a3dc"
-    },
-    "diagnosing-bugs": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
-      "computedHash": "b35c6a6e37c61ca3169532fbab2300dea26f2ad190e1d2dac065800b8b2bb0aa"
-    },
     "domain-modeling": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/domain-modeling/SKILL.md",
       "computedHash": "b3eb40152b81f0c98fd2095a023c019452dbdce56f7540cc67fece2972db8369"
-    },
-    "draft": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/draft/SKILL.md",
-      "computedHash": "d7546e0f0b333d236079200fadf2bdebd397cdb1aa9d103d3150c905864eaccb"
-    },
-    "elicit": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/elicit/SKILL.md",
-      "computedHash": "e61b87339fe8d4f57cc1f30166465801408ff391319d52380cbaf0763845884e"
     },
     "emil-design-eng": {
       "source": "emilkowalski/skills",
@@ -85,95 +37,11 @@
       "skillPath": "skills/emil-design-eng/SKILL.md",
       "computedHash": "51f2537e04d15911b41d78e2de24c36a0e26d41beae15e82a954fe5496a5eda9"
     },
-    "explain": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/explain/SKILL.md",
-      "computedHash": "7a8ebc661ddac5652af542cb38f4f669b57db99c060dbce352ef5fb2a62b0b03"
-    },
-    "find-animation-opportunities": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/find-animation-opportunities/SKILL.md",
-      "computedHash": "465d087c41768e4f14ed640dd049036009f613feb55baaa5831b68b33178f9d2"
-    },
-    "fly": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hunch/skills/fly/SKILL.md",
-      "computedHash": "7f5a6b83bfe50f1591126397da8286fcf1db3d826291310c24bd06062cbfc3fb"
-    },
-    "freeze": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/freeze/SKILL.md",
-      "computedHash": "4f5b80f3126a48b6ef1e829ea7781260d4ed67b0a1ad4abd7cbd2c8a693acdec"
-    },
-    "grasp": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hold/skills/grasp/SKILL.md",
-      "computedHash": "a3fcd8ba3aecbbeb5082d668be199e54263563d1aae70bb85fe57a0c7347cce4"
-    },
-    "grill-me": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/productivity/grill-me/SKILL.md",
-      "computedHash": "9cdbb4b8f7a3aeaef82e6230c9e823500d4a8a1214c726cf342cf9829d34fc7d"
-    },
     "grill-with-docs": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
       "computedHash": "35e62aa423aaeab6a414bcac273f56dfb17802ef2334b41b6a3b00f28196c8cf"
-    },
-    "handoff": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/productivity/handoff/SKILL.md",
-      "computedHash": "20e5f4afdef502637510bc5c64d27645d3c85c88df9cb006824bbb0980166319"
-    },
-    "harvest": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hunch/skills/harvest/SKILL.md",
-      "computedHash": "85446004050985668960155206daf68ec5b293a89cad93d5146ead00035d2093"
-    },
-    "implement-spec": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/implement-spec/SKILL.md",
-      "computedHash": "f0db7dafd236fff9dc40da566cb72bbad6802674f64617b06959b00a436c7d5b"
-    },
-    "improve-animations": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/improve-animations/SKILL.md",
-      "computedHash": "524ea241e41d58bbdd8e288700fe24f5725e2a2f3ae7186ad7cebf9055058356"
-    },
-    "improve-codebase-architecture": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
-      "computedHash": "ac2c94885f34ff8492dc12aa4543182f661f32ea1722b8d6b6c2c7045af33ae3"
-    },
-    "intent": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/intent/SKILL.md",
-      "computedHash": "9f301919ff174f609c014304123b0b52180bb3888c6a4db5b66e972228e14802"
-    },
-    "interrogate": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/interrogate/SKILL.md",
-      "computedHash": "790d06f492d4e246f1408985234be0521764cc27054339658f0c5522c1390822"
-    },
-    "inversion": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/inversion/SKILL.md",
-      "computedHash": "473fc2e90073e6feb9ea9d83b6d813d4d8b16d5facd948d24fe7165a7584341d"
     },
     "judge": {
       "source": "saadshahd/moo.md",
@@ -181,83 +49,17 @@
       "skillPath": "hope/skills/judge/SKILL.md",
       "computedHash": "598ad02257b38fbf215b00f358c0ae8f144702ade3d494f030d82083dfea6f01"
     },
-    "land": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hold/skills/land/SKILL.md",
-      "computedHash": "d2bea34d0090b2544cd63bb107923c1759759df7fc5990d779ed7cbc0c4351c5"
-    },
-    "learn": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hold/skills/learn/SKILL.md",
-      "computedHash": "77ff08e2f419fa373739f07b785637da5c2682cd7d3f23e3e305e57597922dee"
-    },
-    "percy-expand-coverage": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-expand-coverage/SKILL.md",
-      "computedHash": "6e652fbc11ea4df7925f36d36acaf9b0b6c5b8adc8870eeec2c1e40fb2f55987"
-    },
-    "percy-gate": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-gate/SKILL.md",
-      "computedHash": "1aaea9fc78c50c5280a1bdb17ef627a22589f36e038780b2b15cc7ab83ece847"
-    },
-    "percy-integrate": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-integrate/SKILL.md",
-      "computedHash": "1c7c6f598a0f2153ec3a59fc336d9b3f185a21e8d4556ad8d273d7262807fc17"
-    },
-    "percy-migrate": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-migrate/SKILL.md",
-      "computedHash": "8582b12652aff9d92ce5ddf21ea77be11a93aebd36e71cf9e24062edd7c97a33"
-    },
     "percy-review": {
       "source": "percy/percy-visual-testing-agent",
       "sourceType": "github",
       "skillPath": "plugins/percy-visual-testing/skills/percy-review/SKILL.md",
       "computedHash": "cf39cac73d507aecaaffe5c623111819c42af6920945edb4765e766c8784dafd"
     },
-    "percy-run-build": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-run-build/SKILL.md",
-      "computedHash": "3c74b869088a149c22aa43bb93033fd992aa9e6013d6dbd9f38af31ded5faf78"
-    },
-    "percy-setup": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-setup/SKILL.md",
-      "computedHash": "62ba8dfad8634b4c511ee8774b122941d9049837e6e61464d762f4b298fd7a03"
-    },
-    "percy-status": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-status/SKILL.md",
-      "computedHash": "60fb863d78da5f88b7fcb0c2de542d6e31951340a026fe9e0de100129ad0f193"
-    },
-    "percy-troubleshoot": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-troubleshoot/SKILL.md",
-      "computedHash": "6fac3642ab21a3504d680ae6d769d30e606143f4f2b867a2048a72a6050983d8"
-    },
     "percy-visual-intent": {
       "source": "percy/percy-visual-testing-agent",
       "sourceType": "github",
       "skillPath": "plugins/percy-visual-testing/skills/percy-visual-intent/SKILL.md",
       "computedHash": "d06dcf9daf1176bf51235c7238b468f9909dd81ab941ac78113ba4255323624a"
-    },
-    "percy-watch": {
-      "source": "percy/percy-visual-testing-agent",
-      "sourceType": "github",
-      "skillPath": "plugins/percy-visual-testing/skills/percy-watch/SKILL.md",
-      "computedHash": "b4848274c12d28e0a71c9b2bfefd20311472fab16c0476728d9dc20bb4c26294"
     },
     "pick-ui-library": {
       "source": "emilkowalski/skills",
@@ -271,35 +73,11 @@
       "skillPath": "sound/skills/prime/SKILL.md",
       "computedHash": "1497293637e8a80d49dfbec4c32e399d1b6feadc90fc9dd3c0fd63dc041f4db5"
     },
-    "prototype": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/prototype/SKILL.md",
-      "computedHash": "77be567d8c946608fdd15e61b62ab383cdf289a194dce2479828b7eda860d3ba"
-    },
-    "provocation": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/provocation/SKILL.md",
-      "computedHash": "f5358a566c1fa7bd6c3499d1a31aed2d1299355b34966e28ac08a9959299144d"
-    },
     "reduce": {
       "source": "saadshahd/moo.md",
       "sourceType": "github",
       "skillPath": "hope/skills/reduce/SKILL.md",
       "computedHash": "47848d8f2a7afa3c3f4b6798434b891c23873ec50192a9b6a44cd0e9cb7e00b5"
-    },
-    "reframe": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/reframe/SKILL.md",
-      "computedHash": "aa6ea95411264689e465aa0d9acc113da833e209bf58b74031b59a152468b508"
-    },
-    "research": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/research/SKILL.md",
-      "computedHash": "c8c1cba327a6f824b554cd978079a3dadd7406d73174f8fb9bfef58824691970"
     },
     "retro": {
       "source": "mattpocock/skills",
@@ -319,41 +97,11 @@
       "skillPath": "skills/review-animations/SKILL.md",
       "computedHash": "b4e5f0f4fe3e2743c85bf7354108f48a0b9d502cb20ef5c4a9c195da91f93736"
     },
-    "router": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/router/SKILL.md",
-      "computedHash": "c3332c0a64d17e425e6fdfa8368324605bb864537af1918b678a06d27eb0e2e3"
-    },
-    "setup": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "sound/skills/setup/SKILL.md",
-      "computedHash": "e3c27045afbff98aa617904269297d6e28c4d626a523d4ee3ec7036a0d4a3b33"
-    },
-    "shape": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/shape/SKILL.md",
-      "computedHash": "8d67c277e9459af1b42c542f78ac8c3c40bb596e55eb97f0874adab453b544c1"
-    },
-    "shift": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/shift/SKILL.md",
-      "computedHash": "c8efbb554b5074ef11abec7fa808a7daf3d7acff31d276da3875759210ee9dd1"
-    },
     "show-me": {
       "source": "humanlayer/skills",
       "sourceType": "github",
       "skillPath": "plugins/show-me/skills/show-me/SKILL.md",
       "computedHash": "43766f53afe7eb9feba0bb7716590c35cbb8d39d4a91eddef50e9566a6f6ae19"
-    },
-    "target": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/target/SKILL.md",
-      "computedHash": "21989bf211ef465fb93b70d92d48f9bd547746b313652d3bad9f62a08a36b2d4"
     },
     "tdd": {
       "source": "mattpocock/skills",
@@ -366,24 +114,6 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/to-spec/SKILL.md",
       "computedHash": "3fa1a0695d4ea242fae9e569e4d22aa1788623197abb33bfadafae7315789bbf"
-    },
-    "toy": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hold/skills/toy/SKILL.md",
-      "computedHash": "db743882becb39029ebd06fae9f96d55f174eccde1bb839139480db7bf600126"
-    },
-    "wait-what": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/productivity/wait-what/SKILL.md",
-      "computedHash": "1921c02ea4046fd8f9c219140780233fe6e22e2fe4442961378da2ac31f3f403"
-    },
-    "widen": {
-      "source": "saadshahd/moo.md",
-      "sourceType": "github",
-      "skillPath": "hope/skills/widen/SKILL.md",
-      "computedHash": "f4b739b703a5b839dfa07d9cc599efd1afb0c527cba3a8863b2a9033b821830c"
     },
     "writing-for-agents": {
       "source": "mattpocock/skills",

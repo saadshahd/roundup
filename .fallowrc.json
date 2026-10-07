@@ -1,10 +1,7 @@
 {
   "entry": [
     "contracts/**/*.ts",
-    "apps/*/harness.html",
-    "loop/*.run.ts",
-    "loop/qa-coordinator.test.ts",
-    "loop/qa-command.test.ts"
+    "apps/*/harness.html"
   ],
   "ignorePatterns": [
     "tools/oxlint/anti-slop/**",
@@ -12,7 +9,6 @@
   ],
   "ignoreDependencies": [
     "@oxlint/plugins",
-    "@boxd/run",
     "@percy/cli"
   ]
 }

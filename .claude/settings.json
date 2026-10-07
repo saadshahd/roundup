@@ -1,7 +1,5 @@
 {
-  "permissions": {
-    "deny": ["Bash(boxd env set:*)"]
-  },
+  "autoCompactWindow": 200000,
   "enabledPlugins": {
     "sound@moo.md": true
   }
