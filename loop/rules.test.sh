@@ -237,7 +237,7 @@ gate() { loop/rules.sh "$@"; }
 # after the last; the first call replaces the default approve.
 gate_say() {
   gate_set --arg v "$1" --arg sha "$2" --arg agent "${3:-reviewer}" --arg login "${4:-github-actions[bot]}" --arg assoc "${5:-NONE}" \
-    '(.comments // [[]])[0] as $c | .comments = [$c + [{id: ($c | length) + 1, created_at: ("2026-10-03T0\($c | length):00:00Z"),
+    '(.comments // [[]])[0] as $c | .comments = [$c + [{id: (($c | length) + 1), created_at: ("2026-10-03T0\($c | length):00:00Z"),
       user: {login: $login}, author_association: $assoc,
       body: ("VERDICT: \($v)\n" + (if $sha == "" then "" else "Head: \($sha)\n" end) + "\nReviewed-by-Agent: \($agent)")}]]'
 }
