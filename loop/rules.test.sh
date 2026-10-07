@@ -457,6 +457,10 @@ gate_set '.checks += [{check_runs:[{name:"rules",head_sha:"'"$(git rev-parse HEA
 expect_exit 0 'L46 checks on a second page are read' gate merge-ready 12
 gate_set '.checks[1].check_runs[0].head_sha="0000000000000000000000000000000000000000"'
 expect_exit 1 'L46 rules on an older head cannot pass' gate merge-ready 12
+gate_set '.checks=[{check_runs:([("check","rules")|{name:.,head_sha:"'"$(git rev-parse HEAD)"'",status:"completed",conclusion:"success",app:{slug:"github-actions"}}] + [{name:"check",head_sha:"'"$(git rev-parse HEAD)"'",status:"completed",conclusion:"skipped",app:{slug:"github-actions"}}])}]'
+expect_exit 0 'L46 a check skipped on a draft head counts for nothing beside the one run when ready' gate merge-ready 12
+gate_set '.checks[0].check_runs |= map(select(.name != "check" or .conclusion == "skipped"))'
+expect_exit 1 'L46 a skipped check alone fails' gate merge-ready 12
 gate_set 'del(.checks) | .base="stack"'
 expect_exit 1 'L46 non-main base fails' gate merge-ready 12
 gate_set 'del(.base) | .failure=true'

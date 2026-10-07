@@ -328,8 +328,9 @@ def checks(head, names):
     require(all(isinstance(page, dict) and isinstance(page.get('check_runs'), list) for page in pages), 'invalid check runs')
     runs = [run for page in pages for run in page['check_runs']]
     require(all(isinstance(run, dict) for run in runs), 'invalid check run')
+    # A skipped run is no result: check skips a draft's head, then runs on that same head once it is ready (L24).
     for name in names:
-        matches = [run for run in runs if run.get('name') == name]
+        matches = [run for run in runs if run.get('name') == name and run.get('conclusion') != 'skipped']
         require(matches and all(run.get('head_sha') == head and run.get('status') == 'completed'
                 and run.get('conclusion') == 'success' and run.get('app', {}).get('slug') == 'github-actions'
                 for run in matches), f'{name}: missing or not successful on head {head}')
