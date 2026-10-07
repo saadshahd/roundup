@@ -48,12 +48,15 @@ vocab() {
   return "$bad"
 }
 
-# L46: reads changed paths on stdin; prints `code` when one is product code (a Code PR), `ui` when one is under
-# apps/desktop/src, and `loop` when one is loop machinery the user merges by hand. The one definition of each.
+# L46: reads changed paths on stdin; prints `code` when one is product code or a Build file (a Code PR), `ui` when one
+# is under apps/desktop/src, and `loop` when one is loop machinery the user merges by hand. The one definition of each.
 touches() {
   local path code="" ui="" loop=""
   while IFS= read -r path || [ -n "$path" ]; do
     case $path in apps/* | crates/* | contracts/*) code=1 ;; esac
+    # Build files: what `just check` runs and builds with, so a change to one alone still needs a Reviewer's approve.
+    case $path in justfile | Cargo.toml | Cargo.lock | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | rust-toolchain.toml | \
+      tsconfig.json | .oxlintrc.json | .fallowrc.json | .cargo/* | tools/*) code=1 ;; esac
     case $path in apps/desktop/src/*) ui=1 ;; esac
     case $path in loop/* | .github/* | .agents/* | .claude/* | AGENTS.md | */AGENTS.md | CLAUDE.md | */CLAUDE.md) loop=1 ;; esac
   done
