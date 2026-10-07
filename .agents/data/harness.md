@@ -1,6 +1,6 @@
 # Harness
 
-Data for QA, the Design critic and the Percy build: `loop/percy.sh` (L36) snapshots every seed in the table below.
+Data for the QA sweep, the Design critic and the Percy build: `loop/percy.sh` (L36) snapshots every seed in the table below.
 
 `just harness <seed> <port>` (defaults `tree-40`, `5199`, strict port) serves the App on a fake Daemon at `http://localhost:<port>/harness.html?seed=<seed>` (U26). It checks no Route, Block or Provenance and says nothing about macOS rendering or timing: read the DOM, never the numbers.
 
@@ -26,7 +26,7 @@ Data for QA, the Design critic and the Percy build: `loop/percy.sh` (L36) snapsh
 
 ## Held-out screens
 
-No Builder prompt lists these; an Architect changes at least one after every ten merged UI PRs.
+No Builder prompt lists these.
 
 - `tree-40`, 1280x800, dark, the Todo Drawer open on `#5`.
 - `agents-10`, 700x800, light, `prefers-contrast: more`.

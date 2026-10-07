@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to prove each law red then green`
+Builder. `prime to load the taste rules, tdd to prove each law red then green`
 
 Scenarios V1–V4 in `scenarios/proofs.md`; owns and waits (V5's outcome, `LAWS.bend`, V4's `step`) as its Work rows say. Never edit `LAWS.bend` or `mutants/`.
 

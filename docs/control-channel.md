@@ -1,6 +1,6 @@
 # Control channel
 
-Status: provisional until the lead and the user confirm the recommendation and architect-b's steering series agrees on the seam. Scenarios: `scenarios/control.md` (H11 to H17). Evidence: `spikes/hooks-permission/REPORT.md` (Claude Code 2.1.287, macOS).
+Status: provisional until the user confirms the recommendation and the steering scenarios (H11 to H17) agree on the seam. Scenarios: `scenarios/control.md` (H11 to H17). Evidence: `spikes/hooks-permission/REPORT.md` (Claude Code 2.1.287, macOS).
 
 ## Seams today
 
@@ -41,7 +41,7 @@ Measured in `docs/perf.md` (H15's hook cost). A long-lived transport (an `http` 
 
 ## Principles served
 
-P1 (only the user answers a Decision; steering follows the Thread rules of architect-b's series), P3 (one Decision per `needs-you` Agent, `ask_user` included), P4 (the vendor strings, the paste markers and the Esc byte stay in `crates/agents/src/claude_code/`; `agent.prompt` and `agent.interrupt` are the existing inject seam with a result, not a fourth seam).
+P1 (only the user answers a Decision; steering follows the Thread rules of the steering scenarios), P3 (one Decision per `needs-you` Agent, `ask_user` included), P4 (the vendor strings, the paste markers and the Esc byte stay in `crates/agents/src/claude_code/`; `agent.prompt` and `agent.interrupt` are the existing inject seam with a result, not a fourth seam).
 
 ## Known limitation
 

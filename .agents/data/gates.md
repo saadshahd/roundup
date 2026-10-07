@@ -1,20 +1,22 @@
 # Gates
 
-Data for the Reviewer, Driver and Architect. Rule numbers are `AGENTS.md`'s.
+Data for the Reviewer and the Architect. Rule numbers are `AGENTS.md`'s.
 
-## Lanes
+## Merge
 
-`loop/rules.sh class <pr>` (L44) prints `block` or `post`; unsure → block.
-
-| Lane | Merges on | After merge |
-|---|---|---|
-| block | `merge-ready` (L46): CI `check` and `rules` green on the exact head, base `main`, an independent approval commit (carried across `main` merges by L54), `proof` (L53, with L76's passing `percy` check and Percy link for a visible PR), fewer than 3 rejects or an Architect pick (`rounds`, L45) | — |
-| post | `merge-ready`: green CI, base `main`, `Author-Agent` trailers | an independent verdict within 60 minutes (a Stall, L28); a newest-verdict reject 60 minutes after merge is reverted (L48), unless a newer independent approve on the same head withdraws it |
-
-By hand until their scripts exist: `revert-due` (L48), `dispatch` (L49: a scenario's newest change merged block-lane or with an independent approve), labels (L57), `tokens` (L41), contract approval (rule 4).
+GitHub auto-merge merges a PR once `check`, `rules` and `merge-ready` pass on its head. `loop/rules.sh merge-ready <pr>` (L46) passes only when `check` and `rules`, and `percy` for `apps/desktop/src`, are green on that exact head; every authored commit carries `Author-Agent`; fewer than two rejects stand; and a Code PR has a `VERDICT: approve` naming its head, or a head that adds only clean merges of `main` (L54). A second reject goes to the user, and so does every PR touching Loop machinery.
 
 ## Verdicts
 
-- Comment, first line `VERDICT: approve` or `VERDICT: reject`, then: the full SHA reviewed; commands run with exit codes; mutations tried; every finding with its rule; for a reject, `complete: <n> findings, <m> mutants run` (L63); a line `Reviewed-by-Agent: <id>` differing from every `Author-Agent`.
-- Block lane approval: then an empty commit carrying only `Reviewed-by-Agent: <id>`. Post lane: no commit.
-- Contract approval: `ARCHITECT: approve <full sha>` (or `reject`); after a 3rd reject, `ARCHITECT: split`, `amend` or `retire`.
+A verdict is a comment the review workflow posts (L24), or one a person with write access posts; no other comment counts.
+
+```
+VERDICT: approve|reject
+Head: <full SHA reviewed>
+
+<one finding per line: `rule <n>: <file>:<line> <defect>`, or `NOTE: <text>` in an approve>
+
+Reviewed-by-Agent: <id differing from every Author-Agent>
+```
+
+A contract approval (rule 4) is a verdict from an Architect run or the user, posted by the user. Until a script checks them, contract approvals and `tokens` (L41) are checked by hand.

@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to land H14 red then green`
+Builder. `prime to load the taste rules, tdd to land H14 red then green`
 
 Scenario H14 in `scenarios/control.md`; owns and waits (the Decision store) as its Work row says.
 

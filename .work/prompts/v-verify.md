@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to land Y2, Y1 and Y3 red then green`
+Builder. `prime to load the taste rules, tdd to land Y2, Y1 and Y3 red then green`
 
 Scenarios Y1–Y3 in `scenarios/ui-verify.md`; owns as its Work row says. One commit each, in the order Y2, Y1, Y3.
 

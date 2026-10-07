@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to land the F6 fix red then green`
+Builder. `prime to load the taste rules, tdd to land the F6 fix red then green`
 
 QA finding F6 against U41 in `scenarios/ui.md` (`artifacts/ux/findings.md`, sweep 2); own only `apps/desktop/src/rail/**` and `apps/desktop/src/keys/**`.
 
