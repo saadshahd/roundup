@@ -1,0 +1,25 @@
+name: setup
+description: The toolchain `just check` needs on a macOS runner, with the workspace's packages installed.
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.99.0
+        components: clippy, rustfmt
+    - uses: Swatinem/rust-cache@v2
+    - uses: taiki-e/install-action@nextest
+    - uses: taiki-e/install-action@cargo-machete
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+    - name: GNU coreutils and jq
+      shell: bash
+      run: |
+        brew install coreutils jq
+        echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+    - uses: taiki-e/install-action@just
+    - shell: bash
+      run: pnpm install --frozen-lockfile

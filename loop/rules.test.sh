@@ -113,7 +113,8 @@ gate_error_contains() {
 touches() { printf "$1" | "$script" touches | tr '\n' ' ' | sed 's/ $//'; }
 expect_output code 'L46 touches: apps, crates and contracts are code' touches 'docs/a.md\ncrates/x/y.rs\n'
 expect_output code 'L46 touches: contracts are code' touches 'contracts/a.ts\n'
-expect_output 'code loop' 'L46 touches: code and loop machinery are both named' touches 'apps/desktop/src/a.tsx\nloop/rules.sh\n'
+expect_output 'code ui loop' 'L46 touches: code, apps/desktop/src and loop machinery are each named' touches 'apps/desktop/src/a.tsx\nloop/rules.sh\n'
+expect_output code 'L46 touches: another app is code but not ui' touches 'apps/web/src/a.tsx\n'
 for path in loop/x.sh .github/workflows/a.yml .agents/builder.md .claude/settings.json AGENTS.md docs/AGENTS.md CLAUDE.md; do
   expect_output loop "L46 touches: $path is loop machinery" touches "$path\n"
 done

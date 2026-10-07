@@ -1,0 +1,65 @@
+name: qa
+
+# L66: sweeps main's harness (L52) every six hours, once per main SHA, on a runner holding no write token. A finding
+# fails the run; the sweep record is its artifact.
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: qa
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  due:
+    runs-on: ubuntu-latest
+    outputs:
+      sweep: ${{ steps.swept.outputs.sweep }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: swept
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=0
+          loop/runs.sh swept "$GITHUB_SHA" || code=$?
+          case $code in
+            0) echo "main at $GITHUB_SHA is swept"; echo "sweep=false" >>"$GITHUB_OUTPUT" ;;
+            1) echo "sweep=true" >>"$GITHUB_OUTPUT" ;;
+            *) exit "$code" ;;
+          esac
+
+  sweep:
+    needs: due
+    if: needs.due.outputs.sweep == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: taiki-e/install-action@just
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          npm install -g agent-browser@0.27.0
+          agent-browser install --with-deps
+      - run: loop/qa-sweep.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-sweep-${{ github.run_id }}
+          path: loop/out/qa/
+          if-no-files-found: error

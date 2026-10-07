@@ -1,0 +1,111 @@
+name: review
+
+# L24: one Reviewer run per Code PR head, once check passes on it. The Reviewer holds only a read token and answers in
+# a fixed schema; the post job publishes that answer as the verdict merge-ready trusts.
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+
+# A newer head of the same branch makes a running review stale.
+concurrency:
+  group: review-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Reads main's scripts and main's Reviewer prompt, never the PR's.
+  due:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr: ${{ steps.due.outputs.pr }}
+      prompt: ${{ steps.due.outputs.prompt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
+          [ -n "$pr" ] || { echo "no open PR at $HEAD"; exit 0; }
+          code=0
+          task=$(loop/runs.sh review-due "$pr" "$HEAD") || code=$?
+          case $code in
+            0) ;;
+            1) echo "$task"; exit 0 ;;
+            *) echo "$task" >&2; exit "$code" ;;
+          esac
+          printf '%s\n' "$task" | loop/runs.sh prompt reviewer
+          echo "pr=$pr" >>"$GITHUB_OUTPUT"
+
+  review:
+    needs: due
+    if: needs.due.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      answer: ${{ steps.claude.outputs.structured_output }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+        with:
+          prompt: ${{ needs.due.outputs.prompt }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          allowed_bots: claude
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 60
+            --allowedTools Bash,Read,Glob,Grep,Skill
+            --json-schema '{"type":"object","properties":{"verdict":{"enum":["approve","reject"]},"findings":{"type":"string"}},"required":["verdict","findings"]}'
+      - if: always()
+        uses: ./.github/actions/ledger
+        with:
+          role: reviewer
+          subject: ${{ needs.due.outputs.pr }}
+          execution-file: ${{ steps.claude.outputs.execution_file }}
+          conclusion: ${{ steps.claude.outcome }}
+
+  post:
+    needs: [due, review]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.due.outputs.pr }}
+          HEAD: ${{ github.event.workflow_run.head_sha }}
+          ANSWER: ${{ needs.review.outputs.answer }}
+        run: printf '%s' "$ANSWER" | loop/runs.sh verdict "$PR" "$HEAD" "reviewer-$GITHUB_RUN_ID"

@@ -48,15 +48,17 @@ vocab() {
   return "$bad"
 }
 
-# L46: reads changed paths on stdin; prints `code` when one is product code (a Code PR), `loop` when one is loop
-# machinery the user merges by hand. The one definition of both: review, merge-ready and retro read it.
+# L46: reads changed paths on stdin; prints `code` when one is product code (a Code PR), `ui` when one is under
+# apps/desktop/src, and `loop` when one is loop machinery the user merges by hand. The one definition of each.
 touches() {
-  local path code="" loop=""
+  local path code="" ui="" loop=""
   while IFS= read -r path || [ -n "$path" ]; do
     case $path in apps/* | crates/* | contracts/*) code=1 ;; esac
+    case $path in apps/desktop/src/*) ui=1 ;; esac
     case $path in loop/* | .github/* | .agents/* | .claude/* | AGENTS.md | */AGENTS.md | CLAUDE.md | */CLAUDE.md) loop=1 ;; esac
   done
   [ -z "$code" ] || echo code
+  [ -z "$ui" ] || echo ui
   [ -z "$loop" ] || echo loop
 }
 
@@ -362,8 +364,7 @@ try:
     gate(lambda: base_gate(pr))
     gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
     gate(lambda: require('loop' not in touched, 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md'))
-    visible = any(path.startswith('apps/desktop/src/') for path in paths)
-    gate(lambda: checks(head, ('check', 'rules') + (('percy',) if visible else ())))
+    gate(lambda: checks(head, ('check', 'rules') + (('percy',) if 'ui' in touched else ())))
     gate(lambda: trailer_gate(records, base))
     gate(lambda: require(sum(event['verdict'] == 'reject' for event in events) < 2, 'second reject: the user decides'))
     gate(lambda: require(not rejected(events, head), 'newest independent verdict on this head is reject'))
