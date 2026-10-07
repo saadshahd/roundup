@@ -37,6 +37,8 @@ Module: `loop/rules.sh`, `loop/runs.sh`, `loop/retro.sh`, `loop/percy.sh` for L3
 
 **L78 auto-merge.** The merge-ready workflow disarms auto-merge on a PR touching loop machinery (L46) only when it is enabled, and fails closed on a read or disarm error.
 
+**L79 needs the user.** When any line of `merge-ready <pr>`'s output holds a reason only the user clears (loop machinery, a second reject, a missing `macOS:` line), the merge-ready workflow labels the PR `flag:needs-user`, assigns the repository owner and keeps one comment, marked `<!-- needs-user -->`, asking each reason as a question; a later run edits that comment only when its questions change. A run with none of those reasons takes the label and the owner off and leaves other labels and assignees alone.
+
 ## Work
 
 | Ids | Item | Owns | Keeps green | After |

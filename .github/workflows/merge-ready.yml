@@ -47,6 +47,7 @@ jobs:
           PR_FROM_COMMENT: ${{ github.event.issue.pull_request && github.event.issue.number }}
           PR_FROM_DISPATCH: ${{ inputs.pr }}
           PR_FROM_RUN: ${{ github.event.workflow_run.pull_requests[0].number }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           pr="${PR_FROM_PR:-${PR_FROM_COMMENT:-${PR_FROM_DISPATCH:-$PR_FROM_RUN}}}"
           [ -n "$pr" ] || { echo "no pull request for this event"; exit 0; }
@@ -73,3 +74,29 @@ jobs:
           if [ "$code" -eq 2 ]; then out="merge-ready not built"; fi
           desc=$(printf '%s' "$out" | head -n1 | cut -c1-140)
           gh api "repos/$REPO/statuses/$sha" -f state="$state" -f context=merge-ready -f description="${desc:-$state}"
+          # L79: a reason only the user clears labels the PR flag:needs-user, assigns the owner and keeps one comment
+          # asking it; a run with none left takes the label and the assignee off. Every reason line counts, not the first.
+          asks=""
+          ask() { if grep -Fq "$1" <<<"$out"; then asks+="- $2"$'\n'; fi; }
+          ask 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md' 'It touches loop machinery: will you read it and merge it?'
+          ask 'second reject: the user decides' 'Two rejects stand: will you fix it, merge it or close it?'
+          # shellcheck disable=SC2016 # the backticks are Markdown
+          ask 'a crates/desktop PR needs a macOS: line' 'It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.'
+          issue=$(gh api "repos/$REPO/issues/$pr")
+          labelled=$(jq '[.labels[].name] | index("flag:needs-user") != null' <<<"$issue")
+          assigned=$(jq --arg owner "$OWNER" '[.assignees[].login] | index($owner) != null' <<<"$issue")
+          if [ -n "$asks" ]; then
+            [ "$labelled" = true ] || gh api "repos/$REPO/issues/$pr/labels" -f 'labels[]=flag:needs-user' >/dev/null
+            [ "$assigned" = true ] || gh api "repos/$REPO/issues/$pr/assignees" -f "assignees[]=$OWNER" >/dev/null
+            body=$(printf '<!-- needs-user -->\nmerge-ready waits on you:\n\n%s' "$asks")
+            comment=$(gh api "repos/$REPO/issues/$pr/comments?per_page=100" --paginate |
+              jq -sc 'add | map(select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- needs-user -->")))) | first // empty | {id, body}')
+            if [ -z "$comment" ]; then
+              gh api "repos/$REPO/issues/$pr/comments" -f body="$body" >/dev/null
+            elif [ "$(jq -r .body <<<"$comment")" != "$body" ]; then
+              gh api -X PATCH "repos/$REPO/issues/comments/$(jq -r .id <<<"$comment")" -f body="$body" >/dev/null
+            fi
+          else
+            [ "$labelled" = false ] || gh api -X DELETE "repos/$REPO/issues/$pr/labels/flag:needs-user" >/dev/null
+            [ "$assigned" = false ] || gh api -X DELETE "repos/$REPO/issues/$pr/assignees" -f "assignees[]=$OWNER" >/dev/null
+          fi
