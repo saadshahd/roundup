@@ -1,7 +1,8 @@
 name: check
 
 on:
-  # ready_for_review reruns check on a Builder's finished head, which starts its review (L24).
+  # A draft's head is skipped: its Builder is still pushing red tests. ready_for_review runs check on the finished
+  # head, which starts its review (L24).
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
@@ -13,6 +14,7 @@ concurrency:
 
 jobs:
   check:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
