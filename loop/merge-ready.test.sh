@@ -33,12 +33,13 @@ GH
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "$*" = touches ]; then exec bash "$ROOT/loop/rules.sh" touches; fi
 [ "$*" = 'merge-ready 281' ]
 echo gates >>"$TRACE"
 echo 'ready head'
 RULES
 chmod +x "$dir/bin/gh" "$dir/loop/rules.sh"
-export PATH="$dir/bin:$PATH" REPO=test/repo PR_FROM_PR=281 PR_FROM_COMMENT='' PR_FROM_RUN=''
+export PATH="$dir/bin:$PATH" ROOT="$root" REPO=test/repo PR_FROM_PR=281 PR_FROM_COMMENT='' PR_FROM_DISPATCH='' PR_FROM_RUN=''
 export TRACE="$dir/trace" AUTO_MERGE PR_PATH CASE
 cd "$dir"
 failures=0
@@ -61,9 +62,13 @@ l78_expect null_skips_disarm 0 $'read\ngates\nstate=success'
 CASE=enabled AUTO_MERGE='{"enabledAt":"2026-10-04T00:00:00Z"}'
 l78_expect enabled_disarms_before_gates 0 $'read\ndisarm\ngates\nstate=success'
 CASE=read_error
-l78_expect read_error_fails_closed 1 $'read\nstate=failure' 'merge-ready: cannot read auto-merge on a .github/ PR'
+l78_expect read_error_fails_closed 1 $'read\nstate=failure' 'merge-ready: cannot read auto-merge on a loop PR'
 CASE=disarm_error
-l78_expect disarm_error_fails_closed 1 $'read\ndisarm\nstate=failure' 'merge-ready: cannot disarm auto-merge on a .github/ PR'
-CASE=outside PR_PATH=docs/perf.md
+l78_expect disarm_error_fails_closed 1 $'read\ndisarm\nstate=failure' 'merge-ready: cannot disarm auto-merge on a loop PR'
+for PR_PATH in loop/rules.sh .agents/builder.md AGENTS.md; do
+  CASE=enabled AUTO_MERGE='{"enabledAt":"2026-10-04T00:00:00Z"}'
+  l78_expect "enabled_disarms_${PR_PATH//[^A-Za-z]/_}" 0 $'read\ndisarm\ngates\nstate=success'
+done
+CASE=outside PR_PATH=$'docs/perf.md\ncrates/rupd/src/main.rs'
 l78_expect other_paths_leave_auto_merge_alone 0 $'gates\nstate=success'
 [ "$failures" -eq 0 ]

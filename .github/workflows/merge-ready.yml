@@ -1,7 +1,8 @@
 name: merge-ready
 
 # Runs from the default branch's copy of this file and checks out the default branch only: a PR's
-# own files are read as data and never executed (L55).
+# own files are read as data and never executed (L46). The review workflow dispatches it after posting a verdict,
+# since a comment posted with GITHUB_TOKEN starts no workflow.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -12,6 +13,11 @@ on:
   workflow_run:
     workflows: [check, loop, visual]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
 
 permissions:
   contents: read
@@ -20,7 +26,7 @@ permissions:
   checks: read
 
 concurrency:
-  group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.head_sha }}
+  group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
@@ -37,12 +43,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PERCY_PROJECT: ${{ vars.PERCY_PROJECT }}
           PR_FROM_PR: ${{ github.event.pull_request.number }}
           PR_FROM_COMMENT: ${{ github.event.issue.pull_request && github.event.issue.number }}
+          PR_FROM_DISPATCH: ${{ inputs.pr }}
           PR_FROM_RUN: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
-          pr="${PR_FROM_PR:-${PR_FROM_COMMENT:-$PR_FROM_RUN}}"
+          pr="${PR_FROM_PR:-${PR_FROM_COMMENT:-${PR_FROM_DISPATCH:-$PR_FROM_RUN}}}"
           [ -n "$pr" ] || { echo "no pull request for this event"; exit 0; }
           sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
           fail() {
@@ -51,10 +57,11 @@ jobs:
             exit 1
           }
           paths=$(gh pr diff "$pr" --name-only) || fail "merge-ready: cannot read the PR diff"
-          if printf '%s\n' "$paths" | grep -q '^\.github/'; then
-            auto_merge=$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null') || fail "merge-ready: cannot read auto-merge on a .github/ PR"
+          # L78: the user merges loop machinery by hand, so nothing armed may merge it on green.
+          if printf '%s\n' "$paths" | loop/rules.sh touches | grep -qx loop; then
+            auto_merge=$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null') || fail "merge-ready: cannot read auto-merge on a loop PR"
             if [ "$auto_merge" = true ]; then
-              gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a .github/ PR"
+              gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a loop PR"
             fi
           fi
           set +e
