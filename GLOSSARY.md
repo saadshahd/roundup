@@ -217,14 +217,17 @@ A screen the Design critic runs that no Builder's prompt lists.
 
 ### The loop
 
+**Builder**:
+The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a Work row, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
+
 **Code PR**:
-A PR touching `apps/`, `crates/`, `contracts/` or a Build file; one Reviewer run reviews each of its heads, and it merges only on an approve (L46).
+A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scenarios:` line (L46).
 
 **Build file**:
 What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `rust-toolchain.toml`, `tsconfig.json`, `.oxlintrc.json`, `.fallowrc.json`, `.cargo/` and `tools/` (L46).
 
 **Loop machinery**:
-`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a PR touching it waits for the user's merge (L46).
+`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching `.github/` waits for the user's merge (L24, L46).
 
 **Claim**:
 The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23).
