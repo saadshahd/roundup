@@ -32,7 +32,7 @@ New under `crates/contracts`: type `Decision {id, agent, tool, args, opened_at}`
 | `crates/agents/src/claude_code/` | payload to Decision, answer to reply text, the settings hook line; the only place that names a vendor string |
 | `crates/rupd`, `crates/desktop` | the `proof` handshake: the App makes it, gives it to the Daemon on stdin, and the Daemon removes it from child environments |
 | `crates/rup` | the `permission` subcommand: vendor-blind, prints what the Daemon returns |
-| `apps/desktop` | the Decision in the UI (written by architect-b, ids from the `U` ranges) |
+| `apps/desktop` | the Decision in the UI (written by an Architect run, ids from the `U` ranges) |
 | `spikes/hooks-permission` | H1 and H1b: the real reply strings and behaviour |
 
 ## Principles served

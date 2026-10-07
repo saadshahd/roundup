@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to land H11, H12 and H16 red then green`
+Builder. `prime to load the taste rules, tdd to land H11, H12 and H16 red then green`
 
 Scenarios H11, H12, H16 in `scenarios/control.md`; owns and waits as its Work row says. Also read `docs/control-channel.md` and `spikes/hooks-permission/REPORT.md` (real strings and timings); tests use the fake `claude` and an injected clock.
 

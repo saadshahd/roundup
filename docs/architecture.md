@@ -63,4 +63,4 @@ Typed Messages `{from, to, kind, body, replyTo}`. Delivery to a Claude Code Agen
 
 ## Boundaries
 
-Local only. The MVP targets macOS, so the shipped app, perf numbers (`docs/perf.md`) and the macOS gate run locally and on GitHub macOS runners. boxd VMs are optional: unattended Builders and Linux or web-UI QA runs. See `.agents/data/boxd.md` for what they can and cannot do.
+Local only. The MVP targets macOS, so the shipped app, perf numbers (`docs/perf.md`) and the macOS gate run locally and on GitHub macOS runners. Unattended Builders, Reviewers and QA sweeps run on GitHub Actions runners (`AGENTS.md`).

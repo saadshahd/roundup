@@ -1,7 +1,10 @@
 name: check
 
 on:
+  # A draft's head is skipped: its Builder is still pushing red tests. ready_for_review runs check on the finished
+  # head, which starts its review (L24).
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -11,32 +14,13 @@ concurrency:
 
 jobs:
   check:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.99.0
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@nextest
-      - uses: taiki-e/install-action@cargo-machete
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - name: L66 command dependencies
-        run: |
-          brew install coreutils jq
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
-      - uses: taiki-e/install-action@just
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - run: just check
       - name: hello-world round trip (rup ping through rupd)
         run: |

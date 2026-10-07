@@ -1,4 +1,4 @@
-Builder. `/compose tdd to prove each law red then green`
+Builder. `tdd to prove each law red then green`
 
 Spike V5 in `scenarios/proofs.md`; owns as its Work row says. Timebox: one day; a fail is a result.
 

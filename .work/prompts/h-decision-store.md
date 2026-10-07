@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to land H3, H5, H6, H7 and H10 red then green`
+Builder. `prime to load the taste rules, tdd to land H3, H5, H6, H7 and H10 red then green`
 
 Scenarios H2–H10 in `scenarios/decisions.md` (H2 has tests); owns as its Work row says. Also read `docs/permission-decisions.md` and `spikes/hooks-permission/REPORT.md`. Leave `crates/rup` and `crates/desktop` to the H8/H9 and H4 slices.
 

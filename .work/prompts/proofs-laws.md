@@ -1,4 +1,4 @@
-Architect. `/compose anchor to state each law so it cannot be read two ways`
+Architect. `anchor to state each law so it cannot be read two ways`
 
 Write `proofs/messages/LAWS.bend` for V3 in `scenarios/proofs.md`, over a minimal `model.bend` skeleton named as `docs/messages.md` names its transitions; only `LAWS.bend` and `mutants/`.
 

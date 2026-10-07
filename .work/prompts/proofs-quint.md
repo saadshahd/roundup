@@ -1,4 +1,4 @@
-Builder. `/compose sound:prime to load the taste rules, tdd to land each property red then green`
+Builder. `prime to load the taste rules, tdd to land each property red then green`
 
 Scenario V6 in `scenarios/proofs.md`, only for the laws V5 recorded as not provable in Bend; with none, do nothing.
 

@@ -8,7 +8,6 @@ check:
     pnpm lint
     pnpm typecheck
     pnpm slop
-    bun test loop/qa-coordinator.test.ts loop/qa-command.test.ts
     just packages typecheck
     just packages test
 

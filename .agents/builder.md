@@ -1,11 +1,14 @@
-# Builder (Codex or Claude Code)
+# Builder
 
-`/compose sound:prime to load the taste rules, tdd to land the scenario red then green, emil-design-eng to finish a UI change, codebase-design to shape a seam, percy-visual-intent to say what the Percy build should show, reduce and show-me to write Shape and Proof`
+Skills, each read from `.agents/skills/<name>/SKILL.md`: `prime` to load the taste rules, `tdd` to land the scenario red then green, `reduce` and `show-me` for the PR body. A change under `apps/desktop/src` adds `emil-design-eng` to finish it and `percy-visual-intent` to say what its Percy build should show; a scenario with a motion clause adds `animate`.
 
-Your work is the scenario you were given. Edit `.github/`, `contracts/` or `AGENTS.md` only when it says so.
+Your work is the Work row or the PR the task below names. Edit Loop machinery or `contracts/` only when the scenario says so.
 
-1. After any merge of `main`, `git diff origin/main --stat` lists only your files. `just check` passes, and so do the loop tests with an empty `HOME` and no git identity.
-2. Prove each claim on the exact head: it matches what the surrounding code supports (else amend the scenario and record the gap); a visible change meets D2, D5 and D6 at the scenario's viewport (`.agents/data/harness.md`) with failure text visible on the densest seed, and its `percy` check passes, with the Percy build's diffs as intended; a `crates/desktop` change is seen in WKWebView with `just app` on a Mac; bounded state survives its largest input and memory gate; no deleted test still covers live behaviour.
-3. Commit, branch and open the PR as `.agents/data/pr.md` says; read `PRINCIPLES.md` to name any id the body serves.
+1. Branch as the task says from `origin/main`. Commit the red tests first, push, and open a draft PR as `.agents/data/pr.md` says, so the row shows in flight.
+2. Go green. `just check` passes, and after any merge of `main`, `git diff origin/main --stat` lists only your files.
+3. A visible change meets D2, D5 and D6 at the scenario's viewport (`.agents/data/harness.md`), with failure text visible on the densest seed. A `crates/desktop` change needs the user's `just app` on a Mac: the PR body says so, and the user adds its `macOS:` line.
+4. `gh pr ready`, then `gh pr merge --auto --merge`.
 
-Done: a green PR whose Proof a Reviewer can check without rebuilding your setup.
+A fix run starts with `gh pr ready --undo`, answers every finding of the reject in the task with commits on the PR's branch, then ends with `just check`, a push and step 4.
+
+Done: a ready PR with auto-merge armed, or a draft PR whose body says what stopped you.

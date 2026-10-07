@@ -1,6 +1,6 @@
 name: visual
 
-# L36: the Percy build of every harness seed is a visible PR's visual proof (L76); builds on main are its baseline.
+# L36: the Percy build of every harness seed; merge-ready needs it green on a PR touching apps/desktop/src (L46), and builds on main are its baseline.
 on:
   pull_request:
     paths: ['apps/desktop/src/**']

@@ -217,19 +217,21 @@ A screen the Design critic runs that no Builder's prompt lists.
 
 ### The loop
 
-**Stall**:
-A condition that stops the loop's work, with one Owner and a deadline; specified by L28 and not yet built. A Todo's blockers are not Stalls.
+**Code PR**:
+A PR touching `apps/`, `crates/` or `contracts/`; one Reviewer run reviews each of its heads, and it merges only on an approve (L46).
 
-**Owner**:
-The one loop role answering for a Stall: Triage, Merger, Architect or Driver.
+**Loop machinery**:
+`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a PR touching it waits for the user's merge (L46).
 
-**Merger**:
-The Driver while it merges a PR.
+**Claim**:
+The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23).
+
+**Ledger**:
+One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
+
+**Retro**:
+One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); the user merges it.
 
 **Percy build**:
-Percy's Chromium render of every harness seed for one PR head, made by the `percy` job (L36); the visual proof of a PR touching `apps/desktop/src/` (L76). Its images are not Snapshots.
+Percy's Chromium render of every harness seed for one PR head, made by the `percy` job (L36); merge-ready needs it green on a PR touching `apps/desktop/src/` (L46). Its images are not Snapshots.
 _Avoid_: proof branch
-
-**VM tool**:
-A Claude Code plugin, skill, hook or MCP server the agent uses on a boxd VM; not an Extension.
-_Avoid_: plugin
