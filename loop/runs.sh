@@ -5,7 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
+# shellcheck source=loop/lib.sh
+. loop/lib.sh
 
 # A subject (a Work row's ids or a PR number) as one word for a branch or an artifact name.
 slug_def='def slug: gsub("[^A-Za-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-");'

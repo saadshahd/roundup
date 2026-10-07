@@ -15,6 +15,11 @@ permissions:
   contents: read
   actions: read
 
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   due:
     runs-on: ubuntu-latest

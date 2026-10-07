@@ -11,7 +11,7 @@ git -C "$dir" init -q
 git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U105-U107-U109
-cp "$root/loop/runs.sh" "$dir/loop/runs.sh"
+cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$dir/loop/"
 printf '# Builder\n\nFixed text.\n' >"$dir/.agents/builder.md"
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
@@ -57,17 +57,8 @@ cd "$dir"
 failures=0
 head=$(printf 'a%.0s' {1..40})
 
-check() {
-  local name=$1 want=$2 got=0
-  shift 2
-  "$@" >"$FIXTURES/out" 2>"$FIXTURES/err" || got=$?
-  if [ "$got" -eq "$want" ]; then echo "ok:   $name"; else echo "FAIL: $name (exit $got, wanted $want)"; cat "$FIXTURES/out" "$FIXTURES/err"; failures=$((failures + 1)); fi
-}
-holds() {
-  local name=$1
-  shift
-  if "$@"; then echo "ok:   $name"; else echo "FAIL: $name"; cat "$FIXTURES/out" "$FIXTURES/err"; failures=$((failures + 1)); fi
-}
+# shellcheck source=loop/test-lib.sh
+. "$root/loop/test-lib.sh"
 fresh() {
   rm -f "$FIXTURES"/*
   : >"$FIXTURES/trace"

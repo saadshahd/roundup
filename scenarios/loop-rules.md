@@ -43,6 +43,8 @@ Module: `loop/rules.sh`, `loop/runs.sh`, `loop/retro.sh`, `loop/status.sh`, `loo
 
 **L81 stopped.** A Builder that stops before its PR is done leaves it a draft with a `Stopped: <why>` line. After a tick's Builders end, and after each fix run, however they end, `runs.sh stopped <branch>…` gives each branch's open draft PR with no `Stopped:` line one naming the run, since a run cut off by its time or turns writes none, and dispatches merge-ready for it; a branch with no open PR, or a ready one, is left alone, and a `gh` failure exits 4. `merge-ready` fails a draft with a `Stopped:` line with `the Builder stopped: <why>`, and the merge-ready workflow asks it as `The Builder stopped (<why>): will you finish it, or close it and delete its branch to build it again?` (L79). On a draft or closed PR it asks nothing else, so a draft touching loop machinery pings no one until it is ready. Before a first reject's fix run, `runs.sh verdict` drops any `Stopped:` line, since the fix run makes the PR a draft again. Only jobs after the agent's job edit the PR or dispatch merge-ready; the agent's job gets no write scope.
 
+**L82 pipefail.** Every workflow under `.github/workflows/` sets `defaults.run.shell: bash`, so GitHub runs each `run` step under `bash -eo pipefail` and a failing command left of a pipe fails the step.
+
 ## Work
 
 | Ids | Item | Owns | Keeps green | After |
