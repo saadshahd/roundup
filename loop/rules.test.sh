@@ -207,7 +207,7 @@ def git(*args):
 head = d.get('head') or git('rev-parse', 'work')
 base = git('rev-parse', 'main')
 pr = {'head': {'sha': head}, 'base': {'ref': d.get('base', 'main'), 'sha': base},
-      'state': 'open', 'draft': False, 'body': d.get('body', 'Scenarios: L46\n')}
+      'state': 'open', 'draft': d.get('draft', False), 'body': d.get('body', 'Scenarios: L46\n')}
 if '/pulls/' in route and route.endswith('/files?per_page=100'):
     files = []
     for name in git('diff', '--name-only', '--no-renames', base+'...'+head).splitlines():
@@ -445,6 +445,17 @@ gate_repo; git reset -q --hard main; mkdir -p crates/desktop; echo shell >crates
 expect_exit 1 'L46 a crates/desktop PR without a macOS line fails' gate merge-ready 12
 gate_set '.body="Scenarios: L46\nmacOS: the window opens at 1280×800 in just app\n"'
 ready_at 'L46 a crates/desktop PR with a macOS line is ready'
+
+# L81: a draft whose body has a Stopped: line waits on the user; the line alone, or a draft alone, does not.
+gate_repo; gate_set '.draft=true | .body="Scenarios: L46\nStopped: needs a GLOSSARY term for Pin\n"'
+expect pass 'L81 a draft with a Stopped line names why its Builder stopped' gate_error_contains 'the Builder stopped: needs a GLOSSARY term for Pin' gate merge-ready 12
+gate_set '.body="Scenarios: L46\r\nStopped: needs a term.\r\n"'
+expect pass 'L81 a body edited on GitHub, with CRLF line ends, names why' gate_error_contains 'the Builder stopped: needs a term.' gate merge-ready 12
+expect fail 'L81 the reason holds no CR' gate_error_contains $'\r' gate merge-ready 12
+gate_set '.body="Scenarios: L46\n"'
+expect fail 'L81 a draft without a Stopped line is not stopped' gate_error_contains 'the Builder stopped' gate merge-ready 12
+gate_set '.draft=false | .body="Scenarios: L46\nStopped: needs a GLOSSARY term for Pin\n"'
+ready_at 'L81 a ready PR with an old Stopped line is ready'
 
 # L46 merge-ready: checks, base and the pinned head.
 gate_repo

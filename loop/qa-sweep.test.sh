@@ -59,6 +59,8 @@ if [[ -e "$root/loop/qa-sweep.sh" ]]; then
   grep -q 'click.*pad-3' "$QA_SWEEP_CALLS"
   grep -q 'click.*todos' "$QA_SWEEP_CALLS"
   printf 'l52_two_viewports_and_each_drawer_passed\n'
+  jq -e '.complete == true' "$record" >/dev/null
+  printf 'l66_a_sweep_that_reaches_its_end_is_complete_passed\n'
 
   rm -rf "$QA_SWEEP_OUT"
   printf closed > "$QA_SWEEP_DRAWER"
@@ -80,6 +82,8 @@ if [[ -e "$root/loop/qa-sweep.sh" ]]; then
   record=$(find "$QA_SWEEP_OUT" -name 'sweep-*.json' -print -quit)
   jq -e '.findings | any(.text | contains("geometry failed"))' "$record" >/dev/null
   printf 'l52_browser_error_fails_with_a_record_passed\n'
+  jq -e '.complete == false' "$record" >/dev/null
+  printf 'l66_a_sweep_cut_off_by_a_browser_error_is_incomplete_passed\n'
 
   rm -rf "$QA_SWEEP_OUT"
   printf closed > "$QA_SWEEP_DRAWER"
@@ -112,6 +116,8 @@ if [[ -e "$root/loop/qa-sweep.sh" ]]; then
   record=$(find "$QA_SWEEP_OUT" -name 'sweep-*.json' -print -quit)
   jq -e '.findings | length == 6 and all(.scenario == null and .test == null)' "$record" >/dev/null
   printf 'l52_layout_findings_are_durable_and_unscoped_passed\n'
+  jq -e '.complete == true' "$record" >/dev/null
+  printf 'l66_a_sweep_with_findings_that_reaches_its_end_is_complete_passed\n'
 
   if env -u QA_SWEEP_TEST_MODE "$root/loop/qa-sweep.sh" > "$scratch/override.log" 2>&1; then
     echo 'alternate URL returned green outside test mode' >&2

@@ -57,6 +57,10 @@ jobs:
           npm install -g agent-browser@0.27.0
           agent-browser install --with-deps
       - run: loop/qa-sweep.sh
+      # L66: swept counts this run only when this step passes, so a run that failed before or during the sweep is retried.
+      - name: a complete sweep record
+        if: always()
+        run: jq -se 'length > 0 and all(.complete)' loop/out/qa/sweep-*.json
       - if: always()
         uses: actions/upload-artifact@v4
         with:

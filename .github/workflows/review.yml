@@ -38,6 +38,7 @@ jobs:
       - id: due
         env:
           GH_TOKEN: ${{ github.token }}
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
           HEAD: ${{ github.event.workflow_run.head_sha }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |

@@ -8,6 +8,7 @@ Data for the Builder, and for the Reviewer judging a body.
 - `Scenarios: <ids>`; a `Principles: <ids>` line only when a `PRINCIPLES.md` id applies.
 - `Moves: D<n>, …` for a change under `apps/desktop/src` (rule 8).
 - `macOS: <what the user saw in just app>` for a change under `crates/desktop`, added by the user; Percy renders Chromium only, so WKWebView is the one laptop check.
+- `Stopped: <what stopped you>` on a draft its Builder leaves unfinished; merge-ready asks the user (L81).
 - Then only what a reader needs and CI does not show: no Shape, Proof, labels, history or boilerplate.
 
 ## Commits and branches
@@ -17,7 +18,7 @@ Data for the Builder, and for the Reviewer judging a body.
 - Rows merge in their `After` order. A stacked PR (its scenario says "after X" or "may stack") branches from its base, touches no file the base touches, and merges after it.
 - Behind `main`: merge `origin/main` in (a stacked branch merges its base first), `just check`, push; never rebase a branch with a review in flight.
 - Lockfile conflict: take main's file and regenerate (`git checkout origin/main -- Cargo.lock && cargo update -w`; `git checkout origin/main -- pnpm-lock.yaml && pnpm install`), committed with the merge.
-- A defect needing `contracts/`, `GLOSSARY.md` or the App seam stops the Builder: its draft PR's body says what an Architect run must settle.
+- A defect needing `contracts/`, `GLOSSARY.md` or the App seam stops the Builder: its draft PR's `Stopped:` line says what an Architect run must settle.
 
 ## Audit PR
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for loop/percy.sh (L36) with fake `just` and `pnpm`. Usage: loop/percy.test.sh
+# Tests for loop/percy.sh (L36, L24) with fake `just`, `pnpm`, `curl` and `sleep`. Usage: loop/percy.test.sh
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -34,13 +34,15 @@ l36_run() {
   : >"$TRACE"
   rm -f "$SNAPSHOTS" "$GITHUB_STEP_SUMMARY"
   set +e
-  out=$("$root/loop/percy.sh" "$port" 2>&1)
+  out=$("$root/loop/percy.sh" snapshot "$port" 2>&1)
   code=$?
   set -e
   if [ "$code" -eq "$want" ]; then echo "ok:   L36 $name"; else echo "FAIL: L36 $name (wanted exit $want, got $code: $out)"; failures=$((failures + 1)); fi
 }
+# The scenario id a check proves.
+id=L36
 check() {
-  if eval "$2"; then echo "ok:   L36 $1"; else echo "FAIL: L36 $1"; failures=$((failures + 1)); fi
+  if eval "$2"; then echo "ok:   $id $1"; else echo "FAIL: $id $1"; failures=$((failures + 1)); fi
 }
 
 PERCY_TOKEN='' l36_run no_token 1
@@ -68,7 +70,45 @@ l36_run no_link 1
 workflow="$root/.github/workflows/visual.yml"
 check 'the percy job runs on PRs touching apps/desktop/src' 'grep -q "^  pull_request:" "$workflow" && grep -q "apps/desktop/src/\*\*" "$workflow" && grep -q "^  percy:" "$workflow"'
 check 'pushes to main touching apps/desktop/src build the baseline' 'grep -A2 "^  push:" "$workflow" | grep -q "branches: \[main\]" && [ "$(grep -c "apps/desktop/src/\*\*" "$workflow")" = 2 ]'
-check 'the percy job gets the PERCY_TOKEN secret and runs loop/percy.sh' 'grep -q "PERCY_TOKEN: \${{ secrets.PERCY_TOKEN }}" "$workflow" && grep -q "run: loop/percy.sh" "$workflow"'
+check 'the percy job gets the PERCY_TOKEN secret and runs loop/percy.sh' 'grep -q "PERCY_TOKEN: \${{ secrets.PERCY_TOKEN }}" "$workflow" && grep -q "run: loop/percy.sh snapshot" "$workflow"'
 check 'merge-ready recomputes when the visual workflow completes' 'grep -q "workflows: \[check, loop, visual\]" "$root/.github/workflows/merge-ready.yml"'
+
+check 'the percy job pins the build to the PR head, so the Reviewer finds it by SHA' 'grep -q "PERCY_COMMIT: \${{ github.event.pull_request.head.sha || github.sha }}" "$workflow"'
+
+id=L24
+# L24 build: the Percy build of a head, found by its SHA. A fake curl answers from $ANSWERS, one line per call.
+mkdir -p "$dir/api"
+cat >"$dir/api/curl" <<'CURL'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TRACE"
+[ "$CASE" != api_fails ] || { echo '{"errors":[{"status":"401"}]}'; exit 22; }
+n=$(grep -c . "$TRACE")
+sed -n "${n}p" "$ANSWERS"
+CURL
+printf '#!/usr/bin/env bash\n' >"$dir/api/sleep"
+chmod +x "$dir/api/curl" "$dir/api/sleep"
+export ANSWERS="$dir/answers"
+sha=$(printf 'a%.0s' {1..40})
+l24_run() {
+  local name=$1 want=$2
+  shift 2
+  CASE=$name
+  : >"$TRACE"
+  set +e
+  out=$(PATH="$dir/api:$PATH" "$@" 2>&1)
+  code=$?
+  set -e
+  if [ "$code" -eq "$want" ]; then echo "ok:   L24 $name"; else echo "FAIL: L24 $name (wanted exit $want, got $code: $out)"; failures=$((failures + 1)); fi
+}
+printf '{"data":[]}\n{"data":[{"id":"41823"}]}\n' >"$ANSWERS"
+l24_run build_appears 0 "$root/loop/percy.sh" build "$sha"
+check 'build prints the id once visual has started it' '[ "$out" = 41823 ]'
+check 'build asks Percy for the head SHA with the token' 'grep -qF "filter[sha]=$sha" "$TRACE" && grep -q "Authorization: Token token=fake" "$TRACE"'
+printf '{"data":[]}\n' >"$ANSWERS"
+PERCY_WAIT=0 l24_run no_build 1 "$root/loop/percy.sh" build "$sha"
+check 'no build names the SHA' '[[ $out == *"no Percy build for $sha"* ]]'
+l24_run api_fails 4 "$root/loop/percy.sh" build "$sha"
+PERCY_TOKEN='' l24_run build_without_token 2 "$root/loop/percy.sh" build "$sha"
+l24_run build_of_no_sha 2 "$root/loop/percy.sh" build main
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

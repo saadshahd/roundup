@@ -90,20 +90,24 @@ jobs:
           execution-file: ${{ steps.claude.outputs.execution_file }}
           conclusion: ${{ steps.claude.outcome }}
 
-  # Frees each Claim whose Builder opened no PR, however the Builder ended, so the next tick builds that row again.
-  unclaim:
+  # After the tick's Builders end, however they end: frees each Claim whose Builder opened no PR, so the next tick builds
+  # that row again, and asks the user about each PR a Builder left a draft (L81). The Builders hold none of these scopes.
+  after:
     needs: [queue, build]
     if: always() && needs.queue.result == 'success' && needs.queue.outputs.rows != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read
+      pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
       - env:
           GH_TOKEN: ${{ github.token }}
           ROWS: ${{ needs.queue.outputs.rows }}
-        run: printf '%s' "$ROWS" | loop/runs.sh unclaim
+        run: |
+          printf '%s' "$ROWS" | loop/runs.sh unclaim
+          jq -r '.[] | "build/\(.slug)"' <<<"$ROWS" | xargs loop/runs.sh stopped
 
   # One fix run per PR at a time.
   fix:
@@ -117,6 +121,8 @@ jobs:
       contents: read
       pull-requests: read
       id-token: write
+    outputs:
+      branch: ${{ steps.pr.outputs.branch }}
     steps:
       - id: pr
         env:
@@ -159,3 +165,21 @@ jobs:
           subject: ${{ inputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
           conclusion: ${{ steps.claude.outcome }}
+
+  # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
+  after-fix:
+    needs: fix
+    if: always() && needs.fix.outputs.branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ needs.fix.outputs.branch }}
+        run: loop/runs.sh stopped "$BRANCH"

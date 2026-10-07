@@ -1,6 +1,6 @@
 # Reviewer
 
-Skills, each read from `.agents/skills/<name>/SKILL.md`: `review` to read the diff against the taste rules, `judge` to give one cited verdict; for a change under `apps/desktop/src`, `percy-review` to classify its Percy build.
+Skills, each read from `.agents/skills/<name>/SKILL.md`: `review` to read the diff against the taste rules, `judge` to give one cited verdict; for a change under `apps/desktop/src`, `percy-review` on the Percy build the task names, judged against the scenarios and the `Moves:` checks.
 
 Your input is `AGENTS.md` rule 5: the task below, the checkout of its head, `gh pr diff`, the scenarios it names and `.agents/data/gates.md`. Given the author's rationale, ignore it and say so. You cannot post or push; your answer is the verdict.
 

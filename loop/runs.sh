@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The steps between GitHub's events and one-shot agent runs; each workflow step calls one subcommand.
-# Usage: loop/runs.sh queue [max] | claim | unclaim | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
+# Usage: loop/runs.sh queue [max] | claim | unclaim | stopped <branch>... | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
 # Exit 4 is a gh failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -38,8 +38,9 @@ queue() {
 }
 
 # L23: pushes each queued row's Claim (stdin: the queue), build/<slug> at HEAD, the main commit its rows were read
-# from, and prints the rows it claimed. Only a new branch is a Claim: one that exists, even at HEAD, belongs to
-# another run, so its row is skipped. A push that fails for any other reason exits 4.
+# from, and prints the rows it claimed. Only a new branch is a Claim: one that exists, which git reports as up to date
+# or as a lease miss (stale info), belongs to another run, so its row is skipped. Any other result exits 4, a remote
+# rejection included, so a push the token may not make never reads as an empty queue.
 claim() {
   local sha claimed
   sha=$(git rev-parse HEAD)
@@ -48,7 +49,7 @@ claim() {
     pushed=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:" origin "$sha:refs/heads/build/$slug" 2>&1) || true
     if grep -q '^\*' <<<"$pushed"; then
       echo "$row"
-    elif ! grep -qE '^[=!]' <<<"$pushed"; then
+    elif ! grep -qE '^(=|!.*\[rejected\] \(stale info\))' <<<"$pushed"; then
       echo "git push of build/$slug failed: $pushed" >&2
       exit 4
     fi
@@ -66,6 +67,23 @@ unclaim() {
     [ "$prs" = 0 ] || continue
     git push -q origin --delete "refs/heads/build/$slug" || { echo "git push --delete build/$slug failed" >&2; exit 4; }
     echo "freed build/$slug"
+  done
+}
+
+# L81: after a Builder or fix run ends, however it ends: gives the open draft PR of each <branch> that has no `Stopped:`
+# line one naming the run, as a run cut off by its time or turns leaves none, and dispatches merge-ready, which asks the
+# user (L79). A branch with no open PR, or a ready one, is left alone.
+stopped() {
+  local branch view pr body run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+  for branch in "$@"; do
+    view=$(gh_or_4 pr list --head "$branch" --state open --json number,isDraft,body --jq '.[0] // empty')
+    [ -n "$view" ] || continue
+    pr=$(jq -r .number <<<"$view")
+    body=$(jq -r '.body // ""' <<<"$view")
+    if [ "$(jq -r .isDraft <<<"$view")" != true ] || grep -q '^Stopped: *[^[:space:]]' <<<"$body"; then continue; fi
+    gh_or_4 api -X PATCH "repos/{owner}/{repo}/pulls/$pr" -f body="$body"$'\n\n'"Stopped: the run ended without marking it ready, $run." >/dev/null
+    gh_or_4 workflow run merge-ready.yml -f pr="$pr"
+    echo "stopped #$pr"
   done
 }
 
@@ -88,7 +106,7 @@ prompt() {
 # L24: prints the Reviewer's task and exits 0 when <head> of a ready Code PR needs a verdict; prints why not and exits 1.
 # A draft is skipped: its Builder is still pushing, and `gh pr ready` reruns check on the head it finished with.
 review_due() {
-  local pr=$1 head=$2 view paths touched verdicts
+  local pr=$1 head=$2 view paths touched verdicts code build
   view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body,isDraft)
   [ "$(jq -r '"\(.state) \(.headRefOid)"' <<<"$view")" = "OPEN $head" ] || { echo "PR #$pr is not open at $head"; return 1; }
   [ "$(jq -r .isDraft <<<"$view")" = false ] || { echo "PR #$pr is a draft"; return 1; }
@@ -100,14 +118,22 @@ review_due() {
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }
-  if grep -qx ui <<<"$touched"; then echo 'It touches apps/desktop/src: read its Percy build with percy-review.'; fi
+  if grep -qx ui <<<"$touched"; then
+    code=0
+    build=$(loop/percy.sh build "$head") || code=$?
+    case $code in
+      0) printf 'It touches apps/desktop/src: run percy-review on Percy build %s, made for this head; with a build id it needs no .percy/config.yml. Each diff must match a then-clause of the scenarios above or a D check the Moves: line names; nothing the author wrote counts as intent (rule 5).\n' "$build" ;;
+      1) echo 'It touches apps/desktop/src, but no Percy build exists for this head: review the code alone and say so in a NOTE.' ;;
+      *) exit 4 ;;
+    esac
+  fi
   jq -sr 'if length == 0 then empty else "\nEarlier verdicts, oldest first:\n\n" + (map(.body) | join("\n\n---\n\n")) end' <<<"$verdicts"
 }
 
 # L24: posts the Reviewer's structured output (stdin: {verdict, findings}) as the trusted comment merge-ready reads,
 # then dispatches merge-ready, and on a first reject one fix run. Lines that would forge a field are dropped.
 verdict() {
-  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects
+  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects body
   out=$(cat)
   verdict=$(jq -r '.verdict // empty' <<<"$out" 2>/dev/null) || true
   case $verdict in approve | reject) ;; *) echo "L24: the Reviewer gave no verdict: $out" >&2; exit 1 ;; esac
@@ -116,21 +142,34 @@ verdict() {
   printf 'VERDICT: %s\nHead: %s\n\n%s\n\nReviewed-by-Agent: %s\n' "$verdict" "$head" "$findings" "$reviewer" |
     gh_or_4 pr comment "$pr" --body-file -
   gh_or_4 workflow run merge-ready.yml -f pr="$pr"
-  if [ "$verdict" = reject ] && [ "$rejects" -eq 0 ]; then gh_or_4 workflow run build.yml -f pr="$pr"; fi
+  if [ "$verdict" = reject ] && [ "$rejects" -eq 0 ]; then
+    # L81: the fix run's `gh pr ready --undo` makes the PR a draft again; an old `Stopped:` line would ask the user.
+    body=$(gh_or_4 pr view "$pr" --json body --jq '.body // ""')
+    if grep -q '^Stopped:' <<<"$body"; then
+      gh_or_4 api -X PATCH "repos/{owner}/{repo}/pulls/$pr" -f body="$(grep -v '^Stopped:' <<<"$body")" >/dev/null
+    fi
+    gh_or_4 workflow run build.yml -f pr="$pr"
+  fi
   echo "$verdict"
 }
 
-# L66: exits 0 when a completed qa run already swept <sha>, so a tick sweeps main only after it moved.
+# L66: exits 0 when a qa run already swept <sha> to the end, which its step `a complete sweep record` passing proves,
+# so a tick sweeps main only after it moved. A run that failed before or during the sweep does not count.
 swept() {
-  local runs
-  runs=$(gh_or_4 run list --workflow qa.yml --status completed --limit 20 --json headSha,conclusion)
-  jq -e --arg sha "$1" 'any(.[]; .headSha == $sha and (.conclusion == "success" or .conclusion == "failure"))' <<<"$runs" >/dev/null
+  local ids id complete
+  ids=$(gh_or_4 run list --workflow qa.yml --status completed --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$1\") | .databaseId")
+  for id in $ids; do
+    complete=$(gh_or_4 run view "$id" --json jobs --jq '[.jobs[].steps[]? | select(.name == "a complete sweep record" and .conclusion == "success")] | length > 0') || exit 4
+    [ "$complete" != true ] || return 0
+  done
+  return 1
 }
 
 case "${1:-}" in
   queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" ;;
   claim) claim ;;
   unclaim) unclaim ;;
+  stopped) shift; stopped "$@" ;;
   builders) builders ;;
   slug) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; jq -rn --arg s "$2" "$slug_def"' $s | slug' ;;
   prompt) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; prompt "$2" ;;

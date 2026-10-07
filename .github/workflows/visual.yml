@@ -28,7 +28,10 @@ jobs:
           cache: pnpm
       - uses: taiki-e/install-action@just
       - run: pnpm install --frozen-lockfile
-      - run: loop/percy.sh
+      # The build's commit is the PR head, not the merge commit checked out, so review finds it by the head's SHA (L24).
+      - run: loop/percy.sh snapshot
         env:
           PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+          PERCY_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          PERCY_BRANCH: ${{ github.head_ref || github.ref_name }}
           PERCY_CLIENT_ERROR_LOGS: "false"
