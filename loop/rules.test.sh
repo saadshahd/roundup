@@ -118,8 +118,11 @@ expect_output code 'L46 touches: another app is code but not ui' touches 'apps/w
 for path in loop/x.sh .github/workflows/a.yml .agents/builder.md .claude/settings.json AGENTS.md docs/AGENTS.md CLAUDE.md; do
   expect_output loop "L46 touches: $path is loop machinery" touches "$path\n"
 done
+for path in justfile Cargo.toml Cargo.lock package.json pnpm-lock.yaml pnpm-workspace.yaml rust-toolchain.toml tsconfig.json .oxlintrc.json .fallowrc.json .cargo/config.toml tools/oxlint/a.js; do
+  expect_output code "L46 touches: the Build file $path is code" touches "$path\n"
+done
 expect_output 'code loop' 'L46 touches: an AGENTS.md inside a crate is both' touches 'crates/x/AGENTS.md\n'
-expect_output '' 'L46 touches: docs and scenarios are neither' touches 'docs/a.md\nscenarios/ui.md\nGLOSSARY.md\n'
+expect_output '' 'L46 touches: docs and scenarios are neither' touches 'docs/a.md\nscenarios/ui.md\nGLOSSARY.md\nREADME.md\nskills-lock.json\n'
 expect_output code 'L46 touches: a last path without a newline still counts' touches 'docs/a.md\ncrates/a.rs'
 
 # L54 clean-merge: a throwaway repo with `origin/main` and a PR branch.
