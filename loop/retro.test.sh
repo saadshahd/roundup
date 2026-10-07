@@ -6,7 +6,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir -p "$dir/bin" "$dir/loop"
-cp "$root/loop/retro.sh" "$dir/loop/retro.sh"
+cp "$root/loop/retro.sh" "$root/loop/lib.sh" "$dir/loop/"
 git -C "$dir" init -q
 git -C "$dir" add loop/retro.sh
 GIT_COMMITTER_DATE='2026-10-08T09:00:00+02:00' git -C "$dir" -c user.name=t -c user.email=t@t commit -q -m retro
@@ -52,17 +52,8 @@ mkdir "$FIXTURES"
 cd "$dir"
 failures=0
 
-check() {
-  local name=$1 want=$2 got=0
-  shift 2
-  "$@" >"$FIXTURES/out" 2>"$FIXTURES/err" || got=$?
-  if [ "$got" -eq "$want" ]; then echo "ok:   $name"; else echo "FAIL: $name (exit $got, wanted $want)"; cat "$FIXTURES/out" "$FIXTURES/err"; failures=$((failures + 1)); fi
-}
-holds() {
-  local name=$1
-  shift
-  if "$@"; then echo "ok:   $name"; else echo "FAIL: $name"; cat "$FIXTURES/out" "$FIXTURES/err"; failures=$((failures + 1)); fi
-}
+# shellcheck source=loop/test-lib.sh
+. "$root/loop/test-lib.sh"
 fresh() {
   rm -rf "${FIXTURES:?}"/*
   : >"$FIXTURES/trace"

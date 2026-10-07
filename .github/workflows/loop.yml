@@ -7,6 +7,11 @@ concurrency:
   group: loop-${{ github.ref }}
   cancel-in-progress: true
 
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   rules:
     runs-on: ubuntu-latest

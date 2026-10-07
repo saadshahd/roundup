@@ -5,7 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
+# shellcheck source=loop/lib.sh
+. loop/lib.sh
 every=20
 jev_model=jev-1.13.0
 # jq: a Ledger row's weighted tokens, a count in millions, and weighted tokens per merged product PR of $prs (from
