@@ -34,4 +34,4 @@ Builder, Reviewer, QA and Retro runs are one-shot GitHub Actions jobs, and GitHu
 - Red `main`: revert, never fix forward.
 - Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
 - Only an Architect pushes to `main`, and only `contracts/`, core crates and docs.
-- Everything a human reads (a PR body, a verdict, a report): `reduce`, then the `show-me` layout.
+- What the user reads (the Status issue, a needs-you comment, a PR body, a report): `reduce`, then the `show-me` layout. A verdict is for agents.

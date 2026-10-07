@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # What a Retro reads: the Ledger, merged PRs and their rejects, each reject classified by Jev.
-# Usage: loop/retro.sh ledger <role> <subject> <execution-file> <conclusion> | due | report | classify
+# Usage: loop/retro.sh ledger <role> <subject> <execution-file> <conclusion> | due | report | classify | cost <since>
 # Exit 4 is a gh, git or Jev failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -8,6 +8,13 @@ cd "$(dirname "$0")/.."
 gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
 every=20
 jev_model=jev-1.13.0
+# jq: a Ledger row's weighted tokens, a count in millions, and weighted tokens per merged product PR of $prs (from
+# `kinds`) and $rows (Ledger rows). Weights: input 1, cache write 1.25, cache read 0.1, output 5.
+# shellcheck disable=SC2016 # jq variables, not the shell's
+weights='def weighted: .input + 1.25 * .cache_write + 0.1 * .cache_read + 5 * .output;
+  def m: . / 1000000 | . * 10 | round / 10 | tostring + "M";
+  def per_product($prs; $rows): ($prs | map(select(.kind == "product")) | length) as $n
+    | if $n > 0 then ($rows | map(weighted) | add // 0) / $n | m else "no product PR merged" end;'
 
 # L29: one Ledger row for an agent run. Its models, turns and tokens come from the run's `result` entry; a run cut off before it
 # has one sums its assistant messages, each message id once, since a message repeats per content block.
@@ -43,6 +50,14 @@ since() {
 merged_since() {
   gh_or_4 pr list --state merged --search "merged:>=$1" --limit 1000 --json number,title,mergedAt,files |
     jq -c --arg since "$1" '[.[] | select(.mergedAt > $since) | {number, title, mergedAt, files: [.files[].path]}]'
+}
+
+# Merged PRs after <since> as [{number, title, kind}]: product touches code, loop touches loop machinery, the rest spec.
+kinds() {
+  merged_since "$1" | jq -c '.[]' | while IFS= read -r pr; do
+    jq -r '.files[]' <<<"$pr" | loop/rules.sh touches |
+      jq -R -s -c --argjson pr "$pr" '($pr | {number, title}) + {kind: (split("\n") | if index("code") then "product" elif index("loop") then "loop" else "spec" end)}'
+  done | jq -s -c .
 }
 
 # L27: exits 0 when <every> PRs merged since the last Retro and no Retro PR is open; prints why either way.
@@ -103,16 +118,20 @@ ledger_rows() {
   rm -rf "$dir"
 }
 
+# L80: weighted tokens per merged product PR since <since>, as the Status issue shows them.
+cost() {
+  local prs rows
+  prs=$(kinds "$1")
+  rows=$(ledger_rows "$1" | jq -s -c .)
+  jq -nr --argjson prs "$prs" --argjson rows "$rows" "$weights"' per_product($prs; $rows)'
+}
+
 # L27: the Retro's input as markdown: PRs by kind, Ledger totals by role, tokens per merged product PR, each reject
-# classified, and the costliest runs. Runs group by role and model, so a Retro can weigh Sonnet against Opus. Weights: input 1, cache write 1.25, cache read 0.1, output 5.
+# classified, and the costliest runs. Runs group by role and model, so a Retro can weigh Sonnet against Opus.
 report() {
-  local start prs pr kinds rows rejects unread dir code
+  local start pr kinds rows rejects unread dir code
   start=$(since)
-  prs=$(merged_since "$start")
-  kinds=$(jq -c '.[]' <<<"$prs" | while IFS= read -r pr; do
-    jq -r '.files[]' <<<"$pr" | loop/rules.sh touches |
-      jq -R -s -c --argjson pr "$pr" '($pr | {number, title}) + {kind: (split("\n") | if index("code") then "product" elif index("loop") then "loop" else "spec" end)}'
-  done | jq -s -c .)
+  kinds=$(kinds "$start")
   rows=$(ledger_rows "$start" | jq -s -c .)
   dir=$(mktemp -d)
   : >"$dir/rejects"
@@ -130,17 +149,13 @@ report() {
   rejects=$(classify <"$dir/rejects" | jq -s -c .) || exit 4
   unread=$(jq -s -c . "$dir/unread")
   rm -rf "$dir"
-  jq -nr --arg since "$start" --argjson prs "$kinds" --argjson rows "$rows" --argjson rejects "$rejects" --argjson unread "$unread" '
-    def weighted: .input + 1.25 * .cache_write + 0.1 * .cache_read + 5 * .output;
-    def m: . / 1000000 | . * 10 | round / 10 | tostring + "M";
-    ($prs | map(select(.kind == "product")) | length) as $product
-    | ($rows | map(weighted) | add // 0) as $total
-    | "# Retro: \($prs | length) PRs merged since \($since)", "",
+  jq -nr --arg since "$start" --argjson prs "$kinds" --argjson rows "$rows" --argjson rejects "$rejects" --argjson unread "$unread" "$weights"'
+    "# Retro: \($prs | length) PRs merged since \($since)", "",
       "| Kind | PRs |", "|---|---|",
       ($prs | group_by(.kind)[] | "| \(.[0].kind) | \(length) |"), "",
       "| Role | Model | Runs | Not success | Turns | Weighted tokens |", "|---|---|---|---|---|---|",
       ($rows | group_by([.role, .model])[] | "| \(.[0].role) | \(.[0].model) | \(length) | \(map(select(.exit != "success")) | length) | \(map(.turns) | add) | \(map(weighted) | add | m) |"), "",
-      "Weighted tokens per merged product PR: \(if $product > 0 then $total / $product | m else "no product PR merged" end)", "",
+      "Weighted tokens per merged product PR: \(per_product($prs; $rows))", "",
       "## Rejects", "",
       "| Kind | Class | Confidence | Verdict |", "|---|---|---|---|",
       ($rejects[] | "| \(.kind) | \(.class) | \(.kind_confidence * 100 | round)%, \(.class_confidence * 100 | round)% | \(.id) |"), "",
@@ -155,5 +170,6 @@ case "${1:-}" in
   due) due ;;
   report) report ;;
   classify) classify ;;
+  cost) [[ ${2:-} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || { sed -n '3p' "$0" >&2; exit 2; }; cost "$2" ;;
   *) sed -n '3p' "$0" >&2; exit 2 ;;
 esac

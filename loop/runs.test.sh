@@ -90,6 +90,8 @@ echo '{"jobs":[{"name":"queue","status":"completed"},{"name":"build (U1, scenari
 echo '{"jobs":[{"name":"build (U9, scenarios/ui.md, U9)","status":"queued"}]}' >"$FIXTURES/jobs-72"
 check 'L23 queue counts Builders of other runs' 0 loop/runs.sh queue 4
 holds 'L23 a queued or running Builder of any tick takes a slot of max' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U3","U4"]'
+check 'L23 builders lists the Builder jobs still queued or running' 0 loop/runs.sh builders
+holds 'L23 builders prints each one'"'"'s slug' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
 check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
 holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
 touch "$FIXTURES/gh-fail"

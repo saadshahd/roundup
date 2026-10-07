@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The steps between GitHub's events and one-shot agent runs; each workflow step calls one subcommand.
-# Usage: loop/runs.sh queue [max] | claim | unclaim | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
+# Usage: loop/runs.sh queue [max] | claim | unclaim | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
 # Exit 4 is a gh failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -10,15 +10,14 @@ gh_or_4() { gh "$@" || { echo "gh $1 $2 failed" >&2; exit 4; }; }
 # A subject (a Work row's ids or a PR number) as one word for a branch or an artifact name.
 slug_def='def slug: gsub("[^A-Za-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-");'
 
-# L23: Builder jobs (`build (…)`) still queued or running in any build.yml run; they hold slots of max across ticks.
+# L23: the slug of each Builder job (`build (<ids>, <file>, <slug>)`) still queued or running in any build.yml run, one
+# per line; they hold slots of max across ticks.
 builders() {
-  local ids id count n=0
+  local ids id
   ids=$(gh_or_4 run list --workflow build.yml --limit 50 --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId') || exit 4
   for id in $ids; do
-    count=$(gh_or_4 run view "$id" --json jobs --jq '[.jobs[] | select((.name | startswith("build (")) and .status != "completed")] | length') || exit 4
-    n=$((n + count))
+    gh_or_4 run view "$id" --json jobs --jq '.jobs[] | select((.name | startswith("build (")) and .status != "completed") | .name | capture(", (?<slug>[^ ,]+)\\)$").slug' || exit 4
   done
-  echo "$n"
 }
 
 # L23: ready Work rows of `loop/rules.sh ready` as the build matrix [{ids, file, slug}], at most <max> less the Builders
@@ -28,7 +27,7 @@ queue() {
   local max=${1:-4} rows branches running
   rows=$(loop/rules.sh ready)
   branches=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
-  running=$(builders)
+  running=$(builders | wc -l | tr -d ' ')
   printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" "$slug_def"'
     ($branches | [scan("refs/heads/build/(\\S+)")[0]]) as $taken
     | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
@@ -132,6 +131,7 @@ case "${1:-}" in
   queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" ;;
   claim) claim ;;
   unclaim) unclaim ;;
+  builders) builders ;;
   slug) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; jq -rn --arg s "$2" "$slug_def"' $s | slug' ;;
   prompt) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; prompt "$2" ;;
   review-due) [[ ${2:-} =~ ^[0-9]+$ && ${3:-} =~ ^[0-9a-f]{40}$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; review_due "$2" "$3" ;;
