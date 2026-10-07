@@ -7,7 +7,12 @@ runs:
       with:
         toolchain: 1.99.0
         components: clippy, rustfmt
+    # One key for every job that builds the workspace. `check` is the check job's own key, so Builders restore the
+    # entries main's check saved. Only a push to main saves: a PR or a Builder branch would store its own 726 MB copy.
     - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: check
+        save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     - uses: taiki-e/install-action@nextest
     - uses: taiki-e/install-action@cargo-machete
     - uses: pnpm/action-setup@v4
