@@ -71,10 +71,17 @@ jobs:
               gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a loop PR"
             fi
           fi
-          set +e
-          out=$(loop/rules.sh merge-ready "$pr" 2>&1)
-          code=$?
-          set -e
+          for _attempt in 1 2 3; do
+            sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+            code=0
+            out=$(loop/rules.sh merge-ready "$pr" 2>&1) || code=$?
+            latest=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+            if [ "$latest" != "$sha" ]; then
+              code=1
+              out='PR changed during merge-ready'
+            fi
+            if ! grep -Fq 'PR changed during merge-ready' <<<"$out"; then break; fi
+          done
           state=success
           if [ "$code" -ne 0 ]; then state=failure; fi
           if [ "$code" -eq 2 ]; then out="merge-ready not built"; fi

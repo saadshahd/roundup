@@ -71,12 +71,13 @@ page() {
     [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"] + $claims + $failed')
 
   jq -nr --arg at "$(at "$now" '%Y-%m-%d %H:%M')" --arg merged "$merged" --arg tokens "$tokens" \
-    --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
+    --argjson activity "${ACTIVITY:-[]}" --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
     def cell: if length == 0 then "nothing" else map(gsub("\\|"; "\\|")) | join("<br>") end;
     "<!-- loop-status -->",
-    "Loop status at \($at) UTC. This body is rewritten each hour; at 08:03 UTC the same table lands as a comment.", "",
+    "Loop status at \($at) UTC. This body updates on run events and every five minutes; at 08:03 UTC the same table lands as a comment.", "",
     "| Row | Now |", "|---|---|",
     "| Merged | \($merged) |", $tokens,
+    "| Running / queued | \($activity | cell) |",
     (if $codex == "" then empty else "| Codex | " + ([$codex | fromjson |
       "\(.ids): \(.state); started \(.started | strftime("%Y-%m-%d %H:%M UTC")); " +
       (if .state == "running" then "deadline " + (.deadline | strftime("%H:%M UTC"))

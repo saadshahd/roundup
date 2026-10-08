@@ -382,7 +382,11 @@ try:
     if any(path.startswith('crates/desktop/') for path in paths):
         gate(lambda: require(re.search(r'^macOS: \S.+$', body, re.M), 'a crates/desktop PR needs a macOS: line'))
     latest = one(pull)
-    gate(lambda: require(latest == pr, 'PR changed during merge-ready'))
+    # Embedded repository counters may change during a gate without changing the PR.
+    def gate_inputs(value):
+        return {key: value.get(key) for key in ('state', 'draft', 'body', 'updated_at')} | {
+            'head': value['head']['sha'], 'base': value['base']['sha'], 'ref': value['base']['ref']}
+    gate(lambda: require(gate_inputs(latest) == gate_inputs(pr), 'PR changed during merge-ready'))
     require(not errors, '\n'.join(errors))
     print('ready '+head)
 except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError) as error:

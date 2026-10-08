@@ -183,15 +183,7 @@ holds 'L23 prompt closes its delimiter' bash -c 'd=$(head -n1 "$FIXTURES/output"
 check 'L23 prompt refuses an unknown role' 2 bash -c 'echo x | loop/runs.sh prompt driver'
 unset GITHUB_OUTPUT
 
-# L24: exercise the workflow's prompt command against the real prompt files, so a removed role cannot pass fixtures.
-{
-  echo 'cd "$ROOT"'
-  sed -n '/| loop\/runs.sh prompt /p' "$root/.github/workflows/review.yml"
-} >"$dir/review-prompt.sh"
-check 'L24 the review workflow loads an existing prompt' 0 env \
-  GITHUB_OUTPUT="$dir/review-output" task="PR #7, head $head." bash -eo pipefail "$dir/review-prompt.sh"
-holds 'L24 the shared prompt receives an explicit review task' bash -c \
-  'grep -qx "# Builder" "$1" && grep -qx "Review PR #7, head $2." "$1"' _ "$dir/review-output" "$head"
+# L88 dispatch.test.py exercises the review task against the real shared prompt.
 
 # L24 review-due
 fresh

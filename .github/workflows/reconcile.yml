@@ -1,0 +1,43 @@
+name: reconcile
+
+# Events minimise handoff latency; the periodic sweep recovers missed events.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  workflow_run:
+    workflows: [check, build, review, visual]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: reconcile
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+  checks: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
+        run: python3 loop/dispatch.py reconcile

@@ -44,6 +44,10 @@ set -euo pipefail
 if [ "$*" = touches ]; then exec bash "$ROOT/loop/rules.sh" touches; fi
 [ "$*" = 'merge-ready 281' ]
 echo gates >>"$TRACE"
+if [ "$CASE" = transient ] && [ "$(grep -c '^gates$' "$TRACE")" -eq 1 ]; then
+  echo 'merge-ready: PR changed during merge-ready'
+  exit 1
+fi
 printf '%s\n' "$GATES_OUT"
 exit "$GATES_CODE"
 RULES
@@ -81,6 +85,12 @@ for PR_PATH in loop/rules.sh .agents/builder.md AGENTS.md; do
 done
 CASE=outside PR_PATH=$'docs/perf.md\ncrates/rupd/src/main.rs'
 expect l78_other_paths_leave_auto_merge_alone 0 $'gates\nstate=success'
+
+CASE=transient PR_PATH=crates/rupd/src/main.rs
+expect l46_transient_gate_mutation_retries 0 $'gates\ngates\nstate=success'
+CASE=outside GATES_OUT='merge-ready: PR changed during merge-ready' GATES_CODE=1
+expect l46_repeated_mutation_is_bounded 0 $'gates\ngates\ngates\nstate=failure'
+GATES_OUT='ready head' GATES_CODE=0
 
 # L79: the reasons only the user clears, as rules.sh prints them.
 loop='the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md'

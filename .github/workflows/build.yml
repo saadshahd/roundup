@@ -1,17 +1,21 @@
 name: build
+run-name: "${{ inputs.pr && format('Repair PR #{0}', inputs.pr) || 'Build ready rows' }}"
 
 # L23: one-shot Builder runs. GitHub does the waiting: a tick claims ready Work rows while up to four Builders run
 # across all ticks, and a dispatch with a PR number makes the one fix run after its first reject (loop/runs.sh verdict
 # sends it). Each run ends with its PR.
 on:
   schedule:
-    - cron: '7 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       pr:
         description: A PR to fix after its first reject; empty builds ready rows
         required: false
         default: ''
+      head:
+        description: Expected PR head; stale dispatches do no work
+        required: false
       max:
         description: Builder runs at most
         required: false
@@ -126,9 +130,35 @@ jobs:
             gh workflow run build.yml
           fi
 
-  # One fix run per PR at a time.
-  fix:
+  # Trusted main owns the Claim and constructs the task before PR code is checked out.
+  repair-due:
     if: ${{ inputs.pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+      checks: read
+    outputs:
+      branch: ${{ steps.due.outputs.branch }}
+      prompt: ${{ steps.due.outputs.prompt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          HEAD: ${{ inputs.head }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
+        run: python3 loop/dispatch.py start "$PR" fix "$HEAD"
+
+  fix:
+    needs: repair-due
+    if: needs.repair-due.outputs.branch != ''
     concurrency:
       group: build-${{ inputs.pr }}
       cancel-in-progress: false
@@ -139,38 +169,20 @@ jobs:
       pull-requests: read
       id-token: write
     outputs:
-      branch: ${{ steps.pr.outputs.branch }}
+      branch: ${{ needs.repair-due.outputs.branch }}
     steps:
-      - id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
-        run: |
-          branch=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefName,state --jq 'select(.state == "OPEN") | .headRefName')
-          [ -n "$branch" ] || { echo "PR #$PR is not open" >&2; exit 1; }
-          echo "branch=$branch" >>"$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr.outputs.branch }}
+          ref: ${{ needs.repair-due.outputs.branch }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
           browser: 'true'
-      - id: prompt
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
-          BRANCH: ${{ steps.pr.outputs.branch }}
-        run: |
-          {
-            printf 'Fix PR #%s on branch %s: answer every finding of the reject below and push. Your Author-Agent id is builder-%s.\n\n' "$PR" "$BRANCH" "$GITHUB_RUN_ID"
-            loop/rules.sh verdicts "$PR" | jq -r 'select(.verdict == "reject") | .body'
-          } | loop/runs.sh prompt builder
       - id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          prompt: ${{ steps.prompt.outputs.prompt }}
+          prompt: ${{ needs.repair-due.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: claude,github-actions
           claude_args: >-
@@ -197,6 +209,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           persist-credentials: false
       - env:
           GH_TOKEN: ${{ github.token }}

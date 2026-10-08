@@ -1,11 +1,15 @@
 # The one definition of "check": CI runs exactly this.
-check:
+check: check-rust check-web
+
+check-rust:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
     cargo nextest run
     just contracts-fresh
     cargo machete crates
     spikes/context-injection/e7_report.test.sh
+
+check-web:
     pnpm lint
     pnpm typecheck
     pnpm slop

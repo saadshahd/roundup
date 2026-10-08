@@ -228,6 +228,8 @@ elif '/pulls/' in route:
     Path(os.environ['GATE_DATA']).write_text(json.dumps(d))
     if d.get('change_head') and d['reads'] > 1:
         pr['head']['sha'] = '0'*40
+    if d['reads'] > 1:
+        pr.update(d.get('change_pr', {}))
     out = [pr]
 elif '/issues/' in route:
     out = d.get('comments', [[{'id': 1, 'created_at': '2026-10-03T00:00:00Z', 'user': {'login': 'github-actions[bot]'},
@@ -492,6 +494,12 @@ for command in ci-trailers verdicts merge-ready; do
   expect_exit 4 "L46 $command propagates gh failure" gate "$command" 12
 done
 
+gate_repo; gate_set '.change_pr={head_repository_counter: 10}'
+ready_at 'L46 unrelated repository metadata cannot stale the gate'
+for field in 'draft:true' 'body:"Scenarios: L99"' 'state:"closed"' 'updated_at:"later"'; do
+  gate_repo; gate_set ".change_pr={$field}"
+  expect_exit 1 'L46 relevant PR mutations fail closed' gate merge-ready 12
+done
 gate_repo
 gate_set '.change_head=true'
 expect_exit 1 'L46 head changing during the gate fails' gate merge-ready 12
