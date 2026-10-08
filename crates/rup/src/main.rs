@@ -3,6 +3,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use contracts::agent::SignalParams;
+use contracts::decision::{PermissionOutput, PermissionParams};
 use contracts::{Actor, ActorKind};
 use serde_json::{Value, json};
 
@@ -24,6 +25,9 @@ async fn main() -> ExitCode {
         ["signal", agent_id] => signal(agent_id).await,
         // Exit 2 would tell Claude Code to block its tool call or prompt; `signal` only ever exits 1.
         ["signal", ..] => Err("usage: rup signal <agent-id>".into()),
+        ["permission", agent_id] => permission(agent_id).await,
+        // As for `signal`: exit 2 would block the tool call.
+        ["permission", ..] => Err("usage: rup permission <agent-id>".into()),
         ["mcp"] => return mcp::run(None).await,
         ["mcp", agent_id, ..] => return mcp::run(Some(agent_id.to_owned())).await,
         [] => return usage(),
@@ -42,7 +46,9 @@ async fn main() -> ExitCode {
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: rup ping | rup signal <agent-id> | rup mcp <agent-id>");
+    eprintln!(
+        "usage: rup ping | rup signal <agent-id> | rup permission <agent-id> | rup mcp <agent-id>"
+    );
     ExitCode::from(2)
 }
 
@@ -86,8 +92,52 @@ async fn signal(agent_id: &str) -> Result<(), String> {
         })?
 }
 
-/// Identify as Agent `agent_id` and hand the Daemon its Signal.
-async fn deliver(agent_id: &str, attempt: String, payload: Value) -> Result<(), String> {
+/// H8: Claude Code runs this as the Agent's `PermissionRequest` hook. It prints exactly the reply
+/// the Daemon gives and nothing else; every failure is a line on stderr and exit 1, so Claude Code
+/// shows its own dialog and no failure can allow or block a tool call.
+async fn permission(agent_id: &str) -> Result<(), String> {
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|err| format!("cannot read the payload: {err}"))?;
+    let payload: Value =
+        serde_json::from_str(&input).map_err(|err| format!("the payload is not JSON: {err}"))?;
+    // Without it `connect` would fall back to a default socket the hook was never pointed at.
+    if std::env::var_os("RUPD_SOCKET").is_none() {
+        return Err("RUPD_SOCKET is not set".into());
+    }
+    let client = identified(agent_id).await?;
+    let reply = client
+        .request(
+            "agent.permission",
+            PermissionParams {
+                id: agent_id.to_owned(),
+                payload,
+            },
+        )
+        .await
+        .map_err(hung_up)?;
+    let PermissionOutput { output } = serde_json::from_value(reply)
+        .map_err(|err| format!("rupd's reply is unreadable: {err}"))?;
+    if output.is_empty() {
+        // H2: the Decision is answered in the Terminal.
+        eprintln!("answer in the Terminal");
+    } else {
+        print!("{output}");
+    }
+    Ok(())
+}
+
+/// A connection that closed with no reply: nothing more will come.
+fn hung_up(err: rpc::RpcError) -> String {
+    match err.code {
+        rpc::code::UNKNOWN_OUTCOME => "rupd did not answer".to_owned(),
+        _ => err.to_string(),
+    }
+}
+
+/// Connect and identify as Agent `agent_id`.
+async fn identified(agent_id: &str) -> Result<rpc::Client, String> {
     let client = connect().await?;
     let actor = Actor {
         kind: ActorKind::Agent,
@@ -97,7 +147,13 @@ async fn deliver(agent_id: &str, attempt: String, payload: Value) -> Result<(), 
     client
         .request("daemon.identify", json!({ "actor": actor }))
         .await
-        .map_err(|err| err.to_string())?;
+        .map_err(hung_up)?;
+    Ok(client)
+}
+
+/// Identify as Agent `agent_id` and hand the Daemon its Signal.
+async fn deliver(agent_id: &str, attempt: String, payload: Value) -> Result<(), String> {
+    let client = identified(agent_id).await?;
     let signal = SignalParams {
         id: agent_id.to_owned(),
         attempt,
