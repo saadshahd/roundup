@@ -12,6 +12,12 @@ git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U7 HEAD:refs/heads/build/U8
 cp "$root/loop/status.sh" "$root/loop/lib.sh" "$dir/loop/"
+cat >"$dir/loop/rules.sh" <<'RULES'
+#!/usr/bin/env bash
+[ ! -e "$FIXTURES/orders-fail" ] || exit 4
+cat "$FIXTURES/orders"
+RULES
+chmod +x "$dir/loop/rules.sh"
 cat >"$dir/loop/runs.sh" <<'RUNS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -60,6 +66,7 @@ row() { grep "^| $1 |" "$FIXTURES/out" | sed "s/^| $1 | //; s/ |\$//"; }
 fresh() {
   rm -rf "${FIXTURES:?}"/*
   : >"$FIXTURES/trace"
+  echo '[]' >"$FIXTURES/orders"
   echo '[]' >"$FIXTURES/closed"
   : >"$FIXTURES/builders"
   echo '[]' >"$FIXTURES/merged"
@@ -180,5 +187,12 @@ export CODEX_STATUS="$(jq '.deadline = 1' <<<"$CODEX_STATUS")"
 check 'L87 a stale local record expires' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L87 an expired record cannot hide an orphan' grep -q 'build/U8: no open PR' "$FIXTURES/out"
 unset CODEX_STATUS
+
+fresh
+echo '[{"issue":381,"state":"ready"},{"issue":380,"state":"waiting"},{"issue":362,"state":"done"}]' >"$FIXTURES/orders"
+check 'L80 Status counts live work Issues without reopening delivered work' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 the Issue queue is visible' grep -q '^| Work Issues | 1 ready<br>1 waiting |$' "$FIXTURES/out"
+touch "$FIXTURES/orders-fail"
+check 'L80 unavailable Issue data fails instead of reporting an empty queue' 4 bash -c 'loop/status.sh page </dev/null'
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

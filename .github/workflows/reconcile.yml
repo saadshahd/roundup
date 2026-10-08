@@ -2,6 +2,8 @@ name: reconcile
 
 # Events minimise handoff latency; the periodic sweep recovers missed events.
 on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, closed, reopened]
   schedule:
     - cron: '*/5 * * * *'
   push:
@@ -19,6 +21,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: read
   actions: write
   pull-requests: read
   checks: read

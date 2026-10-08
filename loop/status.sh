@@ -22,7 +22,7 @@ issue() {
 # L80: the Status issue's body. Without --cost it keeps the Tokens row of the previous body (stdin), since counting
 # downloads every Ledger artifact of the week.
 page() {
-  local day week stale cost tokens merged completed owners open needs blocked pr sha desc main claims running failed watch
+  local day week stale cost tokens merged completed owners open needs blocked pr sha desc main claims running failed watch orders
   day=$(at "$now" '%Y-%m-%dT00:00:00Z')
   week=$(at $((now - 7 * 86400)) '%Y-%m-%dT%H:%M:%SZ')
   stale=$(at $((now - stuck_hours * 3600)) '%Y-%m-%dT%H:%M:%SZ')
@@ -34,6 +34,7 @@ page() {
   fi
   merged=$(gh_or_4 pr list --state merged --search "merged:>=$week" --limit 1000 --json mergedAt |
     jq -r --arg day "$day" --arg week "$week" 'map(.mergedAt) | "\(map(select(. >= $day)) | length) today, \(map(select(. >= $week)) | length) in 7 days"')
+  orders=$(loop/rules.sh ready --json)
   open=$(gh_or_4 pr list --state open --limit 200 --json number,title,isDraft,labels,headRefName,headRefOid,updatedAt,statusCheckRollup,comments)
 
   # Each PR labelled flag:needs-user, with the questions of merge-ready's needs-user comment (L79).
@@ -80,12 +81,13 @@ page() {
     [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"] + $claims + $owners + $failed')
 
   jq -nr --arg at "$(at "$now" '%Y-%m-%d %H:%M')" --arg merged "$merged" --arg tokens "$tokens" \
-    --argjson activity "${ACTIVITY:-[]}" --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
+    --argjson orders "$orders" --argjson activity "${ACTIVITY:-[]}" --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
     def cell: if length == 0 then "nothing" else map(gsub("\\|"; "\\|")) | join("<br>") end;
     "<!-- loop-status -->",
     "Loop status at \($at) UTC. This body updates on run events and every five minutes; at 08:03 UTC the same table lands as a comment.", "",
     "| Row | Now |", "|---|---|",
     "| Merged | \($merged) |", $tokens,
+    "| Work Issues | \([$orders[] | select(.state != "done" and .state != "cancelled")] | group_by(.state) | map("\(length) \(.[0].state)") | cell) |",
     "| Running / queued | \($activity | cell) |",
     (if $codex == "" then empty else "| Codex | " + ([$codex | fromjson |
       "\(.ids): \(.state); started \(.started | strftime("%Y-%m-%d %H:%M UTC")); " +

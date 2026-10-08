@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | touches | ready [--offline] | delta <base-dir> <head-dir> | base|ci-trailers|verdicts|merge-ready <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | touches | ready [--json] | delta <base-dir> <head-dir> | base|ci-trailers|verdicts|merge-ready <pr> | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -393,64 +393,8 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
-# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, in-flight, unspecified, waiting or ready.
-ready() {
-  python3 - "$@" <<'PY'
-import glob, json, os, re, subprocess, sys
-files = sorted(glob.glob('scenarios/*.md'))
-heads = {m for f in files for m in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', open(f).read(), re.M)}
-def ids(text):
-    out = []
-    for a, b in re.findall(r'\b([A-Z][0-9]+)(?:\s*(?:–|-|to)\s*[A-Z]?([0-9]+))?\b', text):
-        if b:
-            out += [a[0] + str(n) for n in range(int(a[1:]), int(b) + 1)]
-        else:
-            out.append(a)
-    return out
-def title_ids(text):
-    prefix = re.match(r'^([A-Z][0-9]+(?:\s*(?:,|–|-|to|and)\s*[A-Z]?[0-9]+|\s+[A-Z][0-9]+)*)\b', text)
-    return ids(prefix[0]) if prefix else []
-def tested(i):
-    if i[0] == 'L':
-        args = ['git', 'grep', '-qE', r'(^|[^A-Za-z0-9_])' + i + r'([^A-Za-z0-9_]|$)', '--', 'loop/*.test.sh']
-    else:
-        args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
-    return subprocess.run(args).returncode == 0
-prs = []
-if sys.argv[1:] != ['--offline']:
-    try:
-        result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,title'],
-                                text=True, stdout=subprocess.PIPE, timeout=float(os.environ.get('LOOP_GH_TIMEOUT', '20')), check=True)
-        prs = [(pr['number'], set(title_ids(pr['title']))) for pr in json.loads(result.stdout)]
-    except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError) as error:
-        print(f'gh: pr list: {error}', file=sys.stderr)
-        sys.exit(4)
-for f in files:
-    lines = open(f).read().split('\n')
-    if '## Work' not in lines:
-        continue
-    rows = [l for l in lines[lines.index('## Work'):] if l.startswith('|')]
-    header = [c.strip() for c in rows[0].strip('|').split('|')] if rows else []
-    if header != ['Ids', 'Item', 'Owns', 'Keeps green', 'After']:
-        print(f'{f}: Work table needs Ids, Item, Owns, Keeps green, After', file=sys.stderr)
-        sys.exit(2)
-    for row in rows[2:]:
-        cells = [c.strip() for c in row.strip().strip('|').split('|')]
-        own = ids(cells[0])
-        open_prs = ' '.join(f'#{n}' for n, named in prs if named & set(own))
-        if own and all(tested(i) for i in own):
-            state = 'done'
-        elif open_prs:
-            state = 'in-flight'
-        elif not own or any(i not in heads for i in own):
-            state = 'unspecified'
-        elif any(not tested(i) for i in ids(cells[4])):
-            state = 'waiting'
-        else:
-            state = 'ready'
-        print(state, cells[0], f, *([open_prs] if state == 'in-flight' else []))
-PY
-}
+# L34: Issues are the only work queue. API failures never mean there is no work.
+ready() { python3 loop/orders.py ready "$@"; }
 
 case "${1:-}" in
   base | ci-trailers | verdicts | merge-ready)
@@ -459,7 +403,7 @@ case "${1:-}" in
   touches) touches ;;
   vocab) vocab ;;
   ready)
-    [[ -z ${2:-} || $2 == --offline ]] || { echo "usage: loop/rules.sh ready [--offline]" >&2; exit 2; }
+    [[ -z ${2:-} || $2 == --json ]] || { echo "usage: loop/rules.sh ready [--json]" >&2; exit 2; }
     ready "${@:2}" ;;
   delta) delta "${2:-}" "${3:-}" ;;
   clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
