@@ -44,7 +44,7 @@ case "$*" in
   'run list --workflow qa.yml '*) jq -r "${@: -1}" "$FIXTURES/runs" ;;
   'run list --workflow build.yml '*) jq -r "${@: -1}" "$FIXTURES/build-runs" ;;
   'run view '*' --json jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/jobs-$3" ;;
-  'pr list --head build/'*' --state all --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
+  'pr list --head build/'*' --state open --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
   'pr list --head '*' --state open --json number,isDraft,body --jq '*) jq -r "${@: -1}" "$FIXTURES/open-${4//\//-}" 2>/dev/null || jq -r "${@: -1}" <<<'[]' ;;
   'pr view '*' --json body --jq '*) jq -r "${@: -1}" "$FIXTURES/view" ;;
   'pr list --state open --json headRefName,isDraft') cat "$FIXTURES/refill-prs" ;;
@@ -80,13 +80,18 @@ holds 'L23 queue keeps ids, ranges, the file and a slug; it skips loop rows' tes
 check 'L23 queue takes at most max rows' 0 loop/runs.sh queue 2
 holds 'L23 queue of two' test "$(jq length "$FIXTURES/out")" = 2
 
-# A deleted branch is not permission to repeat completed work; closed-unmerged work is distinct.
-printf '[{"head":{"ref":"build/U3","repo":{"id":1}},"base":{"ref":"main","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"},{"head":{"ref":"build/U4"},"merged_at":null}]\n' >"$FIXTURES/closed"
-check 'L23 merged work stays complete after its branch is deleted' 0 loop/runs.sh queue
-holds 'L23 only merged rows are excluded' jq -e 'all(.slug != "U3") and any(.slug == "U4")' "$FIXTURES/out"
-printf '[{"head":{"ref":"build/U3","repo":{"id":1}},"base":{"ref":"preview","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"},{"head":{"ref":"build/U4","repo":{"id":2}},"base":{"ref":"main","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"}]\n' >"$FIXTURES/closed"
-check 'L23 foreign branches and non-main merges do not complete a fleet row' 0 loop/runs.sh queue
-holds 'L23 unrelated merges leave ready work eligible' jq -e 'any(.slug == "U3") and any(.slug == "U4")' "$FIXTURES/out"
+# A merged spec does not finish a still-ready row, with or without its old branch.
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U3",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
+check 'L23 a deleted merged spec branch does not suppress ready implementation' 0 loop/runs.sh queue
+holds 'L23 ready work remains eligible after a spec merge' jq -e 'any(.slug == "U3")' "$FIXTURES/out"
+printf 'ready U5 scenarios/ui.md\ndone U3 scenarios/ui.md\n' >"$FIXTURES/ready"
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U5",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
+check 'L23 an exact merged head can be reclaimed for ready work' 0 loop/runs.sh queue
+holds 'L23 completion still comes from ready and retirement carries an exact lease' jq -e 'length == 1 and .[0].slug == "U5" and (.[0].reclaim | length == 40)' "$FIXTURES/out"
+jq '.[0].head.sha = "different"' "$FIXTURES/closed" >"$FIXTURES/changed"
+mv "$FIXTURES/changed" "$FIXTURES/closed"
+check 'L23 an unmerged head after an older merge stays claimed' 0 loop/runs.sh queue
+holds 'L23 new work on an old branch stays owned' test "$(cat "$FIXTURES/out")" = '[]'
 echo '[]' >"$FIXTURES/closed"
 
 # L86 journey priority orders only eligible rows, without overriding a dependency or a Claim.
@@ -161,14 +166,33 @@ git remote set-url origin "$dir/missing.git"
 check 'L23 a failed push exits 4' 4 bash -c 'echo '"'"'[{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'"'"' | loop/runs.sh claim'
 git remote set-url origin "$dir/origin.git"
 
+# Retiring a merged head and creating a fresh Claim still has only one winner.
+fresh
+old=$(git rev-parse HEAD)
+git push -q origin HEAD:refs/heads/build/U12
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m next-main
+jq -nc --arg old "$old" '[{ids:"U12",file:"scenarios/ui.md",slug:"U12",reclaim:$old}]' >"$FIXTURES/reclaim"
+check 'L23 reclaim retires only the observed merged head' 0 bash -c 'loop/runs.sh claim <"$FIXTURES/reclaim"'
+holds 'L23 a fresh owner gets the row without stale retirement metadata' jq -e 'length == 1 and .[0].slug == "U12" and (.[0] | has("reclaim") | not)' "$FIXTURES/out"
+check 'L23 a competing stale retirement cannot delete the new Claim' 0 bash -c 'loop/runs.sh claim <"$FIXTURES/reclaim"'
+holds 'L23 the loser starts nothing and preserves the winner' bash -c 'test "$(cat "$FIXTURES/out")" = "[]" && test "$(git ls-remote origin refs/heads/build/U12 | cut -f1)" = "$(git rev-parse HEAD)"'
+
+jq -nc --arg old "$old" '[{ids:"U12",slug:"U12",claim_head:$old}]' >"$FIXTURES/old-owner"
+check 'L23 old cleanup cannot delete a reclaimed branch' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/old-owner"'
+holds 'L23 late old cleanup preserves the new owner' test "$(git ls-remote origin refs/heads/build/U12 | cut -f1)" = "$(git rev-parse HEAD)"
+printf '[{"slug":"U12"}]\n' >"$FIXTURES/legacy-owner"
+check 'L23 cleanup without ownership changes nothing' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/legacy-owner"'
+holds 'L23 legacy cleanup preserves the new owner' git ls-remote --exit-code origin refs/heads/build/U12
+
 # L23 unclaim
 fresh
 git push -q origin HEAD:refs/heads/build/U10 HEAD:refs/heads/build/U11
 echo 1 >"$FIXTURES/prs-U11"
-check 'L23 unclaim after the Builders end' 0 bash -c 'echo '"'"'[{"ids":"U10","file":"scenarios/ui.md","slug":"U10"},{"ids":"U11","file":"scenarios/ui.md","slug":"U11"}]'"'"' | loop/runs.sh unclaim'
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{ids:"U10",slug:"U10",claim_head:$sha},{ids:"U11",slug:"U11",claim_head:$sha}]' >"$FIXTURES/owners"
+check 'L23 unclaim after the Builders end' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
 holds 'L23 a Claim with no PR is freed, one with a PR stays' bash -c 'test "$(cat "$FIXTURES/out")" = "freed build/U10" && ! git ls-remote --exit-code origin refs/heads/build/U10 >/dev/null && git ls-remote --exit-code origin refs/heads/build/U11 >/dev/null'
 touch "$FIXTURES/gh-fail"
-check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'echo '"'"'[{"ids":"U11","file":"scenarios/ui.md","slug":"U11"}]'"'"' | loop/runs.sh unclaim'
+check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
 holds 'L23 a failed PR list frees nothing' git ls-remote --exit-code origin refs/heads/build/U11
 
 # prompt

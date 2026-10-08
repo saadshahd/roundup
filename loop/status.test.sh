@@ -146,9 +146,13 @@ echo '[{"workflowName":"review","createdAt":"2026-10-09T09:00:00Z","url":"r/1","
 check 'L80 page reads main, Claims and failed runs' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 watch names a red main, a Claim with no PR or Builder, and failed agent runs of 24 hours' test "$(row Watch)" = \
   'main is red: check failure on abcdef0<br>build/U8: no open PR and no Builder; delete it to build its row again<br>build: 2 failed in 24 h, latest u/2<br>review: 1 failed in 24 h, latest r/1'
-printf '[{"head":{"ref":"build/U8","repo":{"id":1}},"base":{"ref":"main","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"}]\n' >"$FIXTURES/closed"
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U8",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
 check 'L80 a merged branch is not an orphan' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 completed work raises no branch warning' bash -c '! grep -q "build/U8: no open PR" "$FIXTURES/out"'
+jq '.[0].head.sha = "older"' "$FIXTURES/closed" >"$FIXTURES/changed"
+mv "$FIXTURES/changed" "$FIXTURES/closed"
+check 'L80 an older merge cannot hide a new orphan' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 a changed unowned head remains visible' grep -q 'build/U8: no open PR' "$FIXTURES/out"
 echo '[]' >"$FIXTURES/closed"
 touch "$FIXTURES/builders-fail"
 check 'L80 a failed Builder list exits 4, never a Claim with no Builder' 4 bash -c 'loop/status.sh page </dev/null'

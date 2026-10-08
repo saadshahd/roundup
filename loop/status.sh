@@ -54,14 +54,17 @@ page() {
   main=$(gh_or_4 run list --workflow check.yml --branch main --event push --status completed --limit 1 --json conclusion,headSha)
   # An unfinished Claim with no open PR and no Builder blocks its row (L23).
   claims=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
-  completed=$(merged_branches)
+  completed=$(merged_heads)
   running=$(loop/runs.sh builders)
   # L87: the local service publishes a bounded Claim record, never an immortal running marker.
   running+=$'\n'$(jq -nr --argjson now "$now" --arg status "${CODEX_STATUS:-}" '
     ($status | fromjson? // {}) | select(.state == "running" and .deadline > $now) | .slug // empty')
   claims=$(jq -nc --arg claims "$claims" --arg running "$running" --arg completed "$completed" --argjson open "$open" '
-    (($open | map(.headRefName)) + ($completed | split("\n"))) as $heads | ($running | split("\n")) as $running
-    | [$claims | scan("refs/heads/(build/\\S+)")[0] | select(. as $b | $heads | index($b) | not) | select(ltrimstr("build/") as $s | $running | index($s) | not)
+    ($open | map(.headRefName)) as $heads | ($running | split("\n")) as $running
+    | ($completed | split("\n")) as $completed
+    | [$claims | split("\n")[] | select(length > 0) | select(. as $line | $completed | index($line) | not)
+       | capture("refs/heads/(?<branch>build/\\S+)$").branch
+       | select(. as $b | $heads | index($b) | not) | select(ltrimstr("build/") as $s | $running | index($s) | not)
        | "\(.): no open PR and no Builder; delete it to build its row again"]')
   failed=$(for workflow in build review retro; do
     gh_or_4 run list --workflow "$workflow.yml" --limit 100 --json workflowName,createdAt,url,conclusion

@@ -23,7 +23,7 @@ builders() {
 
 # L23: ready Work rows of `loop/rules.sh ready` as the build matrix [{ids, file, slug}], at most <max> less the Builders
 # still running. It skips loop machinery (scenarios/loop-*.md: the user's or a Retro's) and a row whose Claim, the
-# branch build/<slug>, exists, or whose same-repository PR merged into main. Reads only; `claim` pushes.
+# branch build/<slug>, exists at an unmerged head. Merged heads can be reclaimed for ready work. Reads only.
 queue() {
   local max=${1:-4} rows branches merged running priority=""
   if [ -f .agents/data/journey.md ]; then
@@ -32,15 +32,21 @@ queue() {
   fi
   rows=$(loop/rules.sh ready)
   branches=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
-  merged=$(merged_branches)
+  merged=$(merged_heads)
   running=$(builders | wc -l | tr -d ' ')
   printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" --arg priority "$priority" "$slug_def"'
-    (($branches | [scan("refs/heads/build/(\\S+)")[0]]) + ($merged | split("\n") | map(select(startswith("build/")) | ltrimstr("build/")))) as $taken
+    ($merged | split("\n")) as $merged
+    | ($branches | split("\n") | map(select(length > 0) | . as $line
+        | capture("^(?<sha>[^\\s]+)\\s+refs/heads/build/(?<slug>\\S+)$")
+        | . + {merged: ($merged | index($line) != null)})) as $claims
+    | ($claims | map(select(.merged | not) | .slug)) as $taken
+    | ($claims | map(select(.merged) | {key: .slug, value: .sha}) | from_entries) as $reusable
     | ($priority | split(" ") | map(select(length > 0))) as $order
     | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
        | select(.file | startswith("scenarios/loop-") | not)
        | .slug = (.ids | slug)
-       | select(.slug as $s | $taken | any(. == $s) | not)]
+       | select(.slug as $s | $taken | any(. == $s) | not)
+       | if $reusable[.slug] then . + {reclaim: $reusable[.slug]} else . end]
     | sort_by([.ids | scan("([A-Z])([0-9]+)(?:\\s*(?:–|-|to)\\s*[A-Z]?([0-9]+))?")
         | .[0] as $letter | (.[1] | tonumber) as $start | ((.[2] // .[1]) | tonumber) as $end
         | range($start; $end + 1) | $letter + tostring
@@ -57,9 +63,19 @@ claim() {
   sha=$(git rev-parse HEAD)
   claimed=$(jq -c '.[]' | while IFS= read -r row; do
     slug=$(jq -r .slug <<<"$row")
+    reclaim=$(jq -r '.reclaim // empty' <<<"$row")
+    if [ -n "$reclaim" ]; then
+      # Only retire the exact merged head observed by queue. A competing new Claim wins.
+      retired=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:$reclaim" origin ":refs/heads/build/$slug" 2>&1) || true
+      if ! grep -q '^-' <<<"$retired"; then
+        if grep -qE '^!.*\[rejected\] \(stale info\)' <<<"$retired"; then continue; fi
+        echo "retiring build/$slug failed: $retired" >&2
+        exit 4
+      fi
+    fi
     pushed=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:" origin "$sha:refs/heads/build/$slug" 2>&1) || true
     if grep -q '^\*' <<<"$pushed"; then
-      echo "$row"
+      jq -c --arg sha "$sha" 'del(.reclaim) + {claim_head: $sha}' <<<"$row"
     elif ! grep -qE '^(=|!.*\[rejected\] \(stale info\))' <<<"$pushed"; then
       echo "git push of build/$slug failed: $pushed" >&2
       exit 4
@@ -69,16 +85,25 @@ claim() {
 }
 
 # L23: after a tick's Builders end, however they end, deletes the Claim of each row (stdin: the claimed queue) whose
-# branch has no PR, so the next tick builds that row again. A branch with a PR, open or not, stays.
+# branch has no open PR, so the next tick can build an unfinished row. Historical PRs do not hold a new Claim.
 unclaim() {
-  local slugs slug prs
-  slugs=$(jq -r '.[].slug')
-  for slug in $slugs; do
-    prs=$(gh_or_4 pr list --head "build/$slug" --state all --json number --jq length)
+  local rows row slug expected prs retired
+  rows=$(jq -c '.[]')
+  while IFS= read -r row; do
+    slug=$(jq -r .slug <<<"$row")
+    expected=$(jq -r '.claim_head // empty' <<<"$row")
+    # Older runs without an ownership record cannot safely delete another run's work.
+    [ -n "$expected" ] || continue
+    prs=$(gh_or_4 pr list --head "build/$slug" --state open --json number --jq length)
     [ "$prs" = 0 ] || continue
-    git push -q origin --delete "refs/heads/build/$slug" || { echo "git push --delete build/$slug failed" >&2; exit 4; }
-    echo "freed build/$slug"
-  done
+    retired=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:$expected" origin ":refs/heads/build/$slug" 2>&1) || true
+    if grep -q '^-' <<<"$retired"; then
+      echo "freed build/$slug"
+    elif ! grep -qE '^!.*\[rejected\] \(stale info\)' <<<"$retired"; then
+      echo "git push --delete build/$slug failed: $retired" >&2
+      exit 4
+    fi
+  done <<<"$rows"
 }
 
 # L81: after a Builder or fix run ends, however it ends: gives the open draft PR of each <branch> that has no `Stopped:`
