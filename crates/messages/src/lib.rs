@@ -1107,6 +1107,7 @@ mod tests {
             terminal_id: None,
             worktree: None,
             can_resume: false,
+            channel: None,
         }
     }
 

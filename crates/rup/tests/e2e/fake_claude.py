@@ -14,6 +14,9 @@ file. What it does comes from the environment, so one script serves every scenar
   FAKE_CLAUDE_BRIEF_REPORT a file path: written with JSON {"brief": the text of the file named by
                            `--append-system-prompt-file`, "tools": the names the server lists}, as
                            the Brief and the real MCP list stand together
+  FAKE_CLAUDE_CONTEXT_REPORT a file path: written with the stdout of the `rup context` command that
+                           runs under SessionStart (E3), as Claude Code puts it in the session
+  FAKE_CLAUDE_SHIM_DELAY_MS milliseconds to wait before the `roundup` server is started (E6)
   FAKE_CLAUDE_GATE         a file path: after the played PermissionRequest hook command (which waits for
                            the user's answer, H9) is started, the next event waits until the file exists,
                            as the user's own act in the Terminal (H7a) happens in its own time
@@ -49,7 +52,8 @@ def play_hooks():
         payload = dict(recorded[event])
         if event == "UserPromptSubmit" and "FAKE_CLAUDE_PROMPT" in os.environ:
             payload["prompt"] = os.environ["FAKE_CLAUDE_PROMPT"]
-        command = settings["hooks"][event][0]["hooks"][0]["command"]
+        commands = [hook["command"] for hook in settings["hooks"][event][0]["hooks"]]
+        command = commands[0]
         if event == "PermissionRequest":
             # `rup permission` stays open until the Decision is answered or cleared; the later
             # Signal clears it, so the fake does not wait for it.
@@ -60,7 +64,11 @@ def play_hooks():
             while gate and not os.path.exists(gate):
                 time.sleep(0.02)
             continue
-        subprocess.run(command, shell=True, input=json.dumps(payload), text=True, check=True)
+        for command in commands:
+            ran = subprocess.run(command, shell=True, input=json.dumps(payload), text=True, check=True, stdout=subprocess.PIPE)
+            if " context " in command and "FAKE_CLAUDE_CONTEXT_REPORT" in os.environ:
+                with open(os.environ["FAKE_CLAUDE_CONTEXT_REPORT"], "w") as out:
+                    out.write(ran.stdout)
 
 
 def play_loop():
@@ -134,5 +142,6 @@ if any(k in os.environ for k in ("FAKE_CLAUDE_TOOL", "FAKE_CLAUDE_TOOLS", "FAKE_
     calls = json.loads(os.environ.get("FAKE_CLAUDE_TOOLS", "[]"))
     if "FAKE_CLAUDE_TOOL" in os.environ:
         calls.insert(0, json.loads(os.environ["FAKE_CLAUDE_TOOL"]))
+    time.sleep(int(os.environ.get("FAKE_CLAUDE_SHIM_DELAY_MS", "0")) / 1000)
     mcp_session(calls, os.environ.get("FAKE_CLAUDE_BRIEF_REPORT"))
 time.sleep(3600)

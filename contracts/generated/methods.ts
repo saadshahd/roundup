@@ -1,4 +1,6 @@
 // Generated from crates/contracts/src/methods.rs. Do not edit.
+import type { Brief as agent_Brief } from "./agent/Brief";
+import type { Context as agent_Context } from "./agent/Context";
 import type { CreateRoomParams as agent_CreateRoomParams } from "./agent/CreateRoomParams";
 import type { Landed as agent_Landed } from "./agent/Landed";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
@@ -84,6 +86,9 @@ export type RpcMethods = {
   "agent.worktreeState": { params: agent_NodeId; result: agent_WorktreeState };
   "agent.land": { params: agent_NodeId; result: agent_Landed };
   "agent.discard": { params: agent_NodeId; result: null };
+  "agent.context": { params: agent_NodeId; result: agent_Context };
+  "agent.brief": { params: agent_NodeId; result: agent_Brief };
+  "agent.channelUp": { params: agent_NodeId; result: null };
   "agent.signal": { params: agent_SignalParams; result: null };
   "agent.permission": { params: decision_PermissionParams; result: decision_PermissionOutput };
   "agent.ask": { params: decision_AskParams; result: decision_AskOutput };

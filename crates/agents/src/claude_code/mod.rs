@@ -229,6 +229,18 @@ pub fn is_session_start(payload: &Value) -> bool {
     payload["hook_event_name"] == "SessionStart"
 }
 
+/// E3: what the `SessionStart` hook prints so Claude Code adds `text` to the model's context: the
+/// vendor's own JSON, `hookSpecificOutput.additionalContext`.
+pub fn session_start_context(text: &str) -> String {
+    serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": text,
+        }
+    })
+    .to_string()
+}
+
 /// The bytes of a Steer (H11): `text` as one bracketed paste, then `\r`, for one write. A paste
 /// followed by a pause submitted 8 of 8 times in the spike and a bare `text\r` failed once, so
 /// the paste markers stay. `text` loses its `ESC` bytes, so it cannot close the paste early and
