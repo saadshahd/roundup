@@ -13,9 +13,17 @@ jev_model=jev-1.13.0
 # `kinds`) and $rows (Ledger rows). Weights: input 1, cache write 1.25, cache read 0.1, output 5.
 # shellcheck disable=SC2016 # jq variables, not the shell's
 weights='def weighted: .input + 1.25 * .cache_write + 0.1 * .cache_read + 5 * .output;
-  def m: . / 1000000 | . * 10 | round / 10 | tostring + "M";
+  def m: if . >= 1000000 then (. / 100000 | round / 10 | tostring) + "M"
+    elif . >= 1000 then (. / 100 | round / 10 | tostring) + "K"
+    else (. * 10 | round / 10 | tostring) end;
+  def recorded: (.usage // (if (.model // "") != "" then "legacy" else "unavailable" end)) != "unavailable";
   def per_product($prs; $rows): ($prs | map(select(.kind == "product")) | length) as $n
-    | if $n > 0 then ($rows | map(weighted) | add // 0) / $n | m else "no product PR merged" end;'
+    | ($rows | map(select(recorded))) as $known
+    | if ($known | length) == 0 then "unavailable: no recorded usage (\($n) product PRs)"
+      else ($known | map(weighted) | add) as $total
+        | (if $n > 0 then "≥\($total / $n | m) recorded/product PR" else "\($total | m) recorded; no product PR merged" end)
+          + "; \($n) product PRs, \($known | length)/\($rows | length) usage records; partial coverage"
+      end;'
 
 # L29: one Ledger row for an agent run. Its models, turns and tokens come from the run's `result` entry; a run cut off before it
 # has one sums its assistant messages, each message id once, since a message repeats per content block.
@@ -32,8 +40,12 @@ ledger() {
     | {role: $role, subject: $subject, run: $run,
        model: ((if $result then ($result.modelUsage // {} | keys) else ($said | map(.message.model // empty) | unique) end) | join(","))}
     + if $result then {turns: ($result.num_turns // 0), exit: ($result.subtype // $conclusion)} + ($result.usage // {} | tokens)
-      else {turns: ($said | length), exit: (if length == 0 then "no-run" else $conclusion end)} + ($said | map(.message.usage // {} | tokens) | total)
-      end'
+      else {turns: ($said | length), exit: (if length == 0 then "missing-output" else $conclusion end)} + ($said | map(.message.usage // {} | tokens) | total)
+      end
+    | . + {usage: (if $result then [$result.usage // {}] else $said | map(.message.usage // {}) end
+        | map([.input_tokens, .output_tokens, .cache_creation_input_tokens, .cache_read_input_tokens]) | flatten
+        | if length == 0 or all(. == null) then "unavailable"
+          elif all(type == "number") then "recorded" else "partial" end)}'
 }
 
 # The time the last Retro PR merged, else the time this script was added: the Ledger starts with it.

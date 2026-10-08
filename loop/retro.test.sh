@@ -71,12 +71,18 @@ merged() {
 fresh
 printf '[{"type":"system"},{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5}}},{"type":"result","subtype":"success","num_turns":3,"modelUsage":{"claude-sonnet-5-5":{},"claude-haiku-4-5":{}},"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40}}]\n' >"$FIXTURES/run.json"
 check 'L29 a finished run is one row' 0 loop/retro.sh ledger builder 'U105–U107' "$FIXTURES/run.json" success
-holds 'L29 turns and tokens come from the result entry' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U105–U107","run":"77","model":"claude-haiku-4-5,claude-sonnet-5-5","turns":3,"exit":"success","input":10,"output":20,"cache_write":30,"cache_read":40}'
+holds 'L29 turns and tokens come from the result entry' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U105–U107","run":"77","model":"claude-haiku-4-5,claude-sonnet-5-5","turns":3,"exit":"success","input":10,"output":20,"cache_write":30,"cache_read":40,"usage":"recorded"}'
 printf '[{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":100}}},{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":1,"cache_read_input_tokens":100}}},{"type":"user"},{"type":"assistant","message":{"id":"m2","model":"claude-opus-5-5","usage":{"input_tokens":7,"output_tokens":2,"cache_creation_input_tokens":9}}}]\n' >"$FIXTURES/cut.json"
 check 'L29 a run cut off before its result is one row' 0 loop/retro.sh ledger reviewer 12 "$FIXTURES/cut.json" failure
-holds 'L29 each assistant message counts once' test "$(cat "$FIXTURES/out")" = '{"role":"reviewer","subject":"12","run":"77","model":"claude-opus-5-5","turns":2,"exit":"failure","input":12,"output":3,"cache_write":9,"cache_read":100}'
-check 'L29 a run that never started is a row' 0 loop/retro.sh ledger builder U3 '' failure
-holds 'L29 it reads no-run with no tokens' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U3","run":"77","model":"","turns":0,"exit":"no-run","input":0,"output":0,"cache_write":0,"cache_read":0}'
+holds 'L29 each assistant message counts once' test "$(cat "$FIXTURES/out")" = '{"role":"reviewer","subject":"12","run":"77","model":"claude-opus-5-5","turns":2,"exit":"failure","input":12,"output":3,"cache_write":9,"cache_read":100,"usage":"partial"}'
+check 'L29 missing execution output is a row' 0 loop/retro.sh ledger builder U3 '' failure
+holds 'L29 it reports missing output and unavailable usage' test "$(cat "$FIXTURES/out")" = '{"role":"builder","subject":"U3","run":"77","model":"","turns":0,"exit":"missing-output","input":0,"output":0,"cache_write":0,"cache_read":0,"usage":"unavailable"}'
+printf '[{"type":"result","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}]\n' >"$FIXTURES/zero.json"
+check 'L29 actual zero usage remains recorded' 0 loop/retro.sh ledger builder U3 "$FIXTURES/zero.json" success
+holds 'L29 zero is different from missing usage' jq -e '.usage == "recorded" and .input == 0 and .output == 0' "$FIXTURES/out"
+printf '[{"type":"result","usage":{"input_tokens":15}}]\n' >"$FIXTURES/partial.json"
+check 'L29 partial result usage remains partial' 0 loop/retro.sh ledger builder U3 "$FIXTURES/partial.json" success
+holds 'L29 missing fields are not called complete usage' jq -e '.usage == "partial" and .input == 15' "$FIXTURES/out"
 check 'L29 an unknown role fails before reading' 2 loop/retro.sh ledger driver U3 '' failure
 
 # Execute the action's actual extraction step against a main ref, with no checkout files in its output directory.
@@ -135,22 +141,33 @@ printf 'merge-ready: no Author-Agent trailers\n' >"$FIXTURES/verdicts-4"; echo 1
 check 'L27 report reads the Ledger, PRs and rejects' 0 loop/retro.sh report
 holds 'L27 report counts PRs merged since the last Retro' grep -qx '# Retro: 4 PRs merged since 2026-10-08T23:00:00Z' "$FIXTURES/out"
 holds 'L27 report counts each kind' bash -c 'grep -qx "| product | 2 |" "$FIXTURES/out" && grep -qx "| loop | 1 |" "$FIXTURES/out" && grep -qx "| spec | 1 |" "$FIXTURES/out"'
-holds 'L27 report sums the Ledger by role and model, weighted' bash -c 'grep -qx "| builder | claude-sonnet-5-5 | 1 | 0 | 40 | 3.5M |" "$FIXTURES/out" && grep -qx "| reviewer | claude-opus-5-5 | 1 | 1 | 9 | 0.3M |" "$FIXTURES/out"'
+holds 'L27 report sums the Ledger by role and model, weighted' bash -c 'grep -qx "| builder | claude-sonnet-5-5 | 1 | 0 | 40 | 3.5M |" "$FIXTURES/out" && grep -qx "| reviewer | claude-opus-5-5 | 1 | 1 | 9 | 300K |" "$FIXTURES/out"'
 holds 'L27 report leaves out runs before the last Retro' bash -c '! grep -q "U1" "$FIXTURES/out"'
-holds 'L27 report divides by merged product PRs' grep -qx 'Weighted tokens per merged product PR: 1.9M' "$FIXTURES/out"
+holds 'L27 report divides by merged product PRs' grep -qx 'Weighted tokens per merged product PR: ≥1.9M recorded/product PR; 2 product PRs, 2/2 usage records; partial coverage' "$FIXTURES/out"
 holds 'L27 report classifies each reject, not each approve' bash -c 'grep -qx "| real-defect | behaviour | 90%, 80% | #1 2026-10-09T00:45:00Z |" "$FIXTURES/out" && test "$(wc -l <"$FIXTURES/jev-requests")" -eq 1'
 holds 'L27 report names a PR whose verdicts it could not read' grep -qx 'Verdicts unread on PR #4: merge-ready: no Author-Agent trailers' "$FIXTURES/out"
 holds 'L27 report lists the costliest run first' bash -c 'grep -A4 "^## Costliest runs" "$FIXTURES/out" | tail -n1 | grep -qx "| 50 | builder | U3 | 3.5M | success |"'
 
 # L80 cost, on the report's PRs and Ledger
 check 'L80 cost reads merged PRs and the Ledger after since' 0 loop/retro.sh cost 2026-10-08T23:00:00Z
-holds 'L80 cost is the weighted tokens per merged product PR' test "$(cat "$FIXTURES/out")" = 1.9M
+holds 'L80 cost is the weighted tokens per merged product PR' test "$(cat "$FIXTURES/out")" = '≥1.9M recorded/product PR; 2 product PRs, 2/2 usage records; partial coverage'
 check 'L80 cost after the last merge' 0 loop/retro.sh cost 2026-10-09T05:00:00Z
-holds 'L80 cost with no product PR merged says so' test "$(cat "$FIXTURES/out")" = 'no product PR merged'
+holds 'L80 cost with no product PR merged says so' test "$(cat "$FIXTURES/out")" = 'unavailable: no recorded usage (0 product PRs)'
 check 'L80 cost without a UTC time fails before reading' 2 loop/retro.sh cost yesterday
 touch "$FIXTURES/gh-fail"
 check 'L80 a cost gh failure exits 4' 4 loop/retro.sh cost 2026-10-08T23:00:00Z
 rm "$FIXTURES/gh-fail"
+
+# L80 missing and small usage must not look free.
+cp "$FIXTURES/artifacts" "$FIXTURES/artifacts.saved"
+printf '{"artifacts":[]}\n' >"$FIXTURES/artifacts"
+check 'L80 missing Ledger is unavailable even with delivered product PRs' 0 loop/retro.sh cost 2026-10-08T23:00:00Z
+holds 'L80 absent evidence is never zero' grep -qx 'unavailable: no recorded usage (2 product PRs)' "$FIXTURES/out"
+cp "$FIXTURES/artifacts.saved" "$FIXTURES/artifacts"
+printf '{"role":"builder","subject":"U3","run":"50","model":"m","turns":1,"exit":"success","input":10,"output":10,"cache_write":0,"cache_read":0,"usage":"recorded"}\n' >"$FIXTURES/ledger-50-builder-U3"
+printf '{"role":"reviewer","subject":"1","run":"51","model":"","turns":0,"exit":"missing-output","input":0,"output":0,"cache_write":0,"cache_read":0,"usage":"unavailable"}\n' >"$FIXTURES/ledger-51-reviewer-1"
+check 'L80 small nonzero usage and missing records are visible' 0 loop/retro.sh cost 2026-10-08T23:00:00Z
+holds 'L80 reports known usage and its coverage' grep -qx '≥30 recorded/product PR; 2 product PRs, 1/2 usage records; partial coverage' "$FIXTURES/out"
 
 echo 4 >"$FIXTURES/verdicts-4.code"
 check 'L27 a verdicts gh failure exits 4' 4 loop/retro.sh report
