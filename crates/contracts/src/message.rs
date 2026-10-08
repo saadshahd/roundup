@@ -26,7 +26,8 @@ pub enum MessageStatus {
 
 /// Why a Message is `held` (`ask-first`: waiting on the user; `takeover`: on a Takeover's end;
 /// `escalated`: on the user's answer to a bubbled-up question, B15) or `dropped`
-/// (`receiver gone`, B9; `not accepted`, B2).
+/// (`receiver gone`, B9; `not accepted`, B2; `passed`, a question's hop that was still `pending`
+/// when the next was made, B13).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "message/")]
@@ -38,10 +39,13 @@ pub enum Reason {
     ReceiverGone,
     #[serde(rename = "not accepted")]
     NotAccepted,
+    Passed,
 }
 
 /// A typed envelope between Actors. `reply_to` names the Message this answers, if any; `reason`
-/// names why a `held` Message is held or a `dropped` one was dropped, and is `None` otherwise.
+/// names why a `held` Message is held or a `dropped` one was dropped, and is `None` otherwise;
+/// `passed_from` names the earlier hop of a bubbling question (B13), and is `None` for any other
+/// Message and for a question's first hop.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "message/")]
 pub struct Message {
@@ -54,6 +58,8 @@ pub struct Message {
     pub reply_to: Option<u32>,
     pub status: MessageStatus,
     pub reason: Option<Reason>,
+    #[serde(rename = "passedFrom")]
+    pub passed_from: Option<u32>,
     #[ts(type = "number")]
     pub at: i64,
 }

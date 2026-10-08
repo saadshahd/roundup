@@ -178,7 +178,13 @@ A sender→receiver pair with a delivery value: `auto | ask-first | drop`.
 A Message waiting on an ask-first Route, the end of a Takeover, or the user's answer to an escalated question.
 
 **Reason**:
-The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone` or `not accepted` (dropped).
+The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone`, `not accepted` or `passed` (dropped).
+
+**Hop**:
+One Message of a bubbling question: sent to a Door, then to the Doors of the Rooms above it, nearest first, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
+
+**Landing**:
+The Message to the user that ends a bubbling question: `held` with the reason `escalated`, never `delivered` until the user answers it.
 
 **Card**:
 Anything the user sees in the app (a permission request, a question, an Inbox Message, a status, a summary); it has a kind.

@@ -730,11 +730,12 @@ fn e1_the_brief_names_the_agent_by_id_and_the_tools_and_holds_nothing_mutable() 
         "todo_update",
         "pad_write",
         "pad_append",
+        "message_send",
         "ask_user",
     ] {
         assert!(text.contains(&format!("`{tool}`")), "{tool}");
     }
-    for unshipped in ["agent_context", "message_send", "agent_spawn"] {
+    for unshipped in ["agent_context", "agent_spawn"] {
         assert!(!text.contains(unshipped), "{unshipped}");
     }
     assert!(!text.contains(&s.cwd.to_string_lossy().into_owned()));
