@@ -107,6 +107,7 @@ export const RailRowView = (props: {
       aria-expanded={isRoom(props.row.node) ? props.row.collapsed === null : undefined}
       data-selected={props.selected}
       data-id={props.row.node.id}
+      data-kind={kind() ?? undefined}
       data-lifted={props.lifted}
       data-shift={props.shift}
       tabIndex={props.tabbable ? 0 : -1}
