@@ -236,13 +236,13 @@ What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, 
 `loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching `.github/` waits for the user's merge (L24, L46).
 
 **Claim**:
-The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23).
+The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
 
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
 
 **Status issue**:
-The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it each hour and posts it as a comment at 08:03 UTC (L80).
+The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it every five minutes and on run events, and posts it as a comment at 08:03 UTC (L80).
 
 **Retro**:
 One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); the user merges it.

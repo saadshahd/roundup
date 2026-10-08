@@ -1,17 +1,21 @@
 name: build
+run-name: "${{ inputs.pr && format('Repair PR #{0}', inputs.pr) || 'Build ready rows' }}"
 
 # L23: one-shot Builder runs. GitHub does the waiting: a tick claims ready Work rows while up to four Builders run
-# across all ticks, and a dispatch with a PR number makes the one fix run after its first reject (loop/runs.sh verdict
-# sends it). Each run ends with its PR.
+# across all ticks. A PR dispatch checks current evidence and claims one bounded repair (L88).
+# Each row refills independently when its Builder ends.
 on:
   schedule:
-    - cron: '7 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       pr:
         description: A PR to fix after its first reject; empty builds ready rows
         required: false
         default: ''
+      head:
+        description: Expected PR head; stale dispatches do no work
+        required: false
       max:
         description: Builder runs at most
         required: false
@@ -50,85 +54,55 @@ jobs:
           rows=$(loop/runs.sh queue "$MAX" | loop/runs.sh claim)
           echo "rows=$rows" >>"$GITHUB_OUTPUT"
 
-  # The Builder pushes and opens its PR with the Claude App's token, so CI runs on it; the checkout keeps no token.
   build:
     needs: queue
     if: needs.queue.outputs.rows != '[]'
+    name: build (${{ matrix.row.ids }}, ${{ matrix.row.file }}, ${{ matrix.row.slug }})
     strategy:
       fail-fast: false
       matrix:
         row: ${{ fromJSON(needs.queue.outputs.rows) }}
-    runs-on: macos-latest
-    timeout-minutes: 120
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          browser: 'true'
-      - id: prompt
-        env:
-          IDS: ${{ matrix.row.ids }}
-          FILE: ${{ matrix.row.file }}
-          SLUG: ${{ matrix.row.slug }}
-        run: |
-          printf 'Build Work row %s of %s on branch build/%s. That branch exists at an older main commit as the row'"'"'s Claim: branch from origin/main and push, which fast-forwards it. Your Author-Agent id is builder-%s.\n' "$IDS" "$FILE" "$SLUG" "$GITHUB_RUN_ID" |
-            loop/runs.sh prompt builder
-      - id: claude
-        uses: anthropics/claude-code-action@v1
-        with:
-          prompt: ${{ steps.prompt.outputs.prompt }}
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: claude,github-actions
-          claude_args: >-
-            --model claude-sonnet-5-5
-            --max-turns 150
-            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
-      - if: always()
-        uses: ./.github/actions/ledger
-        with:
-          role: builder
-          subject: ${{ matrix.row.ids }}
-          execution-file: ${{ steps.claude.outputs.execution_file }}
-          conclusion: ${{ steps.claude.outcome }}
-
-  # After the tick's Builders end, however they end: frees each Claim whose Builder opened no PR, so the next tick builds
-  # that row again, and asks the user about each PR a Builder left a draft (L81). The Builders hold none of these scopes.
-  after:
-    needs: [queue, build]
-    if: always() && needs.queue.result == 'success' && needs.queue.outputs.rows != '[]'
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/build-row.yml
+    with:
+      row: ${{ toJSON(matrix.row) }}
+    secrets: inherit
+    # The reusable workflow narrows the agent job to read; only its after job can dispatch/write.
     permissions:
       contents: write
       pull-requests: write
       actions: write
+      id-token: write
+
+  # Trusted main owns the Claim and constructs the task before PR code is checked out.
+  repair-due:
+    if: ${{ inputs.pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+      checks: read
+    outputs:
+      branch: ${{ steps.due.outputs.branch }}
+      head: ${{ steps.due.outputs.head }}
+      prompt: ${{ steps.due.outputs.prompt }}
     steps:
       - uses: actions/checkout@v4
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          ROWS: ${{ needs.queue.outputs.rows }}
-        run: |
-          printf '%s' "$ROWS" | loop/runs.sh unclaim
-          jq -r '.[] | "build/\(.slug)"' <<<"$ROWS" | xargs loop/runs.sh stopped
-      # Refill only after a ready PR was delivered. Empty queues and runs that produced no ready PR end the chain.
-      - if: needs.build.result == 'success'
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: due
         env:
           GH_TOKEN: ${{ github.token }}
-          ROWS: ${{ needs.queue.outputs.rows }}
-        run: |
-          prs=$(gh pr list --state open --json headRefName,isDraft)
-          if jq -e --argjson rows "$ROWS" 'any(.[]; . as $pr | ($pr.isDraft | not) and any($rows[]; $pr.headRefName == "build/\(.slug)"))' <<<"$prs" >/dev/null; then
-            gh workflow run build.yml
-          fi
+          PR: ${{ inputs.pr }}
+          HEAD: ${{ inputs.head }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
+        run: python3 loop/dispatch.py start "$PR" fix "$HEAD"
 
-  # One fix run per PR at a time.
   fix:
-    if: ${{ inputs.pr }}
+    needs: repair-due
+    if: needs.repair-due.outputs.branch != ''
     concurrency:
       group: build-${{ inputs.pr }}
       cancel-in-progress: false
@@ -139,38 +113,31 @@ jobs:
       pull-requests: read
       id-token: write
     outputs:
-      branch: ${{ steps.pr.outputs.branch }}
+      branch: ${{ steps.current.outputs.ok == 'true' && needs.repair-due.outputs.branch || '' }}
     steps:
-      - id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
-        run: |
-          branch=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefName,state --jq 'select(.state == "OPEN") | .headRefName')
-          [ -n "$branch" ] || { echo "PR #$PR is not open" >&2; exit 1; }
-          echo "branch=$branch" >>"$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr.outputs.branch }}
+          ref: ${{ needs.repair-due.outputs.branch }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
           browser: 'true'
-      - id: prompt
+      - name: Stamp Builder commits
+        run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
+      - id: current
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr }}
-          BRANCH: ${{ steps.pr.outputs.branch }}
+          HEAD: ${{ needs.repair-due.outputs.head }}
         run: |
-          {
-            printf 'Fix PR #%s on branch %s: answer every finding of the reject below and push. Your Author-Agent id is builder-%s.\n\n' "$PR" "$BRANCH" "$GITHUB_RUN_ID"
-            loop/rules.sh verdicts "$PR" | jq -r 'select(.verdict == "reject") | .body'
-          } | loop/runs.sh prompt builder
+          current=$(gh pr view "$PR" --json state,headRefOid --jq 'select(.state == "OPEN") | .headRefOid')
+          if [ "$current" = "$HEAD" ]; then echo 'ok=true' >>"$GITHUB_OUTPUT"; fi
       - id: claude
+        if: steps.current.outputs.ok == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          prompt: ${{ steps.prompt.outputs.prompt }}
+          prompt: ${{ needs.repair-due.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: claude,github-actions
           claude_args: >-
@@ -197,6 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           persist-credentials: false
       - env:
           GH_TOKEN: ${{ github.token }}

@@ -95,23 +95,7 @@ touch "$FIXTURES/gh-fail"
 check 'L86 malformed priority fails before network calls' 2 loop/runs.sh queue
 rm .agents/data/journey.md "$FIXTURES/gh-fail"
 
-# Run the workflow's actual refill body with fake GitHub responses.
-sed -n '/^          prs=$(gh pr list --state open --json headRefName,isDraft)/,/^$/p' "$root/.github/workflows/build.yml" |
-  sed 's/^          //' >"$dir/refill.sh"
-fresh
-echo '[{"headRefName":"build/U3","isDraft":false}]' >"$FIXTURES/refill-prs"
-check 'L86 a delivered ready PR refills the queue' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
-holds 'L86 refill dispatches one build workflow' grep -qx 'gh workflow run build.yml' "$FIXTURES/trace"
-fresh
-echo '[{"headRefName":"build/U3","isDraft":true},{"headRefName":"build/U4","isDraft":false}]' >"$FIXTURES/refill-prs"
-check 'L86 a draft and an unrelated ready PR do not refill' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
-holds 'L86 no delivered ready PR ends the chain' bash -c '! grep -q "workflow run" "$FIXTURES/trace"'
-fresh
-echo '[]' >"$FIXTURES/refill-prs"
-check 'L86 no PR ends the chain' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
-holds 'L86 an empty PR list dispatches nothing' bash -c '! grep -q "workflow run" "$FIXTURES/trace"'
-touch "$FIXTURES/gh-fail"
-check 'L86 an unreadable PR list fails the refill step' 1 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
+# L88 owns the per-row completion/reconciliation tests; refill no longer waits for the matrix.
 fresh
 printf 'ready U5 scenarios/ui.md\nready U105–U107, U109 scenarios/ui-attention.md\nready U7 scenarios/ui.md\n' >"$FIXTURES/ready"
 check 'L23 queue reads the build branches' 0 loop/runs.sh queue
@@ -130,6 +114,9 @@ check 'L23 queue counts Builders of other runs' 0 loop/runs.sh queue 4
 holds 'L23 a queued or running Builder of any tick takes a slot of max' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U3","U4"]'
 check 'L23 builders lists the Builder jobs still queued or running' 0 loop/runs.sh builders
 holds 'L23 builders prints each one'"'"'s slug' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
+echo '{"jobs":[{"name":"build (U1, scenarios/ui.md, U1) / build","status":"in_progress"},{"name":"build (U2, scenarios/ui.md, U2) / build","status":"completed"},{"name":"build (U2, scenarios/ui.md, U2) / after","status":"queued"}]}' >"$FIXTURES/jobs-71"
+check 'L88 a completed row frees its slot while its sibling builds' 0 loop/runs.sh builders
+holds 'L88 a completion job does not consume a Builder slot' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
 check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
 holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
 touch "$FIXTURES/gh-fail"
@@ -183,15 +170,7 @@ holds 'L23 prompt closes its delimiter' bash -c 'd=$(head -n1 "$FIXTURES/output"
 check 'L23 prompt refuses an unknown role' 2 bash -c 'echo x | loop/runs.sh prompt driver'
 unset GITHUB_OUTPUT
 
-# L24: exercise the workflow's prompt command against the real prompt files, so a removed role cannot pass fixtures.
-{
-  echo 'cd "$ROOT"'
-  sed -n '/| loop\/runs.sh prompt /p' "$root/.github/workflows/review.yml"
-} >"$dir/review-prompt.sh"
-check 'L24 the review workflow loads an existing prompt' 0 env \
-  GITHUB_OUTPUT="$dir/review-output" task="PR #7, head $head." bash -eo pipefail "$dir/review-prompt.sh"
-holds 'L24 the shared prompt receives an explicit review task' bash -c \
-  'grep -qx "# Builder" "$1" && grep -qx "Review PR #7, head $2." "$1"' _ "$dir/review-output" "$head"
+# L88 dispatch.test.py exercises the review task against the real shared prompt.
 
 # L24 review-due
 fresh
@@ -214,12 +193,11 @@ fresh; say reject
 check 'L24 one reject leaves the next head due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 earlier verdicts reach the Reviewer' grep -q 'Earlier verdicts' "$FIXTURES/out"
 fresh; say reject; say reject
-check 'L24 a second reject goes to the user' 1 loop/runs.sh review-due 7 "$head"
-holds 'L24 the second reject is named' grep -q 'the user decides' "$FIXTURES/out"
+check 'L24 historical rejects leave a corrected head due' 0 loop/runs.sh review-due 7 "$head"
 fresh; say approve true
 check 'L24 a verdict covering the head is not repeated' 1 loop/runs.sh review-due 7 "$head"
 fresh; printf 'docs/a.md\nloop/rules.sh\n' >"$FIXTURES/paths"
-check 'L24 a PR without product code is not reviewed' 1 loop/runs.sh review-due 7 "$head"
+check 'L24 a loop-only PR receives independent review' 0 loop/runs.sh review-due 7 "$head"
 fresh; printf '{"state":"OPEN","isDraft":true,"headRefOid":"%s","body":""}\n' "$head" >"$FIXTURES/view"
 check 'L24 a draft is not reviewed' 1 loop/runs.sh review-due 7 "$head"
 holds 'L24 the draft is named' grep -qx 'PR #7 is a draft' "$FIXTURES/out"
@@ -276,6 +254,13 @@ holds 'L81 a draft with its own Stopped line, a ready PR and no PR are left alon
 holds 'L81 stopped names each PR it stopped' test "$(cat "$FIXTURES/out")" = 'stopped #31'
 touch "$FIXTURES/gh-fail"
 check 'L81 a stopped gh failure exits 4' 4 "${run_env[@]}" loop/runs.sh stopped build/U3
+
+# L88: a reviewer finishing after another push cannot reject the new head.
+fresh
+jq '.headRefOid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$FIXTURES/view" >"$FIXTURES/new-view"
+mv "$FIXTURES/new-view" "$FIXTURES/view"
+check 'L88 a stale reviewer posts no verdict' 0 bash -c 'jq -nc --arg verdict reject --arg findings old '"'"'{verdict:$verdict,findings:$findings}'"'"' | loop/runs.sh verdict 7 "$1" reviewer' _ "$head"
+holds 'L88 a stale review starts no repair or gate run' bash -c '! grep -qE "pr comment|workflow run" "$FIXTURES/trace"'
 
 # L66 swept
 fresh; printf '[{"databaseId":81,"headSha":"%s"},{"databaseId":82,"headSha":"%s"},{"databaseId":83,"headSha":"other"}]\n' "$head" "$head" >"$FIXTURES/runs"

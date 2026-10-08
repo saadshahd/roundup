@@ -228,6 +228,8 @@ elif '/pulls/' in route:
     Path(os.environ['GATE_DATA']).write_text(json.dumps(d))
     if d.get('change_head') and d['reads'] > 1:
         pr['head']['sha'] = '0'*40
+    if d['reads'] > 1:
+        pr.update(d.get('change_pr', {}))
     out = [pr]
 elif '/issues/' in route:
     out = d.get('comments', [[{'id': 1, 'created_at': '2026-10-03T00:00:00Z', 'user': {'login': 'github-actions[bot]'},
@@ -408,8 +410,7 @@ ready_at 'L46 an approve of the fix clears the reject of its parent'
 gate_quiet; gate_say reject "$(git rev-parse HEAD)"; gate_say approve "$rejected"
 expect pass 'L46 an approve of an ancestor cannot clear a reject on the head' gate_error_contains 'on this head is reject' gate merge-ready 12
 gate_quiet; gate_say reject "$rejected"; gate_say reject "$(git rev-parse HEAD)"; gate_say approve "$(git rev-parse HEAD)"
-expect_exit 1 'L46 a second reject blocks even after an approve' gate merge-ready 12
-expect pass 'L46 a second reject names the user' gate_error_contains 'second reject: the user decides' gate merge-ready 12
+ready_at 'L46 historical rejects do not veto a corrected approved head'
 gate_quiet; gate_say reject "$rejected" builder; gate_say reject "$rejected" builder; gate_say approve "$(git rev-parse HEAD)"
 ready_at 'L46 author verdicts count for nothing'
 gate_quiet; gate_say reject "$rejected"; gate_say reject "$rejected" builder; gate_say approve "$(git rev-parse HEAD)"
@@ -421,10 +422,13 @@ expect_exit 2 'L46 verdicts needs a number' gate verdicts
 gate_repo; git reset -q --hard main; echo prose >docs/notes.md; commit docs 'Author-Agent: builder'; gate_quiet
 ready_at 'L46 a docs PR needs no verdict'
 echo 'more' >loop/x.sh; commit loop 'Author-Agent: builder'
-expect_exit 1 'L46 a loop PR waits for the user' gate merge-ready 12
-expect pass 'L46 a loop PR names the user' gate_error_contains 'the user merges' gate merge-ready 12
+expect_exit 1 'L46 a loop PR requires independent approval' gate merge-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+ready_at 'L46 an approved loop PR can merge'
 gate_repo; git reset -q --hard main; mkdir -p docs/sub; echo x >docs/sub/AGENTS.md; commit agents 'Author-Agent: builder'; gate_quiet
-expect_exit 1 'L46 a nested AGENTS.md waits for the user' gate merge-ready 12
+expect_exit 1 'L46 nested instructions require independent approval' gate merge-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+ready_at 'L46 independently approved nested instructions can merge'
 gate_repo; git reset -q --hard main; echo prose >docs/notes.md; commit docs; gate_quiet
 expect_exit 1 'L46 a docs PR still needs Author-Agent' gate merge-ready 12
 
@@ -492,6 +496,12 @@ for command in ci-trailers verdicts merge-ready; do
   expect_exit 4 "L46 $command propagates gh failure" gate "$command" 12
 done
 
+gate_repo; gate_set '.change_pr={head_repository_counter: 10}'
+ready_at 'L46 unrelated repository metadata cannot stale the gate'
+for field in 'draft:true' 'body:"Scenarios: L99"' 'state:"closed"' 'updated_at:"later"'; do
+  gate_repo; gate_set ".change_pr={$field}"
+  expect_exit 1 'L46 relevant PR mutations fail closed' gate merge-ready 12
+done
 gate_repo
 gate_set '.change_head=true'
 expect_exit 1 'L46 head changing during the gate fails' gate merge-ready 12

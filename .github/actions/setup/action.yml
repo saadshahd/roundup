@@ -1,30 +1,38 @@
 name: setup
 description: The toolchain `just check` needs on a macOS runner, with the workspace's packages installed.
 inputs:
+  rust:
+    description: Install the Rust toolchain and native build tools
+    default: 'true'
   browser:
     description: Install the browser used to inspect the rendered App.
     default: 'false'
 runs:
   using: composite
   steps:
-    - uses: dtolnay/rust-toolchain@master
+    - if: inputs.rust == 'true'
+      uses: dtolnay/rust-toolchain@master
       with:
         toolchain: 1.99.0
         components: clippy, rustfmt
     # One key for every job that builds the workspace. `check` is the check job's own key, so Builders restore the
     # entries main's check saved. Only a push to main saves: a PR or a Builder branch would store its own 726 MB copy.
-    - uses: Swatinem/rust-cache@v2
+    - if: inputs.rust == 'true'
+      uses: Swatinem/rust-cache@v2
       with:
         shared-key: check
         save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    - uses: taiki-e/install-action@nextest
-    - uses: taiki-e/install-action@cargo-machete
+    - if: inputs.rust == 'true'
+      uses: taiki-e/install-action@nextest
+    - if: inputs.rust == 'true'
+      uses: taiki-e/install-action@cargo-machete
     - uses: pnpm/action-setup@v4
     - uses: actions/setup-node@v4
       with:
         node-version: 22
         cache: pnpm
-    - name: GNU coreutils and jq
+    - if: inputs.rust == 'true'
+      name: GNU coreutils and jq
       shell: bash
       run: |
         brew install coreutils jq

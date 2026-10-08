@@ -18,7 +18,7 @@ defaults:
     shell: bash
 
 jobs:
-  check:
+  rust:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-latest
     steps:
@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      - run: just check
+      - run: just check-rust
       - name: hello-world round trip (rup ping through rupd)
         run: |
           export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"
@@ -35,3 +35,24 @@ jobs:
           for _ in $(seq 20); do [ -S "$RUPD_SOCKET" ] && break; sleep 0.25; done
           [[ $(./target/debug/rup ping) == *pong* ]]
           kill %1
+
+  web:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          rust: 'false'
+      - run: just check-web
+
+  # Keep the required check name; neither a skipped nor failed lane can turn it green.
+  check:
+    needs: [rust, web]
+    if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RUST: ${{ needs.rust.result }}
+          WEB: ${{ needs.web.result }}
+        run: test "$RUST" = success && test "$WEB" = success

@@ -1,7 +1,7 @@
 name: retro
 
 # L27: once 20 PRs have merged since the last Retro and none is open, one Retro run reads loop/retro.sh's report and
-# opens one Retro PR on a retro/ branch. It touches loop machinery, so the user merges it.
+# opens one Retro PR on a retro/ branch. It passes independent review and the required gates.
 on:
   schedule:
     - cron: '41 5 * * *'

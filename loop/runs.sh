@@ -17,7 +17,7 @@ builders() {
   local ids id
   ids=$(gh_or_4 run list --workflow build.yml --limit 50 --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId') || exit 4
   for id in $ids; do
-    gh_or_4 run view "$id" --json jobs --jq '.jobs[] | select((.name | startswith("build (")) and .status != "completed") | .name | capture(", (?<slug>[^ ,]+)\\)$").slug' || exit 4
+    gh_or_4 run view "$id" --json jobs --jq '.jobs[] | select((.name | startswith("build (")) and .status != "completed" and (.name | endswith(" / after") | not)) | .name | sub(" / build$"; "") | capture(", (?<slug>[^ ,]+)\\)$").slug' || exit 4
   done
 }
 
@@ -122,9 +122,8 @@ review_due() {
   [ "$(jq -r .isDraft <<<"$view")" = false ] || { echo "PR #$pr is a draft"; return 1; }
   paths=$(gh_or_4 pr diff "$pr" --name-only)
   touched=$(printf '%s\n' "$paths" | loop/rules.sh touches)
-  grep -qx code <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }
+  grep -Eq '^(code|loop)$' <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }
   verdicts=$(loop/rules.sh verdicts "$pr") || exit 4
-  [ "$(jq -s 'map(select(.verdict == "reject")) | length' <<<"$verdicts")" -lt 2 ] || { echo "second reject: the user decides"; return 1; }
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }
@@ -143,10 +142,12 @@ review_due() {
 # L24: posts the Reviewer's structured output (stdin: {verdict, findings}) as the trusted comment merge-ready reads,
 # then dispatches merge-ready, and on a first reject one fix run. Lines that would forge a field are dropped.
 verdict() {
-  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects body
+  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects body view
   out=$(cat)
   verdict=$(jq -r '.verdict // empty' <<<"$out" 2>/dev/null) || true
   case $verdict in approve | reject) ;; *) echo "L24: the Reviewer gave no verdict: $out" >&2; exit 1 ;; esac
+  view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body,isDraft)
+  [ "$(jq -r '"\(.state) \(.headRefOid)"' <<<"$view")" = "OPEN $head" ] || { echo 'stale review: no verdict posted'; return 0; }
   findings=$(jq -r '.findings // ""' <<<"$out" | { grep -vE '^(VERDICT|Head|Reviewed-by-Agent):' || true; })
   rejects=$(loop/rules.sh verdicts "$pr" | jq -s 'map(select(.verdict == "reject")) | length') || exit 4
   printf 'VERDICT: %s\nHead: %s\n\n%s\n\nReviewed-by-Agent: %s\n' "$verdict" "$head" "$findings" "$reviewer" |

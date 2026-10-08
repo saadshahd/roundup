@@ -30,7 +30,7 @@ Builder, QA and Retro runs are one-shot GitHub Actions jobs, and an event ends e
 
 - No scenario, no work. Tests are named after their scenario (`fn t3_…` proves T3).
 - Work in your own worktree and branch; `pnpm install` and `just check` before pushing; PRs go against `main`.
-- A PR touching `.github/` waits for the user's merge, whoever opened it: its own workflow files decide its `check` and `rules`. Other Loop machinery merges on a review run's approve, and that run reads `main`'s copy (L24).
+- Loop machinery, including workflows, merges after independent review and the required checks; reviewers use main’s instructions and inspect the proposed diff.
 - Red `main`: revert, never fix forward.
 - Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
 - No run pushes to `main`; every change merges through a PR.

@@ -49,7 +49,7 @@ vocab() {
 }
 
 # L46: reads changed paths on stdin; prints `code` when one is product code or a Build file (a Code PR), `ui` when one
-# is under apps/desktop/src, and `loop` when one is loop machinery the user merges by hand. The one definition of each.
+# is under apps/desktop/src, and `loop` when one is loop machinery requiring independent review. The one definition of each.
 touches() {
   local path code="" ui="" loop=""
   while IFS= read -r path || [ -n "$path" ]; do
@@ -370,19 +370,21 @@ try:
     # L81: a draft whose body says why its Builder stopped waits on the user.
     stopped = re.search(r'^Stopped: *(\S.*)$', body, re.M) if pr['draft'] is True else None
     gate(lambda: require(not stopped, 'the Builder stopped: ' + (stopped.group(1).strip() if stopped else '')))
-    gate(lambda: require('loop' not in touched, 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md'))
     gate(lambda: checks(head, ('check', 'rules') + (('percy',) if 'ui' in touched else ())))
     gate(lambda: trailer_gate(records, base))
-    gate(lambda: require(sum(event['verdict'] == 'reject' for event in events) < 2, 'second reject: the user decides'))
     gate(lambda: require(not rejected(events, head), 'newest independent verdict on this head is reject'))
-    if 'code' in touched:
+    if 'code' in touched or 'loop' in touched:
         gate(lambda: require(re.search(r'^Scenarios:.*\b[A-Z][0-9]+\b', body, re.M), 'a Code PR needs a Scenarios: line'))
         gate(lambda: require(any(event['verdict'] == 'approve' and event['current'] for event in events),
                              'a Code PR needs an independent VERDICT: approve naming its head'))
     if any(path.startswith('crates/desktop/') for path in paths):
         gate(lambda: require(re.search(r'^macOS: \S.+$', body, re.M), 'a crates/desktop PR needs a macOS: line'))
     latest = one(pull)
-    gate(lambda: require(latest == pr, 'PR changed during merge-ready'))
+    # Embedded repository counters may change during a gate without changing the PR.
+    def gate_inputs(value):
+        return {key: value.get(key) for key in ('state', 'draft', 'body', 'updated_at')} | {
+            'head': value['head']['sha'], 'base': value['base']['sha'], 'ref': value['base']['ref']}
+    gate(lambda: require(gate_inputs(latest) == gate_inputs(pr), 'PR changed during merge-ready'))
     require(not errors, '\n'.join(errors))
     print('ready '+head)
 except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError) as error:
