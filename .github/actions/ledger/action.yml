@@ -11,6 +11,14 @@ inputs:
     description: claude-code-action's execution_file output; empty when the run never started
     required: false
     default: ''
+  redact-token:
+    description: Action token to redact from the retained final explanation
+    required: false
+    default: ''
+  redact-oauth:
+    description: Observer OAuth token to redact from the retained final explanation
+    required: false
+    default: ''
   conclusion:
     description: the claude-code-action step's outcome; empty reads as failure
     required: false
@@ -25,6 +33,8 @@ runs:
         SUBJECT: ${{ inputs.subject }}
         EXECUTION_FILE: ${{ inputs.execution-file }}
         CONCLUSION: ${{ inputs.conclusion }}
+        ACTION_GITHUB_TOKEN: ${{ inputs.redact-token }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.redact-oauth }}
       run: |
         mkdir -p "$RUNNER_TEMP/ledger/loop"
         git show origin/main:loop/retro.sh >"$RUNNER_TEMP/ledger/loop/retro.sh"
@@ -32,10 +42,15 @@ runs:
         git show origin/main:loop/lib.sh >"$RUNNER_TEMP/ledger/loop/lib.sh"
         bash "$RUNNER_TEMP/ledger/loop/retro.sh" ledger "$ROLE" "$SUBJECT" "$EXECUTION_FILE" "${CONCLUSION:-failure}" >"$RUNNER_TEMP/ledger/ledger.json"
         cat "$RUNNER_TEMP/ledger/ledger.json"
+        git show origin/main:loop/outcome.py >"$RUNNER_TEMP/ledger/loop/outcome.py"
+        git show origin/main:loop/dispatch.py >"$RUNNER_TEMP/ledger/loop/dispatch.py"
+        python3 "$RUNNER_TEMP/ledger/loop/outcome.py" retain "$EXECUTION_FILE" "$RUNNER_TEMP/ledger/outcome.json"
         slug=$(bash "$RUNNER_TEMP/ledger/loop/runs.sh" slug "$SUBJECT")
         echo "slug=$slug" >>"$GITHUB_OUTPUT"
     - uses: actions/upload-artifact@v4
       with:
         name: ledger-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.role }}-${{ steps.row.outputs.slug }}
-        path: ${{ runner.temp }}/ledger/ledger.json
+        path: |
+          ${{ runner.temp }}/ledger/ledger.json
+          ${{ runner.temp }}/ledger/outcome.json
         retention-days: 90
