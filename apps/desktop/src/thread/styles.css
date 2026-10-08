@@ -39,10 +39,28 @@
 
 .thread-composer input {
   flex: 1 1 12ch;
+  box-sizing: border-box;
   min-width: 0;
+  min-height: var(--space-5);
+  padding: 0 var(--space-1);
   font: inherit;
+  color: inherit;
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
   -webkit-user-select: text;
   user-select: text;
+}
+
+.thread-composer input:hover {
+  background-color: var(--hover);
+}
+
+/* Takes effect at `pointerdown` and is instant, as a button's does (U133). */
+.thread-composer input:active {
+  background-color: var(--selected);
+  transition-duration: 0s;
 }
 
 .thread-quote,
