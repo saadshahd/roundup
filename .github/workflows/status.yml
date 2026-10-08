@@ -46,6 +46,7 @@ jobs:
           persist-credentials: false
       - env:
           GH_TOKEN: ${{ github.token }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
           DAILY: ${{ github.event.schedule == '3 8 * * *' || inputs.daily }}
         run: |
           issue=$(loop/status.sh issue)

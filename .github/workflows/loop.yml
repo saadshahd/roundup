@@ -28,5 +28,6 @@ jobs:
       - run: loop/percy.test.sh
       - run: loop/qa-sweep.test.sh
       - run: loop/runs.test.sh
+      - run: loop/codex.test.sh
       - run: loop/retro.test.sh
       - run: loop/status.test.sh
