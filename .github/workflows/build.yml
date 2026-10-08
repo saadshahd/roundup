@@ -147,16 +147,33 @@ jobs:
           prompt: ${{ needs.repair-due.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: claude,github-actions
+          # The App's default token omits workflows; writers need to publish proposed workflow changes.
+          additional_permissions: |
+            actions: read
+            checks: read
+            workflows: write
           claude_args: >-
             --model claude-sonnet-5-5
             --max-turns 100
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: builder
           subject: ${{ inputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
@@ -176,4 +193,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.fix.outputs.branch }}
-        run: loop/runs.sh stopped "$BRANCH"
+          PR: ${{ inputs.pr }}
+        run: |
+          loop/runs.sh stopped "$BRANCH"
+          python3 loop/outcome.py observe "$BRANCH" "$PR"
