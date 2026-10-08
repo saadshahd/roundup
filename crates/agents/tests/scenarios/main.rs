@@ -2,6 +2,7 @@ mod common;
 mod decisions;
 mod door;
 mod held_signal;
+mod landing;
 mod naming;
 mod rail;
 mod remove;

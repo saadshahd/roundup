@@ -50,7 +50,10 @@ How far an Agent's Worktree is from its Base: `ahead` and `behind` in commits, a
 The branch checked out in the Project when the Agent spawned; the Agent's branch starts there.
 
 **Landing**:
-Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base.
+Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base (`agent.land`, which returns `Landed`: the Base's new commit).
+
+**Discard**:
+Deliberately dropping an Agent with its Worktree and branch whatever their state (`agent.discard`); `rail.remove` refuses instead when work would be lost.
 
 ### The App
 
