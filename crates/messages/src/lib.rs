@@ -229,6 +229,14 @@ impl Messages {
         if let Some(landing) = self.answered_landing(ctx, &message)? {
             ctx.emit(EventData::MessageDelivered(landing));
         }
+        if message.status == MessageStatus::Pending
+            && let Some(node) = receiver_status.as_ref().filter(|node| {
+                node.kind == NodeKind::Agent
+                    && node.status.as_ref().is_some_and(|s| s.kind == Kind::Idle)
+            })
+        {
+            on_idle(&self.inner, &p.to, binding(node), Some(message.id)).await;
+        }
         // A hop the Route dropped moves the chain on at once (B16).
         let _ = settle(&self.inner, None).await;
         reply(&message)
@@ -246,7 +254,10 @@ impl Messages {
         let (Some(chain), Some(hop)) = (store.chain_of(hop_id)?, store.get(hop_id)?) else {
             return Ok(());
         };
-        if hop.status == MessageStatus::Delivered && hops::is_hop_receiver(&ctx.actor, &hop) {
+        if hop.status == MessageStatus::Delivered
+            && hops::is_hop_receiver(&ctx.actor, &hop)
+            && is_receiver(&chain.origin, &message.to)
+        {
             store.move_chain(chain.id, None, &[])?;
         }
         Ok(())
@@ -263,7 +274,9 @@ impl Messages {
         }
         let store = self.store()?;
         let escalated = store.get(landing_id)?.is_some_and(|held| {
-            held.to == Actor::user().id && held.reason == Some(Reason::Escalated)
+            held.to == Actor::user().id
+                && held.reason == Some(Reason::Escalated)
+                && is_receiver(&held.from, &message.to)
         });
         if escalated && store.release_held(landing_id, MessageStatus::Delivered, None)? {
             return store.get(landing_id);
@@ -705,7 +718,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
         .expect("message store");
     }
     if kind == Kind::Idle {
-        on_idle(inner, agent, at).await;
+        on_idle(inner, agent, at, None).await;
     }
     let _ = settle(inner, None).await;
 }
@@ -782,16 +795,22 @@ async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
 /// next one, so exactly one Message is typed per `idle`. It is recorded `delivered` in one
 /// conditional write before typing starts (B8), so a Takeover beginning while the prompt is being
 /// typed cannot hold a Message already in flight; a refusal reverts that record.
-async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
+///
+/// `sent` is a Message just sent to an Agent already `idle`: no `idle` event will follow for it, so
+/// it is typed now, if it is the one the next `idle` would pick, though its Status revision is the
+/// current one.
+async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, sent: Option<u32>) {
     let found = {
         let store = inner.store.lock().unwrap();
         if store.require_generation(agent, at).is_err() {
             return;
         }
-        let pending = store.pending_queue(agent, at).expect("message store");
+        // A just-sent Message is bound to the current revision, which the queue excludes.
+        let upto = (at.0, at.1.saturating_add(i64::from(sent.is_some())));
+        let pending = store.pending_queue(agent, upto).expect("message store");
         idle_pick(&pending).and_then(|id| pending.into_iter().find(|m| m.id == id))
     };
-    let Some(found) = found else {
+    let Some(found) = found.filter(|m| sent.is_none_or(|id| m.id == id)) else {
         return;
     };
     // The name is read before the record: a Rail that cannot answer leaves the Message `pending`
@@ -803,7 +822,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
         let store = inner.store.lock().unwrap();
         if store.require_generation(agent, at).is_err()
             || (store.bound(found.id).expect("message store").0 != at.0
-                || store.bound(found.id).expect("message store").1 >= at.1)
+                || (sent.is_none() && store.bound(found.id).expect("message store").1 >= at.1))
         {
             return;
         }
@@ -1060,6 +1079,7 @@ mod tests {
 
     mod b_held_tests;
     mod b_hop_tests;
+    mod b_idle_tests;
     mod inv_tests;
 
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,
@@ -1200,7 +1220,7 @@ mod tests {
     #[tokio::test]
     async fn b1_send_assigns_sequential_ids_from_is_the_caller_and_touches_wrote() {
         let dir = tempfile::tempdir().unwrap();
-        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
 
         let first = h
             .call_as(
@@ -1458,7 +1478,7 @@ mod tests {
     #[tokio::test]
     async fn b1_a_receiver_at_the_bound_of_32_is_conflict() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         for _ in 0..32 {
             h.call_as(
                 agent("a"),
@@ -1563,7 +1583,7 @@ mod tests {
     #[tokio::test]
     async fn b1_a_rejected_call_at_the_bound_changes_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         for _ in 0..32 {
             h.call_as(
                 agent("a"),
@@ -2012,7 +2032,7 @@ mod tests {
     #[tokio::test]
     async fn b5_a_route_change_does_not_affect_an_already_pending_or_held_message() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         let pending = h
             .call_as(
                 agent("a"),
@@ -2147,7 +2167,7 @@ mod tests {
                 Messages::open(
                     dir.path(),
                     bus.clone(),
-                    FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                    FakeRail::new(vec![agent_node("b", Kind::Working)]),
                     noop_deliver(),
                 )
                 .unwrap(),
@@ -2263,9 +2283,9 @@ mod tests {
     async fn b8_routes_messages_and_statuses_survive_reopening_and_the_id_sequence_continues() {
         let dir = tempfile::tempdir().unwrap();
         let rail = vec![
-            agent_node("b", Kind::Idle),
-            agent_node("c", Kind::Idle),
-            agent_node("d", Kind::Idle),
+            agent_node("b", Kind::Working),
+            agent_node("c", Kind::Working),
+            agent_node("d", Kind::Working),
         ];
         {
             let h = Harness::new(dir.path(), rail.clone());
