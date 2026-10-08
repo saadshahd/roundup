@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../App";
 import { runChecks } from "../testing/checks";
@@ -73,6 +73,10 @@ describe("u134 surfaces and depth", () => {
 
     expect(shadowed).toEqual([drawer]);
     expect(getComputedStyle(drawer).boxShadow).toBe("var(--shadow-drawer)");
+
+    fireEvent.click(screen.getByRole("button", { name: "close", hidden: false }));
+    await waitFor(() => expect(drawer.inert).toBe(true));
+    expect(["", "none"]).toContain(getComputedStyle(drawer).boxShadow);
   });
 
   it("u134_no_backdrop_filter_element_has_another_inside_it", async () => {

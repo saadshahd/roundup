@@ -167,10 +167,13 @@ button[aria-disabled="true"] {
   box-sizing: border-box;
   overflow: auto;
   background-color: var(--ground);
-  box-shadow: var(--shadow-drawer);
   border-left-width: 1px;
   border-left-style: solid;
   border-left-color: var(--hairline);
+}
+
+.drawer[data-open="true"] {
+  box-shadow: var(--shadow-drawer);
 }
 
 .drawer > .close {
