@@ -48,13 +48,13 @@ runs:
         CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.redact-oauth }}
       run: |
         mkdir -p "$RUNNER_TEMP/ledger/loop"
-        git show origin/main:loop/retro.sh >"$RUNNER_TEMP/ledger/loop/retro.sh"
-        git show origin/main:loop/runs.sh >"$RUNNER_TEMP/ledger/loop/runs.sh"
-        git show origin/main:loop/lib.sh >"$RUNNER_TEMP/ledger/loop/lib.sh"
+        git -C "$GITHUB_ACTION_PATH" show HEAD:loop/retro.sh >"$RUNNER_TEMP/ledger/loop/retro.sh"
+        git -C "$GITHUB_ACTION_PATH" show HEAD:loop/runs.sh >"$RUNNER_TEMP/ledger/loop/runs.sh"
+        git -C "$GITHUB_ACTION_PATH" show HEAD:loop/lib.sh >"$RUNNER_TEMP/ledger/loop/lib.sh"
         bash "$RUNNER_TEMP/ledger/loop/retro.sh" ledger "$ROLE" "$SUBJECT" "$EXECUTION_FILE" "${CONCLUSION:-failure}" >"$RUNNER_TEMP/ledger/ledger.json"
         cat "$RUNNER_TEMP/ledger/ledger.json"
-        git show origin/main:loop/outcome.py >"$RUNNER_TEMP/ledger/loop/outcome.py"
-        git show origin/main:loop/dispatch.py >"$RUNNER_TEMP/ledger/loop/dispatch.py"
+        git -C "$GITHUB_ACTION_PATH" show HEAD:loop/outcome.py >"$RUNNER_TEMP/ledger/loop/outcome.py"
+        git -C "$GITHUB_ACTION_PATH" show HEAD:loop/dispatch.py >"$RUNNER_TEMP/ledger/loop/dispatch.py"
         python3 "$RUNNER_TEMP/ledger/loop/outcome.py" retain "$EXECUTION_FILE" "$RUNNER_TEMP/ledger/outcome.json"
         slug=$(bash "$RUNNER_TEMP/ledger/loop/runs.sh" slug "$SUBJECT")
         echo "slug=$slug" >>"$GITHUB_OUTPUT"

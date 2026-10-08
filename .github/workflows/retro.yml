@@ -67,7 +67,16 @@ jobs:
             --max-turns 60
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill
       - if: always() && steps.due.outputs.due == 'true'
-        uses: saadshahd/roundup/.github/actions/ledger@main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always() && steps.due.outputs.due == 'true'
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: retro
           subject: retro

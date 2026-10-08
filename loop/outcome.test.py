@@ -38,8 +38,11 @@ class OutcomeTests(unittest.TestCase):
         for workflow in ('build', 'build-row', 'review', 'retro'):
             source = (root / '.github/workflows' / (workflow + '.yml')).read_text()
             self.assertNotIn('uses: ./.github/actions/ledger', source)
+            self.assertNotIn('uses: saadshahd/roundup/', source)
+            self.assertIn('ref: main\n          path: .loop-ledger\n          sparse-checkout:', source)
+            self.assertIn('.github/actions/ledger\n            loop\n          persist-credentials: false', source)
             # Retain the complete indented step, rather than depending on input order.
-            ledger = source.split('uses: saadshahd/roundup/.github/actions/ledger@main', 1)[1].split('\n  #', 1)[0].split('\n  post:', 1)[0]
+            ledger = source.split('uses: ./.loop-ledger/.github/actions/ledger', 1)[1].split('\n  #', 1)[0].split('\n  post:', 1)[0]
             names = set(re.findall(r'secrets\.([A-Z_]+)', source))
             for name in names:
                 self.assertIn('secrets.' + name, ledger, workflow + ': ' + name)
@@ -48,6 +51,8 @@ class OutcomeTests(unittest.TestCase):
         for name in ('redact-token', 'redact-oauth', 'redact-percy', 'redact-typesafe'):
             self.assertIn('inputs.' + name, action)
         self.assertIn('GH_TOKEN: ${{ github.token }}', action)
+        self.assertNotIn('git show origin/main:', action)
+        self.assertIn('git -C "$GITHUB_ACTION_PATH" show HEAD:loop/outcome.py', action)
         report = outcome.model_outcome([{'type': 'result', 'result': 'opaque-percy opaque-typesafe'}],
                                       {'PERCY_TOKEN': 'opaque-percy', 'TYPESAFE_API_KEY': 'opaque-typesafe'})
         self.assertEqual(report['text'], '[redacted] [redacted]')

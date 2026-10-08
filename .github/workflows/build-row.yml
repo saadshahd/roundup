@@ -58,8 +58,18 @@ jobs:
             --model claude-sonnet-5-5
             --max-turns 150
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
       - if: always()
-        uses: saadshahd/roundup/.github/actions/ledger@main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: builder
           subject: ${{ fromJSON(inputs.row).ids }}
