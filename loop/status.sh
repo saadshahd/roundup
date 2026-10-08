@@ -55,6 +55,9 @@ page() {
   # A Claim with no open PR and no Builder: its row never builds again until someone deletes it (L23).
   claims=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   running=$(loop/runs.sh builders)
+  # L87: the local service publishes a bounded Claim record, never an immortal running marker.
+  running+=$'\n'$(jq -nr --argjson now "$now" --arg status "${CODEX_STATUS:-}" '
+    ($status | fromjson? // {}) | select(.state == "running" and .deadline > $now) | .slug // empty')
   claims=$(jq -nc --arg claims "$claims" --arg running "$running" --argjson open "$open" '
     ($open | map(.headRefName)) as $heads | ($running | split("\n")) as $running
     | [$claims | scan("refs/heads/(build/\\S+)")[0] | select(. as $b | $heads | index($b) | not) | select(ltrimstr("build/") as $s | $running | index($s) | not)
@@ -68,12 +71,16 @@ page() {
     [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"] + $claims + $failed')
 
   jq -nr --arg at "$(at "$now" '%Y-%m-%d %H:%M')" --arg merged "$merged" --arg tokens "$tokens" \
-    --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
+    --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
     def cell: if length == 0 then "nothing" else map(gsub("\\|"; "\\|")) | join("<br>") end;
     "<!-- loop-status -->",
     "Loop status at \($at) UTC. This body is rewritten each hour; at 08:03 UTC the same table lands as a comment.", "",
     "| Row | Now |", "|---|---|",
     "| Merged | \($merged) |", $tokens,
+    (if $codex == "" then empty else "| Codex | " + ([$codex | fromjson |
+      "\(.ids): \(.state); started \(.started | strftime("%Y-%m-%d %H:%M UTC")); " +
+      (if .state == "running" then "deadline " + (.deadline | strftime("%H:%M UTC"))
+       else "\(.usage.input // 0) input + \(.usage.cache_read // 0) cached + \(.usage.output // 0) output tokens" end)] | cell) + " |" end),
     "| Needs you | \($needs | cell) |", "| Blocked | \($blocked | cell) |", "| Watch | \($watch | cell) |"'
 }
 
