@@ -27,6 +27,7 @@ class Codex(unittest.TestCase):
         self.enabled = True
         self.rows = [self.row]
         self.claimed = True
+        self.dirty = True
         self.base = 'a' * 40
         self.patches = [patch.object(fleet, 'command', side_effect=self.command),
                         patch.object(fleet.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, '', 'Logged in using ChatGPT')),
@@ -38,19 +39,24 @@ class Codex(unittest.TestCase):
     def command(self, *args, **kw):
         self.calls.append((args, kw))
         if args[:3] == ('gh', 'variable', 'get'): return 'true' if self.enabled else 'false'
-        if args[:3] == ('git', 'status', '--porcelain'): return ''
+        if args[:3] == ('git', 'status', '--porcelain'): return ' M edited' if kw.get('cwd') and self.dirty else ''
         if args[:3] == ('git', 'rev-parse', 'HEAD'): return self.base
         if args[:3] == ('gh', 'run', 'list'): return json.dumps([dict(headSha=self.base, conclusion='success')])
         if args[:2] == ('loop/runs.sh', 'queue'): return json.dumps(self.rows)
         if args[:2] == ('loop/runs.sh', 'claim'): return json.dumps([self.row] if self.claimed else [])
         if args[:4] == ('git', 'remote', 'get-url', 'origin'): return 'https://github.com/example/repo'
         if args[:2] == ('git', 'ls-remote'): return self.base + '\trefs/heads/build/U59'
-        if args[:2] == ('git', 'clone'): Path(args[-1]).mkdir()
+        if args[:2] == ('git', 'clone'):
+            checkout = Path(args[-1]); checkout.mkdir()
+            (checkout/'scenarios').mkdir()
+            (checkout/self.row['file']).write_text('# Scenario\n')
+        if args[:3] == ('gh', 'pr', 'create'): return 'https://example/pr/1'
         if args[:3] == ('gh', 'pr', 'list'): return json.dumps([dict(number=1, isDraft=not self.ready, url='https://example/pr/1')])
         return ''
 
     def launch(self, args, **kw):
         self.argv, self.env = args, kw['env']
+        Path(args[args.index('-o')+1]).write_text(json.dumps(dict(status='ready' if self.ready else 'stopped',title='implement the row',body='Changes implemented.' if self.ready else 'Stopped: unresolved product question.')))
         kw['stdout'].write(json.dumps(dict(type='turn.completed', usage=dict(input_tokens=100, cached_input_tokens=60, output_tokens=20))) + '\n')
         kw['stdout'].flush()
         class Result:
@@ -59,7 +65,7 @@ class Codex(unittest.TestCase):
         return Result()
 
     def test_L87_ready_pr_and_plan_login_are_observed(self):
-        with patch.dict(os.environ, OPENAI_API_KEY='do-not-use', CODEX_API_KEY='do-not-use'):
+        with patch.dict(os.environ, OPENAI_API_KEY='do-not-use', CODEX_API_KEY='do-not-use', GH_TOKEN='do-not-use'):
             fleet.tick(self.state)
         result = json.loads((self.state/'last.json').read_text())
         self.assertEqual(result['state'], 'ready')
@@ -68,6 +74,10 @@ class Codex(unittest.TestCase):
         self.assertEqual(self.env['NEXTEST_TEST_THREADS'], '1')
         self.assertNotIn('CODEX_API_KEY', self.env)
         self.assertNotIn('OPENAI_API_KEY', self.env)
+        self.assertNotIn('GH_TOKEN', self.env)
+        self.assertIn('--ignore-rules', self.argv)
+        self.assertNotIn(str(self.state/'checkout/.git'), self.argv)
+        self.assertTrue(any(a[:3] == ('gh','pr','create') for a,k in self.calls))
         self.assertEqual(self.argv[:4], ['gtimeout', '--kill-after=20s', '7200s', 'codex'])
         self.assertFalse((self.state/'active.json').exists())
         self.assertTrue(any(a[:2] == ('loop/runs.sh','unclaim') for a,k in self.calls))
@@ -75,9 +85,18 @@ class Codex(unittest.TestCase):
     def test_L87_zero_exit_with_draft_is_failure_and_cools_down(self):
         self.ready = False
         with self.assertRaisesRegex(RuntimeError, 'did not deliver'): fleet.tick(self.state)
+        self.assertTrue(any(a == ('gh','workflow','run','merge-ready.yml','-f','pr=1') for a,k in self.calls))
+        self.assertNotIn('Stopped: the run ended without marking it ready,', next(self.state.glob('*/pr.md')).read_text())
         before = len(self.calls)
         fleet.tick(self.state)
         self.assertFalse(any(a[:2] == ('loop/runs.sh','claim') for a,k in self.calls[before:]))
+
+    def test_L87_question_before_any_edits_still_creates_a_draft(self):
+        self.ready, self.dirty = False, False
+        with self.assertRaisesRegex(RuntimeError, 'did not deliver'): fleet.tick(self.state)
+        scenario = next(self.state.glob('*/checkout/scenarios/ui.md')).read_text()
+        self.assertIn('Stopped: unresolved product question.', scenario)
+        self.assertTrue(any(a[:3] == ('gh','pr','create') and '--draft' in a for a,k in self.calls))
 
     def test_L87_failed_engine_with_ready_pr_is_failure(self):
         self.code = 124
@@ -104,8 +123,9 @@ class Codex(unittest.TestCase):
         self.assertFalse(any(a[:2] == ('loop/runs.sh','claim') for a,k in self.calls))
 
     def test_L87_live_orphan_holds_the_slot(self):
-        fleet.save(self.state/'active.json',dict(pid=os.getpid()))
-        fleet.tick(self.state)
+        fleet.save(self.state/'active.json',dict(pid=os.getpid(),birth='today',deadline=10**12))
+        with patch.object(fleet.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'today','')):
+            fleet.tick(self.state)
         self.assertEqual(self.calls,[])
 
     def test_L87_network_failure_cannot_be_idle(self):
@@ -121,9 +141,27 @@ class Codex(unittest.TestCase):
         attempt=self.state/'old'; attempt.mkdir()
         record=dict(self.row,base=self.base,events=str(attempt/'events'),pid=123456789)
         fleet.save(self.state/'active.json',record)
-        with patch.object(fleet.os,'kill',side_effect=ProcessLookupError): fleet.tick(self.state)
+        with patch.object(fleet.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','')): fleet.tick(self.state)
         self.assertEqual(json.loads((self.state/'last.json').read_text())['exit'],130)
         self.assertFalse(any(a[:2] == ('loop/runs.sh','queue') for a,k in self.calls))
+        self.assertTrue(any(a == ('gh','workflow','run','reconcile.yml') for a,k in self.calls))
+
+    def test_L87_timeout_delivers_partial_work_to_claude_fix(self):
+        self.code=124
+        with self.assertRaises(RuntimeError): fleet.tick(self.state)
+        body = next(self.state.glob('*/pr.md')).read_text()
+        self.assertIn('Stopped: the run ended without marking it ready,', body)
+        publish = next(i for i,(a,k) in enumerate(self.calls) if a[:3] == ('gh','variable','set') and '"failed"' in a[-1])
+        handoff = next(i for i,(a,k) in enumerate(self.calls) if a == ('gh','workflow','run','reconcile.yml'))
+        self.assertLess(publish, handoff)
+
+    def test_L87_reused_pid_does_not_hold_the_slot(self):
+        attempt=self.state/'old'; attempt.mkdir()
+        record=dict(self.row,base=self.base,events=str(attempt/'events'),pid=1,birth='old',deadline=10**12)
+        fleet.save(self.state/'active.json',record)
+        with patch.object(fleet.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'new','')):
+            fleet.tick(self.state)
+        self.assertFalse((self.state/'active.json').exists())
 
     def test_L87_public_status_excludes_local_paths(self):
         fleet.publish(dict(self.row,started=1,deadline=2,state='running',events='/private/log'))
