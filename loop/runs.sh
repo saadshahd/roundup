@@ -23,18 +23,19 @@ builders() {
 
 # L23: ready Work rows of `loop/rules.sh ready` as the build matrix [{ids, file, slug}], at most <max> less the Builders
 # still running. It skips loop machinery (scenarios/loop-*.md: the user's or a Retro's) and a row whose Claim, the
-# branch build/<slug>, exists: a Builder holds it, or stopped on its PR. Reads only; `claim` pushes.
+# branch build/<slug>, exists, or whose same-repository PR merged into main. Reads only; `claim` pushes.
 queue() {
-  local max=${1:-4} rows branches running priority=""
+  local max=${1:-4} rows branches merged running priority=""
   if [ -f .agents/data/journey.md ]; then
     priority=$(sed -n 's/^Priority: //p' .agents/data/journey.md)
     [[ $priority =~ ^[A-Z][0-9]+(\ [A-Z][0-9]+)*$ ]] || { echo 'journey.md needs one Priority: line of scenario ids' >&2; exit 2; }
   fi
   rows=$(loop/rules.sh ready)
   branches=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
+  merged=$(merged_branches)
   running=$(builders | wc -l | tr -d ' ')
-  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg priority "$priority" "$slug_def"'
-    ($branches | [scan("refs/heads/build/(\\S+)")[0]]) as $taken
+  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" --arg priority "$priority" "$slug_def"'
+    (($branches | [scan("refs/heads/build/(\\S+)")[0]]) + ($merged | split("\n") | map(select(startswith("build/")) | ltrimstr("build/")))) as $taken
     | ($priority | split(" ") | map(select(length > 0))) as $order
     | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
        | select(.file | startswith("scenarios/loop-") | not)

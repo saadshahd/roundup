@@ -22,7 +22,7 @@ issue() {
 # L80: the Status issue's body. Without --cost it keeps the Tokens row of the previous body (stdin), since counting
 # downloads every Ledger artifact of the week.
 page() {
-  local day week stale cost tokens merged open needs blocked pr sha desc main claims running failed watch
+  local day week stale cost tokens merged completed open needs blocked pr sha desc main claims running failed watch
   day=$(at "$now" '%Y-%m-%dT00:00:00Z')
   week=$(at $((now - 7 * 86400)) '%Y-%m-%dT%H:%M:%SZ')
   stale=$(at $((now - stuck_hours * 3600)) '%Y-%m-%dT%H:%M:%SZ')
@@ -52,14 +52,15 @@ page() {
     done | jq -s -c .)
 
   main=$(gh_or_4 run list --workflow check.yml --branch main --event push --status completed --limit 1 --json conclusion,headSha)
-  # A Claim with no open PR and no Builder: its row never builds again until someone deletes it (L23).
+  # An unfinished Claim with no open PR and no Builder blocks its row (L23).
   claims=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
+  completed=$(merged_branches)
   running=$(loop/runs.sh builders)
   # L87: the local service publishes a bounded Claim record, never an immortal running marker.
   running+=$'\n'$(jq -nr --argjson now "$now" --arg status "${CODEX_STATUS:-}" '
     ($status | fromjson? // {}) | select(.state == "running" and .deadline > $now) | .slug // empty')
-  claims=$(jq -nc --arg claims "$claims" --arg running "$running" --argjson open "$open" '
-    ($open | map(.headRefName)) as $heads | ($running | split("\n")) as $running
+  claims=$(jq -nc --arg claims "$claims" --arg running "$running" --arg completed "$completed" --argjson open "$open" '
+    (($open | map(.headRefName)) + ($completed | split("\n"))) as $heads | ($running | split("\n")) as $running
     | [$claims | scan("refs/heads/(build/\\S+)")[0] | select(. as $b | $heads | index($b) | not) | select(ltrimstr("build/") as $s | $running | index($s) | not)
        | "\(.): no open PR and no Builder; delete it to build its row again"]')
   failed=$(for workflow in build review retro; do

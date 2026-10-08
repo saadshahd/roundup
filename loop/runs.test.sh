@@ -36,6 +36,7 @@ set -euo pipefail
 echo "gh $*" >>"$FIXTURES/trace"
 [ ! -e "$FIXTURES/gh-fail" ] || exit 1
 case "$*" in
+  'api repos/{owner}/{repo}/pulls?state=closed&per_page=100 --paginate --jq '*) jq -r "${@: -1}" "$FIXTURES/closed" ;;
   'pr view '*' --json state,headRefOid,body,isDraft') cat "$FIXTURES/view" ;;
   'pr diff '*' --name-only') cat "$FIXTURES/paths" ;;
   'pr comment '*' --body-file -') cat >"$FIXTURES/comment" ;;
@@ -63,6 +64,7 @@ head=$(printf 'a%.0s' {1..40})
 fresh() {
   rm -f "$FIXTURES"/*
   : >"$FIXTURES/trace"
+  echo '[]' >"$FIXTURES/closed"
   : >"$FIXTURES/verdicts"
   printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":"Scenarios: U3\\nMoves: D2\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
   printf 'crates/rupd/src/main.rs\nscenarios/ui.md\n' >"$FIXTURES/paths"
@@ -77,6 +79,15 @@ check 'L23 queue lists ready rows' 0 loop/runs.sh queue
 holds 'L23 queue keeps ids, ranges, the file and a slug; it skips loop rows' test "$(cat "$FIXTURES/out")" = '[{"ids":"U3","file":"scenarios/ui.md","slug":"U3"},{"ids":"U105–U107, U110","file":"scenarios/ui-attention.md","slug":"U105-U107-U110"},{"ids":"F7 re-run","file":"scenarios/spawn-boundary.md","slug":"F7-re-run"},{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'
 check 'L23 queue takes at most max rows' 0 loop/runs.sh queue 2
 holds 'L23 queue of two' test "$(jq length "$FIXTURES/out")" = 2
+
+# A deleted branch is not permission to repeat completed work; closed-unmerged work is distinct.
+printf '[{"head":{"ref":"build/U3","repo":{"id":1}},"base":{"ref":"main","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"},{"head":{"ref":"build/U4"},"merged_at":null}]\n' >"$FIXTURES/closed"
+check 'L23 merged work stays complete after its branch is deleted' 0 loop/runs.sh queue
+holds 'L23 only merged rows are excluded' jq -e 'all(.slug != "U3") and any(.slug == "U4")' "$FIXTURES/out"
+printf '[{"head":{"ref":"build/U3","repo":{"id":1}},"base":{"ref":"preview","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"},{"head":{"ref":"build/U4","repo":{"id":2}},"base":{"ref":"main","repo":{"id":1}},"merged_at":"2026-10-08T00:00:00Z"}]\n' >"$FIXTURES/closed"
+check 'L23 foreign branches and non-main merges do not complete a fleet row' 0 loop/runs.sh queue
+holds 'L23 unrelated merges leave ready work eligible' jq -e 'any(.slug == "U3") and any(.slug == "U4")' "$FIXTURES/out"
+echo '[]' >"$FIXTURES/closed"
 
 # L86 journey priority orders only eligible rows, without overriding a dependency or a Claim.
 mkdir -p .agents/data
