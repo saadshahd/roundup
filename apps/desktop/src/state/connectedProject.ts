@@ -3,6 +3,8 @@ import type { Accessor } from "solid-js";
 import { connectEvents } from "../app/events";
 import type { Events } from "../app/events";
 import type { AppSeam, DaemonExit, Project } from "../app/seam";
+import { createDecisions } from "../decisions/decisions";
+import type { DecisionsState } from "../decisions/decisions";
 import { createDrawer } from "../drawer/drawer";
 import type { DrawerState } from "../drawer/drawer";
 import { createOutputFeed } from "./output";
@@ -20,6 +22,7 @@ export type ConnectedProject = {
   /** `terminal.output` from the first subscription on, so nothing is lost before the Pane mounts. */
   output: OutputFeed;
   drawer: DrawerState;
+  decisions: DecisionsState;
   reducedMotion: Accessor<boolean>;
   /** Milliseconds since the epoch, refreshed on a coarse tick; for elapsed times. */
   now: Accessor<number>;
@@ -41,7 +44,7 @@ export const connectProject = async (
 
   await rail.settled();
 
-  return { project, app, events, rail, output, drawer: createDrawer(), reducedMotion, now, daemonExit };
+  return { project, app, events, rail, output, drawer: createDrawer(), decisions: createDecisions(app, events, daemonExit), reducedMotion, now, daemonExit };
 };
 
 export const ConnectedProjectContext = createContext<ConnectedProject>();

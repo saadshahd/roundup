@@ -1,7 +1,7 @@
 import { fireEvent, waitFor, within } from "@solidjs/testing-library";
 import { describe, expect, it } from "vitest";
 import { RpcError } from "../app/seam";
-import { card, callsTo, cleared, decision, gate, mountApp, opened, select } from "./decisionsFixture";
+import { card, rpcCalls, cleared, decision, gate, mountApp, opened, select } from "./decisionsFixture";
 
 describe("u113 listing and events reconcile by id", () => {
   it("u113_the_event_stream_is_subscribed_before_decision_list_is_called", async () => {
@@ -15,6 +15,7 @@ describe("u113 listing and events reconcile by id", () => {
         await subscribe(listener);
         order.push("subscribed");
       };
+
       app.handlers["decision.list"] = (params) => {
         order.push("listed");
 
@@ -61,7 +62,7 @@ describe("u113 listing and events reconcile by id", () => {
     app.emit(opened(decision("d1", "a")));
 
     await waitFor(() => expect(card()).not.toBeNull());
-    expect(callsTo(app, "decision.list")).toHaveLength(1);
+    expect(rpcCalls(app, "decision.list")).toHaveLength(1);
   });
 
   it("u113_a_failed_list_shows_its_error_with_a_retry_that_lists_again", async () => {

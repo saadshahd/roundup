@@ -27,6 +27,7 @@ export type Gate<T> = { promise: Promise<T>; resolve(value: T): void; reject(err
 export const gate = <T,>(): Gate<T> => {
   let resolve!: (value: T) => void;
   let reject!: (error: Error) => void;
+
   const promise = new Promise<T>((done, fail) => {
     resolve = done;
     reject = fail;
@@ -77,4 +78,4 @@ export const select = (name: string) => {
 
 export const card = (): HTMLElement | null => document.querySelector<HTMLElement>(".decision-card");
 
-export const callsTo = (app: FakeApp, method: string) => app.calls.filter((call) => call.method === method).map((call) => call.params);
+export const rpcCalls = (app: FakeApp, method: string) => app.calls.filter((call) => call.method === method).map((call) => call.params);

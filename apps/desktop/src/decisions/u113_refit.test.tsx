@@ -1,6 +1,6 @@
 import { waitFor } from "@solidjs/testing-library";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { callsTo, card, cleared, decision, mountApp, opened, select } from "./decisionsFixture";
+import { rpcCalls, card, cleared, decision, mountApp, opened, select } from "./decisionsFixture";
 
 let watchers: (() => void)[] = [];
 
@@ -36,10 +36,12 @@ describe("u113 the Terminal refits around the Card", () => {
     const { app, emulators } = await mountApp([]);
 
     select("alpha");
+    // The snapshot restore resets the fake's size; let it land before the test moves the size.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const emulator = emulators.made.get("t-a")!;
     const written = [...emulator.written];
-    const baseline = callsTo(app, "terminal.resize").length;
+    const baseline = rpcCalls(app, "terminal.resize").length;
 
     emulator.size = { cols: 100, rows: 20 };
     app.emit(opened(decision("d1", "a")));
@@ -49,7 +51,7 @@ describe("u113 the Terminal refits around the Card", () => {
     layoutChanged();
     vi.advanceTimersToNextFrame();
 
-    expect(callsTo(app, "terminal.resize").slice(baseline)).toEqual([{ id: "t-a", cols: 100, rows: 20 }]);
+    expect(rpcCalls(app, "terminal.resize").slice(baseline)).toEqual([{ id: "t-a", cols: 100, rows: 20 }]);
 
     emulator.size = { cols: 100, rows: 12 };
     app.emit(opened(decision("d2", "a", { tool: "Write", opened_at: 2 })));
@@ -57,7 +59,7 @@ describe("u113 the Terminal refits around the Card", () => {
     layoutChanged();
     vi.advanceTimersToNextFrame();
 
-    expect(callsTo(app, "terminal.resize").slice(baseline).at(-1)).toEqual({ id: "t-a", cols: 100, rows: 12 });
+    expect(rpcCalls(app, "terminal.resize").slice(baseline).at(-1)).toEqual({ id: "t-a", cols: 100, rows: 12 });
 
     emulator.size = { cols: 100, rows: 30 };
     app.emit(cleared("d2"));
@@ -65,8 +67,8 @@ describe("u113 the Terminal refits around the Card", () => {
     layoutChanged();
     vi.advanceTimersToNextFrame();
 
-    expect(callsTo(app, "terminal.resize").slice(baseline).at(-1)).toEqual({ id: "t-a", cols: 100, rows: 30 });
-    expect(callsTo(app, "terminal.resize").slice(baseline)).toHaveLength(3);
+    expect(rpcCalls(app, "terminal.resize").slice(baseline).at(-1)).toEqual({ id: "t-a", cols: 100, rows: 30 });
+    expect(rpcCalls(app, "terminal.resize").slice(baseline)).toHaveLength(3);
     expect(emulator.written).toEqual(written);
     expect(emulator.scrollsToBottom).toBe(0);
     expect(emulator.disposed).toBe(false);

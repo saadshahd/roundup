@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { describe, expect, it } from "vitest";
 import { RpcError } from "../app/seam";
-import { asking, callsTo, card, cleared, decision, gate, mountApp, opened, select } from "./decisionsFixture";
+import { asking, rpcCalls, card, cleared, decision, gate, mountApp, opened, select } from "./decisionsFixture";
 
 const buttons = () => within(card()!).getAllByRole("button").map((button) => button.textContent?.trim());
 
@@ -81,8 +81,8 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     fireEvent.click(within(card()!).getByRole("button", { name: "focus Terminal" }));
 
     expect(focused).toBe(1);
-    expect(callsTo(app, "decision.answer")).toEqual([]);
-    expect(callsTo(app, "terminal.write")).toEqual([]);
+    expect(rpcCalls(app, "decision.answer")).toEqual([]);
+    expect(rpcCalls(app, "terminal.write")).toEqual([]);
   });
 
   it("u113_an_unreadable_question_shows_an_error_and_terminal_access_and_never_allows", async () => {
@@ -92,7 +92,7 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     await waitFor(() => expect(card()).not.toBeNull());
     expect(within(card()!).getByRole("alert").textContent).toContain("unreadable");
     expect(buttons()).toEqual(["focus Terminal"]);
-    expect(callsTo(app, "decision.answer")).toEqual([]);
+    expect(rpcCalls(app, "decision.answer")).toEqual([]);
   });
 
   it("u113_activating_an_answer_sends_one_decision_answer_with_the_id_and_the_proof", async () => {
@@ -107,11 +107,11 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     const allow = within(card()!).getByRole("button", { name: "allow" });
 
     fireEvent.click(allow);
-    await waitFor(() => expect(callsTo(app, "decision.answer")).toHaveLength(1));
+    await waitFor(() => expect(rpcCalls(app, "decision.answer")).toHaveLength(1));
     fireEvent.click(allow);
     fireEvent.click(allow);
 
-    expect(callsTo(app, "decision.answer")).toEqual([{ id: "d1", answer: "allow", proof: "proof-1" }]);
+    expect(rpcCalls(app, "decision.answer")).toEqual([{ id: "d1", answer: "allow", proof: "proof-1" }]);
     expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("disabled")).toBe(true);
     expect(within(card()!).getByRole("button", { name: "deny" }).hasAttribute("disabled")).toBe(true);
 
@@ -119,7 +119,7 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
 
     await waitFor(() => expect(card()).toBeNull());
     expect(document.body.textContent).not.toContain("proof-1");
-    expect(callsTo(app, "terminal.write")).toEqual([]);
+    expect(rpcCalls(app, "terminal.write")).toEqual([]);
   });
 
   it("u113_a_rejected_answer_keeps_the_decision_with_its_error_and_a_retry", async () => {
@@ -133,6 +133,7 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
 
       return null;
     };
+
     select("alpha");
     await waitFor(() => expect(card()).not.toBeNull());
     fireEvent.click(within(card()!).getByRole("button", { name: "deny" }));
@@ -142,7 +143,7 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     fireEvent.click(within(card()!).getByRole("button", { name: "deny" }));
 
     await waitFor(() => expect(card()).toBeNull());
-    expect(callsTo(app, "decision.answer")).toHaveLength(2);
+    expect(rpcCalls(app, "decision.answer")).toHaveLength(2);
   });
 
   it("u113_a_failed_proof_keeps_the_decision_and_sends_no_answer", async () => {
@@ -154,7 +155,7 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     fireEvent.click(within(card()!).getByRole("button", { name: "allow" }));
 
     await waitFor(() => expect(within(card()!).getByRole("alert").textContent).toContain("no proof yet"));
-    expect(callsTo(app, "decision.answer")).toEqual([]);
+    expect(rpcCalls(app, "decision.answer")).toEqual([]);
   });
 
   it("u113_an_older_completion_never_removes_a_replacement", async () => {
@@ -165,7 +166,7 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     select("alpha");
     await waitFor(() => expect(card()).not.toBeNull());
     fireEvent.click(within(card()!).getByRole("button", { name: "allow" }));
-    await waitFor(() => expect(callsTo(app, "decision.answer")).toHaveLength(1));
+    await waitFor(() => expect(rpcCalls(app, "decision.answer")).toHaveLength(1));
 
     app.emit(opened(decision("d2", "a", { tool: "Write", opened_at: 2 })));
     app.emit(cleared("d1", "replaced"));

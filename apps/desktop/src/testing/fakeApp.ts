@@ -17,6 +17,7 @@ const emptyReads: Handlers = {
   "terminal.list": () => [],
   "todo.list": () => [],
   "pad.list": () => [],
+  "decision.list": () => [],
   "provenance.history": () => [],
 };
 
