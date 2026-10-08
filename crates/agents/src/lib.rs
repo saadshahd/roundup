@@ -11,6 +11,7 @@ use contracts::agent::{
     CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
     SpawnParams, SpawnTerminalParams, StatusEvent,
 };
+use contracts::decision::{AnswerParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
@@ -23,6 +24,7 @@ use tokio::sync::oneshot;
 use tokio::time::{Instant, sleep_until};
 
 pub mod claude_code;
+mod decision;
 mod name;
 mod rail;
 pub mod worktree;
@@ -88,6 +90,8 @@ struct Shared {
     clock: Clock,
     /// Since when an Agent without a Terminal has been `done`.
     opened: i64,
+    /// H2 to H7: the open permission Decisions, in memory only.
+    decisions: decision::Decisions,
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -375,6 +379,24 @@ impl Shared {
         first_prompt: Option<Option<String>>,
     ) -> Result<Applied, RpcError> {
         let exited = matches!(observation, Observation::Exit { .. });
+        match &observation {
+            // H6: an Agent that ends takes its Decision with it.
+            Observation::Exit { .. } => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
+            }
+            Observation::Stopped => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
+            }
+            // H7(a): the tool ran or the prompt moved on, so the dialog was answered in the
+            // Terminal.
+            Observation::Signal(payload) if claude_code::ends_decision(payload) => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::Terminal, "answered in the Terminal");
+            }
+            _ => {}
+        }
         let changed = run.adapter.observe(observation);
         if exited {
             run.ended = true;
@@ -1086,10 +1108,25 @@ impl Agents {
                 terminals,
                 clock: Arc::new(now_ms),
                 opened: now_ms(),
+                decisions: decision::Decisions::new(
+                    None,
+                    Duration::from_secs(claude_code::PERMISSION_TIMEOUT_SECS),
+                ),
             }),
             dir: dir.to_owned(),
             launcher,
         })
+    }
+
+    /// H3, H4: answers need `proof`; the App holds it. Without one every `decision.answer` is
+    /// `FORBIDDEN`. Call it before the first call is made.
+    #[must_use]
+    pub fn with_proof(mut self, proof: Option<String>) -> Self {
+        Arc::get_mut(&mut self.shared)
+            .expect("the Agents are not shared yet")
+            .decisions
+            .set_proof(proof);
+        self
     }
 
     /// The Project folder: `.roundup/`'s parent, where its git repository (if any) lives.
@@ -1673,7 +1710,7 @@ fn now_ms() -> i64 {
 #[async_trait]
 impl Module for Agents {
     fn namespaces(&self) -> &'static [&'static str] {
-        &["agent", "rail", "project"]
+        &["agent", "rail", "project", "decision"]
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
@@ -1711,6 +1748,16 @@ impl Module for Agents {
                     &attempt,
                     Observation::Signal(payload),
                 )?;
+                reply(&())
+            }
+            "agent.permission" => {
+                let PermissionParams { id, payload } = params(value)?;
+                reply(&shared.permission(ctx.actor.clone(), &id, payload).await?)
+            }
+            "decision.list" => reply(&shared.decisions.list()),
+            "decision.answer" => {
+                let AnswerParams { id, answer, proof } = params(value)?;
+                shared.answer(ctx.actor.clone(), &id, answer, proof.as_deref())?;
                 reply(&())
             }
             "rail.tree" => reply(&shared.tree()?),
@@ -1811,6 +1858,7 @@ mod tests {
             terminals,
             clock,
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
         });
         (dir, bus, shared)
     }
@@ -2204,6 +2252,7 @@ mod tests {
             kill: Arc::new(FailingKill),
             clock: Arc::new(|| 0),
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
         })
     }
 
@@ -2405,6 +2454,7 @@ mod tests {
             kill: Arc::new(FlakyKill(std::sync::atomic::AtomicBool::new(false))),
             clock: Arc::new(|| 0),
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
         });
         (dir, shared)
     }
@@ -2523,5 +2573,75 @@ mod tests {
 
         assert_eq!(err.code, rpc::code::INTERNAL);
         assert!(began.elapsed() < super::KILL_WAIT_BOUND / 2);
+    }
+    /// H7(c): `elapsed_ms` after the hook began, on an injected clock and the 4 s `timeout` the
+    /// Decisions are built with, the hook's connection closes. Returns the events and the Kind.
+    async fn hook_closes_after(
+        elapsed_ms: i64,
+    ) -> (Vec<EventData>, Vec<contracts::decision::Decision>, Kind) {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let now = Arc::new(AtomicI64::new(1_000));
+        let clock = {
+            let now = Arc::clone(&now);
+            Arc::new(move || now.load(Ordering::SeqCst))
+        };
+        let (_dir, bus, shared) = shared_over_temp_dir(clock);
+        let id = running_agent(&shared, None);
+        let mut events = bus.subscribe();
+        let payload = json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                             "tool_input": {"command": "ls"}});
+        let hook = {
+            let (shared, id) = (Arc::clone(&shared), id.clone());
+            tokio::spawn(async move { shared.permission(Actor::daemon(), &id, payload).await })
+        };
+        while shared.decisions.list().is_empty() {
+            tokio::task::yield_now().await;
+        }
+
+        now.fetch_add(elapsed_ms, Ordering::SeqCst);
+        hook.abort();
+        let _ = hook.await;
+
+        let seen = std::iter::from_fn(|| events.try_recv().ok())
+            .map(|event| event.data)
+            .filter(|data| {
+                matches!(
+                    data,
+                    EventData::DecisionOpened(_) | EventData::DecisionCleared(_)
+                )
+            })
+            .collect();
+        let kind = match shared.runs().get(&id) {
+            Some(Slot::Running(run)) => run.adapter.status().unwrap().kind,
+            _ => panic!("the Agent is running"),
+        };
+        (seen, shared.decisions.list(), kind)
+    }
+
+    #[tokio::test]
+    async fn h7_a_close_at_the_hook_timeout_leaves_the_decision_open_and_unanswerable() {
+        let (seen, open, kind) = hook_closes_after(4_000).await;
+
+        assert_eq!(open.len(), 1);
+        assert!(!open[0].answerable);
+        assert_eq!(kind, Kind::NeedsYou);
+        assert_eq!(
+            seen.len(),
+            1,
+            "decision.opened is not repeated and nothing clears: {}",
+            seen.len()
+        );
+        assert!(matches!(seen[0], EventData::DecisionOpened(_)));
+    }
+
+    #[tokio::test]
+    async fn h7_a_close_before_the_hook_timeout_is_a_no_or_an_esc() {
+        let (seen, open, kind) = hook_closes_after(3_999).await;
+
+        assert!(open.is_empty());
+        assert_eq!(kind, Kind::Idle);
+        assert!(
+            matches!(&seen[1], EventData::DecisionCleared(c) if c.outcome == contracts::decision::Outcome::Terminal)
+        );
     }
 }

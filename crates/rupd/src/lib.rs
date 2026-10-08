@@ -182,6 +182,17 @@ pub async fn serve(listener: UnixListener, daemon: Arc<Daemon>) -> io::Result<()
     }
 }
 
+/// The methods whose call is dropped when the caller hangs up: they wait on a process of the
+/// caller's, not on the Daemon.
+const WAITS_ON_ITS_CALLER: [&str; 1] = ["agent.permission"];
+
+fn waits_on_its_caller(line: &str) -> bool {
+    serde_json::from_str::<Value>(line)
+        .ok()
+        .and_then(|request| request["method"].as_str().map(str::to_owned))
+        .is_some_and(|method| WAITS_ON_ITS_CALLER.contains(&method.as_str()))
+}
+
 async fn handle(stream: UnixStream, daemon: Arc<Daemon>) -> io::Result<()> {
     let (read, mut write) = stream.into_split();
     let (frames, mut outbox) = mpsc::unbounded_channel::<Value>();
@@ -196,8 +207,35 @@ async fn handle(stream: UnixStream, daemon: Arc<Daemon>) -> io::Result<()> {
         events: frames.clone(),
     };
     let mut lines = BufReader::new(read).lines();
-    while let Some(line) = lines.next_line().await? {
-        if let Some(reply) = daemon.dispatch(&mut conn, &line).await {
+    // A request read while a call was being watched for a hang-up; handled next.
+    let mut pipelined = None;
+    loop {
+        let line = match pipelined.take() {
+            Some(line) => line,
+            None => match lines.next_line().await? {
+                Some(line) => line,
+                None => break,
+            },
+        };
+        let reply = if waits_on_its_caller(&line) {
+            // H7: the call waits on the hook's process, and the peer closing is what a No or an
+            // Esc looks like from here, so the call is dropped the moment the peer hangs up.
+            let call = daemon.dispatch(&mut conn, &line);
+            tokio::pin!(call);
+            tokio::select! {
+                reply = &mut call => reply,
+                next = lines.next_line() => match next? {
+                    Some(next) => {
+                        pipelined = Some(next);
+                        call.await
+                    }
+                    None => break,
+                },
+            }
+        } else {
+            daemon.dispatch(&mut conn, &line).await
+        };
+        if let Some(reply) = reply {
             let _ = frames.send(reply);
         }
     }
@@ -337,6 +375,81 @@ mod tests {
         let (_dir, daemon) = daemon();
         let reply = ask(&daemon, "{").await;
         assert_eq!(reply["error"]["code"], code::PARSE_ERROR);
+    }
+    /// Never answers, and says when its call is dropped.
+    struct Hangs(tokio::sync::mpsc::UnboundedSender<&'static str>);
+
+    struct Dropped(tokio::sync::mpsc::UnboundedSender<&'static str>);
+
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            let _ = self.0.send("dropped");
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Module for Hangs {
+        fn namespaces(&self) -> &'static [&'static str] {
+            &["agent", "decision"]
+        }
+
+        async fn call(&self, _ctx: &Ctx, _method: &str, _params: Value) -> Result<Value, RpcError> {
+            let _dropped = Dropped(self.0.clone());
+            std::future::pending().await
+        }
+    }
+
+    async fn serving_a_module_that_hangs() -> (
+        tempfile::TempDir,
+        tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+        std::path::PathBuf,
+    ) {
+        let (dir, mut daemon) = daemon();
+        let (dropped, seen) = mpsc::unbounded_channel();
+        daemon.register(Arc::new(Hangs(dropped)));
+        let socket = dir.path().join("rupd.sock");
+        tokio::spawn(serve(
+            UnixListener::bind(&socket).unwrap(),
+            Arc::new(daemon),
+        ));
+        (dir, seen, socket)
+    }
+
+    /// H7(b): the hook's process dying closes its connection, which drops the waiting call.
+    #[tokio::test]
+    async fn h7_a_hung_up_permission_call_is_dropped() {
+        let (_dir, mut dropped, socket) = serving_a_module_that_hangs().await;
+        let mut hook = UnixStream::connect(&socket).await.unwrap();
+        hook.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"agent.permission\"}\n")
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(
+            dropped.try_recv().is_err(),
+            "the call waits while the hook is connected"
+        );
+
+        drop(hook);
+
+        let seen = tokio::time::timeout(std::time::Duration::from_secs(5), dropped.recv()).await;
+        assert_eq!(seen.unwrap(), Some("dropped"));
+    }
+
+    /// Any other call is not dropped by a half-close: a client may write its request, shut down
+    /// its write side and wait for the reply.
+    #[tokio::test]
+    async fn a_half_closed_call_that_is_not_a_permission_call_still_runs() {
+        let (_dir, mut dropped, socket) = serving_a_module_that_hangs().await;
+        let mut client = UnixStream::connect(&socket).await.unwrap();
+        client
+            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"agent.stop\"}\n")
+            .await
+            .unwrap();
+        client.shutdown().await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(dropped.try_recv().is_err());
     }
 }
 
