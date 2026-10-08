@@ -67,9 +67,12 @@ jobs:
             --max-turns 60
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill
       - if: always() && steps.due.outputs.due == 'true'
-        uses: ./.github/actions/ledger
+        uses: saadshahd/roundup/.github/actions/ledger@main
         with:
           role: retro
           subject: retro
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          redact-typesafe: ${{ secrets.TYPESAFE_API_KEY }}
           conclusion: ${{ steps.claude.outcome }}

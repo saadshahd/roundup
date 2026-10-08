@@ -152,11 +152,13 @@ jobs:
             --max-turns 100
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: saadshahd/roundup/.github/actions/ledger@main
         with:
           role: builder
           subject: ${{ inputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
@@ -176,4 +178,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.fix.outputs.branch }}
-        run: loop/runs.sh stopped "$BRANCH"
+          PR: ${{ inputs.pr }}
+        run: |
+          loop/runs.sh stopped "$BRANCH"
+          python3 loop/outcome.py observe "$BRANCH" "$PR"
