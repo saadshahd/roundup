@@ -173,6 +173,9 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
             </div>
           </Show>
         </Show>
+        <Show when={selected()?.kind !== "room" && selected() !== null && terminalId() === null && notice() === null}>
+          <p class="pane-empty light">no output kept from an earlier run</p>
+        </Show>
         <Show when={doorState()}>
           {(state) => (
             <div class="pane-empty pane-door">
