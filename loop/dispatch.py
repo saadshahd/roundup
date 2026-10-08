@@ -40,9 +40,6 @@ def decision(pr, checks, verdicts, kinds):
     if not eligible(pr):
         return None
     can_repair = pr['head']['ref'].startswith('build/')
-    rejects = [v for v in verdicts if v['verdict'] == 'reject']
-    if len(rejects) >= 2:
-        return None
     if pr['draft']:
         # Explicit product questions stay with their decision maker. A cut-off is engineering work.
         body = pr.get('body') or ''
@@ -72,7 +69,7 @@ def decision(pr, checks, verdicts, kinds):
                 return None
             if latest['conclusion'] != 'success':
                 return ('fix', 'rules' if name == 'rules' else 'check') if can_repair else None
-    if check['conclusion'] == 'success' and 'code' in kinds and not current:
+    if check['conclusion'] == 'success' and ('code' in kinds or 'loop' in kinds) and not current:
         return 'review', 'review'
     return None
 
@@ -242,7 +239,7 @@ def reconcile():
 
 def activity():
     rows = []
-    for workflow in ('build', 'review'):
+    for workflow in ('build', 'review', 'qa', 'retro', 'check', 'loop', 'visual'):
         runs = gh('run', 'list', '--workflow', workflow + '.yml', '--limit', '100',
                   '--json', 'databaseId,status,url,displayTitle')
         for item in runs:

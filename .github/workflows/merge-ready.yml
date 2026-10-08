@@ -63,15 +63,6 @@ jobs:
             echo "$1" >&2
             exit 1
           }
-          paths=$(gh pr diff "$pr" --name-only) || fail "merge-ready: cannot read the PR diff"
-          # L78: the user merges loop machinery by hand, so nothing armed may merge it on green.
-          kinds=$(printf '%s\n' "$paths" | loop/rules.sh touches) || fail "merge-ready: cannot sort the PR's paths"
-          if grep -qx loop <<<"$kinds"; then
-            auto_merge=$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null') || fail "merge-ready: cannot read auto-merge on a loop PR"
-            if [ "$auto_merge" = true ]; then
-              gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a loop PR"
-            fi
-          fi
           for _attempt in 1 2 3; do
             sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
             code=0
@@ -94,8 +85,6 @@ jobs:
           ask() { if grep -Fq "$1" <<<"$out"; then asks+="- $2"$'\n'; fi; }
           # L81: a draft or closed PR asks only why its Builder stopped; every other question waits until it is ready.
           if ! grep -Fq 'PR is closed or draft' <<<"$out"; then
-            ask 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md' 'It touches loop machinery: will you read it and merge it?'
-            ask 'second reject: the user decides' 'Two rejects stand: will you fix it, merge it or close it?'
             # shellcheck disable=SC2016 # the backticks are Markdown
             ask 'a crates/desktop PR needs a macOS: line' 'It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.'
           fi

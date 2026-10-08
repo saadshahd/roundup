@@ -410,8 +410,7 @@ ready_at 'L46 an approve of the fix clears the reject of its parent'
 gate_quiet; gate_say reject "$(git rev-parse HEAD)"; gate_say approve "$rejected"
 expect pass 'L46 an approve of an ancestor cannot clear a reject on the head' gate_error_contains 'on this head is reject' gate merge-ready 12
 gate_quiet; gate_say reject "$rejected"; gate_say reject "$(git rev-parse HEAD)"; gate_say approve "$(git rev-parse HEAD)"
-expect_exit 1 'L46 a second reject blocks even after an approve' gate merge-ready 12
-expect pass 'L46 a second reject names the user' gate_error_contains 'second reject: the user decides' gate merge-ready 12
+ready_at 'L46 historical rejects do not veto a corrected approved head'
 gate_quiet; gate_say reject "$rejected" builder; gate_say reject "$rejected" builder; gate_say approve "$(git rev-parse HEAD)"
 ready_at 'L46 author verdicts count for nothing'
 gate_quiet; gate_say reject "$rejected"; gate_say reject "$rejected" builder; gate_say approve "$(git rev-parse HEAD)"
@@ -423,10 +422,13 @@ expect_exit 2 'L46 verdicts needs a number' gate verdicts
 gate_repo; git reset -q --hard main; echo prose >docs/notes.md; commit docs 'Author-Agent: builder'; gate_quiet
 ready_at 'L46 a docs PR needs no verdict'
 echo 'more' >loop/x.sh; commit loop 'Author-Agent: builder'
-expect_exit 1 'L46 a loop PR waits for the user' gate merge-ready 12
-expect pass 'L46 a loop PR names the user' gate_error_contains 'the user merges' gate merge-ready 12
+expect_exit 1 'L46 a loop PR requires independent approval' gate merge-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+ready_at 'L46 an approved loop PR can merge'
 gate_repo; git reset -q --hard main; mkdir -p docs/sub; echo x >docs/sub/AGENTS.md; commit agents 'Author-Agent: builder'; gate_quiet
-expect_exit 1 'L46 a nested AGENTS.md waits for the user' gate merge-ready 12
+expect_exit 1 'L46 nested instructions require independent approval' gate merge-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+ready_at 'L46 independently approved nested instructions can merge'
 gate_repo; git reset -q --hard main; echo prose >docs/notes.md; commit docs; gate_quiet
 expect_exit 1 'L46 a docs PR still needs Author-Agent' gate merge-ready 12
 

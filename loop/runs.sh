@@ -122,9 +122,8 @@ review_due() {
   [ "$(jq -r .isDraft <<<"$view")" = false ] || { echo "PR #$pr is a draft"; return 1; }
   paths=$(gh_or_4 pr diff "$pr" --name-only)
   touched=$(printf '%s\n' "$paths" | loop/rules.sh touches)
-  grep -qx code <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }
+  grep -Eq '^(code|loop)$' <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }
   verdicts=$(loop/rules.sh verdicts "$pr") || exit 4
-  [ "$(jq -s 'map(select(.verdict == "reject")) | length' <<<"$verdicts")" -lt 2 ] || { echo "second reject: the user decides"; return 1; }
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }

@@ -27,6 +27,42 @@ TASK = dict(pr=1, role='review', cause='review', head=HEAD, base=BASE, branch='b
 
 
 class L88(unittest.TestCase):
+    def test_l78_loop_changes_require_review_even_after_historical_rejects(self):
+        self.assertEqual(d.decision(PR, [CHECK, RULES], [dict(current=False, verdict='reject')] * 2, ['loop']), ('review', 'review'))
+        self.assertIsNone(d.decision(PR, [CHECK], [], ['loop']))
+
+    def test_l24_proposed_instructions_do_not_control_the_reviewer(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            def git(*args):
+                return subprocess.run(['git', '-C', path, *args], text=True, capture_output=True, check=True).stdout.strip()
+            git('init')
+            git('config', 'user.name', 'test')
+            git('config', 'user.email', 'test@test')
+            trusted = ['AGENTS.md', 'CLAUDE.md', '.claude/rule.md', '.agents/builder.md', 'loop/rules.sh']
+            for name in trusted:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('trusted')
+            git('add', '.')
+            git('commit', '-m', 'main')
+            base = git('rev-parse', 'HEAD')
+            for name in trusted + ['apps/AGENTS.md', '.claude/added.md']:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('proposed')
+            (root / 'product.txt').write_text('proposed product')
+            git('add', '.')
+            git('commit', '-m', 'PR')
+            head = git('rev-parse', 'HEAD')
+            subprocess.run(['bash', str(ROOT / 'loop/review-checkout.sh'), base], cwd=path, check=True)
+            self.assertEqual(git('rev-parse', 'HEAD'), head)
+            self.assertEqual((root / 'product.txt').read_text(), 'proposed product')
+            for name in trusted:
+                self.assertEqual((root / name).read_text(), 'trusted')
+            self.assertFalse((root / 'apps/AGENTS.md').exists())
+            self.assertFalse((root / '.claude/added.md').exists())
+
     def test_l88_review_requires_successful_current_head_check(self):
         self.assertEqual(d.decision(PR, [CHECK, RULES], [], ['code']), ('review', 'review'))
         for change in [dict(head_sha=BASE), dict(status='in_progress'), dict(conclusion='skipped'), dict(app=dict(slug='other'))]:
@@ -69,7 +105,7 @@ class L88(unittest.TestCase):
     def test_l88_explicit_questions_and_second_reject_keep_gates(self):
         self.assertIsNone(d.decision({**PR, 'draft': True, 'body': 'Stopped: choose semantics'}, [CHECK], [], ['code']))
         self.assertEqual(d.decision({**PR, 'draft': True, 'body': 'Stopped: the run ended without marking it ready, url'}, [], [], ['code']), ('fix', 'cutoff'))
-        self.assertIsNone(d.decision({**PR, 'mergeable': False}, [], [dict(current=True, verdict='reject')] * 2, ['code']))
+        self.assertEqual(('fix', 'conflict'), d.decision({**PR, 'mergeable': False}, [], [dict(current=True, verdict='reject')] * 2, ['code']))
         self.assertIsNone(d.decision({**PR, 'state': 'closed'}, [CHECK], [], ['code']))
         fork = copy.deepcopy(PR)
         fork['head']['repo']['full_name'] = 'fork/r'

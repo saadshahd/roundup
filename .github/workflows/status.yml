@@ -8,7 +8,7 @@ on:
     - cron: '*/5 * * * *'
     - cron: '3 8 * * *'
   workflow_run:
-    workflows: [build, review, reconcile]
+    workflows: [build, review, reconcile, qa, retro, check, loop, visual]
     types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:

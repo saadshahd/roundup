@@ -85,6 +85,8 @@ jobs:
           ref: ${{ needs.due.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Install main's reviewer instructions
+        run: git show origin/main:loop/review-checkout.sh | bash
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:

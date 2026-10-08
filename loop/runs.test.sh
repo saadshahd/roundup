@@ -193,12 +193,11 @@ fresh; say reject
 check 'L24 one reject leaves the next head due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 earlier verdicts reach the Reviewer' grep -q 'Earlier verdicts' "$FIXTURES/out"
 fresh; say reject; say reject
-check 'L24 a second reject goes to the user' 1 loop/runs.sh review-due 7 "$head"
-holds 'L24 the second reject is named' grep -q 'the user decides' "$FIXTURES/out"
+check 'L24 historical rejects leave a corrected head due' 0 loop/runs.sh review-due 7 "$head"
 fresh; say approve true
 check 'L24 a verdict covering the head is not repeated' 1 loop/runs.sh review-due 7 "$head"
 fresh; printf 'docs/a.md\nloop/rules.sh\n' >"$FIXTURES/paths"
-check 'L24 a PR without product code is not reviewed' 1 loop/runs.sh review-due 7 "$head"
+check 'L24 a loop-only PR receives independent review' 0 loop/runs.sh review-due 7 "$head"
 fresh; printf '{"state":"OPEN","isDraft":true,"headRefOid":"%s","body":""}\n' "$head" >"$FIXTURES/view"
 check 'L24 a draft is not reviewed' 1 loop/runs.sh review-due 7 "$head"
 holds 'L24 the draft is named' grep -qx 'PR #7 is a draft' "$FIXTURES/out"
