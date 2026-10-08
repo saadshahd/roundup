@@ -44,6 +44,7 @@ class Codex(unittest.TestCase):
         if args[:2] == ('loop/runs.sh', 'queue'): return json.dumps(self.rows)
         if args[:2] == ('loop/runs.sh', 'claim'): return json.dumps([self.row] if self.claimed else [])
         if args[:4] == ('git', 'remote', 'get-url', 'origin'): return 'https://github.com/example/repo'
+        if args[:2] == ('git', 'ls-remote'): return self.base + '\trefs/heads/build/U59'
         if args[:2] == ('git', 'clone'): Path(args[-1]).mkdir()
         if args[:3] == ('gh', 'pr', 'list'): return json.dumps([dict(number=1, isDraft=not self.ready, url='https://example/pr/1')])
         return ''
@@ -63,6 +64,7 @@ class Codex(unittest.TestCase):
         result = json.loads((self.state/'last.json').read_text())
         self.assertEqual(result['state'], 'ready')
         self.assertEqual(result['usage'], dict(input=40, cache_read=60, output=20, turns=1))
+        self.assertEqual(self.env['NEXTEST_TEST_THREADS'], '1')
         self.assertNotIn('CODEX_API_KEY', self.env)
         self.assertNotIn('OPENAI_API_KEY', self.env)
         self.assertEqual(self.argv[:4], ['gtimeout', '--kill-after=20s', '7200s', 'codex'])

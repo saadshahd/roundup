@@ -63,7 +63,8 @@ def finish(record, state, code):
     save(state / 'last.json', record)
     save(Path(record['events']).parent / 'record.json', record)
     # L23 retains every PR and frees only Claims without one. Local code/logs are always kept.
-    command('loop/runs.sh', 'unclaim', data=json.dumps([record]))
+    if command('git', 'ls-remote', '--heads', 'origin', 'refs/heads/build/' + record['slug']):
+        command('loop/runs.sh', 'unclaim', data=json.dumps([record]))
     publish(record)
     (state / 'active.json').unlink()
     return record['state'] == 'ready'
@@ -125,6 +126,8 @@ def tick(state):
         command('git', 'clone', '--shared', str(Path.cwd()), str(checkout), timeout=120)
         command('git', 'remote', 'set-url', 'origin', origin, cwd=checkout)
         command('git', 'checkout', '-b', 'build/' + row['slug'], base, cwd=checkout)
+        command('git', 'config', 'credential.helper', '', cwd=checkout)
+        command('git', 'config', '--add', 'credential.helper', '!gh auth git-credential', cwd=checkout)
         prompt = Path('.agents/builder.md').read_text() + '\n## Task\n\n' + (
             f'Build Work row {row["ids"]} of {row["file"]} on the checked-out branch build/{row["slug"]}. '
             f'Its remote Claim is yours. Your Author-Agent id is codex-{started}. '
@@ -136,11 +139,15 @@ def tick(state):
         (attempt / 'prompt.md').write_text(prompt)
         environment = {key: value for key, value in os.environ.items()
                        if key not in ('OPENAI_API_KEY', 'CODEX_API_KEY')}
+        # Local parallel execution exposes existing A22/A23 resume-observer races.
+        environment['NEXTEST_TEST_THREADS'] = '1'
+        # macOS Keychain is unavailable inside the sandbox; pass GitHub auth only to this invocation.
+        environment['GH_TOKEN'] = command('gh', 'auth', 'token')
         with (attempt / 'events.jsonl').open('w') as output, (attempt / 'stderr.log').open('w') as errors:
             # timeout kills the entire group even if this controller is interrupted.
             process = subprocess.Popen([
                 'gtimeout', '--kill-after=20s', '7200s', 'codex', 'exec', '--ignore-user-config',
-                '--model', record['model'], '--sandbox', 'workspace-write',
+                '--model', record['model'], '--sandbox', 'workspace-write', '--add-dir', str(checkout / '.git'),
                 '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"',
                 '--json', '-o', str(attempt / 'result.md'), prompt,
             ], cwd=checkout, env=environment, stdout=output, stderr=errors, start_new_session=True)
