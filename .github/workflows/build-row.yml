@@ -58,12 +58,24 @@ jobs:
             --model claude-sonnet-5-5
             --max-turns 150
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: builder
           subject: ${{ fromJSON(inputs.row).ids }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   # Each row frees its own slot; a slow sibling cannot hold the refill job.
@@ -84,7 +96,9 @@ jobs:
           ROW: ${{ inputs.row }}
         run: |
           jq -c '[.]' <<<"$ROW" | loop/runs.sh unclaim
-          loop/runs.sh stopped "build/$(jq -r .slug <<<"$ROW")"
+          branch="build/$(jq -r .slug <<<"$ROW")"
+          loop/runs.sh stopped "$branch"
+          python3 loop/outcome.py observe "$branch"
       - if: always()
         env:
           GH_TOKEN: ${{ github.token }}
