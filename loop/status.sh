@@ -84,7 +84,7 @@ page() {
     --argjson orders "$orders" --argjson activity "${ACTIVITY:-[]}" --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
     def cell: if length == 0 then "nothing" else map(gsub("\\|"; "\\|")) | join("<br>") end;
     "<!-- loop-status -->",
-    "Loop status at \($at) UTC. This body updates on run events and every five minutes; at 08:03 UTC the same table lands as a comment.", "",
+    "Loop status at \($at) UTC. This body updates every five minutes; at 08:03 UTC the same table lands as a comment.", "",
     "| Row | Now |", "|---|---|",
     "| Merged | \($merged) |", $tokens,
     "| Work Issues | \([$orders[] | select(.state != "done" and .state != "cancelled")] | group_by(.state) | map("\(length) \(.[0].state)") | cell) |",
