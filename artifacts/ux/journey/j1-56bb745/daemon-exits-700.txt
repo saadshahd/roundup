@@ -1,0 +1,80 @@
+- banner
+  - StaticText "roundup   harness   "
+  - button "4 need you" [ref=e1]
+  - StaticText "   "
+  - alert
+    - StaticText "daemon exited 1"
+  - StaticText "   "
+  - button "reopen" [ref=e2]
+- generic
+  - region "rail" [ref=e3]
+    - generic
+      - tree "rail" [disabled]
+        - treeitem "error agent-1 error label 1 1m" [level=1, disabled, ref=e8]
+          - image "error"
+          - StaticText "agent-1"
+          - generic
+            - StaticText "error label 1"
+            - StaticText "1m"
+        - treeitem "needs-you agent-2 needs-you label 2 4m" [level=1, disabled, ref=e9]
+          - image "needs-you"
+          - StaticText "agent-2"
+          - generic
+            - StaticText "needs-you label 2"
+            - StaticText "4m"
+        - treeitem "blocked agent-3 blocked label 3 7m" [level=1, disabled, ref=e10]
+          - image "blocked"
+          - StaticText "agent-3"
+          - generic
+            - StaticText "blocked label 3"
+            - StaticText "7m"
+        - treeitem "working agent-4" [level=1, disabled, ref=e11]
+          - image "working"
+          - StaticText "agent-4"
+        - treeitem "idle agent-5" [level=1, disabled, ref=e12]
+          - image "idle"
+          - StaticText "agent-5"
+        - treeitem "error agent-7 error label 7 19m" [level=1, disabled, ref=e13]
+          - image "error"
+          - StaticText "agent-7"
+          - generic
+            - StaticText "error label 7"
+            - StaticText "19m"
+        - treeitem "needs-you agent-8 needs-you label 8 22m" [level=1, disabled, ref=e14]
+          - image "needs-you"
+          - StaticText "agent-8"
+          - generic
+            - StaticText "needs-you label 8"
+            - StaticText "22m"
+        - treeitem "blocked agent-9 blocked label 9 25m" [level=1, disabled, ref=e15]
+          - image "blocked"
+          - StaticText "agent-9"
+          - generic
+            - StaticText "blocked label 9"
+            - StaticText "25m"
+        - treeitem "working agent-10" [level=1, disabled, ref=e16]
+          - image "working"
+          - StaticText "agent-10"
+        - button "1 done" [disabled, ref=e22]
+          - StaticText "1 done"
+      - generic
+        - button "agent" [disabled, ref=e17]
+        - button "terminal" [disabled, ref=e18]
+        - button "room" [disabled, ref=e19]
+  - region "centre" [ref=e4]
+    - generic
+      - paragraph
+        - StaticText "select an agent or a terminal"
+  - region "shelf" [ref=e5]
+    - region "todos" [ref=e6]
+      - paragraph
+        - StaticText "todos "
+        - button "add todo" [ref=e20]
+      - paragraph
+        - StaticText "no todos yet"
+    - region "pads" [ref=e7]
+      - paragraph
+        - StaticText "pads"
+        - button "add pad" [ref=e21]
+      - paragraph
+        - StaticText "no pads yet"

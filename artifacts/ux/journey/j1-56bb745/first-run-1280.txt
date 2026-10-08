@@ -1,0 +1,27 @@
+- banner
+  - StaticText "roundup"
+- generic
+  - region "rail" [ref=e1]
+    - paragraph
+      - StaticText "agents and terminals"
+    - paragraph
+      - StaticText "appear here, one per row,"
+    - paragraph
+      - StaticText "nested by indent"
+  - region "centre" [ref=e2]
+    - paragraph
+      - StaticText "open a folder to start"
+    - button "choose folder…" [ref=e4]
+  - region "shelf" [ref=e3]
+    - paragraph
+      - StaticText "todos"
+    - paragraph
+      - StaticText "agents add them as they"
+    - paragraph
+      - StaticText "plan; so can you"
+    - paragraph
+      - StaticText "pads"
+    - paragraph
+      - StaticText " agent notes"
+    - paragraph
+      - StaticText " yours"

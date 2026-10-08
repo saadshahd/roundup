@@ -1,0 +1,33 @@
+- banner
+  - StaticText "roundup   harness"
+- generic
+  - region "rail" [ref=e1]
+    - generic
+      - tree "rail"
+      - paragraph
+        - StaticText "no agents yet"
+      - paragraph
+        - StaticText "⌘N starts one"
+      - generic
+        - button "agent" [ref=e6]
+        - button "terminal" [ref=e7]
+        - button "room" [ref=e8]
+  - region "centre" [ref=e2]
+    - generic
+      - generic
+        - paragraph
+          - StaticText "no Room yet"
+        - button "start a Room" [ref=e9]
+  - region "shelf" [ref=e3]
+    - region "todos" [ref=e4]
+      - paragraph
+        - StaticText "todos "
+        - button "add todo" [ref=e10]
+      - paragraph
+        - StaticText "no todos yet"
+    - region "pads" [ref=e5]
+      - paragraph
+        - StaticText "pads"
+        - button "add pad" [ref=e11]
+      - paragraph
+        - StaticText "no pads yet"

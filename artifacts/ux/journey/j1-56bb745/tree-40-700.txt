@@ -1,0 +1,223 @@
+- banner
+  - StaticText "roundup   harness   "
+  - button "13 need you" [ref=e1]
+- generic
+  - region "rail" [ref=e2]
+    - generic
+      - tree "rail"
+        - treeitem "collapse done backend" [level=1, expanded=true, ref=e10]
+          - button "collapse" [ref=e58]
+          - image "done"
+          - StaticText "backend"
+        - treeitem "collapse done auth-refactor" [level=2, expanded=true, ref=e11]
+          - button "collapse" [ref=e59]
+          - image "done"
+          - StaticText "auth-refactor"
+        - treeitem "working token-rotation" [level=3, ref=e12]
+          - image "working"
+          - StaticText "token-rotation"
+        - treeitem "error login-store tests failed: 3 1m" [level=3, ref=e13]
+          - image "error"
+          - StaticText "login-store"
+          - generic
+            - StaticText "tests failed: 3"
+            - StaticText "1m"
+        - button "1 done" [ref=e60]
+          - StaticText "1 done"
+        - treeitem "needs-you migrate-db asks: keep v1 routes? and a long label that should truncate in the live line 4m" [level=2, ref=e14]
+          - image "needs-you"
+          - StaticText "migrate-db"
+          - generic
+            - StaticText "asks: keep v1 routes? and a long label that should truncate in the live line"
+            - StaticText "4m"
+        - treeitem "working zsh" [level=2, ref=e15]
+          - image "working"
+          - StaticText "zsh"
+        - treeitem "collapse working payments room with a very long name that overflows the rail" [level=1, expanded=true, ref=e16]
+          - button "collapse" [ref=e61]
+          - image "working"
+          - StaticText "payments room with a very long name that overflows the rail"
+        - treeitem "error agent-1 error label 1 1m 2 pads" [level=2, ref=e17]
+          - image "error"
+          - StaticText "agent-1"
+          - generic
+            - StaticText "error label 1"
+            - StaticText "1m"
+          - button "2 pads" [expanded=false, ref=e62]
+            - StaticText "2"
+        - treeitem "working agent-4" [level=2, ref=e18]
+          - image "working"
+          - StaticText "agent-4"
+        - treeitem "error agent-7 error label 7 19m" [level=2, ref=e19]
+          - image "error"
+          - StaticText "agent-7"
+          - generic
+            - StaticText "error label 7"
+            - StaticText "19m"
+        - treeitem "working agent-10" [level=2, ref=e20]
+          - image "working"
+          - StaticText "agent-10"
+        - treeitem "error agent-13 error label 13 37m" [level=2, ref=e21]
+          - image "error"
+          - StaticText "agent-13"
+          - generic
+            - StaticText "error label 13"
+            - StaticText "37m"
+        - treeitem "working agent-16" [level=2, ref=e22]
+          - image "working"
+          - StaticText "agent-16"
+        - treeitem "error agent-19 error label 19 55m" [level=2, ref=e23]
+          - image "error"
+          - StaticText "agent-19"
+          - generic
+            - StaticText "error label 19"
+            - StaticText "55m"
+        - treeitem "working agent-22" [level=2, ref=e24]
+          - image "working"
+          - StaticText "agent-22"
+        - treeitem "error agent-25 error label 25 1h" [level=2, ref=e25]
+          - image "error"
+          - StaticText "agent-25"
+          - generic
+            - StaticText "error label 25"
+            - StaticText "1h"
+        - treeitem "working agent-28" [level=2, ref=e26]
+          - image "working"
+          - StaticText "agent-28"
+        - treeitem "error agent-31 error label 31 1h" [level=2, ref=e27]
+          - image "error"
+          - StaticText "agent-31"
+          - generic
+            - StaticText "error label 31"
+            - StaticText "1h"
+        - treeitem "needs-you agent-2 needs-you label 2 4m" [level=1, ref=e28]
+          - image "needs-you"
+          - StaticText "agent-2"
+          - generic
+            - StaticText "needs-you label 2"
+            - StaticText "4m"
+        - treeitem "working zsh" [level=1, ref=e29]
+          - image "working"
+          - StaticText "zsh"
+        - treeitem "blocked agent-3 blocked label 3 7m" [level=1, ref=e30]
+          - image "blocked"
+          - StaticText "agent-3"
+          - generic
+            - StaticText "blocked label 3"
+            - StaticText "7m"
+        - treeitem "idle agent-5" [level=1, ref=e31]
+          - image "idle"
+          - StaticText "agent-5"
+        - treeitem "needs-you agent-8 needs-you label 8 22m" [level=1, ref=e32]
+          - image "needs-you"
+          - StaticText "agent-8"
+          - generic
+            - StaticText "needs-you label 8"
+            - StaticText "22m"
+        - treeitem "blocked agent-9 blocked label 9 25m" [level=1, ref=e33]
+          - image "blocked"
+          - StaticText "agent-9"
+          - generic
+            - StaticText "blocked label 9"
+            - StaticText "25m"
+        - treeitem "idle agent-11" [level=1, ref=e34]
+          - image "idle"
+          - StaticText "agent-11"
+        - treeitem "needs-you agent-14 needs-you label 14 40m" [level=1, ref=e35]
+          - image "needs-you"
+          - StaticText "agent-14"
+          - generic
+            - StaticText "needs-you label 14"
+            - StaticText "40m"
+        - treeitem "blocked agent-15 blocked label 15 43m" [level=1, ref=e36]
+          - image "blocked"
+          - StaticText "agent-15"
+          - generic
+            - StaticText "blocked label 15"
+            - StaticText "43m"
+        - treeitem "idle agent-17" [level=1, ref=e37]
+          - image "idle"
+          - StaticText "agent-17"
+        - treeitem "needs-you agent-20 needs-you label 20 58m" [level=1, ref=e38]
+          - image "needs-you"
+          - StaticText "agent-20"
+          - generic
+            - StaticText "needs-you label 20"
+            - StaticText "58m"
+        - treeitem "blocked agent-21 blocked label 21 1h" [level=1, ref=e39]
+          - image "blocked"
+          - StaticText "agent-21"
+          - generic
+            - StaticText "blocked label 21"
+            - StaticText "1h"
+        - treeitem "idle agent-23" [level=1, ref=e40]
+          - image "idle"
+          - StaticText "agent-23"
+        - treeitem "needs-you agent-26 needs-you label 26 1h" [level=1, ref=e41]
+          - image "needs-you"
+          - StaticText "agent-26"
+          - generic
+            - StaticText "needs-you label 26"
+            - StaticText "1h"
+        - treeitem "blocked agent-27 blocked label 27 1h" [level=1, ref=e42]
+          - image "blocked"
+          - StaticText "agent-27"
+          - generic
+            - StaticText "blocked label 27"
+            - StaticText "1h"
+        - treeitem "idle agent-29" [level=1, ref=e43]
+          - image "idle"
+          - StaticText "agent-29"
+        - button "5 done" [ref=e63]
+          - StaticText "5 done"
+      - generic
+        - button "agent" [ref=e44]
+        - button "terminal" [ref=e45]
+        - button "room" [ref=e46]
+  - region "centre" [ref=e3]
+    - generic
+      - paragraph
+        - StaticText "select an agent or a terminal"
+  - region "shelf" [ref=e4]
+    - region "todos" [ref=e5]
+      - paragraph
+        - StaticText "todos "
+        - button "add todo" [ref=e47]
+      - button "idle #1 todo 1" [ref=e48]
+        - image "idle"
+        - StaticText " #1 todo 1"
+      - button "idle #2 todo 2" [ref=e49]
+        - image "idle"
+        - StaticText " #2 todo 2"
+      - button "idle #3 a very long todo title that goes on and on past the width of the shelf column" [ref=e50]
+        - image "idle"
+        - StaticText " #3 a very long todo title that goes on and on past the width of the shelf column"
+      - button "blocked #4 todo 4" [ref=e51]
+        - image "blocked"
+        - StaticText " #4 todo 4"
+      - paragraph
+        - StaticText "waits on "
+        - button "#3" [ref=e52]
+          - StaticText "#3"
+        - StaticText ", "
+        - button "#5" [ref=e53]
+          - StaticText "#5"
+      - button "idle #5 todo 5" [ref=e54]
+        - image "idle"
+        - StaticText " #5 todo 5"
+      - button "idle #6 todo 6" [ref=e55]
+        - image "idle"
+        - StaticText " #6 todo 6"
+      - button "idle #8 todo 8" [ref=e56]
+        - image "idle"
+        - StaticText " #8 todo 8"
+      - button " 1 done" [ref=e7]
+        - StaticText " 1 done"
+    - region "pads" [ref=e6]
+      - paragraph
+        - StaticText "pads"
+        - button "add pad" [ref=e57]
+      - image "user owned"
+      - button "a-pad-with-a-very-long-name-here" [ref=e8]
+      - image "user owned"
+      - button "pad-3" [ref=e9]

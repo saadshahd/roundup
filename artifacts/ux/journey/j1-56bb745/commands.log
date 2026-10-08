@@ -1,0 +1,94 @@
+{"args": ["set", "media", "light"], "exit": 0, "stderr": ""}
+{"args": ["set", "viewport", "1280", "800"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=first-run"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/first-run-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=empty-project"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/empty-project-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=door-stopped"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/door-stopped-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=earlier-run"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/earlier-run-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=agents-10"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/agents-10-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=tree-40"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/tree-40-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=daemon-exits"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/daemon-exits-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=conflict"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/conflict-1280.png"], "exit": 0, "stderr": ""}
+{"args": ["set", "viewport", "700", "800"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=first-run"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/first-run-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=empty-project"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/empty-project-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=door-stopped"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/door-stopped-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=earlier-run"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/earlier-run-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=agents-10"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/agents-10-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=tree-40"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/tree-40-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=daemon-exits"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/daemon-exits-700.png"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=conflict"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake && !!document.querySelector(\"[aria-label=rail]\")"], "exit": 0, "stderr": ""}
+{"args": ["snapshot"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__checks()"], "exit": 0, "stderr": ""}
+{"args": ["screenshot", "artifacts/ux/journey/j1-56bb745/conflict-700.png"], "exit": 0, "stderr": ""}
+{"args": ["set", "viewport", "1280", "800"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=first-run"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__fake.app.chooser.path=\"/journey-project\""], "exit": 0, "stderr": ""}
+{"args": ["find", "role", "button", "focus", "--name", "choose folder\u2026"], "exit": 1, "stderr": "\u2717 Unknown subaction: focus\n"}
+{"args": ["set", "viewport", "1280", "800"], "exit": 0, "stderr": ""}
+{"args": ["open", "http://localhost:5199/harness.html?seed=first-run"], "exit": 0, "stderr": ""}
+{"args": ["wait", "--fn", "!!window.__fake"], "exit": 0, "stderr": ""}
+{"args": ["eval", "window.__fake.app.chooser.path=\"/journey-project\""], "exit": 0, "stderr": ""}
+{"args": ["focus", "button.word"], "exit": 0, "stderr": ""}
+{"args": ["press", "Enter"], "exit": 0, "stderr": ""}

@@ -1,0 +1,79 @@
+{
+  "D1": {
+    "selector": ".xterm .composition-view",
+    "status": "fail",
+    "value": [
+      "background: rgb(0, 0, 0)",
+      "color: rgb(255, 255, 255)",
+      "background-color: rgb(0, 0, 0)",
+      "font-size: 11px !important",
+      "background: rgba(0, 0, 0, 0)",
+      "transition: opacity 100ms linear",
+      "transition: opacity 800ms linear",
+      "box-shadow: var(--vscode-scrollbar-shadow, #000) 0 6px 6px -6px inset",
+      "box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset",
+      "box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset"
+    ]
+  },
+  "D10": {
+    "selector": "",
+    "status": "fail",
+    "value": {
+      "contrast": "no-preference",
+      "failing": [
+        "D1",
+        "D2"
+      ],
+      "scheme": "light",
+      "viewport": "1280x800"
+    }
+  },
+  "D2": {
+    "selector": "aside.drawer",
+    "status": "fail",
+    "value": {
+      "padding-right": "72px"
+    }
+  },
+  "D3": {
+    "selector": "",
+    "status": "pass",
+    "value": []
+  },
+  "D4": {
+    "selector": "",
+    "status": "pass",
+    "value": {
+      "rows": 9
+    }
+  },
+  "D5": {
+    "selector": "",
+    "status": "pass",
+    "value": []
+  },
+  "D6": {
+    "selector": "",
+    "status": "pass",
+    "value": {
+      "targets": 17
+    }
+  },
+  "D7": {
+    "selector": "",
+    "status": "pass",
+    "value": {
+      "targets": 17
+    }
+  },
+  "D8": {
+    "selector": "",
+    "status": "pass",
+    "value": []
+  },
+  "D9": {
+    "selector": "",
+    "status": "pass",
+    "value": []
+  }
+}

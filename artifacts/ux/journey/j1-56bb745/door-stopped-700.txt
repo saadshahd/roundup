@@ -1,0 +1,40 @@
+- banner
+  - StaticText "roundup   harness"
+- generic
+  - region "rail" [ref=e1]
+    - generic
+      - tree "rail"
+        - treeitem "collapse done first room finished just now start Door" [level=1, expanded=true, selected, ref=e6]
+          - button "collapse" [ref=e13]
+          - image "done"
+          - StaticText "first room"
+          - generic
+            - StaticText "finished"
+            - StaticText "just now"
+          - button "start Door" [ref=e14]
+      - generic
+        - button "agent" [ref=e7]
+        - button "terminal" [ref=e8]
+        - button "room" [ref=e9]
+  - region "centre" [ref=e2]
+    - generic
+      - generic
+        - generic
+          - textbox "Terminal input" [ref=e15]
+      - generic
+        - paragraph
+          - StaticText "Door stopped, exited 0"
+        - button "start Door" [ref=e10]
+  - region "shelf" [ref=e3]
+    - region "todos" [ref=e4]
+      - paragraph
+        - StaticText "todos "
+        - button "add todo" [ref=e11]
+      - paragraph
+        - StaticText "no todos yet"
+    - region "pads" [ref=e5]
+      - paragraph
+        - StaticText "pads"
+        - button "add pad" [ref=e12]
+      - paragraph
+        - StaticText "no pads yet"

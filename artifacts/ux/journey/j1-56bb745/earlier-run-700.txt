@@ -1,0 +1,33 @@
+- banner
+  - StaticText "roundup   harness"
+- generic
+  - region "rail" [ref=e1]
+    - generic
+      - tree "rail"
+        - treeitem "done earlier agent finished just now" [level=1, selected, ref=e6]
+          - image "done"
+          - StaticText "earlier agent"
+          - generic
+            - StaticText "finished"
+            - StaticText "just now"
+      - generic
+        - button "agent" [ref=e7]
+        - button "terminal" [ref=e8]
+        - button "room" [ref=e9]
+  - region "centre" [ref=e2]
+    - generic
+      - paragraph
+        - StaticText "no output kept from an earlier run"
+  - region "shelf" [ref=e3]
+    - region "todos" [ref=e4]
+      - paragraph
+        - StaticText "todos "
+        - button "add todo" [ref=e10]
+      - paragraph
+        - StaticText "no todos yet"
+    - region "pads" [ref=e5]
+      - paragraph
+        - StaticText "pads"
+        - button "add pad" [ref=e11]
+      - paragraph
+        - StaticText "no pads yet"
