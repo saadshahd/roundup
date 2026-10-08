@@ -65,6 +65,8 @@ def deliver(record):
             raise RuntimeError('Unexpected checkout history; preserve it for inspection')
     result = json.loads((attempt / 'result.json').read_text()) if (attempt / 'result.json').exists() else {}
     body = 'Scenarios: ' + record['ids'] + '\n\n' + result.get('body', 'The local Codex run ended before its final report; changes are preserved for a fix run.')
+    if (record['exit'] != 0 or result.get('status') != 'ready') and result.get('status') != 'stopped':
+        body += '\n\nStopped: the run ended without marking it ready, local Codex attempt ' + str(record['started']) + '; changes are preserved for repair.'
     body_path = attempt / 'pr.md'
     body_path.write_text(body)
     if head == record['base']:
@@ -79,13 +81,7 @@ def deliver(record):
             '--title', record['ids'] + ': ' + result.get('title', 'continue the interrupted build'), '--body-file', str(body_path)]
     if record['exit'] != 0 or result.get('status') != 'ready':
         args.append('--draft')
-    url = command(*args)
-    if '--draft' in args and result.get('status') == 'stopped':
-        # The schema requires the model to name the unresolved question in Stopped:.
-        command('gh', 'workflow', 'run', 'merge-ready.yml', '-f', 'pr=' + url.rsplit('/', 1)[-1])
-    elif '--draft' in args:
-        # A timeout is engineering work. Give the existing Claude fix path the partial implementation.
-        command('gh', 'workflow', 'run', 'build.yml', '-f', 'pr=' + url.rsplit('/', 1)[-1])
+    command(*args)
 
 
 def finish(record, state, code):
@@ -105,6 +101,10 @@ def finish(record, state, code):
     if command('git', 'ls-remote', '--heads', 'origin', 'refs/heads/build/' + record['slug']):
         command('loop/runs.sh', 'unclaim', data=json.dumps([record]))
     publish(record)
+    if len(prs) == 1 and prs[0]['isDraft']:
+        command('gh', 'workflow', 'run', 'merge-ready.yml', '-f', 'pr=' + str(prs[0]['number']))
+    # Release public ownership before dispatch; recovery repeats this idempotent handoff.
+    command('gh', 'workflow', 'run', 'reconcile.yml')
     (state / 'active.json').unlink()
     return record['state'] == 'ready'
 
@@ -178,7 +178,7 @@ def tick(state):
             f'Its remote Claim is yours. Your Author-Agent id is codex-{started}. '
             'The user authorized this build and routine engineering decisions; proceed without another confirmation. '
             'Use the Builder recipe and existing independent CI/review/merge gates. '
-            'Do not merge loop machinery or approve your own PR. Use agent-browser for browser work. '
+            'Do not merge or approve your own PR. Use agent-browser for browser work. '
             'The controller, not this sandboxed build run, owns git commits, pushes and PR creation. '
             'Implement and run pnpm install and just check; leave changes uncommitted. '
             'Return status ready only after checks pass, with a concise title and PR body. '

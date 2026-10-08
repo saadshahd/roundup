@@ -81,6 +81,8 @@ class Codex(unittest.TestCase):
     def test_L87_zero_exit_with_draft_is_failure_and_cools_down(self):
         self.ready = False
         with self.assertRaisesRegex(RuntimeError, 'did not deliver'): fleet.tick(self.state)
+        self.assertTrue(any(a == ('gh','workflow','run','merge-ready.yml','-f','pr=1') for a,k in self.calls))
+        self.assertNotIn('Stopped: the run ended without marking it ready,', next(self.state.glob('*/pr.md')).read_text())
         before = len(self.calls)
         fleet.tick(self.state)
         self.assertFalse(any(a[:2] == ('loop/runs.sh','claim') for a,k in self.calls[before:]))
@@ -131,11 +133,16 @@ class Codex(unittest.TestCase):
         with patch.object(fleet.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','')): fleet.tick(self.state)
         self.assertEqual(json.loads((self.state/'last.json').read_text())['exit'],130)
         self.assertFalse(any(a[:2] == ('loop/runs.sh','queue') for a,k in self.calls))
+        self.assertTrue(any(a == ('gh','workflow','run','reconcile.yml') for a,k in self.calls))
 
     def test_L87_timeout_delivers_partial_work_to_claude_fix(self):
         self.code=124
         with self.assertRaises(RuntimeError): fleet.tick(self.state)
-        self.assertTrue(any(a == ('gh','workflow','run','build.yml','-f','pr=1') for a,k in self.calls))
+        body = next(self.state.glob('*/pr.md')).read_text()
+        self.assertIn('Stopped: the run ended without marking it ready,', body)
+        publish = next(i for i,(a,k) in enumerate(self.calls) if a[:3] == ('gh','variable','set') and '"failed"' in a[-1])
+        handoff = next(i for i,(a,k) in enumerate(self.calls) if a == ('gh','workflow','run','reconcile.yml'))
+        self.assertLess(publish, handoff)
 
     def test_L87_reused_pid_does_not_hold_the_slot(self):
         attempt=self.state/'old'; attempt.mkdir()
