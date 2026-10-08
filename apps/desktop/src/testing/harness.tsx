@@ -27,8 +27,8 @@ if (!isSeedName(seed)) throw new Error(`unknown seed "${seed}"; one of ${SEEDS.j
 
 const controls = seedApp(seed, Date.now());
 
-if (seed === "door-stopped") {
-  const failure = railStorage(controls.app.opened.project!.path).write({ selected: "first-room", collapsed: [] });
+if (seed === "door-stopped" || seed === "earlier-run") {
+  const failure = railStorage(controls.app.opened.project!.path).write({ selected: seed === "earlier-run" ? "earlier-agent" : "first-room", collapsed: [] });
 
   if (failure !== null) throw new Error(failure);
 }
