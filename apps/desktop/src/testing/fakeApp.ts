@@ -32,6 +32,8 @@ export type FakeApp = AppSeam & {
   badges: number[];
   /** What `project` and `open_project` answer, or the error `open_project` fails with. */
   opened: { project: Project | null; failure: RpcError | null };
+  /** What `daemon_proof` answers, or the error it fails with (H18). */
+  proof: { value: string; failure: RpcError | null };
 };
 
 export const createFakeApp = (): FakeApp => {
@@ -44,6 +46,7 @@ export const createFakeApp = (): FakeApp => {
     chooser: { path: null, savePath: null, suggestedNames: [] },
     badges: [],
     opened: { project: null, failure: null },
+    proof: { value: "fake-proof", failure: null },
     emit: (event) => {
       if (!onEvent) throw new Error("the webview has not subscribed yet");
 
@@ -59,6 +62,11 @@ export const createFakeApp = (): FakeApp => {
       app.opened.project = { name: path.split("/").pop() ?? path, path };
 
       return app.opened.project;
+    },
+    daemonProof: async () => {
+      if (app.proof.failure) throw app.proof.failure;
+
+      return app.proof.value;
     },
     chooseProjectPath: async () => app.chooser.path,
     chooseSavePath: async (suggestedName) => {

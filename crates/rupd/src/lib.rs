@@ -2,6 +2,9 @@
 //! It owns the connection loop, the module router, the event bus and the Provenance log.
 
 mod builtin;
+mod handshake;
+
+pub use handshake::{HANDSHAKE_BOUND, Handshake, HandshakeError, read_handshake};
 
 use std::collections::HashMap;
 use std::io;
@@ -35,6 +38,12 @@ pub struct Conn {
 impl Daemon {
     /// `dir` is the Project's `.roundup/` directory; it is created if missing.
     pub fn open(dir: &Path) -> Result<Self, OpenError> {
+        Self::open_with_proof(dir, None)
+    }
+
+    /// Like `open`, with the `proof` an attached App handed over (H4, H18); without one every
+    /// `decision.answer` is `FORBIDDEN`.
+    pub fn open_with_proof(dir: &Path, proof: Option<String>) -> Result<Self, OpenError> {
         std::fs::create_dir_all(dir)?;
         let bus = Bus::new();
         let terminals = Arc::new(terminal::Terminals::open_with(
@@ -42,11 +51,9 @@ impl Daemon {
             bus.clone(),
             &agents::claude_code::MARKERS,
         )?);
-        let agents = Arc::new(agents::Agents::open(
-            dir,
-            bus.clone(),
-            Arc::clone(&terminals),
-        )?);
+        let agents = Arc::new(
+            agents::Agents::open(dir, bus.clone(), Arc::clone(&terminals))?.with_proof(proof),
+        );
         let agents_module: Arc<dyn Module> = agents.clone();
         let mut daemon = Self {
             modules: HashMap::new(),
