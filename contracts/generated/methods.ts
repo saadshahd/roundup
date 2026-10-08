@@ -1,5 +1,6 @@
 // Generated from crates/contracts/src/methods.rs. Do not edit.
 import type { CreateRoomParams as agent_CreateRoomParams } from "./agent/CreateRoomParams";
+import type { Landed as agent_Landed } from "./agent/Landed";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
 import type { NodeId as agent_NodeId } from "./agent/NodeId";
 import type { PromptParams as agent_PromptParams } from "./agent/PromptParams";
@@ -8,11 +9,14 @@ import type { RenameParams as agent_RenameParams } from "./agent/RenameParams";
 import type { SignalParams as agent_SignalParams } from "./agent/SignalParams";
 import type { SpawnParams as agent_SpawnParams } from "./agent/SpawnParams";
 import type { SpawnTerminalParams as agent_SpawnTerminalParams } from "./agent/SpawnTerminalParams";
+import type { WorktreeState as agent_WorktreeState } from "./agent/WorktreeState";
 import type { HistoryParams as common_HistoryParams } from "./HistoryParams";
 import type { IdentifyParams as common_IdentifyParams } from "./IdentifyParams";
 import type { Touch as common_Touch } from "./Touch";
 import type { TouchedParams as common_TouchedParams } from "./TouchedParams";
 import type { AnswerParams as decision_AnswerParams } from "./decision/AnswerParams";
+import type { AskOutput as decision_AskOutput } from "./decision/AskOutput";
+import type { AskParams as decision_AskParams } from "./decision/AskParams";
 import type { Decision as decision_Decision } from "./decision/Decision";
 import type { PermissionOutput as decision_PermissionOutput } from "./decision/PermissionOutput";
 import type { PermissionParams as decision_PermissionParams } from "./decision/PermissionParams";
@@ -76,8 +80,12 @@ export type RpcMethods = {
   "agent.spawn": { params: agent_SpawnParams; result: agent_RailNode };
   "agent.stop": { params: agent_NodeId; result: null };
   "agent.prompt": { params: agent_PromptParams; result: null };
+  "agent.worktreeState": { params: agent_NodeId; result: agent_WorktreeState };
+  "agent.land": { params: agent_NodeId; result: agent_Landed };
+  "agent.discard": { params: agent_NodeId; result: null };
   "agent.signal": { params: agent_SignalParams; result: null };
   "agent.permission": { params: decision_PermissionParams; result: decision_PermissionOutput };
+  "agent.ask": { params: decision_AskParams; result: decision_AskOutput };
   "decision.list": { params: null; result: decision_Decision[] };
   "decision.answer": { params: decision_AnswerParams; result: null };
   "rail.tree": { params: null; result: agent_RailNode[] };

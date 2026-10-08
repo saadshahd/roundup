@@ -513,3 +513,166 @@ async fn h10_a_childs_decision_reaches_no_byte_signal_or_call_of_its_parent() {
     let forbidden = answer(&f, &open[0].id, "allow", None).await.unwrap_err();
     assert_eq!(forbidden.code, code::FORBIDDEN);
 }
+
+/// `ask_user`'s call as the shim makes it: identified as the Agent.
+fn ask_as(f: &Arc<Fixture>, actor: Actor, params: Value) -> Waiting {
+    let f = Arc::clone(f);
+    tokio::spawn(async move {
+        let mut ctx = f.ctx();
+        ctx.actor = actor;
+        f.agents.call(&ctx, "agent.ask", params).await
+    })
+}
+
+fn agent_actor(id: &str) -> Actor {
+    Actor {
+        kind: contracts::ActorKind::Agent,
+        id: id.into(),
+        parent: None,
+    }
+}
+
+fn ask(f: &Arc<Fixture>, agent: &str) -> Waiting {
+    ask_as(
+        f,
+        agent_actor(agent),
+        json!({"question": "Cats or dogs?", "answers": ["cats", "dogs"]}),
+    )
+}
+
+#[tokio::test]
+async fn h14_ask_user_opens_a_decision_that_the_users_answer_returns() {
+    let (f, agent) = running().await;
+    let mut events = f.bus.subscribe();
+    let waiting = ask(&f, &agent);
+
+    let open = until_open(&f, 1).await;
+
+    assert_eq!(open[0].tool, "ask_user");
+    assert_eq!(
+        serde_json::from_str::<Value>(&open[0].args).unwrap(),
+        json!({"question": "Cats or dogs?", "answers": ["cats", "dogs"]})
+    );
+    assert_eq!(kind(&f, &agent).await, Kind::NeedsYou);
+    assert!(!waiting.is_finished());
+
+    answer(&f, &open[0].id, "dogs", Some(PROOF)).await.unwrap();
+
+    assert_eq!(waiting.await.unwrap().unwrap(), json!({"answer": "dogs"}));
+    assert!(list(&f).await.is_empty());
+    let seen = decision_events(&mut events);
+    assert_eq!(seen.len(), 2);
+    assert_eq!(cleared(&seen[1]).unwrap().outcome, Outcome::Answered);
+    assert_eq!(kind(&f, &agent).await, Kind::Working);
+}
+
+#[tokio::test]
+async fn h14_an_answer_not_in_the_list_is_invalid_params_and_leaves_it_open() {
+    let (f, agent) = running().await;
+    let waiting = ask(&f, &agent);
+    let id = until_open(&f, 1).await.remove(0).id;
+
+    let err = answer(&f, &id, "birds", Some(PROOF)).await.unwrap_err();
+    let word = answer(&f, &id, "allow", Some(PROOF)).await.unwrap_err();
+
+    assert_eq!(err.code, code::INVALID_PARAMS);
+    assert_eq!(word.code, code::INVALID_PARAMS);
+    assert_eq!(list(&f).await.len(), 1);
+    assert!(!waiting.is_finished());
+}
+
+#[tokio::test]
+async fn h14_only_a_caller_with_the_proof_answers_it() {
+    let (f, agent) = running().await;
+    let waiting = ask(&f, &agent);
+    let id = until_open(&f, 1).await.remove(0).id;
+
+    let none = answer(&f, &id, "cats", None).await.unwrap_err();
+    let wrong = answer(&f, &id, "cats", Some("guess")).await.unwrap_err();
+
+    assert_eq!(none.code, code::FORBIDDEN);
+    assert_eq!(wrong.code, code::FORBIDDEN);
+    assert_eq!(list(&f).await.len(), 1);
+    assert!(!waiting.is_finished());
+}
+
+#[tokio::test]
+async fn h14_a_second_question_replaces_the_first() {
+    let (f, agent) = running().await;
+    let first = ask(&f, &agent);
+    let old = until_open(&f, 1).await.remove(0);
+    let mut events = f.bus.subscribe();
+
+    let _second = permission(&f, &agent, bash("ls"));
+    let now = loop {
+        let open = until_open(&f, 1).await;
+        if open[0].id != old.id {
+            break open;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+
+    assert_eq!(now[0].tool, "Bash");
+    assert_eq!(error_of(first).await.message, "superseded");
+    let seen = decision_events(&mut events);
+    assert!(
+        matches!(&seen[0], EventData::DecisionCleared(c) if c.id == old.id && c.outcome == Outcome::Replaced)
+    );
+    assert_eq!(kind(&f, &agent).await, Kind::NeedsYou);
+}
+
+#[tokio::test]
+async fn h14_the_end_of_the_agent_fails_the_call_and_clears_the_decision() {
+    let (f, agent) = running().await;
+    let waiting = ask(&f, &agent);
+    until_open(&f, 1).await;
+    let mut events = f.bus.subscribe();
+
+    f.call("agent.stop", json!({"id": agent})).await.unwrap();
+
+    assert_eq!(error_of(waiting).await.message, "the Agent ended");
+    assert!(list(&f).await.is_empty());
+    let seen = decision_events(&mut events);
+    assert_eq!(seen.len(), 1);
+    assert_eq!(cleared(&seen[0]).unwrap().outcome, Outcome::AgentGone);
+}
+
+#[tokio::test]
+async fn h14_a_malformed_question_is_invalid_params_and_opens_nothing() {
+    let (f, agent) = running().await;
+    let long = "x".repeat(201);
+    let bad = [
+        json!({"question": "q", "answers": []}),
+        json!({"question": "q", "answers": ["a", "b", "c", "d", "e"]}),
+        json!({"question": " ", "answers": ["a"]}),
+        json!({"question": "q", "answers": [long]}),
+        json!({"question": "q", "answers": [""]}),
+    ];
+
+    for params in bad {
+        let err = ask_as(&f, agent_actor(&agent), params)
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(err.code, code::INVALID_PARAMS);
+    }
+
+    assert!(list(&f).await.is_empty());
+}
+
+#[tokio::test]
+async fn h14_only_an_agent_asks() {
+    let (f, _agent) = running().await;
+
+    let err = ask_as(
+        &f,
+        Actor::user(),
+        json!({"question": "q", "answers": ["a"]}),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+
+    assert_eq!(err.code, code::FORBIDDEN);
+    assert!(list(&f).await.is_empty());
+}

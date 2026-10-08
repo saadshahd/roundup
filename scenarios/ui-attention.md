@@ -24,4 +24,4 @@ Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
 
 | Ids | Item | Owns | Keeps green | After |
 |---|---|---|---|---|
-| U105–U107, U109, U110 | the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3) | `apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns | after the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107 | — |
+| U105–U107, U109, U110 | the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3) | `apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns | after the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107 | B1-B18 |

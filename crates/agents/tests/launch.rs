@@ -162,7 +162,7 @@ fn a11_discarding_an_agent_deletes_both_of_its_files() {
 }
 
 #[test]
-fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
+fn a4_the_settings_hold_one_command_per_state_event() {
     let s = setup();
     let mut settings = read(Path::new(&s.prepare("7").unwrap()[2]));
     settings.as_object_mut().unwrap().remove("permissions");
@@ -171,10 +171,25 @@ fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
     let entry = json!([{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]);
     let expected: serde_json::Map<String, Value> = EVENTS
         .iter()
+        .filter(|event| **event != "PermissionRequest")
         .map(|event| ((*event).to_owned(), entry.clone()))
         .collect();
     // The late Notification and the spurious SubagentStop are not among the events.
-    assert_eq!(settings, json!({ "hooks": expected }));
+    assert_eq!(settings["hooks"].as_object().unwrap().len(), EVENTS.len());
+    for (event, hook) in &expected {
+        assert_eq!(&settings["hooks"][event], hook, "{event}");
+    }
+}
+
+#[test]
+fn h9_the_permission_request_hook_runs_rup_permission_with_a_day_long_timeout() {
+    let s = setup();
+    let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    let command = format!("'{}' permission '7'", s.rup.display());
+    assert_eq!(
+        settings["hooks"]["PermissionRequest"],
+        json!([{"hooks": [{"type": "command", "command": command, "timeout": 86400}]}])
+    );
 }
 
 #[test]
@@ -710,10 +725,16 @@ fn e1_the_brief_names_the_agent_by_id_and_the_tools_and_holds_nothing_mutable() 
     let text = brief(&s, "7", Role::Agent);
     assert!(text.contains("Your Agent id is 7."));
     assert!(text.contains("supervises you"));
-    for tool in ["todo_create", "todo_update", "pad_write", "pad_append"] {
+    for tool in [
+        "todo_create",
+        "todo_update",
+        "pad_write",
+        "pad_append",
+        "ask_user",
+    ] {
         assert!(text.contains(&format!("`{tool}`")), "{tool}");
     }
-    for unshipped in ["agent_context", "message_send", "ask_user", "agent_spawn"] {
+    for unshipped in ["agent_context", "message_send", "agent_spawn"] {
         assert!(!text.contains(unshipped), "{unshipped}");
     }
     assert!(!text.contains(&s.cwd.to_string_lossy().into_owned()));

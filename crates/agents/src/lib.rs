@@ -8,10 +8,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateRoomParams, MoveParams, NodeId, NodeKind, PromptParams, RailNode, RenameParams,
-    SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent,
+    CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, PromptParams, RailNode, RenameParams,
+    SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent, WorktreeState,
 };
-use contracts::decision::{AnswerParams, Outcome, PermissionParams};
+use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, ActorKind, EventData, Kind, Status};
@@ -914,8 +914,28 @@ impl Shared {
         self.end(actor, id, true).await
     }
 
+    /// G5: stop the Agent and delete its node, Worktree directory and branch whatever their
+    /// state.
+    async fn discard(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
+        if self.rail().node(id)?.worktree.is_none() {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        }
+        self.end_with(actor, id, true, true).await
+    }
+
     async fn end(&self, actor: Actor, id: &str, remove: bool) -> Result<(), RpcError> {
-        let checked_node = if remove {
+        self.end_with(actor, id, remove, false).await
+    }
+
+    /// `discarding` drops the Worktree whatever its state; otherwise a remove keeps unlanded work.
+    async fn end_with(
+        &self,
+        actor: Actor,
+        id: &str,
+        remove: bool,
+        discarding: bool,
+    ) -> Result<(), RpcError> {
+        let checked_node = if remove && !discarding {
             Some(self.rail().node(id)?)
         } else {
             None
@@ -992,10 +1012,15 @@ impl Shared {
             let git = self.git.clone();
             let project = self.project_dir.clone();
             let worktree = worktree::Worktree::from(&worktree);
-            let removed =
-                tokio::task::spawn_blocking(move || git.remove_landed(&project, &worktree))
-                    .await
-                    .map_err(RpcError::internal)?;
+            let removed = tokio::task::spawn_blocking(move || {
+                if discarding {
+                    git.discard(&project, &worktree)
+                } else {
+                    git.remove_landed(&project, &worktree)
+                }
+            })
+            .await
+            .map_err(RpcError::internal)?;
             if let Err(err) = removed {
                 self.rail().detach_terminal(id)?;
                 self.release_closing(id, true);
@@ -1613,6 +1638,35 @@ impl Agents {
         self.shared.node(id)
     }
 
+    /// G3: how far the Agent's Worktree is from its Base. Reads only.
+    async fn worktree_state(&self, id: &str) -> Result<WorktreeState, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        tokio::task::spawn_blocking(move || git.state(&project, &worktree))
+            .await
+            .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))?
+    }
+
+    /// G4: land the Agent's branch on its Base, after the Project's `check` passes in the Worktree.
+    async fn land(&self, id: &str) -> Result<Landed, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let check = self.shared.rail().get_worktrees()?.check;
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        let base =
+            tokio::task::spawn_blocking(move || git.land(&project, &worktree, check.as_deref()))
+                .await
+                .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))??;
+        Ok(Landed { base })
+    }
+
     /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
     /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
     /// retains its ownership record when cleanup cannot safely remove the new Worktree.
@@ -1920,6 +1974,19 @@ impl Module for Agents {
                 shared.stop(ctx.actor.clone(), &id).await?;
                 reply(&())
             }
+            "agent.worktreeState" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.worktree_state(&id).await?)
+            }
+            "agent.land" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.land(&id).await?)
+            }
+            "agent.discard" => {
+                let NodeId { id } = params(value)?;
+                shared.discard(ctx.actor.clone(), &id).await?;
+                reply(&())
+            }
             "rail.startDoor" => {
                 let NodeId { id } = params(value)?;
                 reply(&self.start_door(ctx, &id).await?)
@@ -1952,10 +2019,14 @@ impl Module for Agents {
                 let PermissionParams { id, payload } = params(value)?;
                 reply(&shared.permission(ctx.actor.clone(), &id, payload).await?)
             }
+            "agent.ask" => {
+                let ask: AskParams = params(value)?;
+                reply(&shared.ask(ctx.actor.clone(), ask).await?)
+            }
             "decision.list" => reply(&shared.decisions.list()),
             "decision.answer" => {
                 let AnswerParams { id, answer, proof } = params(value)?;
-                shared.answer(ctx.actor.clone(), &id, answer, proof.as_deref())?;
+                shared.answer(ctx.actor.clone(), &id, &answer, proof.as_deref())?;
                 reply(&())
             }
             "rail.tree" => reply(&shared.tree()?),

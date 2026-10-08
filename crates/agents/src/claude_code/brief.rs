@@ -2,7 +2,7 @@
 //! changes for an Agent id: who it is, that roundup supervises it, the tools `rup mcp` offers and,
 //! for a Door, B24's role guidance. A name, Terminal id, parent, peer or Todo changes, so none is
 //! written here. A tool is described only once `crates/rup` offers it: landing `agent_context`,
-//! `message_send`, `ask_user` or `agent_spawn` updates this list and its test together.
+//! `message_send` or `agent_spawn` updates this list and its test together.
 
 /// What an Agent is to roundup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub enum Role {
 }
 
 /// The tools `rup mcp` offers, with when to use each.
-const TOOLS: [(&str, &str); 13] = [
+const TOOLS: [(&str, &str); 14] = [
     ("todo_create", "record a piece of work that is not done yet"),
     ("todo_get", "read one Todo before changing it"),
     ("todo_list", "see all the work already recorded"),
@@ -37,6 +37,10 @@ const TOOLS: [(&str, &str); 13] = [
     ("pad_append", "add text to the end of any Pad"),
     ("pad_setOwner", "give a Pad to another Actor"),
     ("pad_delete", "delete a Pad you no longer need"),
+    (
+        "ask_user",
+        "put a question to the user with one to four short answers to pick from, and wait for the one they pick",
+    ),
 ];
 
 const DOOR: &str = "\
@@ -45,7 +49,7 @@ const DOOR: &str = "\
 You are this Room's coordinating Door. Use the Todo tools to record the work and update it as it changes. \
 Report the outcome to the user when the work ends. \
 When the user's goal or a taste limit is unclear, ask in this Terminal and wait for the answer. \
-You cannot start other Agents, message them, or put a structured question to the user: \
+You cannot start other Agents or message them: \
 do not claim or promise any of that.
 ";
 

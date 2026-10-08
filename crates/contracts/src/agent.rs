@@ -33,6 +33,23 @@ pub struct Worktree {
     pub base: String,
 }
 
+/// What `agent.worktreeState` returns (G3): commits only the branch has, commits only the Base
+/// has, and whether the Worktree has a staged, unstaged or untracked change outside `.roundup/`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct WorktreeState {
+    pub ahead: u32,
+    pub behind: u32,
+    pub dirty: bool,
+}
+
+/// What `agent.land` returns (G4): the commit the Base points at after Landing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Landed {
+    pub base: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
 pub struct RailNode {

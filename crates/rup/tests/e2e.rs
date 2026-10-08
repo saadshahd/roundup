@@ -22,25 +22,44 @@ const RECORDED: &str = concat!(
 
 const D2_EVENTS: &str = "SessionStart,UserPromptSubmit,PermissionRequest,PostToolUse,Stop";
 
-fn d2_project() -> Project {
-    start(&[
+/// The fake `claude` leaves its `rup permission` open and waits for this file, which the test
+/// writes once the Agent is `needs-you` (H7a: the next Signal clears the Decision).
+fn d2_project() -> (Project, std::path::PathBuf) {
+    let gate = std::env::temp_dir().join(format!(
+        "d2-gate-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_file(&gate);
+    let project = start(&[
         ("FAKE_CLAUDE_PAYLOADS", RECORDED),
         ("FAKE_CLAUDE_EVENTS", D2_EVENTS),
         ("FAKE_CLAUDE_PROMPT", "fix the refresh race"),
-    ])
+        ("FAKE_CLAUDE_GATE", gate.to_str().unwrap()),
+    ]);
+    (project, gate)
+}
+
+/// The next five Kinds, opening the gate once the third (`needs-you`) is in.
+async fn d2_kinds(client: &mut rpc::Client, gate: &std::path::Path) -> Vec<Kind> {
+    let mut kinds = Vec::new();
+    for _ in 0..5 {
+        kinds.push(next_kind(client).await);
+        if kinds.len() == 3 {
+            std::fs::write(gate, "").unwrap();
+        }
+    }
+    kinds
 }
 
 #[tokio::test]
 async fn d2_status_follows_the_hooks_in_order() {
-    let project = d2_project();
+    let (project, gate) = d2_project();
     let mut client = project.subscribed().await;
 
     project.spawn_agent(&client).await;
 
-    let mut kinds = Vec::new();
-    for _ in 0..5 {
-        kinds.push(next_kind(&mut client).await);
-    }
+    let kinds = d2_kinds(&mut client, &gate).await;
     assert_eq!(
         kinds,
         [
@@ -55,12 +74,10 @@ async fn d2_status_follows_the_hooks_in_order() {
 
 #[tokio::test]
 async fn d2_the_first_prompt_names_the_agent() {
-    let project = d2_project();
+    let (project, gate) = d2_project();
     let mut client = project.subscribed().await;
     let agent = project.spawn_agent(&client).await;
-    for _ in 0..5 {
-        next_kind(&mut client).await;
-    }
+    d2_kinds(&mut client, &gate).await;
 
     let tree = rail_tree(&client).await;
 
