@@ -1,0 +1,80 @@
+name: build-row
+
+on:
+  workflow_call:
+    inputs:
+      row:
+        type: string
+        required: true
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browser: 'true'
+      - id: prompt
+        env:
+          IDS: ${{ fromJSON(inputs.row).ids }}
+          FILE: ${{ fromJSON(inputs.row).file }}
+          SLUG: ${{ fromJSON(inputs.row).slug }}
+        run: |
+          printf 'Build Work row %s of %s on branch build/%s. That branch exists at an older main commit as the row'"'"'s Claim: branch from origin/main and push, which fast-forwards it. Your Author-Agent id is builder-%s.\n' "$IDS" "$FILE" "$SLUG" "$GITHUB_RUN_ID" |
+            loop/runs.sh prompt builder
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: ${{ steps.prompt.outputs.prompt }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: claude,github-actions
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 150
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      - if: always()
+        uses: ./.github/actions/ledger
+        with:
+          role: builder
+          subject: ${{ fromJSON(inputs.row).ids }}
+          execution-file: ${{ steps.claude.outputs.execution_file }}
+          conclusion: ${{ steps.claude.outcome }}
+
+  # Each row frees its own slot; a slow sibling cannot hold the refill job.
+  after:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ROW: ${{ inputs.row }}
+        run: |
+          jq -c '[.]' <<<"$ROW" | loop/runs.sh unclaim
+          loop/runs.sh stopped "build/$(jq -r .slug <<<"$ROW")"
+      - if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run reconcile.yml

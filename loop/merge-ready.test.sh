@@ -128,4 +128,6 @@ expect l81_a_closed_pr_asks_nothing 0 $'gates\nstate=failure'
 GATES_OUT="$draft"$'\n'"the Builder stopped: needs a GLOSSARY term for Pin."$'\n'"$loop"
 expect l81_a_stopped_draft_labels_assigns_and_asks 0 $'gates\nstate=failure\nlabel\nassign\ncomment'
 body_is $'<!-- needs-user -->\nmerge-ready waits on you:\n\n- The Builder stopped (needs a GLOSSARY term for Pin): will you finish it, or close it and delete its branch to build it again?' l81_the_comment_asks_only_why_it_stopped
+GATES_OUT="$draft"$'\n'"the Builder stopped: the run ended without marking it ready, https://example.test/run."
+expect l88_interrupted_work_is_repaired_without_asking_the_user 0 $'gates\nstate=failure'
 [ "$failures" -eq 0 ]

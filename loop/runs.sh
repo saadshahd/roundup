@@ -17,7 +17,7 @@ builders() {
   local ids id
   ids=$(gh_or_4 run list --workflow build.yml --limit 50 --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId') || exit 4
   for id in $ids; do
-    gh_or_4 run view "$id" --json jobs --jq '.jobs[] | select((.name | startswith("build (")) and .status != "completed") | .name | capture(", (?<slug>[^ ,]+)\\)$").slug' || exit 4
+    gh_or_4 run view "$id" --json jobs --jq '.jobs[] | select((.name | startswith("build (")) and .status != "completed" and (.name | endswith(" / after") | not)) | .name | sub(" / build$"; "") | capture(", (?<slug>[^ ,]+)\\)$").slug' || exit 4
   done
 }
 

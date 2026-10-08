@@ -95,23 +95,7 @@ touch "$FIXTURES/gh-fail"
 check 'L86 malformed priority fails before network calls' 2 loop/runs.sh queue
 rm .agents/data/journey.md "$FIXTURES/gh-fail"
 
-# Run the workflow's actual refill body with fake GitHub responses.
-sed -n '/^          prs=$(gh pr list --state open --json headRefName,isDraft)/,/^$/p' "$root/.github/workflows/build.yml" |
-  sed 's/^          //' >"$dir/refill.sh"
-fresh
-echo '[{"headRefName":"build/U3","isDraft":false}]' >"$FIXTURES/refill-prs"
-check 'L86 a delivered ready PR refills the queue' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
-holds 'L86 refill dispatches one build workflow' grep -qx 'gh workflow run build.yml' "$FIXTURES/trace"
-fresh
-echo '[{"headRefName":"build/U3","isDraft":true},{"headRefName":"build/U4","isDraft":false}]' >"$FIXTURES/refill-prs"
-check 'L86 a draft and an unrelated ready PR do not refill' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
-holds 'L86 no delivered ready PR ends the chain' bash -c '! grep -q "workflow run" "$FIXTURES/trace"'
-fresh
-echo '[]' >"$FIXTURES/refill-prs"
-check 'L86 no PR ends the chain' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
-holds 'L86 an empty PR list dispatches nothing' bash -c '! grep -q "workflow run" "$FIXTURES/trace"'
-touch "$FIXTURES/gh-fail"
-check 'L86 an unreadable PR list fails the refill step' 1 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
+# L88 owns the per-row completion/reconciliation tests; refill no longer waits for the matrix.
 fresh
 printf 'ready U5 scenarios/ui.md\nready U105–U107, U109 scenarios/ui-attention.md\nready U7 scenarios/ui.md\n' >"$FIXTURES/ready"
 check 'L23 queue reads the build branches' 0 loop/runs.sh queue
@@ -130,6 +114,9 @@ check 'L23 queue counts Builders of other runs' 0 loop/runs.sh queue 4
 holds 'L23 a queued or running Builder of any tick takes a slot of max' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U3","U4"]'
 check 'L23 builders lists the Builder jobs still queued or running' 0 loop/runs.sh builders
 holds 'L23 builders prints each one'"'"'s slug' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
+echo '{"jobs":[{"name":"build (U1, scenarios/ui.md, U1) / build","status":"in_progress"},{"name":"build (U2, scenarios/ui.md, U2) / build","status":"completed"},{"name":"build (U2, scenarios/ui.md, U2) / after","status":"queued"}]}' >"$FIXTURES/jobs-71"
+check 'L88 a completed row frees its slot while its sibling builds' 0 loop/runs.sh builders
+holds 'L88 a completion job does not consume a Builder slot' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
 check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
 holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
 touch "$FIXTURES/gh-fail"

@@ -100,7 +100,7 @@ jobs:
           fi
           stopped=$(grep -m1 'the Builder stopped: ' <<<"$out" || true)
           stopped=${stopped#*the Builder stopped: }
-          if [ -n "$stopped" ]; then
+          if [ -n "$stopped" ] && [[ "$stopped" != "the run ended without marking it ready,"* ]]; then
             asks+="- The Builder stopped (${stopped%.}): will you finish it, or close it and delete its branch to build it again?"$'\n'
           fi
           issue=$(gh api "repos/$REPO/issues/$pr")
