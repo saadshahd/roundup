@@ -332,9 +332,10 @@ impl Shared {
             let mut runs = self.runs();
             let Some(Slot::Running(run)) = runs.get_mut(id) else {
                 return Err(match runs.get(id) {
-                    Some(Slot::Starting { .. } | Slot::Resuming { .. }) => {
-                        RpcError::not_running(format!("agent {id} has no turn to interrupt yet"))
-                    }
+                    Some(Slot::Starting { .. } | Slot::Resuming { .. }) => RpcError::new(
+                        code::NOT_RUNNING,
+                        format!("agent {id} has no turn to interrupt yet"),
+                    ),
                     _ => not_found(),
                 });
             };
@@ -346,9 +347,10 @@ impl Shared {
                 .status()
                 .map_or(Kind::Working, |status| status.kind);
             if matches!(kind, Kind::Idle | Kind::Done | Kind::Error) {
-                return Err(RpcError::not_running(format!(
-                    "agent {id} is {kind:?}, with no turn to interrupt"
-                )));
+                return Err(RpcError::new(
+                    code::NOT_RUNNING,
+                    format!("agent {id} is {kind:?}, with no turn to interrupt"),
+                ));
             }
             if run
                 .interrupt
@@ -392,9 +394,10 @@ impl Shared {
             return Err(not_found());
         }
         eprintln!("agents: {id}: the title did not change after the interrupt");
-        Err(RpcError::not_acked(format!(
-            "agent {id} did not acknowledge the interrupt"
-        )))
+        Err(RpcError::new(
+            code::NOT_ACKED,
+            format!("agent {id} did not acknowledge the interrupt"),
+        ))
     }
 
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
