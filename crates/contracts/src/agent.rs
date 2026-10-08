@@ -43,6 +43,13 @@ pub struct WorktreeState {
     pub dirty: bool,
 }
 
+/// What `agent.land` returns (G4): the commit the Base points at after Landing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Landed {
+    pub base: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
 pub struct RailNode {
