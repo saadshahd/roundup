@@ -228,15 +228,21 @@ class L88(unittest.TestCase):
         self.assertIsNone(d.decision(other, [], [], ['code']))
 
     def test_l88_missed_event_dispatches_and_empty_queue_stops(self):
-        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'available', return_value=True), patch.object(d, 'run', side_effect=['', '[]']) as run:
+        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'available', return_value=True), patch.object(d, 'run', side_effect=['', '', '[]']) as run:
             d.reconcile()
-            self.assertEqual(run.call_args_list[0].args, ('gh', 'workflow', 'run', 'review.yml', '-f', 'pr=1', '-f', 'head=' + HEAD))
-            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[1].args, ('gh', 'workflow', 'run', 'review.yml', '-f', 'pr=1', '-f', 'head=' + HEAD))
+            self.assertEqual(run.call_count, 3)
 
     def test_l88_claimed_pr_is_not_redispatched(self):
         with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=('old', {})), patch.object(d, 'available', return_value=False), patch.object(d, 'run', return_value='[]') as run:
             d.reconcile()
-            run.assert_called_once_with('bash', 'loop/runs.sh', 'queue', '4')
+            self.assertEqual([c.args for c in run.call_args_list], [('bash', 'loop/runs.sh', 'recover'), ('bash', 'loop/runs.sh', 'queue', '4')])
+
+    def test_l88_failed_owner_recovery_cannot_dispatch_new_work(self):
+        with patch.object(d, 'run', side_effect=subprocess.CalledProcessError(4, ['recover'])), patch.object(d, 'gh') as gh:
+            with self.assertRaises(subprocess.CalledProcessError):
+                d.reconcile()
+            gh.assert_not_called()
 
 
 class L89(unittest.TestCase):

@@ -37,6 +37,7 @@ filter=.
 args=("$@")
 for i in "${!args[@]}"; do [ "${args[$i]}" != --jq ] || filter=${args[$((i + 1))]}; done
 case "$*" in
+  'api repos/{owner}/{repo}/pulls?state=closed&per_page=100 --paginate --jq '*) jq -r "${@: -1}" "$FIXTURES/closed" ;;
   'issue list --state open --label loop:status --json number') cat "$FIXTURES/issues" ;;
   'pr list --state merged --search merged:>='*' --limit 1000 --json mergedAt') cat "$FIXTURES/merged" ;;
   'pr list --state open --limit 200 --json '*) cat "$FIXTURES/open" ;;
@@ -59,6 +60,7 @@ row() { grep "^| $1 |" "$FIXTURES/out" | sed "s/^| $1 | //; s/ |\$//"; }
 fresh() {
   rm -rf "${FIXTURES:?}"/*
   : >"$FIXTURES/trace"
+  echo '[]' >"$FIXTURES/closed"
   : >"$FIXTURES/builders"
   echo '[]' >"$FIXTURES/merged"
   echo '[]' >"$FIXTURES/open"
@@ -144,6 +146,14 @@ echo '[{"workflowName":"review","createdAt":"2026-10-09T09:00:00Z","url":"r/1","
 check 'L80 page reads main, Claims and failed runs' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 watch names a red main, a Claim with no PR or Builder, and failed agent runs of 24 hours' test "$(row Watch)" = \
   'main is red: check failure on abcdef0<br>build/U8: no open PR and no Builder; delete it to build its row again<br>build: 2 failed in 24 h, latest u/2<br>review: 1 failed in 24 h, latest r/1'
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U8",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
+check 'L80 a merged branch is not an orphan' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 completed work raises no branch warning' bash -c '! grep -q "build/U8: no open PR" "$FIXTURES/out"'
+jq '.[0].head.sha = "older"' "$FIXTURES/closed" >"$FIXTURES/changed"
+mv "$FIXTURES/changed" "$FIXTURES/closed"
+check 'L80 an older merge cannot hide a new orphan' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 a changed unowned head remains visible' grep -q 'build/U8: no open PR' "$FIXTURES/out"
+echo '[]' >"$FIXTURES/closed"
 touch "$FIXTURES/builders-fail"
 check 'L80 a failed Builder list exits 4, never a Claim with no Builder' 4 bash -c 'loop/status.sh page </dev/null'
 rm "$FIXTURES/builders-fail"
@@ -152,6 +162,13 @@ check 'L80 a failed ls-remote exits 4' 4 bash -c 'loop/status.sh page </dev/null
 git remote set-url origin "$dir/origin.git"
 touch "$FIXTURES/gh-fail"
 check 'L80 a page gh failure exits 4' 4 bash -c 'loop/status.sh page </dev/null'
+
+# An owner remains visible even if GitHub deleted its merged build branch.
+fresh
+git push -q origin HEAD:refs/heads/loop-row/U99
+check 'L80 an owner-only orphan is visible' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 Status names ownership waiting for recovery' grep -q 'build/U99: Claim owner without a Builder' "$FIXTURES/out"
+git push -q origin --delete refs/heads/loop-row/U99
 
 # L87 a live Codex Claim has an expiring local record and a readable Status row.
 fresh
