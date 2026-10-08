@@ -16,7 +16,9 @@ const expandedOf = (row: HTMLElement): boolean | null => {
 /** The row right after `row` in Rail order, one level deeper: `→`'s first child (U41). A child folded into U8's
  * `✓ n done` line is never it, because the Rail renders no row for it until the fold opens. */
 const firstVisibleChildOf = (row: HTMLElement): string | undefined => {
-  const next = row.nextElementSibling;
+  let next = row.nextElementSibling;
+
+  while (next instanceof HTMLElement && next.dataset.pads !== undefined) next = next.nextElementSibling;
 
   if (!(next instanceof HTMLElement) || next.dataset.id === undefined) return undefined;
 
@@ -42,6 +44,16 @@ export const Keys = () => {
     const id = row.dataset.id;
 
     if (id === undefined) return;
+
+    const control = row.querySelector<HTMLElement>("[data-pads-control]");
+    const padsShown = control?.getAttribute("aria-expanded") === "true";
+
+    /** U58: `→` on a leaf Agent opens its Pads, and `←` folds them before it selects the parent. */
+    if (control && (direction === "left" ? padsShown : expandedOf(row) === null && !padsShown && firstVisibleChildOf(row) === undefined)) {
+      control.click();
+
+      return;
+    }
 
     const step = railStep(rail.nodes, id, direction, expandedOf(row), firstVisibleChildOf(row));
 
