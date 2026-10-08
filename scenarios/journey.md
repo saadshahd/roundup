@@ -1,6 +1,6 @@
 # First journey: keep the next work ready
 
-Module: `scenarios/` and `.agents/data/journey.md`. Ids: J1. The destination and acceptance evidence are defined once in `.agents/data/journey.md`; this row makes its existing next-gap rule runnable.
+Module: `scenarios/` and `.agents/data/journey.md`. Ids: J1, J2. The destination and acceptance evidence are defined once in `.agents/data/journey.md`; this row makes its existing next-gap rule runnable.
 
 **J1 audit the journey and queue its next missing behavior (policy).** Given current `origin/main` and the open PRs, inspect the five stages of `.agents/data/journey.md` in order. Audit the current UI even while prerequisite implementation is running. Run the applicable existing behavioral and rendered observers; record the main SHA, commands and artifact paths or run links for what actually passed. A test name, declared RPC, screenshot of a seeded success, or merged PR alone is not proof of a stage. State the first unproved behavior and the exact missing implementation or observer. Keep unobserved stages unproved. For each stage, inspect the rendered App at both journey viewports against the accepted product and design documents; show the failing interaction or screen and its user consequence. A missing backend capability does not prevent inspecting the UI already present.
 
@@ -10,8 +10,11 @@ The audit also leaves exactly one next audit row with the next unused J id, refe
 
 Observer: independent review compares the cited evidence with the stage acceptance conditions and the actual proposed Work row. `loop/rules.sh ready` must print the new implementation row's correct ready/waiting/in-flight state and the successor audit as waiting until its prerequisite exists. This is an evidence/specification task, so no test that merely searches this document counts as its completion. A later implementation's tests establish behavior; this policy claims no implementation or native observation.
 
+**J2 audit the journey after U83 (policy).** Follows J1's policy on the main that holds U83: its evidence goes under `artifacts/ux/journey/`, and it leaves a successor only as J1 says.
+
 ## Work
 
 | Ids | Item | Owns | Keeps green | After |
 |---|---|---|---|---|
 | J1 | observe the selected journey, specify its first uncovered behavior and leave one dependent next audit | `.agents/data/journey.md` for evidence and priority; `scenarios/**` only for the selected gap, its prerequisite rows and next audit; new evidence under `artifacts/ux/journey/` | existing scenario acceptance; no product code, seam implementation or weakened Check | — |
+| J2 | repeat J1's audit once U83 is on main: inspect the rendered stages again, specify the next uncovered behavior | `.agents/data/journey.md` for evidence and priority; `scenarios/**` only for the selected gap, its prerequisite rows and next audit; new evidence under `artifacts/ux/journey/` | existing scenario acceptance; no product code, seam implementation or weakened Check | U83 |
