@@ -46,6 +46,7 @@ case "$*" in
   'pr list --head build/'*' --state all --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
   'pr list --head '*' --state open --json number,isDraft,body --jq '*) jq -r "${@: -1}" "$FIXTURES/open-${4//\//-}" 2>/dev/null || jq -r "${@: -1}" <<<'[]' ;;
   'pr view '*' --json body --jq '*) jq -r "${@: -1}" "$FIXTURES/view" ;;
+  'pr list --state open --json headRefName,isDraft') cat "$FIXTURES/refill-prs" ;;
   'api -X PATCH repos/{owner}/{repo}/pulls/'*' -f body='*) printf '%s' "${6#body=}" >"$FIXTURES/patched-${4##*/}" ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
@@ -76,6 +77,42 @@ check 'L23 queue lists ready rows' 0 loop/runs.sh queue
 holds 'L23 queue keeps ids, ranges, the file and a slug; it skips loop rows' test "$(cat "$FIXTURES/out")" = '[{"ids":"U3","file":"scenarios/ui.md","slug":"U3"},{"ids":"U105–U107, U110","file":"scenarios/ui-attention.md","slug":"U105-U107-U110"},{"ids":"F7 re-run","file":"scenarios/spawn-boundary.md","slug":"F7-re-run"},{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'
 check 'L23 queue takes at most max rows' 0 loop/runs.sh queue 2
 holds 'L23 queue of two' test "$(jq length "$FIXTURES/out")" = 2
+
+# L86 journey priority orders only eligible rows, without overriding a dependency or a Claim.
+mkdir -p .agents/data
+printf 'Priority: U2 U5 U4 U3\n' >.agents/data/journey.md
+printf 'ready U7 scenarios/ui.md\nwaiting U2 scenarios/ui.md\nready U3 scenarios/ui.md\nready U5 scenarios/ui.md\nready U4 scenarios/ui.md\n' >"$FIXTURES/ready"
+check 'L86 the journey gets the first available slots' 0 loop/runs.sh queue 2
+holds 'L86 waiting and claimed rows cannot outrank eligible work' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U4","U3"]'
+check 'L86 unrelated work still fills remaining slots' 0 loop/runs.sh queue 4
+holds 'L86 fallback rows retain their order after the journey' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U4","U3","U7"]'
+printf 'Priority: U106 U109 U4\n' >.agents/data/journey.md
+printf 'ready U4 scenarios/ui.md\nready U108-U110 scenarios/ui.md\nready U105–U107, U111 scenarios/ui-attention.md\n' >"$FIXTURES/ready"
+check 'L86 ids inside a range rank the whole Work row' 0 loop/runs.sh queue 3
+holds 'L86 grouped ranges follow their earliest priority' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U105–U107, U111","U108-U110","U4"]'
+printf 'Priority: U4 or U3\n' >.agents/data/journey.md
+touch "$FIXTURES/gh-fail"
+check 'L86 malformed priority fails before network calls' 2 loop/runs.sh queue
+rm .agents/data/journey.md "$FIXTURES/gh-fail"
+
+# Run the workflow's actual refill body with fake GitHub responses.
+sed -n '/^          prs=$(gh pr list --state open --json headRefName,isDraft)/,/^$/p' "$root/.github/workflows/build.yml" |
+  sed 's/^          //' >"$dir/refill.sh"
+fresh
+echo '[{"headRefName":"build/U3","isDraft":false}]' >"$FIXTURES/refill-prs"
+check 'L86 a delivered ready PR refills the queue' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
+holds 'L86 refill dispatches one build workflow' grep -qx 'gh workflow run build.yml' "$FIXTURES/trace"
+fresh
+echo '[{"headRefName":"build/U3","isDraft":true},{"headRefName":"build/U4","isDraft":false}]' >"$FIXTURES/refill-prs"
+check 'L86 a draft and an unrelated ready PR do not refill' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
+holds 'L86 no delivered ready PR ends the chain' bash -c '! grep -q "workflow run" "$FIXTURES/trace"'
+fresh
+echo '[]' >"$FIXTURES/refill-prs"
+check 'L86 no PR ends the chain' 0 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
+holds 'L86 an empty PR list dispatches nothing' bash -c '! grep -q "workflow run" "$FIXTURES/trace"'
+touch "$FIXTURES/gh-fail"
+check 'L86 an unreadable PR list fails the refill step' 1 env ROWS='[{"slug":"U3"}]' bash -eo pipefail "$dir/refill.sh"
+fresh
 printf 'ready U5 scenarios/ui.md\nready U105–U107, U109 scenarios/ui-attention.md\nready U7 scenarios/ui.md\n' >"$FIXTURES/ready"
 check 'L23 queue reads the build branches' 0 loop/runs.sh queue
 holds 'L23 a row whose build branch exists is not built again' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U7"]'
