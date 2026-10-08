@@ -1,6 +1,6 @@
 # UI: the first Room (U143)
 
-Module: `apps/desktop` (the webview). Ids: U143. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
+Module: `apps/desktop` (the webview). Ids: U143, U144. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
 
 **U143 the first Room says where it stands.** Narrows U38 and U9; changes no contract, App seam command or token. Given an open Project, then:
 
@@ -17,10 +17,6 @@ Tests are named `u143_…`: `apps/desktop/src/rail/doorState.test.ts` (the four 
 
 Capability against UI. The Thread's input, Messages to a Door and Routes have contracts (`message.send`, `message.list`, `route.set`, `takeover.begin`, `decision.list`; `contracts/generated/methods.ts`) but no desktop UI calls them; U105 to U110 (`ui-attention.md`) already own that UI and wait on the Door scenarios. Until it lands, a Room's conversation is its Door's Terminal and this slice claims nothing more. A summary of settled work (P1's observer) has no method; Todos have the Project-wide `todo.*` methods and a Shelf UI; their contract has no Room field. Room-scoped Todos need a contract decision before a Builder can implement them.
 
-## Work
+**U144 the harness serves the App on a real Daemon.** Found by the J2 audit: the Enter, Request and Review stages are observed only on the fake Daemon, because the webview reaches a Daemon only through Tauri commands (`apps/desktop/src/app/seam.ts`). Given a running `rupd` for a temporary Project and `just harness-real <project-path> <port>`, then `http://localhost:<port>/harness.html?daemon=1` mounts the same App with an AppSeam whose `rpc` and `subscribe` are served by the dev server over that `rupd`'s socket (`rpc::socket_path`) and whose `project`, `openProject` and `daemonProof` answer from the path given at start. Choosers return `null`, the Dock badge does nothing, and `daemon-exited` fires when the socket closes. Nothing else of the App differs, and `?seed=` behaves as today. It is a development tool: `vite build` leaves it out of `dist`, and it listens on loopback only.
 
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|
-| U143 | actionable first Room and Door lifecycle states (Moves: D6, D7) | `apps/desktop/src/terminal/**`, `apps/desktop/src/rail/**`, `apps/desktop/src/state/rail.ts` | U9, U38, D1–D10 | U9 U38 |
+Observer: `u144_` tests in `apps/desktop/src/testing/` start the real `rupd` with the fake `claude` of `crates/rup/tests/e2e/fake_claude.py`, mount the App through the served seam, create a Room and start its Door by pointer, and assert the Terminal and Rail row come from the Daemon, not from a seed. They then close the socket and assert the U25 failure state, and call a method the Daemon rejects and assert its message is shown. `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U144/`. This is a webview proof against the real Daemon; the native chooser, WKWebView and a real `claude` remain the user's macOS and F7's observers. It adds no RPC method, App seam command or token.
