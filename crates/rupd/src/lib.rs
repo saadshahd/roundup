@@ -184,7 +184,7 @@ pub async fn serve(listener: UnixListener, daemon: Arc<Daemon>) -> io::Result<()
 
 /// The methods whose call is dropped when the caller hangs up: they wait on a process of the
 /// caller's, not on the Daemon.
-const WAITS_ON_ITS_CALLER: [&str; 1] = ["agent.permission"];
+const WAITS_ON_ITS_CALLER: [&str; 2] = ["agent.permission", "agent.ask"];
 
 fn waits_on_its_caller(line: &str) -> bool {
     serde_json::from_str::<Value>(line)

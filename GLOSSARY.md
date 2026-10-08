@@ -182,7 +182,7 @@ Anything the user sees in the app (a permission request, a question, an Inbox Me
 _Avoid_: popup
 
 **Decision**:
-The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it.
+The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it. An Agent's `ask_user` call is one, answered with one of its listed answers (outcome `answered`).
 
 **Actor**:
 The user, an Agent, an Extension or the Daemon (as `rupd`) making a call.

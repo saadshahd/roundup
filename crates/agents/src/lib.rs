@@ -11,7 +11,7 @@ use contracts::agent::{
     CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
     SpawnParams, SpawnTerminalParams, StatusEvent, WorktreeState,
 };
-use contracts::decision::{AnswerParams, Outcome, PermissionParams};
+use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
@@ -1775,10 +1775,14 @@ impl Module for Agents {
                 let PermissionParams { id, payload } = params(value)?;
                 reply(&shared.permission(ctx.actor.clone(), &id, payload).await?)
             }
+            "agent.ask" => {
+                let ask: AskParams = params(value)?;
+                reply(&shared.ask(ctx.actor.clone(), ask).await?)
+            }
             "decision.list" => reply(&shared.decisions.list()),
             "decision.answer" => {
                 let AnswerParams { id, answer, proof } = params(value)?;
-                shared.answer(ctx.actor.clone(), &id, answer, proof.as_deref())?;
+                shared.answer(ctx.actor.clone(), &id, &answer, proof.as_deref())?;
                 reply(&())
             }
             "rail.tree" => reply(&shared.tree()?),
