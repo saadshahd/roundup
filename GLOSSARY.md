@@ -239,13 +239,13 @@ What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, 
 The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
 
 **Ledger**:
-One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
+One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.
 
 **Status issue**:
 The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it every five minutes and on run events, and posts it as a comment at 08:03 UTC (L80).
 
 **Retro**:
-One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); the user merges it.
+One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); it passes independent review and the required checks.
 
 **Percy build**:
 Percy's Chromium render of every harness seed for one PR head, made by the `percy` job (L36); merge-ready needs it green on a PR touching `apps/desktop/src/` (L46). Its images are not Snapshots.
