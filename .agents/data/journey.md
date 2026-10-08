@@ -2,7 +2,7 @@
 
 User-selected goal: first Project → start Agents → understand Status → intervene → review results. The product destination is `PRINCIPLES.md` P1/P3/P6 and the accepted Room/Door slice in `docs/wireframes.md`. Complete that journey before expanding into Sketch storage, Room nesting or cross-Room dependencies.
 
-Priority: H18 U113 J1 U143 E1 B24 H2 H3 H5 H6 H7 H10 H8 H9 H14 U132 U133 U136
+Priority: J1 U83 H18 U113 U143 E1 B24 H2 H3 H5 H6 H7 H10 H8 H9 H14 U132 U133 U136
 
 `loop/runs.sh queue` ranks eligible Work rows by the first matching id above, then keeps the other rows in their existing order. Priority never overrides an `After` dependency, an open PR, a Claim or the Builder limit. An id with no eligible row consumes no slot. U143 is the first-project UI slice being developed; the other ids reuse the existing Brief, Door, Decision and visual work rather than duplicating it.
 
