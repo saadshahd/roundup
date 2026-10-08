@@ -66,6 +66,14 @@ impl RpcError {
         Self::new(code::NOT_ACCEPTED, message)
     }
 
+    pub fn not_running(message: impl Into<String>) -> Self {
+        Self::new(code::NOT_RUNNING, message)
+    }
+
+    pub fn not_acked(message: impl Into<String>) -> Self {
+        Self::new(code::NOT_ACKED, message)
+    }
+
     /// For failures that are the Daemon's fault, never the caller's.
     pub fn internal(err: impl std::fmt::Display) -> Self {
         Self::new(code::INTERNAL, err.to_string())

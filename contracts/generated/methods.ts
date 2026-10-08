@@ -80,6 +80,7 @@ export type RpcMethods = {
   "agent.spawn": { params: agent_SpawnParams; result: agent_RailNode };
   "agent.stop": { params: agent_NodeId; result: null };
   "agent.prompt": { params: agent_PromptParams; result: null };
+  "agent.interrupt": { params: agent_NodeId; result: null };
   "agent.worktreeState": { params: agent_NodeId; result: agent_WorktreeState };
   "agent.land": { params: agent_NodeId; result: agent_Landed };
   "agent.discard": { params: agent_NodeId; result: null };
