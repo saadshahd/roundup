@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { agent, event, room, MINUTE, NOW, terminal } from "../testing/nodes";
 import type { EmulatorFactory } from "../terminal/emulator";
 import styles from "./styles.css?inline";
+import appStyles from "../styles.css?inline";
 import { mountRail, rowOf, tabbableRows } from "./railFixture";
 
 afterEach(cleanup);
@@ -129,7 +130,8 @@ describe("u31 rail keyboard", () => {
 
   it("u31_the_focused_row_has_a_visible_focus_ring", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
-    sheet.textContent = styles;
+    // jsdom does not apply :focus-visible; the browser measures keyboard focus with the original selector.
+    sheet.textContent = `${styles}\n${appStyles}`.replaceAll(":focus-visible", ":focus");
 
     try {
       await mountRail([agent("a", "idle", "x"), agent("b", "idle", "x")]);
