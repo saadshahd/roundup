@@ -9,6 +9,11 @@ file. What it does comes from the environment, so one script serves every scenar
   FAKE_CLAUDE_EVENTS       comma-separated hook event names; the first recorded payload of each is played
   FAKE_CLAUDE_PROMPT       replaces the prompt of the played UserPromptSubmit
   FAKE_CLAUDE_TOOL         JSON {"name", "arguments"}: a tool to call on the `roundup` server
+  FAKE_CLAUDE_TOOLS        JSON list of {"name", "arguments"}: tools to call in order on the `roundup`
+                           server; the string "$id" in an argument is the `id` of the previous result
+  FAKE_CLAUDE_BRIEF_REPORT a file path: written with JSON {"brief": the text of the file named by
+                           `--append-system-prompt-file`, "tools": the names the server lists}, as
+                           the Brief and the real MCP list stand together
   FAKE_CLAUDE_LOOP         a count N: run a tool-use loop of N iterations, each trying the hook
                            command for PreToolUse then PostToolUse (H15, scenario control.md);
                            an event with no entry in `--settings` (a dropped one) is skipped, the
@@ -67,7 +72,7 @@ def play_loop():
             json.dump(ran, report)
 
 
-def call_tool(tool):
+def mcp_session(calls, report=None):
     config = json.load(open(flag("--mcp-config")))["mcpServers"]["roundup"]
     server = subprocess.Popen(
         [config["command"], *config["args"]],
@@ -92,14 +97,29 @@ def call_tool(tool):
         "clientInfo": {"name": "fake-claude", "version": "0"},
     })
     send({"method": "notifications/initialized"})
-    result = request(2, "tools/call", tool)
-    assert not result.get("isError"), result
+    if report:
+        names = [t["name"] for t in request(2, "tools/list", {})["tools"]]
+        brief = open(flag("--append-system-prompt-file")).read()
+        with open(report, "w") as out:
+            json.dump({"brief": brief, "tools": names}, out)
+    last = None
+    for n, tool in enumerate(calls):
+        arguments = {
+            key: last if value == "$id" else value
+            for key, value in tool.get("arguments", {}).items()
+        }
+        result = request(10 + n, "tools/call", {**tool, "arguments": arguments})
+        assert not result.get("isError"), result
+        last = json.loads(result["content"][0]["text"]).get("id")
 
 
 if "FAKE_CLAUDE_EVENTS" in os.environ:
     play_hooks()
 if "FAKE_CLAUDE_LOOP" in os.environ:
     play_loop()
-if "FAKE_CLAUDE_TOOL" in os.environ:
-    call_tool(json.loads(os.environ["FAKE_CLAUDE_TOOL"]))
+if any(k in os.environ for k in ("FAKE_CLAUDE_TOOL", "FAKE_CLAUDE_TOOLS", "FAKE_CLAUDE_BRIEF_REPORT")):
+    calls = json.loads(os.environ.get("FAKE_CLAUDE_TOOLS", "[]"))
+    if "FAKE_CLAUDE_TOOL" in os.environ:
+        calls.insert(0, json.loads(os.environ["FAKE_CLAUDE_TOOL"]))
+    mcp_session(calls, os.environ.get("FAKE_CLAUDE_BRIEF_REPORT"))
 time.sleep(3600)

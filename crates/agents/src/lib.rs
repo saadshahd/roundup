@@ -29,7 +29,7 @@ mod name;
 mod rail;
 pub mod worktree;
 
-use claude_code::{ClaudeCode, Launcher};
+use claude_code::{ClaudeCode, Launcher, Role};
 
 /// One input an adapter reads about its Agent.
 pub enum Observation {
@@ -1595,6 +1595,10 @@ impl Agents {
         resume: Option<&str>,
         attach: bool,
     ) -> Result<terminal::Spawned, RpcError> {
+        let role = match self.shared.rail().node(id)?.kind {
+            NodeKind::Room => Role::Door,
+            _ => Role::Agent,
+        };
         // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
         let (launcher, dir, node, folder, attempt, resume) = (
             self.launcher.clone(),
@@ -1605,7 +1609,7 @@ impl Agents {
             resume.map(str::to_owned),
         );
         let argv = tokio::task::spawn_blocking(move || {
-            launcher.prepare(&dir, &node, &attempt, &folder, resume.as_deref())
+            launcher.prepare(&dir, &node, &attempt, &folder, resume.as_deref(), role)
         })
         .await
         .map_err(RpcError::internal)??;

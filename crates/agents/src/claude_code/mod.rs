@@ -2,6 +2,7 @@
 //! (ADR 0006); `session`, `hook` and `transcript` are Claude Code's own words, so they must not
 //! leak out of this module into public names.
 
+mod brief;
 mod launch;
 
 use contracts::decision::Answer;
@@ -10,6 +11,7 @@ use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
 
+pub use brief::Role;
 pub use launch::{Launcher, STATE_EVENTS};
 
 /// Env vars Claude Code sets when the program running it is itself inside a Claude Code run
