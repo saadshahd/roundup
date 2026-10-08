@@ -96,6 +96,14 @@ pub struct NodeId {
     pub id: String,
 }
 
+/// A Steer: `text` sent to the running Agent `id` as its next prompt (H11).
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct PromptParams {
+    pub id: String,
+    pub text: String,
+}
+
 /// One adapter-specific Signal for an Agent; for Claude Code, a hook payload.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]

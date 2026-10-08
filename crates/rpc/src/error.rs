@@ -14,6 +14,14 @@ pub mod code {
     /// The connection closed after the request line was written but before a reply arrived: the
     /// Daemon may or may not have run the call.
     pub const UNKNOWN_OUTCOME: i64 = -32004;
+    /// The Agent is not `idle`, so a Steer would land in the middle of its turn (H11).
+    pub const BUSY: i64 = -32005;
+    /// A Steer was written and its `UserPromptSubmit` Signal never came (H11).
+    pub const NOT_ACCEPTED: i64 = -32006;
+    /// The Agent has no turn to Interrupt (H13).
+    pub const NOT_RUNNING: i64 = -32007;
+    /// An Interrupt was written and the title never changed (H13).
+    pub const NOT_ACKED: i64 = -32008;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -50,6 +58,14 @@ impl RpcError {
         Self::new(code::CONFLICT, message)
     }
 
+    pub fn busy(message: impl Into<String>) -> Self {
+        Self::new(code::BUSY, message)
+    }
+
+    pub fn not_accepted(message: impl Into<String>) -> Self {
+        Self::new(code::NOT_ACCEPTED, message)
+    }
+
     /// For failures that are the Daemon's fault, never the caller's.
     pub fn internal(err: impl std::fmt::Display) -> Self {
         Self::new(code::INTERNAL, err.to_string())
@@ -58,5 +74,28 @@ impl RpcError {
     /// The connection dropped before the reply: the call may have run.
     pub fn unknown_outcome(message: impl Into<String>) -> Self {
         Self::new(code::UNKNOWN_OUTCOME, message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn h11_the_steer_and_interrupt_codes_round_trip_through_rpc_error() {
+        let codes = [
+            (code::BUSY, -32005),
+            (code::NOT_ACCEPTED, -32006),
+            (code::NOT_RUNNING, -32007),
+            (code::NOT_ACKED, -32008),
+        ];
+        for (code, wire) in codes {
+            assert_eq!(code, wire);
+            let error = RpcError::new(code, "agent 7");
+            let json = serde_json::to_string(&error).unwrap();
+            assert_eq!(serde_json::from_str::<RpcError>(&json).unwrap(), error);
+        }
+        assert_eq!(RpcError::busy("x").code, code::BUSY);
+        assert_eq!(RpcError::not_accepted("x").code, code::NOT_ACCEPTED);
     }
 }
