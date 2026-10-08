@@ -256,6 +256,13 @@ holds 'L81 stopped names each PR it stopped' test "$(cat "$FIXTURES/out")" = 'st
 touch "$FIXTURES/gh-fail"
 check 'L81 a stopped gh failure exits 4' 4 "${run_env[@]}" loop/runs.sh stopped build/U3
 
+# L88: a reviewer finishing after another push cannot reject the new head.
+fresh
+jq '.headRefOid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$FIXTURES/view" >"$FIXTURES/new-view"
+mv "$FIXTURES/new-view" "$FIXTURES/view"
+check 'L88 a stale reviewer posts no verdict' 0 bash -c 'jq -nc --arg verdict reject --arg findings old '"'"'{verdict:$verdict,findings:$findings}'"'"' | loop/runs.sh verdict 7 "$1" reviewer' _ "$head"
+holds 'L88 a stale review starts no repair or gate run' bash -c '! grep -qE "pr comment|workflow run" "$FIXTURES/trace"'
+
 # L66 swept
 fresh; printf '[{"databaseId":81,"headSha":"%s"},{"databaseId":82,"headSha":"%s"},{"databaseId":83,"headSha":"other"}]\n' "$head" "$head" >"$FIXTURES/runs"
 echo '{"jobs":[{"name":"due","steps":[{"name":"swept","conclusion":"success"}]},{"name":"sweep","steps":[{"name":"Run pnpm install --frozen-lockfile","conclusion":"failure"},{"name":"a complete sweep record","conclusion":"failure"}]}]}' >"$FIXTURES/jobs-81"

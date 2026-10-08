@@ -1,6 +1,6 @@
 name: status
 
-# L80: rewrites the Status issue's body each hour and after each build and review run; an edit notifies no one. At
+# L80: rewrites Status every five minutes and on build/review/reconcile run events; an edit notifies no one. At
 # 08:03 UTC, or on dispatch with daily, it also counts the tokens and posts the page as one comment, which notifies the
 # user the issue is assigned to. A PR waiting on the user pings through merge-ready's assignment (L79), not here.
 on:

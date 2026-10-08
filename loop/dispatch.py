@@ -39,19 +39,20 @@ def decision(pr, checks, verdicts, kinds):
     """Choose from current evidence, without a dispatch side effect."""
     if not eligible(pr):
         return None
+    can_repair = pr['head']['ref'].startswith('build/')
     rejects = [v for v in verdicts if v['verdict'] == 'reject']
     if len(rejects) >= 2:
         return None
     if pr['draft']:
         # Explicit product questions stay with their decision maker. A cut-off is engineering work.
         body = pr.get('body') or ''
-        if 'Stopped: the run ended without marking it ready,' in body:
+        if can_repair and 'Stopped: the run ended without marking it ready,' in body:
             return 'fix', 'cutoff'
         return None
-    if pr.get('mergeable') is False and pr['head']['ref'].startswith('build/'):
+    if can_repair and pr.get('mergeable') is False:
         return 'fix', 'conflict'
     current = [v for v in verdicts if v['current']]
-    if current and current[-1]['verdict'] == 'reject':
+    if can_repair and current and current[-1]['verdict'] == 'reject':
         return 'fix', 'reject'
     relevant = [c for c in checks if c['name'] == 'check' and c.get('conclusion') != 'skipped'
                 and c['head_sha'] == pr['head']['sha'] and c.get('app', {}).get('slug') == 'github-actions']
@@ -60,7 +61,7 @@ def decision(pr, checks, verdicts, kinds):
     check = max(relevant, key=lambda c: c['id'])
     if check['status'] != 'completed':
         return None
-    if check['conclusion'] in ('failure', 'timed_out', 'cancelled') and pr['head']['ref'].startswith('build/'):
+    if check['conclusion'] in ('failure', 'timed_out', 'cancelled') and can_repair:
         return 'fix', 'check'
     if check['conclusion'] == 'success' and 'code' in kinds and not current:
         return 'review', 'review'
@@ -106,15 +107,24 @@ def claim_record(number):
     return sha, json.loads(api(f'git/commits/{sha}')['message'])
 
 
+def started(record):
+    if record.get('phase') != 'issued':
+        return False
+    jobs = api(f"actions/runs/{record['run']}/jobs?per_page=100")['jobs']
+    return any(step['name'] == 'Run anthropics/claude-code-action@v1'
+               and step['status'] in ('in_progress', 'completed') and step.get('conclusion') != 'skipped'
+               for job in jobs for step in job.get('steps', []))
+
+
 def consumed(record):
     # A Claim reserves the next attempt; preflight or setup failures spend no model attempt.
-    if record.get('phase') != 'issued':
-        return record['attempt'] - 1
-    jobs = api(f"actions/runs/{record['run']}/jobs?per_page=100")['jobs']
-    started = any(step['name'] == 'Run anthropics/claude-code-action@v1'
-                  and step['status'] in ('in_progress', 'completed') and step.get('conclusion') != 'skipped'
-                  for job in jobs for step in job.get('steps', []))
-    return record['attempt'] if started else record['attempt'] - 1
+    return record['attempt'] if started(record) else record['attempt'] - 1
+
+
+def fixes(record):
+    if not record:
+        return 0
+    return record.get('fixes', 0) + int(record['key'][0] == 'fix' and started(record))
 
 
 def available(task, record):
@@ -122,6 +132,8 @@ def available(task, record):
         return True
     owner = api(f"actions/runs/{record['run']}")
     if owner['status'] != 'completed':
+        return False
+    if task['role'] == 'fix' and fixes(record) >= 2:
         return False
     if record['key'] != key(task):
         return True
@@ -162,7 +174,7 @@ def acquire(task):
     if not available(task, record):
         return False
     attempt = consumed(record) + 1 if record and record['key'] == key(task) else 1
-    return write_claim(task['pr'], old, dict(key=key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt, phase='claimed'))
+    return write_claim(task['pr'], old, dict(key=key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt, phase='claimed', fixes=fixes(record)))
 
 
 def issued(number):
@@ -171,27 +183,6 @@ def issued(number):
         raise ValueError(f'Claim ownership changed for PR #{number}')
     if not write_claim(number, old, {**record, 'phase': 'issued'}):
         raise ValueError(f'Claim changed before starting PR #{number}')
-
-
-FIX_MARK = '<!-- fix-run -->'
-
-
-def fix_runs(number):
-    # L82: only the workflow token's comments count, so no one else spends or refunds a PR's two fix runs.
-    pages = gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}/comments?per_page=100', '--paginate', '--slurp')
-    return sum(FIX_MARK in c['body'] and c['user']['login'] == 'github-actions[bot]' for page in pages for c in page)
-
-
-def stop(task):
-    # L82: a third fix run is never started; the PR becomes a draft the user is asked about (L81).
-    number = task['pr']
-    pr = api(f'pulls/{number}')
-    lines = [l for l in (pr.get('body') or '').splitlines() if not l.startswith('Stopped:')]
-    body = '\n'.join(lines + ['', f"Stopped: two fix runs spent, then {task['cause']}"])
-    gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{number}', '--input', '-', data=json.dumps(dict(body=body)))
-    if not pr['draft']:
-        run('gh', 'pr', 'ready', str(number), '--undo')
-    run('gh', 'workflow', 'run', 'merge-ready.yml', '-f', f'pr={number}')
 
 
 def start(number, role, head):
@@ -213,14 +204,7 @@ def start(number, role, head):
                   f"Your Author-Agent id is builder-{os.environ['GITHUB_RUN_ID']}. Mark the PR a draft while editing. "
                   "Run the required checks, push without force, remove a resolved Stopped: line, and mark it ready. "
                   "If the remote head moved, stop without overwriting it. Leave a precise Stopped: question only for an unresolved product decision.")
-    if role == 'fix':
-        if fix_runs(number) >= 2:
-            stop(task)
-            return
-        issued(number)
-        api(f'issues/{number}/comments', dict(body=f"{FIX_MARK}\nFix run for {task['cause']} at {task['head'][:7]}"))
-    else:
-        issued(number)
+    issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
         for name in ('pr', 'head', 'branch'):
@@ -263,10 +247,12 @@ def activity():
     prs = gh('pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,url')
     for pr in prs:
         _, record = claim_record(pr['number'])
-        if record and record['key'][2] == pr['headRefOid'] and not available(dict(role=record['key'][0], cause=record['key'][1], head=record['key'][2], base=record['key'][3]), record):
-            owner = api(f"actions/runs/{record['run']}")
-            if owner['status'] == 'completed' and consumed(record) >= 2:
-                rows.append(f"[PR #{pr['number']}]({pr['url']}): {record['key'][0]} needs investigation after two attempts; [last run]({owner['html_url']})")
+        if not record:
+            continue
+        owner = api(f"actions/runs/{record['run']}")
+        spent_review = record['key'][0] == 'review' and record['key'][2] == pr['headRefOid'] and consumed(record) >= 2
+        if owner['status'] == 'completed' and (fixes(record) >= 2 or spent_review):
+            rows.append(f"[PR #{pr['number']}]({pr['url']}): needs investigation after two attempts; [last run]({owner['html_url']})")
     return rows
 
 

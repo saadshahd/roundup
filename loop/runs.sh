@@ -143,10 +143,12 @@ review_due() {
 # L24: posts the Reviewer's structured output (stdin: {verdict, findings}) as the trusted comment merge-ready reads,
 # then dispatches merge-ready, and on a first reject one fix run. Lines that would forge a field are dropped.
 verdict() {
-  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects body
+  local pr=$1 head=$2 reviewer=$3 out verdict findings rejects body view
   out=$(cat)
   verdict=$(jq -r '.verdict // empty' <<<"$out" 2>/dev/null) || true
   case $verdict in approve | reject) ;; *) echo "L24: the Reviewer gave no verdict: $out" >&2; exit 1 ;; esac
+  view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body,isDraft)
+  [ "$(jq -r '"\(.state) \(.headRefOid)"' <<<"$view")" = "OPEN $head" ] || { echo 'stale review: no verdict posted'; return 0; }
   findings=$(jq -r '.findings // ""' <<<"$out" | { grep -vE '^(VERDICT|Head|Reviewed-by-Agent):' || true; })
   rejects=$(loop/rules.sh verdicts "$pr" | jq -s 'map(select(.verdict == "reject")) | length') || exit 4
   printf 'VERDICT: %s\nHead: %s\n\n%s\n\nReviewed-by-Agent: %s\n' "$verdict" "$head" "$findings" "$reviewer" |

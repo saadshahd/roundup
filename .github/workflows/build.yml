@@ -2,8 +2,8 @@ name: build
 run-name: "${{ inputs.pr && format('Repair PR #{0}', inputs.pr) || 'Build ready rows' }}"
 
 # L23: one-shot Builder runs. GitHub does the waiting: a tick claims ready Work rows while up to four Builders run
-# across all ticks, and a dispatch with a PR number makes the one fix run after its first reject (loop/runs.sh verdict
-# sends it). Each run ends with its PR.
+# across all ticks. A PR dispatch checks current evidence and claims one bounded repair (L88).
+# Each row refills independently when its Builder ends.
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -84,6 +84,7 @@ jobs:
       checks: read
     outputs:
       branch: ${{ steps.due.outputs.branch }}
+      head: ${{ steps.due.outputs.head }}
       prompt: ${{ steps.due.outputs.prompt }}
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +113,7 @@ jobs:
       pull-requests: read
       id-token: write
     outputs:
-      branch: ${{ needs.repair-due.outputs.branch }}
+      branch: ${{ steps.current.outputs.ok == 'true' && needs.repair-due.outputs.branch || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,7 +123,16 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           browser: 'true'
+      - id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          HEAD: ${{ needs.repair-due.outputs.head }}
+        run: |
+          current=$(gh pr view "$PR" --json state,headRefOid --jq 'select(.state == "OPEN") | .headRefOid')
+          if [ "$current" = "$HEAD" ]; then echo 'ok=true' >>"$GITHUB_OUTPUT"; fi
       - id: claude
+        if: steps.current.outputs.ok == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           prompt: ${{ needs.repair-due.outputs.prompt }}

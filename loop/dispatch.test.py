@@ -64,6 +64,18 @@ class L88(unittest.TestCase):
             self.assertFalse(d.available(TASK, {**record, 'attempt': 2}))
             self.assertTrue(d.available({**TASK, 'head': BASE}, {**record, 'attempt': 2}))
 
+    def test_l88_two_fixes_per_pr_survive_new_heads_and_intervening_reviews(self):
+        repair = {**TASK, 'role': 'fix', 'cause': 'check'}
+        record = dict(run=9, key=d.key(repair), attempt=1, phase='issued', fixes=1)
+        with patch.object(d, 'api', return_value=dict(status='completed')), patch.object(d, 'started', return_value=True):
+            self.assertEqual(d.fixes(record), 2)
+            self.assertFalse(d.available({**repair, 'head': BASE}, record))
+            self.assertFalse(d.available({**repair, 'cause': 'conflict', 'base': HEAD}, record))
+        # A reviewer preserves the repair total, even if its own head/cause differs.
+        reviewed = {**record, 'key': d.key(TASK), 'fixes': 2}
+        with patch.object(d, 'api', return_value=dict(status='completed')), patch.object(d, 'started', return_value=True):
+            self.assertFalse(d.available(repair, reviewed))
+
     def test_l88_main_movement_does_not_reset_review_retry_budget(self):
         self.assertEqual(d.key(TASK), d.key({**TASK, 'base': HEAD}))
         task = {**TASK, 'role': 'fix', 'cause': 'conflict'}
@@ -155,28 +167,6 @@ class L88(unittest.TestCase):
     def test_l88_conflict_repair_is_limited_to_build_branches(self):
         other = {**PR, 'mergeable': False, 'head': {**PR['head'], 'ref': 'loop/x'}}
         self.assertIsNone(d.decision(other, [], [], ['code']))
-
-    def test_l82_fix_runs_are_counted_and_the_third_stops_the_pr(self):
-        fix = {**TASK, 'role': 'fix', 'cause': 'check'}
-        bot = dict(user=dict(login='github-actions[bot]'), body=d.FIX_MARK)
-        stranger = dict(user=dict(login='someone'), body=d.FIX_MARK)
-        with patch.object(d, 'gh', return_value=[[bot, stranger, bot]]):
-            self.assertEqual(d.fix_runs(1), 2)
-        for spent, comments in ((2, 0), (1, 1)):
-            with patch.object(d, 'due', return_value=fix), patch.object(d, 'acquire', return_value=True), patch.object(d, 'fix_runs', return_value=spent), patch.object(d, 'stop') as stop, patch.object(d, 'issued'), patch.object(d, 'api') as api, patch.object(d, 'run'), patch.dict(os.environ, GITHUB_RUN_ID='1', GITHUB_OUTPUT='/dev/null'):
-                d.start(1, 'fix', HEAD)
-                self.assertEqual(stop.call_count, 1 - comments)
-                self.assertEqual(api.call_count, comments)
-                if comments:
-                    self.assertIn(d.FIX_MARK, api.call_args.args[1]['body'])
-
-    def test_l82_stop_drafts_the_pr_with_a_stopped_line_and_asks_merge_ready(self):
-        pr = dict(draft=False, body='Body\nStopped: old')
-        with patch.object(d, 'api', return_value=pr), patch.object(d, 'gh') as gh, patch.object(d, 'run') as run:
-            d.stop({**TASK, 'cause': 'conflict'})
-            self.assertIn('Stopped: two fix runs spent, then conflict', json.loads(gh.call_args.kwargs['data'])['body'])
-            self.assertNotIn('old', gh.call_args.kwargs['data'])
-            self.assertEqual([c.args[:3] for c in run.call_args_list], [('gh', 'pr', 'ready'), ('gh', 'workflow', 'run')])
 
     def test_l88_missed_event_dispatches_and_empty_queue_stops(self):
         with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'available', return_value=True), patch.object(d, 'run', side_effect=['', '[]']) as run:
