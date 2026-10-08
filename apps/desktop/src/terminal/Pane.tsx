@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
+import { doorStateOf, doorStateText } from "../rail/doorState";
 import { useConnectedProject } from "../state/connectedProject";
 import { createXtermEmulators } from "./emulator";
 import type { EmulatorFactory } from "./emulator";
@@ -31,6 +32,14 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   });
 
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
+
+  /** Why the selected Room's Door is not running, so a stopped, failed or still-starting Door each read differently. */
+  const doorState = createMemo(() => {
+    const room = selected();
+
+    return room?.kind === "room" ? doorStateOf(room, rail.exitOf(room), rail.doorPending(room.id), rail.doorFailure(room.id) !== null) : null;
+  });
+
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
   /** U38: a failure that fills this region shows in its place, never beside its empty line. */
   const notice = createMemo(() => props.notice ?? storageFailure() ?? rail.doorFailure(selected()?.id ?? "") ?? screens.failure(terminalId()));
@@ -155,13 +164,25 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
       <div class="pane-body">
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
-          <p class="pane-empty">select an agent or a terminal</p>
+          <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>
+            <div class="pane-empty pane-door">
+              <p class="light">{rail.roomCreating() ? "creating Room…" : "no Room yet"}</p>
+              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} onClick={() => void rail.createRoom()}>
+                <Icon name="plus" /> start a Room
+              </button>
+            </div>
+          </Show>
         </Show>
-        <Show when={selected()?.kind === "room" && selected() !== null && rail.exitOf(selected()!) !== null}>
-          <button class="word pane-empty" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
-            <Icon name="right" />
-            {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
-          </button>
+        <Show when={doorState()}>
+          {(state) => (
+            <div class="pane-empty pane-door">
+              <p class="light">{doorStateText(state())}</p>
+              <button class="word pane-action" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
+                <Icon name="right" />
+                {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
+              </button>
+            </div>
+          )}
         </Show>
         <Show when={latest()}>
           {(id) => (
@@ -172,7 +193,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         </Show>
       </div>
       <div class="pane-failure">
-        <Show when={notice()}>{(message) => <ErrorLine message={message()} />}</Show>
+        <Show when={notice() ?? rail.roomFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
     </div>
   );

@@ -63,4 +63,21 @@
   left: 50%;
   white-space: nowrap;
   transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.pane .pane-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-5);
+}
+
+/* Over a stopped Door's last output, so the state and the way out stay readable. */
+.pane .pane-door {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--ground);
 }

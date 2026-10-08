@@ -4,8 +4,6 @@ name: build
 # across all ticks, and a dispatch with a PR number makes the one fix run after its first reject (loop/runs.sh verdict
 # sends it). Each run ends with its PR.
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: '7 * * * *'
   workflow_dispatch:
