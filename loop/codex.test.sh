@@ -63,6 +63,7 @@ class Codex(unittest.TestCase):
             fleet.tick(self.state)
         result = json.loads((self.state/'last.json').read_text())
         self.assertEqual(result['state'], 'ready')
+        self.assertTrue(any(a == ('loop/runs.sh','queue','5') for a,k in self.calls))
         self.assertEqual(result['usage'], dict(input=40, cache_read=60, output=20, turns=1))
         self.assertEqual(self.env['NEXTEST_TEST_THREADS'], '1')
         self.assertNotIn('CODEX_API_KEY', self.env)
@@ -128,23 +129,6 @@ class Codex(unittest.TestCase):
         fleet.publish(dict(self.row,started=1,deadline=2,state='running',events='/private/log'))
         payload=json.loads(self.calls[0][0][-1])
         self.assertNotIn('events',payload)
-
-class Reservation(unittest.TestCase):
-    def test_L87_workflow_reserves_exactly_one_slot_before_claim(self):
-        source=Path('.github/workflows/build.yml').read_text()
-        start=source.index('          [[ $MAX =~')
-        end=source.index('          echo "rows=',start)
-        script=source[start:end]
-        with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory); (root/'loop').mkdir()
-            fake=root/'loop/runs.sh'
-            fake.write_text('#!/bin/sh\necho "$1 $2" >>trace\nif [ "$1" = queue ]; then echo "[]"; else cat; fi\n')
-            fake.chmod(0o755)
-            for enabled,expected in [('true','queue 3'),('false','queue 4')]:
-                trace=root/'trace'
-                trace.write_text('')
-                subprocess.run(['bash','-eo','pipefail','-c',script],cwd=root,env=dict(os.environ,MAX='4',CODEX_ENABLED=enabled),check=True)
-                self.assertIn(expected,trace.read_text().splitlines())
 
 unittest.main()
 PY

@@ -1,8 +1,8 @@
 # Codex in the fleet
 
-One local Builder uses the Mac's `codex login` (ChatGPT) and the shared `.agents/builder.md`. GitHub keeps scheduling three Claude Builders while `LOOP_CODEX_ENABLED=true`; the local service owns the fourth slot. It takes ready rows through `runs.sh queue` and `claim`, then delivers PRs to the existing Claude review and CI gates. A sleeping Mac leaves the Codex slot idle.
+One local Builder uses the Mac's `codex login` (ChatGPT) and the shared `.agents/builder.md`. GitHub keeps scheduling four Claude Builders; `LOOP_CODEX_ENABLED=true` enables one additional local Codex slot. It takes ready rows through `runs.sh queue` and `claim`, then delivers PRs to the existing Claude review and CI gates. A sleeping Mac leaves the Codex slot idle.
 
-The controller is a dedicated clean clone, separate from interactive worktrees. Invoke `python3 loop/codex.py <private-state-directory>` there every five minutes with a user LaunchAgent, `RunAtLoad=true`, and an explicit PATH containing `codex`, `gh`, GNU `gtimeout`, git, jq, Python, pnpm, Rust and just. Install dependencies before enabling it; the service never installs account credentials. `codex login status` must report ChatGPT and `gh` must have repository write and Actions-variable access. Set `LOOP_CODEX_ENABLED=true` only after the slot reservation is on main. Keep one installation per repository.
+The controller is a dedicated clean clone, separate from interactive worktrees. Invoke `python3 loop/codex.py <private-state-directory>` there every five minutes with a user LaunchAgent, `RunAtLoad=true`, and an explicit PATH containing `codex`, `gh`, GNU `gtimeout`, git, jq, Python, pnpm, Rust and just. Install dependencies before enabling it; the service never installs account credentials. `codex login status` must report ChatGPT and `gh` must have repository write and Actions-variable access. Set `LOOP_CODEX_ENABLED=true` only after L87 is on main. Keep one installation per repository.
 
 Rust tests run serially (`NEXTEST_TEST_THREADS=1`) because the existing local A22/A23 resume observers race under concurrent tests; no assertions are skipped.
 
@@ -10,4 +10,4 @@ Each tick refreshes the controller from main, waits for that exact main's green 
 
 `last.json`, each Attempt's `record.json`, `result.md` and `events.jsonl` are the local evidence. `LOOP_CODEX_STATUS` gives the Status issue the last row, timestamp, result and token counts. These counts are separate from GitHub's Claude Ledger; neither is a measurement of subscription quota remaining. Raw local transcripts are not uploaded.
 
-To stop: disable the LaunchAgent, let its running Attempt finish (or terminate its recorded timeout process group), and then set `LOOP_CODEX_ENABLED=false` to restore the fourth Claude slot. Never restore that slot while Codex is still running. If the controller exits during an Attempt, the next tick waits for its recorded process to end and recovers the Claim before taking another row.
+To stop: set `LOOP_CODEX_ENABLED=false` and let the running Attempt finish, then disable the LaunchAgent. Claude’s four slots continue independently. If the controller exits during an Attempt, the next tick waits for its recorded process to end and recovers the Claim before taking another row.

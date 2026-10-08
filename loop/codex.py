@@ -103,7 +103,7 @@ def tick(state):
     auth = subprocess.run(['codex', 'login', 'status'], text=True, capture_output=True, timeout=30, check=True)
     if 'Logged in using ChatGPT' not in auth.stdout + auth.stderr:
         raise RuntimeError('Codex fleet requires ChatGPT login; run codex login locally')
-    rows = json.loads(command('loop/runs.sh', 'queue', '4', timeout=300))
+    rows = json.loads(command('loop/runs.sh', 'queue', '5', timeout=300))
     failures = [json.loads(path.read_text()) for path in state.glob('*/record.json')]
     rows = [row for row in rows if sum(1 for run in failures if run['base'] == base
             and run['slug'] == row['slug'] and run['state'] == 'failed') < 2][:1]

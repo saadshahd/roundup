@@ -46,11 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MAX: ${{ inputs.max || '4' }}
-          CODEX_ENABLED: ${{ vars.LOOP_CODEX_ENABLED }}
         run: |
-          # The local Codex service owns one slot; reserving it before queueing avoids cross-host races.
-          [[ $MAX =~ ^[0-9]+$ ]] || exit 2
-          if [ "$CODEX_ENABLED" = true ]; then MAX=$((MAX > 0 ? MAX - 1 : 0)); fi
           rows=$(loop/runs.sh queue "$MAX" | loop/runs.sh claim)
           echo "rows=$rows" >>"$GITHUB_OUTPUT"
 
