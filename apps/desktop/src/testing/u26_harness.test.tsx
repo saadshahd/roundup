@@ -23,7 +23,7 @@ afterEach(cleanup);
 
 describe("u26 the harness seeds", () => {
   it("u26_the_seeds_include_the_first_room_screens_the_recipe_documents", () => {
-    expect(SEEDS).toEqual(["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped"]);
+    expect(SEEDS).toEqual(["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped", "earlier-run"]);
   });
 
   it("u26_first_run_shows_the_empty_rail_text", async () => {
@@ -47,6 +47,14 @@ describe("u26 the harness seeds", () => {
 
     expect(await screen.findByText("Door stopped, exited 0")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "start Door" }).length).toBeGreaterThan(0);
+  });
+
+  it("u83_the_earlier_run_seed_reads_the_line_for_its_selected_agent", async () => {
+    const { app } = mount("earlier-run");
+    fireEvent.click(await screen.findByText("earlier agent"));
+
+    expect(await screen.findByText("no output kept from an earlier run")).toBeTruthy();
+    expect(app.calls.filter((call) => call.method === "terminal.write" || call.method === "terminal.resize")).toEqual([]);
   });
 
   it("u26_agents_10_shows_its_first_and_last_agent_in_the_rail", async () => {
