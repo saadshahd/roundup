@@ -152,7 +152,7 @@ jobs:
             --max-turns 100
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: saadshahd/roundup/.github/actions/ledger@main
         with:
           role: builder
           subject: ${{ inputs.pr }}
