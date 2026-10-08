@@ -201,6 +201,9 @@ The append-only log of Touches.
 **Daemon**:
 `rupd`, the local process everything else is a client of.
 
+**Proof**:
+The random secret the App gives its attached Daemon on stdin and the webview reads through `daemon_proof`; `decision.answer` needs it, so only the user can answer a Decision (H4, H18).
+
 **Extension**:
 A directory with a manifest and one module.
 

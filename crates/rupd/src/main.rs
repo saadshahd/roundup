@@ -12,7 +12,14 @@ async fn main() -> io::Result<()> {
     let project = args
         .first()
         .map_or_else(std::env::current_dir, |dir| Ok(PathBuf::from(dir)))?;
-    let daemon = rupd::Daemon::open(&project.join(".roundup")).map_err(io::Error::other)?;
+    // An attached Daemon's first stdin line is the App's proof (H18); the rest of stdin is its lifetime.
+    let proof = if attached {
+        Some(attached_proof().await)
+    } else {
+        None
+    };
+    let daemon = rupd::Daemon::open_with_proof(&project.join(".roundup"), proof)
+        .map_err(io::Error::other)?;
 
     let path = rpc::socket_path()?;
     if let Some(dir) = path.parent() {
@@ -40,4 +47,18 @@ async fn main() -> io::Result<()> {
     let _ = writeln!(io::stderr(), "rupd: stopping");
     let stopped = daemon.stop_terminals().await.map_err(io::Error::other);
     ended.and(stopped)
+}
+
+/// Never returns a bad handshake: the diagnostic names the fault, never the bytes, and the process
+/// exits at once because a blocked stdin read cannot be cancelled.
+async fn attached_proof() -> String {
+    let read = tokio::task::spawn_blocking(|| rupd::read_handshake(&mut io::stdin().lock()));
+    let failure = match tokio::time::timeout(rupd::HANDSHAKE_BOUND, read).await {
+        Ok(Ok(Ok(handshake))) => return handshake.into_proof(),
+        Ok(Ok(Err(err))) => err.to_string(),
+        Ok(Err(err)) => err.to_string(),
+        Err(_) => format!("no handshake within {:?}", rupd::HANDSHAKE_BOUND),
+    };
+    let _ = writeln!(io::stderr(), "rupd: refusing to start: {failure}");
+    std::process::exit(1)
 }
