@@ -251,22 +251,23 @@ impl Store {
         Ok(changed == 1)
     }
 
-    /// The oldest `pending` Message to `to`, by the order it became deliverable (B7): its `rank`,
-    /// ties by id.
-    pub(crate) fn next_pending(
+    /// The `pending` Messages to `to` bound before `before`, in the order they became deliverable
+    /// (B7): their `rank`, ties by id.
+    pub(crate) fn pending_queue(
         &self,
         to: &str,
         before: Binding,
-    ) -> Result<Option<Message>, RpcError> {
+    ) -> Result<Vec<Message>, RpcError> {
         self.db
-            .query_row(
+            .prepare(
                 "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at
                  FROM messages WHERE to_id = ?1 AND status = 'pending' AND receiver_attempt = ?2 AND receiver_revision < ?3
-                 ORDER BY rank ASC, id ASC LIMIT 1",
-                params![to, before.0, before.1],
-                row_to_message,
+                 ORDER BY rank ASC, id ASC",
             )
-            .optional()
+            .and_then(|mut stmt| {
+                stmt.query_map(params![to, before.0, before.1], row_to_message)?
+                    .collect()
+            })
             .map_err(RpcError::internal)
     }
 
@@ -343,11 +344,15 @@ impl Store {
         self.active_takeovers.contains_key(agent)
     }
 
-    /// Begins a Takeover of `agent`: every Message to it that is `pending` and not from the user
-    /// becomes `held` with the reason `takeover`, in id order (B6). `None` when a Takeover was
+    /// Begins a Takeover of `agent`: every Message to it that is `pending` and that `hold` (the
+    /// pure `step`) names becomes `held` with the reason `takeover`, in id order (B6). `None` when a Takeover was
     /// already active (a repeated `begin` changes nothing); `Some` with the newly held Messages
     /// otherwise, even when that list is empty.
-    pub(crate) fn begin_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
+    pub(crate) fn begin_takeover(
+        &mut self,
+        agent: &str,
+        hold: fn(&[Message]) -> Vec<u32>,
+    ) -> Result<Option<Vec<Message>>, RpcError> {
         let binding = self
             .generation(agent)?
             .map_or((0, 0), |state| (state.attempt, state.revision));
@@ -359,8 +364,10 @@ impl Store {
             return Ok(None);
         }
         let mut held = Vec::new();
-        for message in self.list_pending_to(agent)? {
-            if message.from.kind == ActorKind::User {
+        let pending = self.list_pending_to(agent)?;
+        let to_hold = hold(&pending);
+        for message in pending {
+            if !to_hold.contains(&message.id) {
                 continue;
             }
             let changed = self
@@ -379,14 +386,20 @@ impl Store {
     }
 
     /// Ends a Takeover of `agent`: every Message held for the reason `takeover` becomes `pending`
-    /// in id order (B6). `None` when no Takeover was active (a repeated `end` changes nothing);
+    /// in the order `order` (the pure `step`) gives (B6). `None` when no Takeover was active (a repeated `end` changes nothing);
     /// `Some` with the newly pending Messages otherwise, even when that list is empty.
-    pub(crate) fn end_takeover(&mut self, agent: &str) -> Result<Option<Vec<Message>>, RpcError> {
+    pub(crate) fn end_takeover(
+        &mut self,
+        agent: &str,
+        order: fn(&[Message]) -> Vec<u32>,
+    ) -> Result<Option<Vec<Message>>, RpcError> {
         if self.active_takeovers.remove(agent).is_none() {
             return Ok(None);
         }
         let mut pending = Vec::new();
-        for message in self.list_takeover_held_to(agent)? {
+        let held = self.list_takeover_held_to(agent)?;
+        for id in order(&held) {
+            let message = held.iter().find(|m| m.id == id).expect("named by `order`");
             let changed = self
                 .db
                 .execute(
@@ -403,20 +416,29 @@ impl Store {
         Ok(Some(pending))
     }
 
-    /// Drops every `pending` Message to `to` with `reason`, in id order (B9).
+    /// Drops every `pending` or takeover-held Message to `to` that `gone` (the pure `step`) names,
+    /// with `reason`, in id order (B9).
     pub(crate) fn drop_all_pending(
         &mut self,
         to: &str,
         reason: Reason,
         through: Binding,
+        gone: fn(&[Message]) -> Vec<u32>,
     ) -> Result<Vec<Message>, RpcError> {
         let mut dropped = Vec::new();
+        let mut open = Vec::new();
         for message in self
             .list_pending_to(to)?
             .into_iter()
             .chain(self.list_takeover_held_to(to)?)
         {
-            if self.bound(message.id)? > through {
+            if self.bound(message.id)? <= through {
+                open.push(message);
+            }
+        }
+        let to_drop = gone(&open);
+        for message in open {
+            if !to_drop.contains(&message.id) {
                 continue;
             }
             let changed = self
@@ -672,10 +694,7 @@ mod tests {
         let store = open(dir.path());
         let new = put(&store, MessageStatus::Pending, None);
 
-        assert_eq!(
-            store.next_pending("b", (0, i64::MAX)).unwrap().unwrap().id,
-            1
-        );
+        assert_eq!(store.pending_queue("b", (0, i64::MAX)).unwrap()[0].id, 1);
         assert_eq!(new, 2);
     }
 
@@ -684,12 +703,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut store = open(dir.path());
         let id = put(&store, MessageStatus::Pending, None);
-        assert_eq!(
-            store.next_pending("b", (1, i64::MAX)).unwrap().unwrap().id,
-            id
-        );
+        assert_eq!(store.pending_queue("b", (1, i64::MAX)).unwrap()[0].id, id);
 
-        store.begin_takeover("b").unwrap();
+        store
+            .begin_takeover("b", |pending| pending.iter().map(|m| m.id).collect())
+            .unwrap();
 
         assert!(store.mark_delivered(id).unwrap().is_none());
         let message = store.get(id).unwrap().unwrap();

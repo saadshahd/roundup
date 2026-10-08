@@ -2,6 +2,7 @@
 //! Builder. Stores Messages and Routes, answers the user's and an Actor's calls, and on an `idle`
 //! hands one Message to `Deliver` (slice 3 maps that to H11's `Agents::prompt`).
 
+mod step;
 mod store;
 
 use std::future::Future;
@@ -19,6 +20,7 @@ use contracts::message::{
 use contracts::{Actor, ActorKind, EventData, Kind, Verb};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
+use step::{Effect, Event, State, step};
 use store::Store;
 use tokio::sync::broadcast::error::RecvError;
 
@@ -144,15 +146,11 @@ impl Messages {
                     .unwrap_or(Delivery::Auto);
                 // B6: under a Takeover, an auto Message from any Actor but the user is held for
                 // it; the user's own Messages are delivered as B2 says, Takeover or not.
-                let held_for_takeover = ctx.actor.kind != ActorKind::User
-                    && route == Delivery::Auto
-                    && store.is_takeover_active(&p.to);
-                match route {
-                    _ if held_for_takeover => (MessageStatus::Held, Some(Reason::Takeover)),
-                    Delivery::Auto => (MessageStatus::Pending, None),
-                    Delivery::AskFirst => (MessageStatus::Held, Some(Reason::AskFirst)),
-                    Delivery::Drop => (MessageStatus::Dropped, None),
-                }
+                send_status(
+                    ctx.actor.kind == ActorKind::User,
+                    route,
+                    store.is_takeover_active(&p.to),
+                )
             };
             store.insert(
                 &ctx.actor,
@@ -211,7 +209,9 @@ impl Messages {
             if let Some(node) = &receiver {
                 accept_receiver(&self.inner, &mut store, node)?;
             }
-            if !store.release_held(p.id, MessageStatus::Pending, None)? {
+            if !user_call_moves(&message, Event::UserDeliver(p.id))
+                || !store.release_held(p.id, MessageStatus::Pending, None)?
+            {
                 return Err(RpcError::conflict("Message is not held"));
             }
             if let Some(node) = &receiver {
@@ -224,6 +224,10 @@ impl Messages {
 
     fn drop_message(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "drop a held Message")?;
+        let message = self.get_or_not_found(p.id)?;
+        if !user_call_moves(&message, Event::UserDrop(p.id)) {
+            return Err(RpcError::conflict(format!("message {} is not held", p.id)));
+        }
         self.release_held(p.id, MessageStatus::Dropped, None)?;
         ctx.touch(Verb::Wrote, &item(p.id))?;
         let dropped = self.get_or_not_found(p.id)?;
@@ -271,7 +275,7 @@ impl Messages {
         let held = {
             let mut store = self.store()?;
             accept_receiver(&self.inner, &mut store, &node)?;
-            store.begin_takeover(&agent)?
+            store.begin_takeover(&agent, hold_for_takeover)?
         };
         if let Some(held) = held {
             for message in &held {
@@ -297,7 +301,7 @@ impl Messages {
         let promoted = {
             let mut store = self.store()?;
             accept_receiver(&self.inner, &mut store, &node)?;
-            store.end_takeover(&agent)?
+            store.end_takeover(&agent, release_order)?
         };
         if promoted.is_some() {
             ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
@@ -597,7 +601,8 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
         if store.require_generation(agent, at).is_err() {
             return;
         }
-        store.next_pending(agent, at).expect("message store")
+        let pending = store.pending_queue(agent, at).expect("message store");
+        idle_pick(&pending).and_then(|id| pending.into_iter().find(|m| m.id == id))
     };
     let Some(found) = found else {
         return;
@@ -700,7 +705,7 @@ fn reconcile(
         if store
             .takeover_bound(agent)
             .is_some_and(|bound| bound <= through)
-            && store.end_takeover(agent)?.is_some()
+            && store.end_takeover(agent, release_order)?.is_some()
         {
             inner.bus.emit(
                 Actor::daemon(),
@@ -710,7 +715,7 @@ fn reconcile(
                 }),
             );
         }
-        for message in store.drop_all_pending(agent, Reason::ReceiverGone, through)? {
+        for message in store.drop_all_pending(agent, Reason::ReceiverGone, through, gone_drops)? {
             inner
                 .bus
                 .emit(Actor::daemon(), EventData::MessageDropped(message));
@@ -736,6 +741,93 @@ fn reconcile(
     store.set_generation(agent, state)
 }
 
+/// The `State` of one receiver as the store holds it: `pending` Messages in delivery order, the
+/// `held` ones by Reason. `escalated` holds are not in `step` yet (B13 to B17).
+fn view(pending: &[Message], held: &[Message], takeover: bool) -> State {
+    let ids = |messages: &[Message], reason: Option<Reason>| -> Vec<u32> {
+        messages
+            .iter()
+            .filter(|m| reason.is_none() || m.reason == reason)
+            .map(|m| m.id)
+            .collect()
+    };
+    State {
+        queue: ids(pending, None),
+        held_ask_first: ids(held, Some(Reason::AskFirst)),
+        held_takeover: ids(held, Some(Reason::Takeover)),
+        users: pending
+            .iter()
+            .chain(held)
+            .filter(|m| m.from.kind == ActorKind::User)
+            .map(|m| m.id)
+            .collect(),
+        takeover,
+        ..State::default()
+    }
+}
+
+/// B2, B3, B4, B6: where `step` puts a new Message from `from_user` over `route`, with a Takeover
+/// active or not.
+fn send_status(
+    from_user: bool,
+    route: Delivery,
+    takeover: bool,
+) -> (MessageStatus, Option<Reason>) {
+    let state = State {
+        takeover,
+        ..State::default()
+    };
+    let (after, _) = step(&state, Event::Send { from_user, route });
+    if after.dropped.contains(&1) {
+        (MessageStatus::Dropped, None)
+    } else if after.held_takeover.contains(&1) {
+        (MessageStatus::Held, Some(Reason::Takeover))
+    } else if after.held_ask_first.contains(&1) {
+        (MessageStatus::Held, Some(Reason::AskFirst))
+    } else {
+        (MessageStatus::Pending, None)
+    }
+}
+
+/// B6: the ids `step` holds when a Takeover begins over these `pending` Messages.
+fn hold_for_takeover(pending: &[Message]) -> Vec<u32> {
+    step(&view(pending, &[], false), Event::TakeoverBegin)
+        .0
+        .held_takeover
+}
+
+/// B6: the ids `step` makes `pending` when a Takeover ends, in the order they wait.
+fn release_order(held: &[Message]) -> Vec<u32> {
+    step(&view(&[], held, true), Event::TakeoverEnd).0.queue
+}
+
+/// B9: the ids `step` drops when the receiver is gone.
+fn gone_drops(open: &[Message]) -> Vec<u32> {
+    let (pending, held): (Vec<Message>, Vec<Message>) = open
+        .iter()
+        .cloned()
+        .partition(|m| m.status == MessageStatus::Pending);
+    step(&view(&pending, &held, false), Event::Exit).0.dropped
+}
+
+/// B2, B7: the one Message `step` types at an `idle`, from these `pending` Messages.
+fn idle_pick(pending: &[Message]) -> Option<u32> {
+    let (_, effects) = step(&view(pending, &[], false), Event::Idle);
+    effects.first().map(|Effect::Type(id)| *id)
+}
+
+/// B3, B6: whether the user's `deliver` or `drop` of the `held` `message` takes effect. A Message
+/// held for a reason `step` does not know yet is left to the store's own check.
+fn user_call_moves(message: &Message, call: Event) -> bool {
+    if !matches!(message.reason, Some(Reason::AskFirst | Reason::Takeover)) {
+        return true;
+    }
+    let before = view(&[], std::slice::from_ref(message), false);
+    let (after, _) = step(&before, call);
+    after.held_ask_first.len() + after.held_takeover.len()
+        < before.held_ask_first.len() + before.held_takeover.len()
+}
+
 /// B2's `<kind>`: `note` or `question` as on the wire, never Rust's `Debug` spelling.
 fn kind_label(kind: MessageKind) -> &'static str {
     match kind {
@@ -758,6 +850,7 @@ mod tests {
     use super::*;
 
     mod b_held_tests;
+    mod inv_tests;
 
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,
     /// without a real Agent, Terminal or Launcher.
