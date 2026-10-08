@@ -102,14 +102,11 @@ jobs:
             --allowedTools Bash,Read,Glob,Grep,Skill
             --json-schema '{"type":"object","properties":{"verdict":{"enum":["approve","reject"]},"findings":{"type":"string"}},"required":["verdict","findings"]}'
       - if: always()
-        uses: saadshahd/roundup/.github/actions/ledger@main
+        uses: ./.github/actions/ledger
         with:
           role: reviewer
           subject: ${{ needs.due.outputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
-          redact-token: ${{ steps.claude.outputs.github_token }}
-          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          redact-percy: ${{ secrets.PERCY_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   post:

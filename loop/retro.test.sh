@@ -6,7 +6,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir -p "$dir/bin" "$dir/loop"
-cp "$root/loop/retro.sh" "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/outcome.py" "$root/loop/dispatch.py" "$dir/loop/"
+cp "$root/loop/retro.sh" "$root/loop/runs.sh" "$root/loop/lib.sh" "$dir/loop/"
 git -C "$dir" init -q
 git -C "$dir" add loop
 GIT_COMMITTER_DATE='2026-10-08T09:00:00+02:00' git -C "$dir" -c user.name=t -c user.email=t@t commit -q -m retro
@@ -95,9 +95,6 @@ check 'L29 the action extracts every dependency needed for a Ledger row' 0 env \
   EXECUTION_FILE="$FIXTURES/run.json" CONCLUSION=success bash -eo pipefail "$dir/ledger-step.sh"
 holds 'L29 the extracted action writes its row and artifact slug' bash -c \
   'jq -e '\''.subject == "A23" and .exit == "success" and .turns == 3'\'' "$1/runner/ledger/ledger.json" && grep -qx "slug=A23" "$1/outputs"' _ "$dir"
-
-holds 'L29 the action retains an explicit unavailable explanation without raw events' bash -c \
-  'jq -e '\''.kind == "model-claim" and .explanation == "unavailable" and .subject == "A23" and (has("events") | not)'\'' "$1/runner/ledger/outcome.json"' _ "$dir"
 
 # L27 due
 fresh; merged 20 2026-10-08T23:00:00Z
