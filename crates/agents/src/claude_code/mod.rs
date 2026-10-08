@@ -155,6 +155,16 @@ impl ClaudeCode {
         }
     }
 
+    /// H12: the first prompt was not accepted. Not final: a Signal that arrives later (the user
+    /// submitting the text left in the input line) moves the Status on as usual.
+    pub fn refuse_prompt(&mut self) -> Option<Status> {
+        if self.ending != Ending::Running {
+            return None;
+        }
+        self.star_held_since = None;
+        self.settle(Kind::Error, "prompt not accepted".into())
+    }
+
     /// A21: roundup itself could not save the Agent's conversation. Final: no later Observation
     /// changes the Status again, the Exit that follows the Terminal being stopped included.
     pub fn fail(&mut self, label: String) -> Option<Status> {
@@ -211,6 +221,23 @@ pub fn event_name(payload: &Value) -> &str {
 pub fn submitted_prompt(payload: &Value) -> Option<&str> {
     (payload["hook_event_name"] == "UserPromptSubmit")
         .then(|| payload["prompt"].as_str().unwrap_or_default())
+}
+
+/// Whether `payload` is the `SessionStart` Signal, which readies a fresh Agent for its first
+/// prompt (H12).
+pub fn is_session_start(payload: &Value) -> bool {
+    payload["hook_event_name"] == "SessionStart"
+}
+
+/// The bytes of a Steer (H11): `text` as one bracketed paste, then `\r`, for one write. A paste
+/// followed by a pause submitted 8 of 8 times in the spike and a bare `text\r` failed once, so
+/// the paste markers stay. `text` loses its `ESC` bytes, so it cannot close the paste early and
+/// type what follows as keys.
+pub fn steer_bytes(text: &str) -> Vec<u8> {
+    let mut bytes = b"\x1b[200~".to_vec();
+    bytes.extend(text.bytes().filter(|byte| *byte != 0x1b));
+    bytes.extend_from_slice(b"\x1b[201~\r");
+    bytes
 }
 
 /// A21: the conversation a `SessionStart` payload names, accepted only as a UUID; `None` for any

@@ -62,6 +62,7 @@ pub const METHODS: &[Method] = &[
     m("pad.setStorage", "pad_SetStorageParams", "null"),
     m("agent.spawn", "agent_SpawnParams", "agent_RailNode"),
     m("agent.stop", "agent_NodeId", "null"),
+    m("agent.prompt", "agent_PromptParams", "null"),
     m("agent.signal", "agent_SignalParams", "null"),
     m(
         "agent.permission",

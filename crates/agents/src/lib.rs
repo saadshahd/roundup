@@ -3,18 +3,18 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
-    SpawnParams, SpawnTerminalParams, StatusEvent,
+    CreateRoomParams, MoveParams, NodeId, NodeKind, PromptParams, RailNode, RenameParams,
+    SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent,
 };
 use contracts::decision::{AnswerParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
-use contracts::{Actor, EventData, Kind, Status};
+use contracts::{Actor, ActorKind, EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use terminal::Terminals;
@@ -92,6 +92,10 @@ struct Shared {
     opened: i64,
     /// H2 to H7: the open permission Decisions, in memory only.
     decisions: decision::Decisions,
+    /// Itself, so a Signal's fold can start H12's first Steer on a task of its own.
+    me: Weak<Shared>,
+    /// H11: how long a Steer waits for its `UserPromptSubmit` Signal.
+    steer_bound: Duration,
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -163,11 +167,157 @@ async fn wait_for_exit(events: &mut Receiver<EventData>) {
 
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
-/// What `Shared::apply` leaves to do once its locks are let go: the Terminal id and prompt to
-/// type at the first idle, and when, on `clock`, the adapter wants its next `Observation::Tick`.
-type Applied = (Option<(String, String)>, Option<i64>);
+/// What `Shared::apply` leaves to do once its locks are let go: the first prompt to Steer at the
+/// first `SessionStart` (H12), and when, on `clock`, the adapter wants its next
+/// `Observation::Tick`.
+type Applied = (Option<String>, Option<i64>);
+
+/// H11: how long a Steer waits for its `UserPromptSubmit` Signal before `NOT_ACCEPTED`.
+pub const STEER_BOUND: Duration = Duration::from_secs(10);
+
+/// Why a Steer (`Agents::prompt`) did not land (H11).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PromptError {
+    /// The Agent is not `idle`, or its last Steer is still waiting to be submitted.
+    Busy { id: String, kind: Kind },
+    /// The text was written (or could not be) and no `UserPromptSubmit` Signal followed; the
+    /// Terminal's input line keeps it and nothing is sent again.
+    NotAccepted { id: String },
+    /// No Agent `id` is running.
+    NotFound { id: String },
+}
+
+impl std::fmt::Display for PromptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Busy { id, kind } => write!(f, "agent {id} is {kind:?}, not idle"),
+            Self::NotAccepted { id } => write!(f, "agent {id} did not accept the prompt"),
+            Self::NotFound { id } => write!(f, "agent {id} is not running"),
+        }
+    }
+}
+
+impl std::error::Error for PromptError {}
+
+impl From<PromptError> for RpcError {
+    fn from(error: PromptError) -> Self {
+        let message = error.to_string();
+        match error {
+            PromptError::Busy { .. } => Self::busy(message),
+            PromptError::NotAccepted { .. } => Self::not_accepted(message),
+            PromptError::NotFound { .. } => Self::not_found(message),
+        }
+    }
+}
 
 impl Shared {
+    /// H12: Steer the first prompt of `id`'s `attempt` on a task of its own, since `agent.spawn`
+    /// has returned by now. A Steer that fails settles the Status to `error`, never silently.
+    fn steer_first_prompt(&self, id: &str, attempt: &str, prompt: String) {
+        let Some(shared) = self.me.upgrade() else {
+            return;
+        };
+        let (id, attempt) = (id.to_owned(), attempt.to_owned());
+        tokio::spawn(async move {
+            if let Err(err) = shared.prompt(&id, &prompt).await {
+                eprintln!("agents: the first prompt of {id} failed: {err}");
+                shared.refuse_prompt(&id, &attempt);
+            }
+        });
+    }
+
+    /// H12: settle `id` to `error` with the label `prompt not accepted`, if `attempt` is still
+    /// its current Attempt.
+    fn refuse_prompt(&self, id: &str, attempt: &str) {
+        let mut runs = self.runs();
+        let Some(Slot::Running(run)) = runs.get_mut(id) else {
+            return;
+        };
+        if run.attempt != attempt {
+            return;
+        }
+        if let Some(status) = run.adapter.refuse_prompt() {
+            run.status_revision = run
+                .status_revision
+                .checked_add(1)
+                .expect("Status revision exhausted");
+            self.bus.emit(
+                Actor::daemon(),
+                EventData::AgentStatus(StatusEvent {
+                    id: id.to_owned(),
+                    attempt: run.attempt.clone(),
+                    status_revision: run.status_revision.to_string(),
+                    status,
+                }),
+            );
+        }
+    }
+
+    /// H11, H16: the one place a prompt is written to a Terminal. `text` goes out once, as one
+    /// bracketed paste and `\r`, when `id` is `idle`; this returns when its `UserPromptSubmit`
+    /// Signal arrives. Nothing is written again on any failure.
+    async fn prompt(&self, id: &str, text: &str) -> Result<(), PromptError> {
+        let not_found = || PromptError::NotFound { id: id.to_owned() };
+        let (terminal_id, submitted) = {
+            let mut runs = self.runs();
+            let Some(Slot::Running(run)) = runs.get_mut(id) else {
+                return Err(match runs.get(id) {
+                    Some(Slot::Starting { .. } | Slot::Resuming { .. }) => PromptError::Busy {
+                        id: id.to_owned(),
+                        kind: Kind::Working,
+                    },
+                    _ => not_found(),
+                });
+            };
+            if run.ended || run.closing {
+                return Err(not_found());
+            }
+            let kind = run
+                .adapter
+                .status()
+                .map_or(Kind::Working, |status| status.kind);
+            if kind != Kind::Idle || run.steer.as_ref().is_some_and(|steer| !steer.is_closed()) {
+                return Err(PromptError::Busy {
+                    id: id.to_owned(),
+                    kind,
+                });
+            }
+            let (steer, submitted) = oneshot::channel();
+            run.steer = Some(steer);
+            (run.terminal_id.clone(), submitted)
+        };
+        let written = self
+            .terminals
+            .write(&terminal_id, &claude_code::steer_bytes(text))
+            .await;
+        let lost = match written {
+            Err(err) if err.code == code::NOT_FOUND => return Err(not_found()),
+            Err(err) => {
+                eprintln!("agents: could not write the prompt to terminal {terminal_id}: {err}");
+                true
+            }
+            Ok(()) => tokio::time::timeout(self.steer_bound, submitted)
+                .await
+                .map_or(true, |signalled| signalled.is_err()),
+        };
+        if !lost {
+            return Ok(());
+        }
+        let mut runs = self.runs();
+        let ended = match runs.get_mut(id) {
+            Some(Slot::Running(run)) => {
+                run.steer = None;
+                run.ended || run.closing
+            }
+            _ => true,
+        };
+        Err(if ended {
+            not_found()
+        } else {
+            PromptError::NotAccepted { id: id.to_owned() }
+        })
+    }
+
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
         self.rail.lock().expect("rail lock")
     }
@@ -254,7 +404,7 @@ impl Shared {
     }
 
     /// Fold `observation` into Agent `id`'s Status. A change is announced as `agent.status`, and
-    /// the first idle types the prompt the Agent was spawned with. Returns when, on `clock`, the
+    /// the first `SessionStart` Steers the prompt the Agent was spawned with. Returns when, on `clock`, the
     /// adapter wants its next `Observation::Tick`.
     fn observe(
         &self,
@@ -356,12 +506,8 @@ impl Shared {
                 }
             }
         };
-        if let Some((terminal_id, prompt)) = prompt {
-            tokio::spawn(type_prompt(
-                Arc::clone(&self.terminals),
-                terminal_id,
-                prompt,
-            ));
+        if let Some(prompt) = prompt {
+            self.steer_first_prompt(id, attempt, prompt);
         }
         Ok(tick_at)
     }
@@ -397,6 +543,18 @@ impl Shared {
             }
             _ => {}
         }
+        let session_start = matches!(&observation, Observation::Signal(payload)
+            if claude_code::is_session_start(payload));
+        // H11: the Steer's wait ends with the Signal that names it, or with the Agent.
+        if matches!(&observation, Observation::Signal(payload)
+            if claude_code::submitted_prompt(payload).is_some())
+        {
+            if let Some(steer) = run.steer.take() {
+                let _ = steer.send(());
+            }
+        } else if matches!(observation, Observation::Exit { .. } | Observation::Stopped) {
+            run.steer = None;
+        }
         let changed = run.adapter.observe(observation);
         if exited {
             run.ended = true;
@@ -404,9 +562,6 @@ impl Shared {
                 rail.detach_terminal(id)?;
             }
         }
-        let idle = changed
-            .as_ref()
-            .is_some_and(|status| status.kind == Kind::Idle);
         // Announced while `runs` is held, so announcements leave in the order the Status
         // changed; `emit` never blocks.
         if let Some(status) = changed {
@@ -430,11 +585,8 @@ impl Shared {
             rail.rename(id, &name)?;
             self.bus.emit(actor.clone(), EventData::RailChanged);
         }
-        let prompt = run.prompt.take_if(|_| idle);
-        Ok((
-            prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
-            run.adapter.tick_at(),
-        ))
+        let prompt = run.prompt.take_if(|_| session_start);
+        Ok((prompt, run.adapter.tick_at()))
     }
 
     /// Swap `id` from `Starting` to `Running` (the Run `build` makes, told whether a
@@ -442,14 +594,14 @@ impl Shared {
     /// order, all under one `rail`-then-`runs` lock section: a Signal that arrives once the
     /// Agent is registered can never be applied ahead of one still held for it (A14), and
     /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
-    /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
-    /// that left the Agent idle, to type once the locks are let go.
+    /// id that was spawned). Returns the first prompt, if an applied `SessionStart` released it,
+    /// to Steer once the locks are let go.
     fn finish_starting(
         &self,
         id: &str,
         attempt: &str,
         build: impl FnOnce(bool) -> Run,
-    ) -> Result<Vec<(String, String)>, RpcError> {
+    ) -> Result<Vec<String>, RpcError> {
         let mut rail = self.rail();
         let mut runs = self.runs();
         if !matches!(runs.get(id), Some(Slot::Starting { attempt: active, .. }) if active == attempt)
@@ -647,6 +799,7 @@ impl Shared {
             ended: false,
             adapter: ClaudeCode::starting(move || clock()),
             prompt: None,
+            steer: None,
             named: true,
             terminal_id: terminal_id.clone(),
             cwd,
@@ -982,8 +1135,10 @@ struct Run {
     closing: bool,
     ended: bool,
     adapter: ClaudeCode,
-    /// Typed into the Terminal at the first idle, then gone.
+    /// H12: sent as a Steer at the first `SessionStart`, then gone.
     prompt: Option<String>,
+    /// H11: the Steer written and awaiting its `UserPromptSubmit` Signal.
+    steer: Option<tokio::sync::oneshot::Sender<()>>,
     /// The first prompt has been submitted, or a `rail.rename` came first: either way the name
     /// is settled and no prompt renames the node.
     named: bool,
@@ -991,21 +1146,6 @@ struct Run {
     /// A21: the effective working directory this launch runs in, after Worktree mapping; saved
     /// to `agents.db` alongside the conversation id the first Signal to name one carries.
     cwd: String,
-}
-
-/// Claude Code reads a prompt typed and submitted in one burst as a paste, so Enter follows after
-/// a pause, as in the spike (`spikes/hooks-state/drive.py`).
-const SUBMIT_DELAY: Duration = Duration::from_secs(1);
-
-async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: String) {
-    let typed = async {
-        terminals.write(&terminal_id, prompt.as_bytes()).await?;
-        tokio::time::sleep(SUBMIT_DELAY).await;
-        terminals.write(&terminal_id, b"\r").await
-    };
-    if let Err(err) = typed.await {
-        eprintln!("agents: could not type the prompt into terminal {terminal_id}: {err}");
-    }
 }
 
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
@@ -1098,7 +1238,7 @@ impl Agents {
             }
         }
         Ok(Self {
-            shared: Arc::new(Shared {
+            shared: Arc::new_cyclic(|me| Shared {
                 git,
                 project_dir: dir.parent().unwrap_or(dir).to_owned(),
                 rail: Mutex::new(rail),
@@ -1112,6 +1252,8 @@ impl Agents {
                     None,
                     Duration::from_secs(claude_code::PERMISSION_TIMEOUT_SECS),
                 ),
+                me: me.clone(),
+                steer_bound: STEER_BOUND,
             }),
             dir: dir.to_owned(),
             launcher,
@@ -1121,12 +1263,61 @@ impl Agents {
     /// H3, H4: answers need `proof`; the App holds it. Without one every `decision.answer` is
     /// `FORBIDDEN`. Call it before the first call is made.
     #[must_use]
-    pub fn with_proof(mut self, proof: Option<String>) -> Self {
-        Arc::get_mut(&mut self.shared)
-            .expect("the Agents are not shared yet")
-            .decisions
-            .set_proof(proof);
+    pub fn with_proof(self, proof: Option<String>) -> Self {
+        self.configure(|shared| shared.decisions.set_proof(proof))
+    }
+
+    /// Change a setting before any call has shared the Agents: the only holder of `shared` is
+    /// `self`, plus its own `me`.
+    fn configure(mut self, set: impl FnOnce(&mut Shared)) -> Self {
+        let mut shared = Arc::into_inner(self.shared).expect("the Agents are not shared yet");
+        set(&mut shared);
+        self.shared = Arc::new_cyclic(|me| {
+            shared.me = me.clone();
+            shared
+        });
         self
+    }
+
+    /// Stamp Statuses and time Ticks by `clock`, milliseconds since the Unix epoch, instead of
+    /// the system's. Call it before the first call is made.
+    #[must_use]
+    pub fn with_clock(self, clock: impl Fn() -> i64 + Send + Sync + 'static) -> Self {
+        self.configure(|shared| shared.clock = Arc::new(clock))
+    }
+
+    /// H11: wait `bound` instead of `STEER_BOUND` for a Steer's `UserPromptSubmit`. Call it
+    /// before the first call is made.
+    #[must_use]
+    pub fn with_steer_bound(self, bound: Duration) -> Self {
+        self.configure(|shared| shared.steer_bound = bound)
+    }
+
+    /// H11: Steer Agent `id` with `text`. The one function that writes a prompt to a Terminal;
+    /// `agent.prompt` and the mailbox series' in-process delivery both call it.
+    pub async fn prompt(&self, id: &str, text: &str) -> Result<(), PromptError> {
+        self.shared.prompt(id, text).await
+    }
+
+    /// H11: the user, or a Door for an Agent in its Room, may Steer; any other caller may not.
+    fn may_steer(&self, actor: &Actor, id: &str) -> Result<(), RpcError> {
+        let allowed = match actor.kind {
+            ActorKind::User => true,
+            ActorKind::Agent => self
+                .shared
+                .rail()
+                .node(id)
+                .is_ok_and(|node| node.parent.as_deref() == Some(actor.id.as_str())),
+            ActorKind::Ext => false,
+        };
+        if allowed {
+            Ok(())
+        } else {
+            Err(RpcError::forbidden(format!(
+                "{} may not Steer agent {id}",
+                actor.id
+            )))
+        }
     }
 
     /// The Project folder: `.roundup/`'s parent, where its git repository (if any) lives.
@@ -1554,6 +1745,7 @@ impl Agents {
             ended: false,
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
+            steer: None,
             named,
             terminal_id,
             cwd: run_cwd,
@@ -1568,12 +1760,8 @@ impl Agents {
                 return Err(err);
             }
         };
-        for (terminal_id, prompt) in prompts {
-            tokio::spawn(type_prompt(
-                Arc::clone(&self.shared.terminals),
-                terminal_id,
-                prompt,
-            ));
+        for prompt in prompts {
+            self.shared.steer_first_prompt(id, attempt, prompt);
         }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
@@ -1721,6 +1909,12 @@ impl Module for Agents {
         let shared = &self.shared;
         match method {
             "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
+            "agent.prompt" => {
+                let PromptParams { id, text } = params(value)?;
+                self.may_steer(&ctx.actor, &id)?;
+                self.prompt(&id, &text).await?;
+                reply(&())
+            }
             "agent.stop" => {
                 let NodeId { id } = params(value)?;
                 shared.stop(ctx.actor.clone(), &id).await?;
@@ -1863,6 +2057,8 @@ mod tests {
             clock,
             opened: 0,
             decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
+            me: std::sync::Weak::new(),
+            steer_bound: super::STEER_BOUND,
         });
         (dir, bus, shared)
     }
@@ -1890,6 +2086,7 @@ mod tests {
                 ended: false,
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
+                steer: None,
                 named: false,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2068,13 +2265,14 @@ mod tests {
             ended: false,
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
+            steer: None,
             named,
             terminal_id: "1".into(),
             cwd: "/".into(),
         });
 
         drop(lock);
-        assert_eq!(prompts.unwrap(), Vec::new());
+        assert_eq!(prompts.unwrap(), Vec::<String>::new());
         // Neither lock was poisoned by the failed write: both can still be acquired.
         assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
         shared.rail().tree().unwrap();
@@ -2113,6 +2311,7 @@ mod tests {
             ended: false,
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
+            steer: None,
             named,
             terminal_id: "1".into(),
             cwd: "/".into(),
@@ -2185,6 +2384,7 @@ mod tests {
                             ended: false,
                             adapter: ClaudeCode::starting(|| 0),
                             prompt: None,
+                            steer: None,
                             named,
                             terminal_id: id.clone(),
                             cwd: "/".into(),
@@ -2257,6 +2457,8 @@ mod tests {
             clock: Arc::new(|| 0),
             opened: 0,
             decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
+            me: std::sync::Weak::new(),
+            steer_bound: super::STEER_BOUND,
         })
     }
 
@@ -2277,6 +2479,7 @@ mod tests {
                 ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
+                steer: None,
                 named: true,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2316,6 +2519,7 @@ mod tests {
                 ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
+                steer: None,
                 named: true,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2459,6 +2663,8 @@ mod tests {
             clock: Arc::new(|| 0),
             opened: 0,
             decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
+            me: std::sync::Weak::new(),
+            steer_bound: super::STEER_BOUND,
         });
         (dir, shared)
     }

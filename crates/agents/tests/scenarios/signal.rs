@@ -1,11 +1,11 @@
-//! A5 the signal path, and A4's prompt typed at the first idle.
+//! A5 the signal path.
 
 use contracts::agent::StatusEvent;
 use contracts::{EventData, Kind};
 use rpc::{Module, code};
 use serde_json::{Value, json};
 
-use crate::common::{Fixture, status_of, until_file};
+use crate::common::{Fixture, status_of};
 
 impl Fixture {
     async fn signal(&self, id: &str, event: &str) -> Result<Value, rpc::RpcError> {
@@ -143,55 +143,6 @@ async fn a3_a_signal_after_exit_is_ignored() {
 
     assert!(f.statuses().is_empty());
     assert_eq!(status_of(&f.tree().await, &node.id).kind, Kind::Done);
-}
-
-#[tokio::test]
-async fn a4_the_prompt_is_typed_at_the_first_idle_and_only_then() {
-    let f = Fixture::running(
-        "read first; echo \"$first\" > \"$(dirname \"$0\")/typed\"; read second; echo \"$second\" >> \"$(dirname \"$0\")/typed\"; sleep 30",
-    );
-    let node = f.spawn(None, Some("hello there")).await.unwrap();
-    let typed = f.dir.path().join("typed");
-
-    f.signal(&node.id, "UserPromptSubmit").await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-    assert!(!typed.exists(), "typed before the first idle");
-
-    f.signal(&node.id, "SessionStart").await.unwrap();
-    assert_eq!(until_file(&typed).await.trim(), "hello there");
-
-    // A later idle must not type it again: the second read stays unanswered.
-    f.signal(&node.id, "UserPromptSubmit").await.unwrap();
-    f.signal(&node.id, "Stop").await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-    assert_eq!(
-        std::fs::read_to_string(&typed).unwrap().trim(),
-        "hello there"
-    );
-}
-
-#[tokio::test]
-async fn a4_the_prompt_and_enter_arrive_as_separate_reads_a_pause_apart() {
-    // One process makes both reads, so nothing but the Daemon's own pause sits between them.
-    let script = r#"stty raw -echo; echo 1 > "$(dirname "$0")/ready"
-perl -MTime::HiRes=time -e 'sysread(STDIN, $a, 100); $t = time; sysread(STDIN, $b, 100);
-  open(F, ">", "$ARGV[0]/typed"); print F join("|", $a, $b, time - $t)' "$(dirname "$0")"
-sleep 30"#;
-    let f = Fixture::running(script);
-    let node = f.spawn(None, Some("hello there")).await.unwrap();
-    // Typing before the terminal is raw would be line-edited, not read as it arrives.
-    until_file(&f.dir.path().join("ready")).await;
-    f.signal(&node.id, "SessionStart").await.unwrap();
-
-    let typed = until_file(&f.dir.path().join("typed")).await;
-    let [first, second, gap] = typed.split('|').collect::<Vec<_>>()[..] else {
-        panic!("unexpected {typed:?}");
-    };
-    assert_eq!((first, second), ("hello there", "\r"));
-    assert!(
-        gap.parse::<f64>().unwrap() >= 0.5,
-        "Enter followed after only {gap}s"
-    );
 }
 
 const NOISY_CHILD: &str = "ROUNDUP_TEST_NOISY_CHILD";

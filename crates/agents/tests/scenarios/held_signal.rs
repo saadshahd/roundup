@@ -100,10 +100,8 @@ async fn a14_a_held_user_prompt_submit_still_names_the_agent() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a14_a_held_signal_that_leaves_the_agent_idle_still_types_its_spawn_prompt() {
-    let f = Arc::new(Fixture::running(
-        "read p; echo \"$p\" > \"$(dirname \"$0\")/typed\"; sleep 30",
-    ));
+async fn a14_a_held_session_start_still_steers_the_spawn_prompt() {
+    let f = Arc::new(Fixture::running("cat > \"$(dirname \"$0\")/typed\""));
     let config = hold_starts(&f);
     let typed = f.dir.path().join("typed");
     let spawning = {
@@ -113,14 +111,14 @@ async fn a14_a_held_signal_that_leaves_the_agent_idle_still_types_its_spawn_prom
     let tree = f.until(|t| !t.is_empty()).await;
     let id = tree[0].id.clone();
 
-    // "Stop" leaves the Agent idle (A5), the only Kind that types the spawn prompt (A4).
-    let held = signal(&f, &id, "Stop").await;
+    // The first `SessionStart` releases the spawn prompt as a Steer (A4, H12).
+    let held = signal(&f, &id, "SessionStart").await;
 
     release(config).await;
     spawning.await.unwrap().unwrap();
 
     assert!(held.is_ok(), "{held:?}");
-    assert_eq!(until_file(&typed).await.trim(), "hello there");
+    assert!(until_file(&typed).await.contains("hello there"));
 }
 
 #[tokio::test]
