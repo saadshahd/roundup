@@ -14,6 +14,9 @@ file. What it does comes from the environment, so one script serves every scenar
   FAKE_CLAUDE_BRIEF_REPORT a file path: written with JSON {"brief": the text of the file named by
                            `--append-system-prompt-file`, "tools": the names the server lists}, as
                            the Brief and the real MCP list stand together
+  FAKE_CLAUDE_GATE         a file path: after the played PermissionRequest hook command (which waits for
+                           the user's answer, H9) is started, the next event waits until the file exists,
+                           as the user's own act in the Terminal (H7a) happens in its own time
   FAKE_CLAUDE_LOOP         a count N: run a tool-use loop of N iterations, each trying the hook
                            command for PreToolUse then PostToolUse (H15, scenario control.md);
                            an event with no entry in `--settings` (a dropped one) is skipped, the
@@ -47,6 +50,16 @@ def play_hooks():
         if event == "UserPromptSubmit" and "FAKE_CLAUDE_PROMPT" in os.environ:
             payload["prompt"] = os.environ["FAKE_CLAUDE_PROMPT"]
         command = settings["hooks"][event][0]["hooks"][0]["command"]
+        if event == "PermissionRequest":
+            # `rup permission` stays open until the Decision is answered or cleared; the later
+            # Signal clears it, so the fake does not wait for it.
+            hook = subprocess.Popen(command, shell=True, stdin=subprocess.PIPE, text=True)
+            hook.stdin.write(json.dumps(payload))
+            hook.stdin.close()
+            gate = os.environ.get("FAKE_CLAUDE_GATE")
+            while gate and not os.path.exists(gate):
+                time.sleep(0.02)
+            continue
         subprocess.run(command, shell=True, input=json.dumps(payload), text=True, check=True)
 
 
