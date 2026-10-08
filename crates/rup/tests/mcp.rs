@@ -3,7 +3,7 @@ use std::process::{Output, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, pad, todo};
+use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, message, pad, todo};
 use rmcp::ServiceExt;
 use rmcp::model::{CallToolRequestParams, CallToolResult, ProtocolVersion};
 use rmcp::service::{RoleClient, RunningService};
@@ -150,7 +150,7 @@ fn assert_exit_1_with_one_line_naming(output: &Output, socket: &Path) {
     assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
 }
 
-const M1_METHODS: [&str; 13] = [
+const M1_METHODS: [&str; 17] = [
     "todo.create",
     "todo.get",
     "todo.list",
@@ -164,6 +164,11 @@ const M1_METHODS: [&str; 13] = [
     "pad.append",
     "pad.setOwner",
     "pad.delete",
+    // B12
+    "message.send",
+    "message.get",
+    "message.list",
+    "message.pass",
 ];
 
 #[tokio::test]
@@ -243,6 +248,22 @@ async fn m1_input_schemas_are_the_contract_schemas() {
             derived(schemars::schema_for!(pad::SetOwnerParams)),
         ),
         ("pad_delete", derived(schemars::schema_for!(pad::PadName))),
+        (
+            "message_send",
+            derived(schemars::schema_for!(message::SendParams)),
+        ),
+        (
+            "message_get",
+            derived(schemars::schema_for!(message::MessageId)),
+        ),
+        (
+            "message_list",
+            derived(schemars::schema_for!(message::ListParams)),
+        ),
+        (
+            "message_pass",
+            derived(schemars::schema_for!(message::MessageId)),
+        ),
     ];
     for (name, contract_schema) in expected {
         assert_eq!(schema(name), contract_schema, "{name}");
@@ -292,6 +313,41 @@ async fn m2_a_created_todo_is_a_touch_by_the_calling_agent() {
             .iter()
             .any(|t| t.verb == Verb::Wrote && t.actor == agent("a1"))
     );
+}
+
+#[tokio::test]
+async fn b12_a_call_is_made_as_the_agent_and_returns_the_daemons_result() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+
+    // `from` is never a parameter: a forged one is ignored.
+    let sent = shim
+        .call(
+            "message_send",
+            json!({"to": "you", "kind": "note", "body": "hi", "from": {"kind": "user", "id": "you"}}),
+        )
+        .await;
+
+    assert_eq!(sent.is_error, Some(false));
+    let message = text(&sent);
+    assert_eq!(message["id"], 1);
+    assert_eq!(message["from"]["id"], "a1");
+    assert_eq!(message["from"]["kind"], "agent");
+    assert_eq!(message["status"], "delivered");
+    assert_eq!(
+        text(&shim.call("message_get", json!({"id": 1})).await),
+        message
+    );
+    assert_eq!(
+        text(&shim.call("message_list", json!({})).await),
+        json!([message])
+    );
+    let other = spawn_shim(&project.socket, "a2").await;
+    let refused = other.call("message_get", json!({"id": 1})).await;
+    assert_eq!(refused.is_error, Some(true));
+    assert_eq!(text(&refused)["code"], rpc::code::FORBIDDEN);
+    let pass = shim.call("message_pass", json!({"id": 1})).await;
+    assert_eq!(text(&pass)["code"], rpc::code::FORBIDDEN);
 }
 
 #[tokio::test]
