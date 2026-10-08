@@ -29,6 +29,7 @@ runs:
         mkdir -p "$RUNNER_TEMP/ledger/loop"
         git show origin/main:loop/retro.sh >"$RUNNER_TEMP/ledger/loop/retro.sh"
         git show origin/main:loop/runs.sh >"$RUNNER_TEMP/ledger/loop/runs.sh"
+        git show origin/main:loop/lib.sh >"$RUNNER_TEMP/ledger/loop/lib.sh"
         bash "$RUNNER_TEMP/ledger/loop/retro.sh" ledger "$ROLE" "$SUBJECT" "$EXECUTION_FILE" "${CONCLUSION:-failure}" >"$RUNNER_TEMP/ledger/ledger.json"
         cat "$RUNNER_TEMP/ledger/ledger.json"
         slug=$(bash "$RUNNER_TEMP/ledger/loop/runs.sh" slug "$SUBJECT")
