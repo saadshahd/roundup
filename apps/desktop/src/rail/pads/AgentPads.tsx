@@ -7,21 +7,30 @@ import { OwnerMark } from "../../ink/OwnerMark";
 import { PadDrawer } from "../../pads/PadDrawer";
 import { cutName } from "../../pads/nameLine";
 import { useConnectedProject } from "../../state/connectedProject";
-import { padsOwnedBy } from "./owned";
+import { OpenRow } from "../../todos/Todos";
+import { failureOf } from "../../todos/failureOf";
+import { TodoDrawer } from "../../todos/TodoDrawer";
+import { useTodoList } from "../../todos/todoList";
+import { openTodosBy, padsOwnedBy } from "./owned";
 import { usePadList } from "./padList";
 
-/** The Pads under one Rail row (U58): `n` is how many its Agent owns (0 for any other row), `shown` is whether the control is open. */
+/** The Pads and open Todos under one Rail row (U58, U60): `n` is how many its Agent owns and created together (0 for any other row), `shown` is whether the control is open. */
 export const createAgentPads = (node: Accessor<RailNode>) => {
   const all = usePadList().pads;
+  const todos = useTodoList();
   const [shown, setShown] = createSignal(false);
   const [failure, setFailure] = createSignal<string | null>(null);
   const owned = createMemo(() => (node().kind === "agent" ? padsOwnedBy(all(), node().id) : []));
+  const ownedTodos = createMemo(() => (node().kind === "agent" ? openTodosBy(todos.all(), node().id) : []));
+  const count = () => owned().length + ownedTodos().length;
 
   return {
     all,
     owned,
-    n: () => owned().length,
-    shown: () => shown() && owned().length > 0,
+    todos,
+    ownedTodos,
+    n: count,
+    shown: () => shown() && count() > 0,
     toggle: () => setShown((open) => !open),
     failure,
     setFailure,
@@ -48,7 +57,7 @@ export const PadsControl = (props: { pads: AgentPads }) => (
   </Show>
 );
 
-/** The Pad rows one level below `depth`, folded at rest; a click opens a Pad's Drawer as the Shelf's list does (U20). Opening changes no selection (U64). */
+/** The Pad rows, then the open Todo rows, one level below `depth`, folded at rest; a click opens a Pad's Drawer as the Shelf's list does (U20). Opening changes no selection (U64). */
 export const PadRows = (props: { pads: AgentPads; depth: number }) => {
   const connected = useConnectedProject();
 
@@ -72,6 +81,17 @@ export const PadRows = (props: { pads: AgentPads; depth: number }) => {
                 <OwnerMark owner={pad.owner} decorative />
                 <span style={cutName}>{pad.name}</span>
               </button>
+            )}
+          </For>
+          <For each={props.pads.ownedTodos()}>
+            {(todo) => (
+              <OpenRow
+                nested
+                todo={todo}
+                known={props.pads.todos.byId()}
+                onOpen={(opened) => connected.drawer.open(() => <TodoDrawer id={opened.id} todos={props.pads.todos} />)}
+                onComplete={(done) => failureOf(() => connected.app.rpc("todo.complete", { id: done.id }))}
+              />
             )}
           </For>
         </div>
