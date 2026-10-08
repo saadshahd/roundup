@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use contracts::agent::WorktreeState;
 use rpc::{RpcError, code};
 
 /// What provisioning makes. `RailNode.worktree` (`contracts::agent::Worktree`) stores the same
@@ -286,6 +287,46 @@ impl Git {
             )),
             None => Err(RpcError::conflict("worktree_unregistered")),
         }
+    }
+
+    /// G3: `ahead` and `behind` between the branch and its Base, and whether the Worktree has
+    /// changes outside `.roundup/`. Runs no command that writes.
+    pub fn state(&self, project: &Path, worktree: &Worktree) -> Result<WorktreeState, RpcError> {
+        if !worktree.path.is_dir() {
+            return Err(RpcError::new(
+                code::NOT_FOUND,
+                format!("worktree_missing: {}", worktree.path.display()),
+            ));
+        }
+        let range = format!("{}...refs/heads/{}", worktree.base, worktree.branch);
+        let counts = self
+            .run(project, &["rev-list", "--left-right", "--count", &range])
+            .map_err(failed)?;
+        let mut counts = counts.split_whitespace().map(|n| n.parse::<u32>());
+        let (Some(Ok(behind)), Some(Ok(ahead))) = (counts.next(), counts.next()) else {
+            return Err(failed("unreadable commit counts"));
+        };
+        let status = self
+            .run(
+                &worktree.path,
+                &[
+                    "--no-optional-locks",
+                    "status",
+                    "--porcelain",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+            )
+            .map_err(failed)?;
+        let dirty = status
+            .split('\0')
+            .filter(|entry| !entry.is_empty())
+            .any(|entry| !entry.get(3..).is_some_and(|p| p.starts_with(".roundup/")));
+        Ok(WorktreeState {
+            ahead,
+            behind,
+            dirty,
+        })
     }
 
     pub fn require_landed(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {

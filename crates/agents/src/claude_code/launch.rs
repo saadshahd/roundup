@@ -224,16 +224,29 @@ impl Launcher {
 
     /// A20: the hook command, not the program, carries the launch's Attempt.
     fn settings_json(&self, id: u64, attempt: &str) -> Value {
-        let command = format!(
-            "ROUNDUP_ATTEMPT={} {} signal {}",
-            shell_quote(attempt),
-            shell_quote(&self.rup.to_string_lossy()),
-            shell_quote(&id.to_string())
-        );
-        let hook = json!([{ "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }]);
+        let rup = shell_quote(&self.rup.to_string_lossy());
+        let id = shell_quote(&id.to_string());
+        // H9: `PermissionRequest` waits for the user's answer, so its hook outlives the 5 s of the rest.
+        let signal = json!([{ "hooks": [{
+            "type": "command",
+            "command": format!("ROUNDUP_ATTEMPT={} {rup} signal {id}", shell_quote(attempt)),
+            "timeout": 5,
+        }] }]);
+        let permission = json!([{ "hooks": [{
+            "type": "command",
+            "command": format!("{rup} permission {id}"),
+            "timeout": super::PERMISSION_TIMEOUT_SECS,
+        }] }]);
         let hooks: Map<String, Value> = STATE_EVENTS
             .iter()
-            .map(|event| ((*event).to_owned(), hook.clone()))
+            .map(|event| {
+                let hook = if *event == "PermissionRequest" {
+                    &permission
+                } else {
+                    &signal
+                };
+                ((*event).to_owned(), hook.clone())
+            })
             .collect();
         // Allowed here so a roundup tool never raises a permission dialog.
         json!({ "hooks": hooks, "permissions": { "allow": ["mcp__roundup__*"] } })

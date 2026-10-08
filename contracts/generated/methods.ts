@@ -7,6 +7,7 @@ import type { RenameParams as agent_RenameParams } from "./agent/RenameParams";
 import type { SignalParams as agent_SignalParams } from "./agent/SignalParams";
 import type { SpawnParams as agent_SpawnParams } from "./agent/SpawnParams";
 import type { SpawnTerminalParams as agent_SpawnTerminalParams } from "./agent/SpawnTerminalParams";
+import type { WorktreeState as agent_WorktreeState } from "./agent/WorktreeState";
 import type { HistoryParams as common_HistoryParams } from "./HistoryParams";
 import type { IdentifyParams as common_IdentifyParams } from "./IdentifyParams";
 import type { Touch as common_Touch } from "./Touch";
@@ -76,6 +77,7 @@ export type RpcMethods = {
   "pad.setStorage": { params: pad_SetStorageParams; result: null };
   "agent.spawn": { params: agent_SpawnParams; result: agent_RailNode };
   "agent.stop": { params: agent_NodeId; result: null };
+  "agent.worktreeState": { params: agent_NodeId; result: agent_WorktreeState };
   "agent.signal": { params: agent_SignalParams; result: null };
   "agent.permission": { params: decision_PermissionParams; result: decision_PermissionOutput };
   "agent.ask": { params: decision_AskParams; result: decision_AskOutput };
