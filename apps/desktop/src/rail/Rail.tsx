@@ -313,6 +313,7 @@ export const Rail = () => {
         <button
           class="word"
           disabled={!canSpawn()}
+          aria-disabled={canSpawn() ? undefined : true}
           onClick={() => {
             if (composing()) {
               field()?.focus();
@@ -328,6 +329,7 @@ export const Rail = () => {
         <button
           class="word"
           disabled={!canSpawn()}
+          aria-disabled={canSpawn() ? undefined : true}
           onClick={spawnTerminal}
         >
           <Icon name="plus" /> terminal
@@ -335,6 +337,7 @@ export const Rail = () => {
         <button
           class="word"
           disabled={!canSpawn()}
+          aria-disabled={canSpawn() ? undefined : true}
           onClick={() => guarded(() => rail.createRoom())}
         >
           <Icon name="plus" /> room

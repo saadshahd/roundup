@@ -112,7 +112,8 @@ const PadRows = (props: {
           <button
             type="button"
             title={pad.name}
-            style={{ all: "unset", cursor: "pointer", ...cutName }}
+            class="pad-name"
+            style={cutName}
             onClick={() =>
               connected.drawer.open(() => (
                 <PadDrawer

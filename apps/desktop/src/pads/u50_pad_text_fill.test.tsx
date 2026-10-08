@@ -2,6 +2,7 @@ import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { AGENT, openPad, openShelf, padOf } from "./padsFixture";
 import { USER } from "../testing/nodes";
+import { withStylesheets } from "../testing/contrast";
 
 afterEach(cleanup);
 
@@ -68,7 +69,7 @@ describe("u50 the Pad's text fills its Drawer", () => {
     await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
 
-    expect(screen.getByText("export .md").style.color).toBe("var(--grey)");
+    await withStylesheets(() => expect(getComputedStyle(screen.getByText("export .md")).color).toBe("var(--grey)"));
   });
 
   it("u50_the_drawer_rule_is_a_flex_column_so_the_fields_flex_1_can_fill_it", () => {
