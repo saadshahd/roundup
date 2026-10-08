@@ -18,9 +18,9 @@ Module: `crates/agents` (the Brief file and the Claude Code flag and hook, under
 
 ## Work
 
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
+Rows a Builder can take; `loop/rules.sh ready` prints each one's state. E1 is built with B24 in `scenarios/messages.md`; its shipped-tool-only Brief needs no B12 or E2–E6 implementation.
 
 | Ids | Item | Owns | Keeps green | After |
 |---|---|---|---|---|
 | E7 | spike: does the real Claude Code take a Brief, a `SessionStart` context and an MCP server at start | `spikes/context-injection/**` | the report; no app code | now; needs the installed `claude` |
-| E1-E6 | Brief, `agent.context`, `rup context`, `agent_context`, `rup mcp` connecting at start, the `RailNode.channel` field (the Chip is E8, reserved); the contract rides in this PR (committee approval) | `crates/agents/src/**`, `crates/agents/tests/**` and `claude_code/`, `crates/rupd/src/**` (it composes the Rail and the Todos for E2), `crates/rup/src/**`, `crates/contracts/**` with `contracts/generated/**`, `crates/rup/tests/**`, every `RailNode` literal (the webview fixtures, `seeds.ts`) | the `e1_` to `e6_` tests, with the `a4_` and `m1_` tests kept green; `just check` | after E7, after B12 and T8's implementation merge |
+| E2-E6 | `agent.context`, `rup context`, `agent_context`, `rup mcp` connecting at start, the `RailNode.channel` field (the Chip is E8, reserved); the contract rides in this PR (committee approval) | `crates/agents/src/**`, `crates/agents/tests/**` and `claude_code/`, `crates/rupd/src/**` (it composes the Rail and the Todos for E2), `crates/rup/src/**`, `crates/contracts/**` with `contracts/generated/**`, `crates/rup/tests/**`, every `RailNode` literal (the webview fixtures, `seeds.ts`) | the `e1_` to `e6_` tests, with the `a4_` and `m1_` tests kept green; `just check` | E1 E7 B12 T8 |
