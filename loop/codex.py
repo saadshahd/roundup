@@ -51,10 +51,50 @@ def usage(path):
     return totals
 
 
+def deliver(record):
+    """Only the controller can commit, push or open a PR; the Builder receives no GitHub credential."""
+    attempt = Path(record['events']).parent
+    checkout = attempt / 'checkout'
+    if not checkout.exists():
+        return
+    head = command('git', 'rev-parse', 'HEAD', cwd=checkout)
+    if head != record['base']:
+        parent = command('git', 'rev-parse', 'HEAD^', cwd=checkout)
+        trailer = command('git', 'show', '-s', '--format=%(trailers:key=Author-Agent,valueonly)', 'HEAD', cwd=checkout)
+        if parent != record['base'] or trailer != 'codex-' + str(record['started']):
+            raise RuntimeError('Unexpected checkout history; preserve it for inspection')
+    result = json.loads((attempt / 'result.json').read_text()) if (attempt / 'result.json').exists() else {}
+    body = 'Scenarios: ' + record['ids'] + '\n\n' + result.get('body', 'The local Codex run ended before its final report; changes are preserved for a fix run.')
+    if (record['exit'] != 0 or result.get('status') != 'ready') and result.get('status') != 'stopped':
+        body += '\n\nStopped: the run ended without marking it ready, local Codex attempt ' + str(record['started']) + '; changes are preserved for repair.'
+    body_path = attempt / 'pr.md'
+    body_path.write_text(body)
+    if head == record['base']:
+        if not command('git', 'status', '--porcelain', cwd=checkout):
+            if result.get('status') != 'stopped':
+                return
+            # A question still needs a reviewable draft, even before implementation.
+            scenario = checkout / record['file']
+            with scenario.open('a') as output:
+                output.write('\n\n## Unresolved question\n\n' + result['body'] + '\n')
+        command('git', '-c', 'core.hooksPath=/dev/null', 'add', '-A', cwd=checkout)
+        command('git', '-c', 'core.hooksPath=/dev/null', 'commit', '-m', record['ids'] + ': ' + result.get('title', 'continue the interrupted build'),
+                '-m', 'Author-Agent: codex-' + str(record['started']), cwd=checkout)
+    origin = command('git', 'remote', 'get-url', 'origin')
+    command('git', '-c', 'core.hooksPath=/dev/null', 'push', origin, 'HEAD:refs/heads/build/' + record['slug'], cwd=checkout)
+    args = ['gh', 'pr', 'create', '--base', 'main', '--head', 'build/' + record['slug'],
+            '--title', record['ids'] + ': ' + result.get('title', 'continue the interrupted build'), '--body-file', str(body_path)]
+    if record['exit'] != 0 or result.get('status') != 'ready':
+        args.append('--draft')
+    command(*args)
+
+
 def finish(record, state, code):
     prs = json.loads(command('gh', 'pr', 'list', '--head', 'build/' + record['slug'],
                              '--state', 'open', '--json', 'number,isDraft,url'))
     ready = len(prs) == 1 and not prs[0]['isDraft']
+    if code == 0 and ready:
+        command('gh', 'pr', 'merge', prs[0]['url'], '--auto', '--merge')
     record.update(state='ready' if code == 0 and ready else 'failed',
                   exit=code, ended=int(time.time()), prs=prs)
     events = Path(record['events'])
@@ -66,6 +106,10 @@ def finish(record, state, code):
     if command('git', 'ls-remote', '--heads', 'origin', 'refs/heads/build/' + record['slug']):
         command('loop/runs.sh', 'unclaim', data=json.dumps([record]))
     publish(record)
+    if len(prs) == 1 and prs[0]['isDraft']:
+        command('gh', 'workflow', 'run', 'merge-ready.yml', '-f', 'pr=' + str(prs[0]['number']))
+    # Release public ownership before dispatch; recovery repeats this idempotent handoff.
+    command('gh', 'workflow', 'run', 'reconcile.yml')
     (state / 'active.json').unlink()
     return record['state'] == 'ready'
 
@@ -74,15 +118,20 @@ def tick(state):
     active = state / 'active.json'
     if active.exists():
         record = json.loads(active.read_text())
-        # An orphan is still occupying the local slot. gtimeout bounds its whole process group.
+        # Match both PID and creation time; PID reuse after a reboot cannot hold the slot.
         if record.get('pid'):
-            try:
-                os.kill(record['pid'], 0)
-            except ProcessLookupError:
-                pass
-            else:
+            observed = subprocess.run(['ps', '-p', str(record['pid']), '-o', 'lstart='],
+                                      text=True, capture_output=True, timeout=10)
+            if observed.returncode == 0 and not record.get('birth') and time.time() <= record['deadline']:
                 return
-        finish(record, state, interrupted_exit)
+            if observed.returncode == 0 and observed.stdout.strip() == record.get('birth'):
+                if time.time() <= record['deadline']:
+                    return
+                os.killpg(record['pid'], 9)
+        record.setdefault('exit', interrupted_exit)
+        if not json.loads(command('gh', 'pr', 'list', '--head', 'build/' + record['slug'], '--state', 'all', '--json', 'number')):
+            deliver(record)
+        finish(record, state, record['exit'])
         return
     if command('gh', 'variable', 'get', 'LOOP_CODEX_ENABLED') != 'true':
         return
@@ -125,6 +174,7 @@ def tick(state):
         checkout = attempt / 'checkout'
         command('git', 'clone', '--shared', str(Path.cwd()), str(checkout), timeout=120)
         command('git', 'remote', 'set-url', 'origin', origin, cwd=checkout)
+        command('git', 'fetch', 'origin', 'main', cwd=checkout)
         command('git', 'checkout', '-b', 'build/' + row['slug'], base, cwd=checkout)
         command('git', 'config', 'credential.helper', '', cwd=checkout)
         command('git', 'config', '--add', 'credential.helper', '!gh auth git-credential', cwd=checkout)
@@ -133,25 +183,42 @@ def tick(state):
             f'Its remote Claim is yours. Your Author-Agent id is codex-{started}. '
             'The user authorized this build and routine engineering decisions; proceed without another confirmation. '
             'Use the Builder recipe and existing independent CI/review/merge gates. '
-            'Do not merge loop machinery or approve your own PR. Use agent-browser for browser work. '
-            'Finish with a ready PR or a draft describing the concrete unresolved question. '
+            'Do not merge or approve your own PR. Use agent-browser for browser work. '
+            'The controller, not this sandboxed build run, owns git commits, pushes and PR creation. '
+            'Implement and run pnpm install and just check; leave changes uncommitted. '
+            'Return status ready only after checks pass, with a concise title and PR body. '
+            'For an unresolved product question return status stopped and include Stopped: with its consequence and recommendation in the body. '
             'The run has a two-hour deadline.\n')
         (attempt / 'prompt.md').write_text(prompt)
-        environment = {key: value for key, value in os.environ.items()
-                       if key not in ('OPENAI_API_KEY', 'CODEX_API_KEY')}
-        # Local parallel execution exposes existing A22/A23 resume-observer races.
+        # Pass only non-secret runtime paths/locales. GitHub writes belong to the controller.
+        environment = {key: value for key, value in os.environ.items() if key in
+                       ('PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'LC_ALL', 'TERM',
+                        'CARGO_HOME', 'RUSTUP_HOME', 'PNPM_HOME', 'CODEX_HOME')}
         environment['NEXTEST_TEST_THREADS'] = '1'
-        # macOS Keychain is unavailable inside the sandbox; pass GitHub auth only to this invocation.
-        environment['GH_TOKEN'] = command('gh', 'auth', 'token')
+        (attempt / 'gh').mkdir()
+        environment['GH_CONFIG_DIR'] = str(attempt / 'gh')
+        cache = state / 'cache'
+        cache.mkdir(exist_ok=True)
+        environment['CARGO_HOME'] = str(cache / 'cargo')
+        environment['XDG_CACHE_HOME'] = str(cache)
+        environment['npm_config_store_dir'] = str(cache / 'pnpm')
+        schema = {'type': 'object', 'properties': {
+            'status': {'type': 'string', 'enum': ['ready', 'stopped']},
+            'title': {'type': 'string'}, 'body': {'type': 'string'}},
+            'required': ['status', 'title', 'body'], 'additionalProperties': False}
+        save(attempt / 'schema.json', schema)
         with (attempt / 'events.jsonl').open('w') as output, (attempt / 'stderr.log').open('w') as errors:
             # timeout kills the entire group even if this controller is interrupted.
             process = subprocess.Popen([
-                'gtimeout', '--kill-after=20s', '7200s', 'codex', 'exec', '--ignore-user-config',
-                '--model', record['model'], '--sandbox', 'workspace-write', '--add-dir', str(checkout / '.git'),
+                'gtimeout', '--kill-after=20s', '7200s', 'codex', 'exec', '--ignore-user-config', '--ignore-rules',
+                '--model', record['model'], '--sandbox', 'workspace-write', '--add-dir', str(cache),
                 '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"',
-                '--json', '-o', str(attempt / 'result.md'), prompt,
+                '--json', '--output-schema', str(attempt / 'schema.json'), '-o', str(attempt / 'result.json'), prompt,
             ], cwd=checkout, env=environment, stdout=output, stderr=errors, start_new_session=True)
             record['pid'] = process.pid
+            save(active, record)
+            record['birth'] = command('ps', '-p', str(process.pid), '-o', 'lstart=')
+            record['deadline'] = int(time.time()) + 7230
             save(active, record)
             code = process.wait()
     except BaseException:
@@ -159,6 +226,9 @@ def tick(state):
         if 'pid' not in record:
             finish(record, state, interrupted_exit)
         raise
+    record['exit'] = code
+    save(active, record)
+    deliver(record)
     if not finish(record, state, code):
         raise RuntimeError('Codex did not deliver a ready PR; see ' + str(attempt))
 
