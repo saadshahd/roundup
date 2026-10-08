@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use contracts::{Actor, ActorKind, IdentifyParams, pad, todo};
+use contracts::{Actor, ActorKind, IdentifyParams, decision, pad, todo};
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
     Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
@@ -29,6 +29,8 @@ struct Offered {
     method: &'static str,
     tool: Tool,
     takes_params: bool,
+    /// H14: the call waits for the user, so no `CALL_TIMEOUT` applies and its result is the answer's text.
+    waits_for_user: bool,
 }
 
 /// The Daemon cannot be spoken to; the shim exits instead of answering the Agent.
@@ -59,6 +61,25 @@ fn offered<P: JsonSchema>(method: &'static str, description: &'static str) -> Of
     offer(method, description, schema, true)
 }
 
+/// H14: the one tool that is not a method's name with the dot replaced; the Agent asks the user and the call returns the answer.
+fn ask_user() -> Offered {
+    let Ok(Value::Object(schema)) =
+        serde_json::to_value(schemars::schema_for!(decision::AskParams))
+    else {
+        unreachable!("a params struct's schema is an object");
+    };
+    Offered {
+        method: "agent.ask",
+        tool: Tool::new(
+            "ask_user",
+            "Ask the user a question with one to four short answers to pick from. Waits for the user and returns the answer they picked.",
+            schema,
+        ),
+        takes_params: true,
+        waits_for_user: true,
+    }
+}
+
 fn offered_without_params(method: &'static str, description: &'static str) -> Offered {
     let schema = JsonObject::from_iter([("type".into(), "object".into())]);
     offer(method, description, schema, false)
@@ -74,6 +95,7 @@ fn offer(
         method,
         tool: Tool::new(method.replace('.', "_"), description, schema),
         takes_params,
+        waits_for_user: false,
     }
 }
 
@@ -96,6 +118,7 @@ fn offered_tools() -> Vec<Offered> {
         offered::<pad::AppendParams>("pad.append", "Add text to the end of any Pad."),
         offered::<pad::SetOwnerParams>("pad.setOwner", "Give a Pad to another Actor."),
         offered::<pad::PadName>("pad.delete", "Delete a Pad."),
+        ask_user(),
     ]
 }
 
@@ -146,6 +169,9 @@ impl Shim {
             (false, _) => Value::Null,
         };
         let client = self.connect().await?;
+        if offer.waits_for_user {
+            return Ok(client.request(offer.method, params).await);
+        }
         tokio::time::timeout(CALL_TIMEOUT, client.request(offer.method, params))
             .await
             .map_err(|_| Gone::Silent)
@@ -188,7 +214,11 @@ impl ServerHandler for Shim {
             })?;
         match self.call(offer, request.arguments).await {
             Ok(Ok(result)) => {
-                Ok(CallToolResult::success(vec![ContentBlock::text(result.to_string())]).into())
+                let text = match result["answer"].as_str() {
+                    Some(answer) if offer.waits_for_user => answer.to_owned(),
+                    _ => result.to_string(),
+                };
+                Ok(CallToolResult::success(vec![ContentBlock::text(text)]).into())
             }
             Ok(Err(err)) => {
                 let body = serde_json::to_string(&err)

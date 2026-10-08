@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use contracts::decision::{Answer, ClearedEvent, Decision, Outcome, PermissionOutput};
+use contracts::decision::{
+    Answer, AskOutput, AskParams, ClearedEvent, Decision, Outcome, PermissionOutput,
+};
 use contracts::{Actor, EventData};
 use rpc::{RpcError, code};
 use serde_json::Value;
@@ -26,7 +28,15 @@ struct Open {
     /// The hook's waiting call; `None` once its connection closed at its `timeout` (H7(c)) and
     /// for a Decision opened without a hook to reply to.
     waiter: Option<oneshot::Sender<Reply>>,
+    /// H14: the `answers` of an `ask_user` Decision, which only one of them answers; `None` for a
+    /// permission Decision, which `allow` or `deny` answers.
+    choices: Option<Vec<String>>,
 }
+
+/// H14: the tool name an `ask_user` Decision carries, and the bounds on what the Agent asks.
+const ASK_TOOL: &str = "ask_user";
+const MAX_ANSWERS: usize = 4;
+const MAX_ANSWER_CHARS: usize = 200;
 
 pub struct Decisions {
     open: Mutex<HashMap<String, Open>>,
@@ -94,6 +104,13 @@ fn cleared(bus: &rpc::Bus, id: &str, outcome: Outcome) {
     );
 }
 
+struct Opened {
+    /// `None` for a Decision with no live hook to reply to.
+    waiting: Option<oneshot::Receiver<Reply>>,
+    id: String,
+    started: i64,
+}
+
 /// Dropped with the `agent.permission` call it belongs to: if the call is dropped while its
 /// Decision is still open, the hook's own side closed the connection (H7(b), H7(c)).
 struct HookGuard {
@@ -102,13 +119,19 @@ struct HookGuard {
     decision: String,
     started: i64,
     armed: bool,
+    /// An `ask_user` call (H14), which has no hook `timeout` to tell a close from.
+    asks: bool,
 }
 
 impl Drop for HookGuard {
     fn drop(&mut self) {
         if self.armed {
-            self.shared
-                .hook_closed(&self.agent, &self.decision, self.started);
+            if self.asks {
+                self.shared.ask_closed(&self.agent, &self.decision);
+            } else {
+                self.shared
+                    .hook_closed(&self.agent, &self.decision, self.started);
+            }
         }
     }
 }
@@ -123,6 +146,95 @@ impl Shared {
         payload: Value,
     ) -> Result<PermissionOutput, RpcError> {
         let request = claude_code::permission_request(&payload);
+        let signal = claude_code::as_permission_signal(payload);
+        let opened = self.open_decision(actor, id, request, signal, None)?;
+        let Some(rx) = opened.waiting else {
+            return Ok(PermissionOutput {
+                output: String::new(),
+            });
+        };
+        let mut guard = HookGuard {
+            shared: Arc::clone(self),
+            agent: id.to_owned(),
+            decision: opened.id,
+            started: opened.started,
+            armed: true,
+            asks: false,
+        };
+        let reply = rx.await;
+        guard.armed = false;
+        match reply {
+            Ok(reply) => reply.map(|output| PermissionOutput { output }),
+            Err(_) => Err(RpcError::internal("the Decision was dropped")),
+        }
+    }
+
+    /// H14: open the calling Agent's `ask_user` Decision and wait until the user answers it or it
+    /// is cleared.
+    pub(crate) async fn ask(
+        self: &Arc<Self>,
+        actor: Actor,
+        params: AskParams,
+    ) -> Result<AskOutput, RpcError> {
+        if actor.kind != contracts::ActorKind::Agent {
+            return Err(RpcError::forbidden("only an Agent asks the user"));
+        }
+        let AskParams { question, answers } = params;
+        if question.trim().is_empty()
+            || answers.is_empty()
+            || answers.len() > MAX_ANSWERS
+            || answers
+                .iter()
+                .any(|a| a.trim().is_empty() || a.chars().count() > MAX_ANSWER_CHARS)
+        {
+            return Err(RpcError::new(
+                code::INVALID_PARAMS,
+                format!(
+                    "ask_user takes a question and one to {MAX_ANSWERS} answers of up to {MAX_ANSWER_CHARS} characters"
+                ),
+            ));
+        }
+        let id = actor.id.clone();
+        let input = serde_json::json!({ "question": question, "answers": answers });
+        let request = claude_code::PermissionRequest {
+            tool: ASK_TOOL.to_owned(),
+            args: input.to_string(),
+            answerable: true,
+        };
+        let signal = serde_json::json!({ "tool_name": ASK_TOOL, "tool_input": input });
+        let opened = self.open_decision(
+            actor,
+            &id,
+            request,
+            claude_code::as_permission_signal(signal),
+            Some(answers),
+        )?;
+        let rx = opened.waiting.expect("an ask_user Decision waits");
+        let mut guard = HookGuard {
+            shared: Arc::clone(self),
+            agent: id,
+            decision: opened.id,
+            started: opened.started,
+            armed: true,
+            asks: true,
+        };
+        let reply = rx.await;
+        guard.armed = false;
+        match reply {
+            Ok(reply) => reply.map(|answer| AskOutput { answer }),
+            Err(_) => Err(RpcError::internal("the Decision was dropped")),
+        }
+    }
+
+    /// Replace Agent `id`'s Decision with a new one for `request` and tell the adapter `signal`.
+    fn open_decision(
+        self: &Arc<Self>,
+        actor: Actor,
+        id: &str,
+        request: claude_code::PermissionRequest,
+        signal: Value,
+        choices: Option<Vec<String>>,
+    ) -> Result<Opened, RpcError> {
         let started = (self.clock)();
         let (rx, attempt, decision) = {
             // `runs` before `decisions`, as every other path: an Agent that ends cannot be left
@@ -151,6 +263,7 @@ impl Shared {
                     decision: decision.clone(),
                     attempt: run.attempt.clone(),
                     waiter,
+                    choices,
                 },
             );
             if let Some(old) = replaced {
@@ -163,48 +276,30 @@ impl Shared {
                 .emit(actor.clone(), EventData::DecisionOpened(decision.clone()));
             (rx, run.attempt.clone(), decision)
         };
-        if let Err(err) = self.observe(
-            actor,
-            id,
-            &attempt,
-            Observation::Signal(claude_code::as_permission_signal(payload)),
-        ) {
+        if let Err(err) = self.observe(actor, id, &attempt, Observation::Signal(signal)) {
             self.decisions
                 .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
             return Err(err);
         }
-        if !decision.answerable {
-            return Ok(PermissionOutput {
-                output: String::new(),
-            });
-        }
-        let mut guard = HookGuard {
-            shared: Arc::clone(self),
-            agent: id.to_owned(),
-            decision: decision.id,
+        Ok(Opened {
+            waiting: decision.answerable.then_some(rx),
+            id: decision.id,
             started,
-            armed: true,
-        };
-        let reply = rx.await;
-        guard.armed = false;
-        match reply {
-            Ok(reply) => reply.map(|output| PermissionOutput { output }),
-            Err(_) => Err(RpcError::internal("the Decision was dropped")),
-        }
+        })
     }
 
-    /// H3: the user's `answer` for Decision `id`.
+    /// H3, H14: the user's `answer` for Decision `id`.
     pub(crate) fn answer(
         &self,
         actor: Actor,
         id: &str,
-        answer: Answer,
+        answer: &str,
         proof: Option<&str>,
     ) -> Result<(), RpcError> {
         if self.decisions.proof.is_none() || self.decisions.proof.as_deref() != proof {
             return Err(RpcError::forbidden("decision.answer needs the App's proof"));
         }
-        let (agent, attempt) = {
+        let (agent, attempt, outcome) = {
             let mut open = self.decisions.open();
             let Some((agent, entry)) = open.iter_mut().find(|(_, o)| o.decision.id == id) else {
                 return Err(RpcError::not_found(format!("decision {id}")));
@@ -215,25 +310,66 @@ impl Shared {
                     format!("decision {id} can only be answered in the Terminal"),
                 ));
             }
+            let (text, outcome) = match &entry.choices {
+                Some(choices) if choices.iter().any(|c| c == answer) => {
+                    (answer.to_owned(), Outcome::Answered)
+                }
+                Some(_) => {
+                    return Err(RpcError::new(
+                        code::INVALID_PARAMS,
+                        format!("decision {id} takes one of its listed answers"),
+                    ));
+                }
+                None => match Answer::from_word(answer) {
+                    Some(word) => (
+                        claude_code::reply(word),
+                        match word {
+                            Answer::Allow => Outcome::Allow,
+                            Answer::Deny => Outcome::Deny,
+                        },
+                    ),
+                    None => {
+                        return Err(RpcError::new(
+                            code::INVALID_PARAMS,
+                            "answer is allow or deny",
+                        ));
+                    }
+                },
+            };
             let waiter = entry.waiter.take().expect("an answerable Decision waits");
-            if waiter.send(Ok(claude_code::reply(answer))).is_err() {
-                // The hook has gone; its guard is about to clear the Decision as a close.
+            if waiter.send(Ok(text)).is_err() {
+                // The caller has gone; its guard is about to clear the Decision as a close.
                 return Err(RpcError::not_found(format!("decision {id}")));
             }
             let agent = agent.clone();
             let attempt = entry.attempt.clone();
             open.remove(&agent);
-            (agent, attempt)
-        };
-        let outcome = match answer {
-            Answer::Allow => Outcome::Allow,
-            Answer::Deny => Outcome::Deny,
+            (agent, attempt, outcome)
         };
         cleared(&self.bus, id, outcome);
         if let Err(err) = self.observe(actor, &agent, &attempt, Observation::Answered) {
             eprintln!("agents: {agent}: answered Decision {id} after the Agent ended: {err}");
         }
         Ok(())
+    }
+
+    /// H14: the `ask_user` call was dropped while its Decision was open, so the Agent moved on.
+    fn ask_closed(&self, agent: &str, decision: &str) {
+        let attempt = {
+            let mut open = self.decisions.open();
+            let Some(entry) = open.get(agent).filter(|o| o.decision.id == decision) else {
+                return;
+            };
+            let attempt = entry.attempt.clone();
+            open.remove(agent);
+            attempt
+        };
+        cleared(&self.bus, decision, Outcome::Terminal);
+        if let Err(err) = self.observe(Actor::daemon(), agent, &attempt, Observation::Dismissed) {
+            eprintln!(
+                "agents: {agent}: dismissed Decision {decision} after the Agent ended: {err}"
+            );
+        }
     }
 
     /// The hook's connection closed while its Decision was open and nothing of the Daemon's made

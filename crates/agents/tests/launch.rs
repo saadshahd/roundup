@@ -710,10 +710,16 @@ fn e1_the_brief_names_the_agent_by_id_and_the_tools_and_holds_nothing_mutable() 
     let text = brief(&s, "7", Role::Agent);
     assert!(text.contains("Your Agent id is 7."));
     assert!(text.contains("supervises you"));
-    for tool in ["todo_create", "todo_update", "pad_write", "pad_append"] {
+    for tool in [
+        "todo_create",
+        "todo_update",
+        "pad_write",
+        "pad_append",
+        "ask_user",
+    ] {
         assert!(text.contains(&format!("`{tool}`")), "{tool}");
     }
-    for unshipped in ["agent_context", "message_send", "ask_user", "agent_spawn"] {
+    for unshipped in ["agent_context", "message_send", "agent_spawn"] {
         assert!(!text.contains(unshipped), "{unshipped}");
     }
     assert!(!text.contains(&s.cwd.to_string_lossy().into_owned()));

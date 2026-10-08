@@ -180,7 +180,7 @@ async fn m1_the_server_is_named_roundup() {
 }
 
 #[tokio::test]
-async fn m1_offers_one_tool_per_method_and_no_others() {
+async fn m1_offers_one_tool_per_method_and_ask_user_and_no_others() {
     let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
 
@@ -188,6 +188,8 @@ async fn m1_offers_one_tool_per_method_and_no_others() {
 
     let mut names: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
     let mut expected: Vec<_> = M1_METHODS.iter().map(|m| m.replace('.', "_")).collect();
+    // H14: `ask_user` is the one tool that is not a method's name.
+    expected.push("ask_user".into());
     names.sort();
     expected.sort();
     assert_eq!(names, expected);
@@ -523,7 +525,11 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let result = raw_tools_list(&socket, None).await;
 
     assert_matches_tools_list_schema(&result);
-    assert_eq!(result["tools"].as_array().unwrap().len(), M1_METHODS.len());
+    // The methods' tools and `ask_user` (H14).
+    assert_eq!(
+        result["tools"].as_array().unwrap().len(),
+        M1_METHODS.len() + 1
+    );
     assert_eq!(result["cacheScope"], "public", "{result}");
 }
 
@@ -559,4 +565,77 @@ async fn m3_the_call_after_the_daemon_goes_away_makes_the_shim_exit_nonzero() {
         .expect("the shim exited")
         .unwrap();
     assert!(!status.success());
+}
+
+/// A stand-in Daemon that answers `agent.ask` with `{"answer": "dogs"}` after `delay` and `null` to `daemon.identify`.
+fn asking_daemon(socket: &Path, delay: Duration) -> mpsc::UnboundedReceiver<Value> {
+    let listener = UnixListener::bind(socket).unwrap();
+    let (seen, requests) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    let result = match request["method"].as_str() {
+                        Some("agent.ask") => {
+                            tokio::time::sleep(delay).await;
+                            json!({ "answer": "dogs" })
+                        }
+                        _ => Value::Null,
+                    };
+                    let reply = json!({ "jsonrpc": "2.0", "id": request["id"], "result": result });
+                    let _ = seen.send(request);
+                    write_line(&mut write, &reply).await;
+                }
+            });
+        }
+    });
+    requests
+}
+
+/// The call outlasts the ten seconds every other tool call is bound by (the user may take minutes) and returns the answer's text, not JSON.
+#[tokio::test]
+async fn h14_ask_user_waits_past_the_call_bound_and_returns_the_answer_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let mut requests = asking_daemon(&socket, Duration::from_secs(11));
+    let shim = spawn_shim(&socket, "a1").await;
+
+    let result = shim
+        .call(
+            "ask_user",
+            json!({"question": "Cats or dogs?", "answers": ["cats", "dogs"]}),
+        )
+        .await;
+
+    assert_eq!(result.is_error, Some(false));
+    assert_eq!(result.content[0].as_text().unwrap().text, "dogs");
+    let sent = loop {
+        let request = requests.recv().await.unwrap();
+        if request["method"] == "agent.ask" {
+            break request;
+        }
+    };
+    assert_eq!(
+        sent["params"],
+        json!({"question": "Cats or dogs?", "answers": ["cats", "dogs"]})
+    );
+}
+
+#[tokio::test]
+async fn h14_ask_user_schema_is_the_contract_schema() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+
+    let tools = shim.client.list_all_tools().await.unwrap();
+
+    let tool = tools.iter().find(|t| t.name == "ask_user").unwrap();
+    assert_eq!(
+        Value::Object((*tool.input_schema).clone()),
+        serde_json::to_value(schemars::schema_for!(contracts::decision::AskParams)).unwrap()
+    );
 }

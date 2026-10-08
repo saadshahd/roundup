@@ -12,6 +12,8 @@ import type { IdentifyParams as common_IdentifyParams } from "./IdentifyParams";
 import type { Touch as common_Touch } from "./Touch";
 import type { TouchedParams as common_TouchedParams } from "./TouchedParams";
 import type { AnswerParams as decision_AnswerParams } from "./decision/AnswerParams";
+import type { AskOutput as decision_AskOutput } from "./decision/AskOutput";
+import type { AskParams as decision_AskParams } from "./decision/AskParams";
 import type { Decision as decision_Decision } from "./decision/Decision";
 import type { PermissionOutput as decision_PermissionOutput } from "./decision/PermissionOutput";
 import type { PermissionParams as decision_PermissionParams } from "./decision/PermissionParams";
@@ -76,6 +78,7 @@ export type RpcMethods = {
   "agent.stop": { params: agent_NodeId; result: null };
   "agent.signal": { params: agent_SignalParams; result: null };
   "agent.permission": { params: decision_PermissionParams; result: decision_PermissionOutput };
+  "agent.ask": { params: decision_AskParams; result: decision_AskOutput };
   "decision.list": { params: null; result: decision_Decision[] };
   "decision.answer": { params: decision_AnswerParams; result: null };
   "rail.tree": { params: null; result: agent_RailNode[] };
