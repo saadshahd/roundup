@@ -22,7 +22,9 @@ A UI row, or a Brief, Door or Decision row in the first user journey, also reads
 
 A fix run starts with `gh pr ready --undo`, answers every finding or failure in the task with commits on the PR's branch, then ends with `just check`, a push and step 3.
 
-Stop only on a question that no scenario, Item or `GLOSSARY.md` entry settles: leave the PR a draft whose body has a `Stopped: <the question>` line, which merge-ready asks the user (L81).
+A missing prerequisite or stale Work table is an engineering repair: cite the missing implementation, put every id of its prerequisite row in `After`, and submit the table correction as a ready spec PR. An isolated contract test does not complete a multi-scenario implementation row. Keep implementation within `Owns`; an Architect or the user authorizes an ownership expansion. Contract approval requirements still apply.
+
+Stop only on a question that no scenario, Item or `GLOSSARY.md` entry settles. State the user-visible consequence and one recommended choice; handle missing prerequisites by the repair above: leave the PR a draft whose body has a `Stopped: <the question>` line, which merge-ready asks the user (L81).
 
 ## Review run
 
