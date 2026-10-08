@@ -22,7 +22,7 @@ defaults:
     shell: bash
 
 jobs:
-  # Reads main's scripts and main's Reviewer prompt, never the PR's.
+  # Reads main's scripts and shared Builder prompt, never the PR's.
   due:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
@@ -56,7 +56,7 @@ jobs:
             1) echo "$task"; exit 0 ;;
             *) echo "$task" >&2; exit "$code" ;;
           esac
-          printf '%s\n' "$task" | loop/runs.sh prompt reviewer
+          printf 'Review %s\n' "$task" | loop/runs.sh prompt builder
           echo "pr=$pr" >>"$GITHUB_OUTPUT"
 
   review:
