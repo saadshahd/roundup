@@ -118,6 +118,12 @@ impl Fixture {
         }
     }
 
+    /// The App's proof (H4) for `decision.answer`.
+    pub fn with_proof(mut self, proof: &str) -> Self {
+        self.agents = self.agents.with_proof(Some(proof.to_owned()));
+        self
+    }
+
     pub fn reopen(self) -> Self {
         let Self {
             dir, bus, agents, ..
