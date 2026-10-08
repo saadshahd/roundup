@@ -5,6 +5,7 @@ check:
     cargo nextest run
     just contracts-fresh
     cargo machete crates
+    spikes/context-injection/e7_report.test.sh
     pnpm lint
     pnpm typecheck
     pnpm slop
