@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tests for loop/runs.sh with a fake `gh`, `loop/rules.sh` (its `touches` is the real one) and `loop/percy.sh`. Usage: loop/runs.test.sh
 set -euo pipefail
+# Claim fixtures choose their own cloud owner; never inherit the test job's identity.
+unset GITHUB_RUN_ID
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
