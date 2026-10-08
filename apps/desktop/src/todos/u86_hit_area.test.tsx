@@ -3,11 +3,12 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { mountTodos, todo } from "./testHarness";
 
 import styles from "./rowButton.styles.css?inline";
+import appStyles from "../styles.css?inline";
 
 const sheet = document.createElement("style");
 
 // jsdom does not apply :focus-visible; the browser measures keyboard focus with the original selector.
-sheet.textContent = styles.replaceAll(":focus-visible", ":focus");
+sheet.textContent = `${styles}\n${appStyles}`.replaceAll(":focus-visible", ":focus");
 
 beforeEach(() => document.head.appendChild(sheet));
 
@@ -40,8 +41,7 @@ it("u86_todo_rows_allow_a_visible_focus_outline_after_the_button_reset", async (
     screen.getByRole("button", { name: "1 done" }),
   ]) {
     row.focus();
-    expect(getComputedStyle(row).outline).toBe("calc(var(--space-1) / 2) solid var(--accent)");
-    expect(getComputedStyle(row).outlineOffset).toBe("calc(var(--space-1) / 4)");
+    expect([getComputedStyle(row).outlineWidth, getComputedStyle(row).outlineStyle, getComputedStyle(row).outlineColor, getComputedStyle(row).outlineOffset]).toEqual(["2px", "solid", "var(--accent)", "1px"]);
     expect(row.style.all).toBe("");
   }
 });

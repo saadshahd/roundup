@@ -176,6 +176,7 @@ export const RailRowView = (props: {
           <button
             class="word"
             disabled={props.doorPending}
+            aria-disabled={props.doorPending ? true : undefined}
             onClick={(click) => {
               click.stopPropagation();
               props.onStartDoor();

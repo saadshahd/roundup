@@ -31,24 +31,6 @@ p.ink > .icon {
   border-radius: var(--radius-control);
 }
 
-.word:has(.icon):hover {
-  background: var(--hover);
-}
-
-.word:has(.icon):active {
-  background: var(--selected);
-}
-
-.word:has(.icon):focus-visible {
-  outline: calc(var(--space-1) / 2) solid var(--accent);
-  outline-offset: calc(var(--space-1) / 4);
-}
-
-.word:has(.icon):disabled {
-  color: var(--grey);
-  cursor: default;
-}
-
 .rail-row .line {
   min-height: var(--space-5);
 }

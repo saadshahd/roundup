@@ -167,7 +167,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
           <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>
             <div class="pane-empty pane-door">
               <p class="light">{rail.roomCreating() ? "creating Room…" : "no Room yet"}</p>
-              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} onClick={() => void rail.createRoom()}>
+              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} aria-disabled={rail.roomCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createRoom()}>
                 <Icon name="plus" /> start a Room
               </button>
             </div>
@@ -177,7 +177,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
           {(state) => (
             <div class="pane-empty pane-door">
               <p class="light">{doorStateText(state())}</p>
-              <button class="word pane-action" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
+              <button class="word pane-action" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} aria-disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.startDoor(selected()!.id)}>
                 <Icon name="right" />
                 {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
               </button>
