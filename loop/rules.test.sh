@@ -575,6 +575,22 @@ unspecified U9 scenarios/ui.md
 ready U1, U3 scenarios/ui.md" 'L34 no open PR leaves every state' ready
 
 ready_repo
+echo '[{"number":301,"title":"U2: waits for the U3 row"},{"number":302,"title":"Investigate U3 readiness"}]' >.git/gh-prs
+expect_output "done U1 scenarios/ui.md
+in-flight U2 scenarios/ui.md #301
+ready U3 scenarios/ui.md
+unspecified U9 scenarios/ui.md
+ready U1, U3 scenarios/ui.md" 'L34 dependency mentions in titles never reserve prerequisite work' ready
+
+ready_repo
+echo '[{"number":301,"title":"U2–U3, U9: after U1"}]' >.git/gh-prs
+expect_output "done U1 scenarios/ui.md
+in-flight U2 scenarios/ui.md #301
+in-flight U3 scenarios/ui.md #301
+in-flight U9 scenarios/ui.md #301
+in-flight U1, U3 scenarios/ui.md #301" 'L34 leading grouped ranges reserve every owned id' ready
+
+ready_repo
 expect_exit 4 'L34 gh failure exits 4' env GH_FAIL=1 loop/rules.sh ready
 expect pass 'L34 gh failure names gh' gate_error_contains gh env GH_FAIL=1 loop/rules.sh ready
 expect pass 'L34 gh slower than LOOP_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 LOOP_GH_TIMEOUT=0.2 loop/rules.sh ready
