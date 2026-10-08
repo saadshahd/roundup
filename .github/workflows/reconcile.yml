@@ -32,6 +32,7 @@ defaults:
 
 jobs:
   reconcile:
+    if: github.event_name != 'issues' || !contains(github.event.issue.labels.*.name, 'loop:status')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
