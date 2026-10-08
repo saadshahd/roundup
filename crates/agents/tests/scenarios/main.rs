@@ -9,4 +9,5 @@ mod resume;
 mod signal;
 mod spawn;
 mod terminal_node;
+mod worktree_state;
 mod worktrees;
