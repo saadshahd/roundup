@@ -21,20 +21,15 @@ builders() {
   done
 }
 
-# L23: ready Work rows of `loop/rules.sh ready` as the build matrix [{ids, file, slug}], at most <max> less the Builders
-# still running. It skips loop machinery (scenarios/loop-*.md: the user's or a Retro's) and a row whose Claim, the
-# branch build/<slug>, exists at an unmerged head. Merged heads can be reclaimed for ready work. Reads only.
+# L23: eligible GitHub Issues, ordered by their priority, with room for at most <max> Builders.
+# Existing branch/owner Claims retain their identity across migration. Reads only.
 queue() {
-  local max=${1:-4} rows branches merged running priority=""
-  if [ -f .agents/data/journey.md ]; then
-    priority=$(sed -n 's/^Priority: //p' .agents/data/journey.md)
-    [[ $priority =~ ^[A-Z][0-9]+(\ [A-Z][0-9]+)*$ ]] || { echo 'journey.md needs one Priority: line of scenario ids' >&2; exit 2; }
-  fi
-  rows=$(loop/rules.sh ready)
+  local max=${1:-4} rows branches merged running
+  rows=$(loop/rules.sh ready --json)
   branches=$(git ls-remote origin 'refs/heads/build/*' 'refs/heads/loop-row/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   merged=$(merged_heads)
   running=$(builders | wc -l | tr -d ' ')
-  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" --arg priority "$priority" "$slug_def"'
+  printf '%s\n' "$rows" | jq -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" "$slug_def"'
     ($branches | [scan("refs/heads/loop-row/(\\S+)")[0]]) as $owned
     | ($merged | split("\n")) as $merged
     | ($branches | split("\n") | map(select(length > 0) | . as $line
@@ -42,16 +37,11 @@ queue() {
         | . + {merged: ($merged | index($line) != null)})) as $claims
     | (($claims | map(select(.merged | not) | .slug)) + $owned) as $taken
     | ($claims | map(select(.merged) | {key: .slug, value: .sha}) | from_entries) as $reusable
-    | ($priority | split(" ") | map(select(length > 0))) as $order
-    | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
-       | select(.file | startswith("scenarios/loop-") | not)
-       | .slug = (.ids | slug)
+    | [ .[] | select(.state == "ready")
        | select(.slug as $s | $taken | any(. == $s) | not)
        | if $reusable[.slug] then . + {reclaim: $reusable[.slug]} else . end]
-    | sort_by([.ids | scan("([A-Z])([0-9]+)(?:\\s*(?:–|-|to)\\s*[A-Z]?([0-9]+))?")
-        | .[0] as $letter | (.[1] | tonumber) as $start | ((.[2] // .[1]) | tonumber) as $end
-        | range($start; $end + 1) | $letter + tostring
-        | . as $id | $order | index($id) | select(. != null)] | min // ($order | length))
+    | sort_by(.priority // 100)
+    | map(del(.state, .reason, .priority))
     | .[:$max]'
 }
 

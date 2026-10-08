@@ -33,10 +33,3 @@ Every command fails with `{code, message}`, using the codes in `rpc::code`; an e
 **S6 first-run facts.** Given the App, then two new calls exist besides S1's, and both work before any Project is open, like `project`. `recent_projects` returns the paths of the Projects opened by a successful `open_project` or at launch as `roundup <project>` (S1), most recent first, at most five, each once, kept in the App's own data folder so they survive a restart; a path that is no longer a directory is left out. `claude_binary` returns `{path, version}` for the `claude` that `ROUNDUP_CLAUDE_BIN` names, else the first on `PATH`, with the version read from its `--version` output, and `null` when there is none or it does not answer within a bound the App names. Neither call starts a Daemon or changes the open Project, and a failed write of the recent list never fails `open_project`. The tests use a fake `claude`, a temporary data folder, and a fake `PATH`; nothing reads the user's real `claude` or data folder. This adds two rows to the App seam table above, which this scenario approves as the Architect. The webview's permissions stay exactly S1's list: the data folder and `claude --version` are reached from Rust only, so `s1_the_webview_is_granted_dialogs_the_dock_badge_and_hearing_events_and_nothing_else` passes as written. S6 ships in one PR with U52, which holds the webview side, because a seam change is made on both sides in one PR. No Daemon method changes.
 
 **S7 the smallest window.** Given the App's window configuration, then its minimum size is 640 by 400 px, so the user cannot drag the window below the size U85 defines. Observed by a Rust test in `crates/desktop` that reads the minimum width and height from the window configuration and needs no display; the tests that read the dev URL and the built frontend keep passing as written. Whether a real macOS window honours it is a laptop check by QA, not a test.
-
-## Work
-
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|

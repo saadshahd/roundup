@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 # L82: bash -eo pipefail, so a failure left of a pipe fails the step.
 defaults:
@@ -40,6 +41,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       actions: read
+      issues: write
       contents: write
       pull-requests: read
     outputs:
@@ -70,6 +72,7 @@ jobs:
     # The reusable workflow narrows the agent job to read; only its after job can dispatch/write.
     permissions:
       contents: write
+      issues: write
       pull-requests: write
       actions: write
       id-token: write

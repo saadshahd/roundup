@@ -11,10 +11,3 @@ ADR 0007: the Daemon serves MCP to Agents through a stdio shim, so every call is
 **M3 no Daemon, no hang.** When no Daemon answers at start, `rup mcp` exits non-zero with one stderr line naming the socket path. When the Daemon goes away later, the next call makes it exit non-zero; it never waits forever. Claude Code then reports the server as failed instead of hanging a turn.
 
 **M4 the tool list matches the real client's schema.** Given `rup mcp <agent-id>`, when a client lists tools, then every `tools/list` reply is `{ttlMs, cacheScope, tools, nextCursor?}` with `ttlMs` an integer of at least 0 and `cacheScope` either `public` or `private`: the schema of the interactive Claude Code 2.1.288, read from its binary (the headless 2.1.283 has the same schema and accepts the older reply). That client rejects a reply without them after `/mcp` reconnects: "Reconnected to roundup, but fetching tools failed: Invalid result for tools/list", with the issues `expected number, received undefined` at `ttlMs` and `invalid_value` with `values [ public, private ]` at `cacheScope`. Two checks prove it. `m4_` over stdio validates every reply (the full list, and the empty list a request with a cursor gets, since this server pages nothing) against that schema, which the test holds as a copy extracted from the installed binary, with the extraction command and `claude --version` in a comment that names what a changed schema would break. The interactive reconnect itself is a laptop check by QA or the user, as S7's window is: it needs a browser sign-in that a boxd VM's token does not satisfy. It runs `/mcp` against `rup mcp` on 2.1.288, shows the base binary rejected and the head accepted with `mcp__roundup__todo_list` listed, and is recorded in the PR. The same schema holds for every tool added later (`ask_user`, H14).
-
-## Work
-
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|

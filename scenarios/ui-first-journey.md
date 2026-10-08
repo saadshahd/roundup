@@ -16,11 +16,3 @@ Module: `apps/desktop` (the webview). Ids: U143. Found by walking the first jour
 Tests are named `u143_…`: `apps/desktop/src/rail/doorState.test.ts` (the four states and their words) and `apps/desktop/src/terminal/u143_door_states.test.tsx` (the rendered App against the fake App seam, including keyboard focus, pending and repeat activation). Observer: the U26 harness at 1280 by 800 and 700 by 800, `?seed=agents-10` with its rows removed through `rail.remove` (an already open, empty Project), then `start a Room`, a failed start (`__fake.failNext`), the Rail menu's `stop`, and a `terminal.exited` with a code. `window.__checks()` must not regress against `main`: the full before/after readings and screenshots are in `artifacts/ux/U143/`. D1, D2, D7, D8 and D10 already fail on both observed screens; D6 additionally fails with a stopped Door. D3, D4, D5 and D9 stay passing. This scenario weakens no Check. Percy also captures the `empty-project` and `door-stopped` seeds, with the stopped Room selected before rendering. The native folder chooser is not covered by this browser observer. The fake answers at once, so `creating Room…` and `starting Door…` are observed in Vitest with a held promise, not in a screenshot.
 
 Capability against UI. The Thread's input, Messages to a Door and Routes have contracts (`message.send`, `message.list`, `route.set`, `takeover.begin`, `decision.list`; `contracts/generated/methods.ts`) but no desktop UI calls them; U105 to U110 (`ui-attention.md`) already own that UI and wait on the Door scenarios. Until it lands, a Room's conversation is its Door's Terminal and this slice claims nothing more. A summary of settled work (P1's observer) has no method; Todos have the Project-wide `todo.*` methods and a Shelf UI; their contract has no Room field. Room-scoped Todos need a contract decision before a Builder can implement them.
-
-## Work
-
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|
-| U143 | actionable first Room and Door lifecycle states (Moves: D6, D7) | `apps/desktop/src/terminal/**`, `apps/desktop/src/rail/**`, `apps/desktop/src/state/rail.ts` | U9, U38, D1–D10 | U9 U38 |
