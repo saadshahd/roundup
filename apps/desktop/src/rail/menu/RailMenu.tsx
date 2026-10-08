@@ -69,6 +69,9 @@ export const RailMenu = (props: { menu: RailMenuModel }) => {
                 <Show when={props.menu.canStop(current())}>
                   <button role="menuitem" onClick={props.menu.chooseStop}>stop</button>
                 </Show>
+                <Show when={props.menu.canResume(current())}>
+                  <button role="menuitem" onClick={props.menu.chooseResume}>resume</button>
+                </Show>
                 <button role="menuitem" onClick={props.menu.chooseRemove}>remove</button>
               </>
             }

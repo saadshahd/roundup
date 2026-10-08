@@ -9,6 +9,7 @@ mod remove;
 mod resume;
 mod signal;
 mod spawn;
+mod steer;
 mod terminal_node;
 mod worktree_state;
 mod worktrees;

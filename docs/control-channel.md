@@ -7,7 +7,7 @@ Status: provisional until the user confirms the recommendation and the steering 
 | Direction | Seam | State |
 |---|---|---|
 | Agent to Daemon | per-Agent `roundup` MCP server (`rup mcp`, A11, M1), plus `rup signal` hooks | exists; B12 adds Messages, #162 adds `agent_context` |
-| Daemon to Agent, a prompt | `type_prompt` in `crates/agents/src/lib.rs`: paste, a 1 s `SUBMIT_DELAY`, then `\r` | the only keystroke writer in the adapter; fixed delay |
+| Daemon to Agent, a prompt | `Agents::prompt` in `crates/agents/src/lib.rs`: one bracketed paste and `\r` in one write, sent when the Agent is `idle` (H11) | the only prompt writer; no timed delay |
 | Daemon to Agent, a permission answer | none (the user answers in the Terminal) | missing; `docs/permission-decisions.md` |
 | Daemon to Agent, end a turn | none | missing |
 

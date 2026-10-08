@@ -3,6 +3,7 @@ import type { CreateRoomParams as agent_CreateRoomParams } from "./agent/CreateR
 import type { Landed as agent_Landed } from "./agent/Landed";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
 import type { NodeId as agent_NodeId } from "./agent/NodeId";
+import type { PromptParams as agent_PromptParams } from "./agent/PromptParams";
 import type { RailNode as agent_RailNode } from "./agent/RailNode";
 import type { RenameParams as agent_RenameParams } from "./agent/RenameParams";
 import type { SignalParams as agent_SignalParams } from "./agent/SignalParams";
@@ -78,6 +79,7 @@ export type RpcMethods = {
   "pad.setStorage": { params: pad_SetStorageParams; result: null };
   "agent.spawn": { params: agent_SpawnParams; result: agent_RailNode };
   "agent.stop": { params: agent_NodeId; result: null };
+  "agent.prompt": { params: agent_PromptParams; result: null };
   "agent.worktreeState": { params: agent_NodeId; result: agent_WorktreeState };
   "agent.land": { params: agent_NodeId; result: agent_Landed };
   "agent.discard": { params: agent_NodeId; result: null };

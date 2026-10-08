@@ -224,8 +224,7 @@ const PadBody = (props: {
       <p style={{ "text-align": "right" }}>
         <button
           type="button"
-          class="light"
-          style={{ all: "unset", cursor: "pointer", color: "var(--grey)" }}
+          class="word light"
           onClick={() => void exportToFile()}
         >
           export .md
