@@ -271,8 +271,8 @@ async fn h16_no_signal_text_reaches_the_terminal_and_only_one_function_writes_to
     for dir in ["agents/src", "rupd/src"] {
         collect(&root.join(dir), &mut callers);
     }
-    // H11's write; H13's and the Takeover path's join this list in their own series.
-    assert_eq!(callers, ["agents/src/lib.rs: 1"]);
+    // H11's write and H13's; the Takeover path joins this list in its own series.
+    assert_eq!(callers, ["agents/src/lib.rs: 2"]);
 }
 
 /// `terminals.write(` in the code under `dir`, tests excluded, per file.
