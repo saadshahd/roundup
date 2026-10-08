@@ -8,8 +8,13 @@ type MenuState = { node: RailNode; exit: ExitState | null; x: number; y: number;
 
 const isAgent = (node: RailNode) => node.kind !== "terminal";
 
+const NOT_FOUND = -32001;
+
+const UNKNOWN_OUTCOME = -32004;
+
+/** U68: an Agent runs while its Terminal does, whatever its Kind; a Room keeps U56's Kind rule. */
 const isRunning = (node: RailNode, exit: ExitState | null) =>
-  exit === null && (node.kind === "terminal" || (isAgent(node) && node.status?.kind !== "done"));
+  exit === null && (node.kind === "terminal" || (node.kind === "agent" ? true : node.status?.kind !== "done"));
 
 const needsConfirmation = ({ node, exit }: MenuState) =>
   isRunning(node, exit) &&
@@ -20,6 +25,7 @@ const needsConfirmation = ({ node, exit }: MenuState) =>
 
 export const createRailMenu = (app: AppSeam, rail: RailState, onFailure: (message: string) => void) => {
   const [state, setState] = createSignal<MenuState | null>(null);
+  const resuming = new Set<string>();
 
   const close = () => setState(null);
 
@@ -57,6 +63,42 @@ export const createRailMenu = (app: AppSeam, rail: RailState, onFailure: (messag
     if (current) void attempt(async () => { await stop(current.node); });
   };
 
+  const resume = async (id: string) => {
+    if (resuming.has(id)) return;
+
+    resuming.add(id);
+
+    try {
+      await app.rpc("agent.resume", { id });
+      await rail.refresh();
+    } catch (error) {
+      if (!(error instanceof RpcError)) {
+        if (error instanceof Error) onFailure(error.message);
+        else throw error;
+      } else if (error.code === UNKNOWN_OUTCOME) {
+        await rail.refresh();
+
+        const listed = await app.rpc("terminal.list", null).then(() => true, () => false);
+
+        if (!listed || rail.failure() !== null) onFailure("resume outcome unknown: the Daemon may have resumed it");
+      } else {
+        onFailure(error.message);
+
+        if (error.code === NOT_FOUND) await rail.refresh();
+      }
+    } finally {
+      resuming.delete(id);
+    }
+  };
+
+  const chooseResume = () => {
+    const current = state();
+
+    close();
+
+    if (current) void resume(current.node.id);
+  };
+
   const chooseRemove = () => {
     const current = state();
 
@@ -73,7 +115,16 @@ export const createRailMenu = (app: AppSeam, rail: RailState, onFailure: (messag
     });
   };
 
-  return { state, open, close, chooseStop, chooseRemove, canStop: (current: MenuState) => isRunning(current.node, current.exit) };
+  return {
+    state,
+    open,
+    close,
+    chooseStop,
+    chooseRemove,
+    chooseResume,
+    canStop: (current: MenuState) => isRunning(current.node, current.exit),
+    canResume: (current: MenuState) => current.node.can_resume && !isRunning(current.node, current.exit),
+  };
 };
 
 export type RailMenuModel = ReturnType<typeof createRailMenu>;
