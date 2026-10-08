@@ -48,7 +48,7 @@ def decision(pr, checks, verdicts, kinds):
         if 'Stopped: the run ended without marking it ready,' in body:
             return 'fix', 'cutoff'
         return None
-    if pr.get('mergeable') is False:
+    if pr.get('mergeable') is False and pr['head']['ref'].startswith('build/'):
         return 'fix', 'conflict'
     current = [v for v in verdicts if v['current']]
     if current and current[-1]['verdict'] == 'reject':
@@ -173,6 +173,27 @@ def issued(number):
         raise ValueError(f'Claim changed before starting PR #{number}')
 
 
+FIX_MARK = '<!-- fix-run -->'
+
+
+def fix_runs(number):
+    # L82: only the workflow token's comments count, so no one else spends or refunds a PR's two fix runs.
+    pages = gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}/comments?per_page=100', '--paginate', '--slurp')
+    return sum(FIX_MARK in c['body'] and c['user']['login'] == 'github-actions[bot]' for page in pages for c in page)
+
+
+def stop(task):
+    # L82: a third fix run is never started; the PR becomes a draft the user is asked about (L81).
+    number = task['pr']
+    pr = api(f'pulls/{number}')
+    lines = [l for l in (pr.get('body') or '').splitlines() if not l.startswith('Stopped:')]
+    body = '\n'.join(lines + ['', f"Stopped: two fix runs spent, then {task['cause']}"])
+    gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{number}', '--input', '-', data=json.dumps(dict(body=body)))
+    if not pr['draft']:
+        run('gh', 'pr', 'ready', str(number), '--undo')
+    run('gh', 'workflow', 'run', 'merge-ready.yml', '-f', f'pr={number}')
+
+
 def start(number, role, head):
     task = due(number)
     if not task or task['role'] != role or (head and task['head'] != head) or not acquire(task):
@@ -192,7 +213,14 @@ def start(number, role, head):
                   f"Your Author-Agent id is builder-{os.environ['GITHUB_RUN_ID']}. Mark the PR a draft while editing. "
                   "Run the required checks, push without force, remove a resolved Stopped: line, and mark it ready. "
                   "If the remote head moved, stop without overwriting it. Leave a precise Stopped: question only for an unresolved product decision.")
-    issued(number)
+    if role == 'fix':
+        if fix_runs(number) >= 2:
+            stop(task)
+            return
+        issued(number)
+        api(f'issues/{number}/comments', dict(body=f"{FIX_MARK}\nFix run for {task['cause']} at {task['head'][:7]}"))
+    else:
+        issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
         for name in ('pr', 'head', 'branch'):
