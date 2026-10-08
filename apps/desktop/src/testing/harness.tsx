@@ -1,6 +1,7 @@
 import { createRoot } from "solid-js";
 import { render } from "solid-js/web";
 import { App } from "../App";
+import { railStorage } from "../rail/persist/storage";
 import { createReducedMotion } from "../app/reducedMotion";
 import { runChecks } from "./checks";
 import type { Checks } from "./checks";
@@ -25,6 +26,12 @@ const seed = new URLSearchParams(location.search).get("seed") ?? "tree-40";
 if (!isSeedName(seed)) throw new Error(`unknown seed "${seed}"; one of ${SEEDS.join(", ")}`);
 
 const controls = seedApp(seed, Date.now());
+
+if (seed === "door-stopped") {
+  const failure = railStorage(controls.app.opened.project!.path).write({ selected: "first-room", collapsed: [] });
+
+  if (failure !== null) throw new Error(failure);
+}
 
 window.__fake = controls;
 

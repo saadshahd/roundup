@@ -19,6 +19,13 @@ export type RailState = {
   doorPending(id: string): boolean;
   doorFailure(id: string): string | null;
   startDoor(id: string): Promise<void>;
+  /** U9/U62: creates a root Room, then selects it and starts its Door once `rail.tree` returns it. */
+  createRoom(): Promise<void>;
+  /** True from the click until the new Room has appeared and its Door launch has begun. */
+  roomCreating(): boolean;
+  /** The message of the last failed `rail.createRoom`, until the next attempt or click. */
+  roomFailure(): string | null;
+  clearRoomFailure(): void;
   selected(): string | null;
   restored(): boolean;
   collapsed(): ReadonlySet<string>;
@@ -44,6 +51,10 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
   const [doors, setDoors] = createStore<Record<string, { pending: boolean; observedLive: boolean; failure: { message: string; attempt: string | null } | null }>>({});
   const [selected, setSelected] = createSignal<string | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
+  const [roomCreating, setRoomCreating] = createSignal(false);
+  const [roomFailure, setRoomFailure] = createSignal<string | null>(null);
+  /** The id `rail.createRoom` returned, until `rail.tree` shows its row. */
+  let wantedRoom: string | null = null;
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [restored, setRestored] = createSignal(false);
@@ -63,6 +74,15 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
   let pending = 0;
   let queued: DaemonEvent[] = [];
   let latest: Promise<void> = Promise.resolve();
+
+  const select = (id: string | null): void => {
+    batch(() => {
+      setRestored(false);
+      setSelected(id !== null && model.tree.some((node) => node.id === id) ? id : null);
+      reveal(selected());
+      save();
+    });
+  };
 
   const hasLiveTerminal = (node: RailNode) => node.terminal_id !== null && !(node.terminal_id in model.exited);
 
@@ -101,6 +121,15 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
         }
       }
     });
+
+    const wanted = wantedRoom;
+
+    if (wanted !== null && tree.some((node) => node.id === wanted)) {
+      wantedRoom = null;
+      select(wanted);
+      setRoomCreating(false);
+      void startDoor(wanted);
+    }
   };
 
   const fetchTerminals = async () => {
@@ -143,6 +172,47 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     }
   };
 
+  const startDoor = async (id: string): Promise<void> => {
+    if (doors[id]?.pending) return;
+    setDoors(id, { pending: true, observedLive: false, failure: null });
+
+    try {
+      await app.rpc("rail.startDoor", { id });
+      fetching(fetchTree);
+      await latest;
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      fetching(fetchTree);
+      await latest;
+      const node = model.tree.find((each) => each.id === id);
+
+      if (node && !hasLiveTerminal(node) && !doors[id]?.observedLive) {
+        setDoors(id, "failure", { message: error.message, attempt: node.attempt });
+      }
+    } finally {
+      setDoors(id, "pending", false);
+    }
+  };
+
+  const createRoom = async (): Promise<void> => {
+    if (roomCreating()) return;
+    setRoomCreating(true);
+    setRoomFailure(null);
+
+    try {
+      wantedRoom = (await app.rpc("rail.createRoom", { name: "room", parent: null })).id;
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+
+      setRoomFailure(error.message);
+      setRoomCreating(false);
+
+      return;
+    }
+
+    fetching(fetchTree);
+  };
+
   events.subscribe((event) => apply([event]));
   fetching(async () => {
     await Promise.all([fetchTree(), fetchTerminals()]);
@@ -151,27 +221,11 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
   return {
     doorPending: (id) => doors[id]?.pending ?? false,
     doorFailure: (id) => doors[id]?.failure?.message ?? null,
-    startDoor: async (id) => {
-      if (doors[id]?.pending) return;
-      setDoors(id, { pending: true, observedLive: false, failure: null });
-
-      try {
-        await app.rpc("rail.startDoor", { id });
-        fetching(fetchTree);
-        await latest;
-      } catch (error) {
-        if (!(error instanceof Error)) throw error;
-        fetching(fetchTree);
-        await latest;
-        const node = model.tree.find((each) => each.id === id);
-
-        if (node && !hasLiveTerminal(node) && !doors[id]?.observedLive) {
-          setDoors(id, "failure", { message: error.message, attempt: node.attempt });
-        }
-      } finally {
-        setDoors(id, "pending", false);
-      }
-    },
+    startDoor,
+    createRoom,
+    roomCreating,
+    roomFailure,
+    clearRoomFailure: () => setRoomFailure(null),
     get nodes() {
       return model.tree;
     },
@@ -198,14 +252,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       setCollapsed((closed) => new Set(closed.has(id) ? [...closed].filter((each) => each !== id) : [...closed, id]));
       save();
     },
-    select: (id) => {
-      batch(() => {
-        setRestored(false);
-        setSelected(id !== null && model.tree.some((node) => node.id === id) ? id : null);
-        reveal(selected());
-        save();
-      });
-    },
+    select,
     nameOf: (actor) =>
       actor.kind === "user"
         ? "you"

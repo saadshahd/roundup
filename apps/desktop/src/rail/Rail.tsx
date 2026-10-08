@@ -24,8 +24,6 @@ export const Rail = () => {
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string | null>>(new Set());
   const [failure, setFailure] = createSignal<string | null>(null);
   const menu = createRailMenu(app, rail, setFailure);
-  /** The Agent just spawned: `rail.tree` has no row for it until `rail.changed` is handled. */
-  const [wantedDoor, setWantedDoor] = createSignal<string | null>(null);
   const [wanted, setWanted] = createSignal<string | null>(null);
   /** Gates `⌘N` in the chord handler and the `+ agent` click below, so an open field is never dropped mid-type (U33). */
   const [composing, setComposing] = createSignal(false);
@@ -139,7 +137,7 @@ export const Rail = () => {
       setWanted(spawned.id);
     });
 
-  const canSpawn = () => !pending() && wantedDoor() === null && !rail.doorPending(rail.selected() ?? "") && daemonExit() === null;
+  const canSpawn = () => !pending() && !rail.roomCreating() && !rail.doorPending(rail.selected() ?? "") && daemonExit() === null;
 
   const attention = createMemo(() => attentionCount(rail.nodes));
 
@@ -150,6 +148,7 @@ export const Rail = () => {
   onMount(() => {
     const clear = () => {
       setFailure(null);
+      rail.clearRoomFailure();
       rail.clearStorageFailure();
     };
 
@@ -206,11 +205,6 @@ export const Rail = () => {
     if (id !== null && rail.nodes.some((node) => node.id === id)) {
       rail.select(id);
       setWanted(null);
-
-      if (wantedDoor() === id) {
-        setWantedDoor(null);
-        void rail.startDoor(id);
-      }
     }
   });
 
@@ -313,7 +307,7 @@ export const Rail = () => {
           />
         )}
       </Show>
-      <Show when={failure() ?? rail.doorFailure(rail.selected() ?? "") ?? rail.storageFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <Show when={failure() ?? rail.roomFailure() ?? rail.doorFailure(rail.selected() ?? "") ?? rail.storageFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <RailMenu menu={menu} />
       <div class="rail-actions">
         <button
@@ -341,11 +335,7 @@ export const Rail = () => {
         <button
           class="word"
           disabled={!canSpawn()}
-          onClick={() => guarded(async () => {
-            const room = await app.rpc("rail.createRoom", { name: "room", parent: null });
-            setWantedDoor(room.id);
-            setWanted(room.id);
-          })}
+          onClick={() => guarded(() => rail.createRoom())}
         >
           <Icon name="plus" /> room
         </button>

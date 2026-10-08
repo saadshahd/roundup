@@ -19,13 +19,13 @@ describe("u38 empty Pane", () => {
   });
 
   it("u38_the_empty_pane_text_returns_once_the_selected_row_is_removed", async () => {
-    const tree = [node("a")];
+    const tree = [node("a"), node("b")];
     const { app, connected } = await mountPane(tree, [info("t-a")]);
 
     connected.rail.select("a");
     expect(screen.queryByText("select an agent or a terminal")).toBeNull();
 
-    tree.length = 0;
+    tree.shift();
     app.emit(event({ name: "rail.changed" }));
 
     expect(await screen.findByText("select an agent or a terminal")).toBeTruthy();

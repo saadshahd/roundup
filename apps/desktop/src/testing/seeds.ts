@@ -18,7 +18,7 @@ const NOT_FOUND = -32001;
 
 const KINDS: Kind[] = ["error", "needs-you", "blocked", "working", "idle", "done"];
 
-export const SEEDS = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict"] as const;
+export const SEEDS = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped"] as const;
 
 export type SeedName = (typeof SEEDS)[number];
 
@@ -284,7 +284,14 @@ const afterFirstLoad = (app: FakeApp, action: () => void) => {
 export const seedApp = (name: SeedName, now: number): Controls => {
   const app = createFakeApp();
   const tree = name === "tree-40" ? nestedTree(now) : cyclingAgents(now, 10, () => null);
-  const controls = installDaemon(app, name === "first-run" ? [] : tree, now, name === "tree-40");
+
+  const nodes = name === "first-run" || name === "empty-project"
+    ? []
+    : name === "door-stopped"
+      ? [door("first-room", "done", "finished", { name: "first room", status: statusAt(now, "done", "finished", 0) })]
+      : tree;
+
+  const controls = installDaemon(app, nodes, now, name === "tree-40");
   app.opened.project = name === "first-run" ? null : PROJECT;
 
   if (name === "daemon-exits") afterFirstLoad(app, () => app.exitDaemon({ code: 1 }));
