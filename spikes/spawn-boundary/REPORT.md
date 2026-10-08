@@ -28,5 +28,7 @@ Same VM kind (isolated, from `ru-toolchain`), `claude` in a `tmux` pty, `--model
 | `i_user` | the same, `~/.claude/settings.json` with `Bash(*)` allowed | The same. |
 | `i_shim` | `--tools Read,Bash`, `settings.env.PATH` with the shim first | `claude --version` ran and printed `use agent_spawn`, exit 1. A direct call only. |
 
+Re-run on a GitHub Actions runner, 2026-10-08, Claude Code 2.1.294: not run. tmux installed, but `run-interactive.sh` exited 1 at its first check, `CLAUDE_CODE_OAUTH_TOKEN` unset in the Builder job's environment (the job holds `ANTHROPIC_API_KEY` and cloud-provider variables, which the script rightly does not use). No pane was captured, so no row above is updated and `raw-interactive/` is unchanged. Repair: export `CLAUDE_CODE_OAUTH_TOKEN` to the Builder job, then re-run.
+
 Not run: a `bash -c` child, an absolute path to the real binary, the sandbox, a user MCP server. The TUI says a user may type `!` to run a shell command in their own session; that is the user, not the Agent.
 
