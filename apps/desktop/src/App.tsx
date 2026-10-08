@@ -1,4 +1,4 @@
-import { createMemo, createResource, ErrorBoundary, For, Show } from "solid-js";
+import { createMemo, createResource, createSignal, ErrorBoundary, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { ChooseProject, EmptyRail, EmptyShelf } from "./app/FirstRun";
 import { Layout } from "./app/Layout";
@@ -10,14 +10,18 @@ import { exitText } from "./ink/exitText";
 import { Pads } from "./pads/Pads";
 import { AttentionChip } from "./rail/AttentionChip";
 import { railStorage } from "./rail/persist/storage";
+import { Jump } from "./rail/Jump";
 import { Rail } from "./rail/Rail";
 import { Keys } from "./keys/Keys";
 import { createNow } from "./state/clock";
 import type { Clock } from "./state/clock";
 import { createProjectState } from "./state/project";
 import { connectProject, ConnectedProjectContext } from "./state/connectedProject";
+import { createXtermEmulators } from "./terminal/emulator";
 import type { EmulatorFactory } from "./terminal/emulator";
 import { Pane } from "./terminal/Pane";
+import { Thread } from "./thread/Thread";
+import { trackSelections } from "./thread/emulators";
 import { Todos } from "./todos/Todos";
 
 const daemonExitText = ({ code }: DaemonExit): string =>
@@ -34,6 +38,9 @@ const OpenProject = (props: {
   now: Accessor<number>;
   createEmulator?: EmulatorFactory | undefined;
 }) => {
+  const emulators = trackSelections(props.createEmulator ?? createXtermEmulators());
+  const [jumpFailure, setJumpFailure] = createSignal<string | null>(null);
+
   const [connected] = createResource(() =>
     connectProject(props.app, props.project, props.reducedMotion, props.now, () => props.daemonExit, railStorage(props.project.path)),
   );
@@ -44,6 +51,7 @@ const OpenProject = (props: {
         {(open) => (
           <ConnectedProjectContext.Provider value={open()}>
             <Keys />
+            <Jump onFailure={setJumpFailure} />
             <Layout
               header={
                 <>
@@ -62,7 +70,10 @@ const OpenProject = (props: {
               }
               rail={<Rail />}
               centre={
-                <Pane notice={open().rail.failure()} createEmulator={props.createEmulator} />
+                <div class="centre-stack">
+                  <Pane notice={open().rail.failure() ?? jumpFailure()} createEmulator={emulators.create} />
+                  <Thread selectionOf={emulators.selectionOf} />
+                </div>
               }
               shelf={
                 <>
