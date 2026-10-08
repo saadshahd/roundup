@@ -258,7 +258,7 @@ async fn a22_resume_launches_with_resume_flag_and_promotes_on_ack() {
     assert_eq!(resumed.id, node.id);
     assert_eq!(resumed.name, node.name);
     assert_eq!(resumed.parent, node.parent);
-    let argv = crate::common::until_file(&f.dir.path().join("argv.txt")).await;
+    let argv = until_resumed(&f).await;
     assert!(argv.contains(&format!("--resume {CONVERSATION}")));
 }
 
@@ -554,7 +554,13 @@ async fn exited_door(f: &Fixture) -> RailNode {
 async fn until_resumed(f: &Fixture) -> String {
     for _ in 0..500 {
         let text = std::fs::read_to_string(f.dir.path().join("argv.txt")).unwrap_or_default();
-        if text.contains("--resume") {
+        if text.split_inclusive('\n').any(|line| {
+            line.ends_with('\n')
+                && line
+                    .split_whitespace()
+                    .zip(line.split_whitespace().skip(1))
+                    .any(|(flag, value)| flag == "--resume" && value == CONVERSATION)
+        }) {
             return text;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -634,7 +640,7 @@ async fn a23_a_restarted_door_after_reopen_resumes() {
         .unwrap();
 
     assert!(starting.await.unwrap().unwrap().terminal_id.is_some());
-    let argv = crate::common::until_file(&f.dir.path().join("argv.txt")).await;
+    let argv = until_resumed(&f).await;
     assert!(argv.contains(&format!("--resume {CONVERSATION}")));
 }
 
