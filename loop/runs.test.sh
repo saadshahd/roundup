@@ -20,7 +20,7 @@ cat >"$dir/loop/rules.sh" <<'RULES'
 set -euo pipefail
 case $1 in
   touches) exec bash "$ROOT/loop/rules.sh" touches ;;
-  ready) [ ! -e "$FIXTURES/ready-fail" ] || exit 4; jq -Rn '[inputs | capture("^(?<state>[^ ]+) (?<ids>.+) (?<file>scenarios/[^ ]+)(?: #.*)?$") | .slug = (.ids | gsub("[^A-Za-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-"))]' <"$FIXTURES/ready" ;;
+  ready) [ ! -e "$FIXTURES/ready-fail" ] || exit 4; if [ -f "$FIXTURES/orders-json" ]; then cat "$FIXTURES/orders-json"; exit 0; fi; jq -Rn '[inputs | capture("^(?<state>[^ ]+) (?<ids>.+) (?<file>scenarios/[^ ]+)(?: #.*)?$") | .slug = (.ids | gsub("[^A-Za-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-"))]' <"$FIXTURES/ready" ;;
   verdicts) [ ! -e "$FIXTURES/verdicts-fail" ] || exit 4; cat "$FIXTURES/verdicts" ;;
   *) exit 2 ;;
 esac
@@ -130,6 +130,15 @@ rm "$FIXTURES/gh-fail"
 check 'L23 a max that is no number exits 2' 2 loop/runs.sh queue four
 check 'L23 slug of a range' 0 loop/runs.sh slug 'U105–U107, U109'
 holds 'L23 slug joins words with one dash' test "$(cat "$FIXTURES/out")" = U105-U107-U109
+
+# L87 a reserved Issue is claimed only by its chosen provider.
+fresh
+printf '[{"issue":400,"ids":"L90","file":"scenarios/loop-rules.md","slug":"L90","state":"ready","priority":0,"provider":"codex"}]' >"$FIXTURES/orders-json"
+check 'L87 Claude leaves Codex-reserved work available' 0 loop/runs.sh queue 4
+holds 'L87 no Claude Claim for a Codex Issue' test "$(cat "$FIXTURES/out")" = '[]'
+check 'L87 Codex sees its reserved Issue through the shared queue' 0 loop/runs.sh queue 5 codex
+holds 'L87 the canonical Issue survives dispatch' jq -e 'length == 1 and .[0].issue == 400' "$FIXTURES/out"
+check 'L87 unknown providers fail' 2 loop/runs.sh queue 4 unknown
 
 # L23 claim
 fresh

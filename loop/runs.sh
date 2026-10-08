@@ -24,12 +24,13 @@ builders() {
 # L23: eligible GitHub Issues, ordered by their priority, with room for at most <max> Builders.
 # Existing branch/owner Claims retain their identity across migration. Reads only.
 queue() {
-  local max=${1:-4} rows branches merged running
+  local max=${1:-4} provider=${2:-claude} rows branches merged running
+  [[ $provider =~ ^(claude|codex)$ ]] || { echo "unknown Builder provider: $provider" >&2; exit 2; }
   rows=$(loop/rules.sh ready --json)
   branches=$(git ls-remote origin 'refs/heads/build/*' 'refs/heads/loop-row/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   merged=$(merged_heads)
   running=$(builders | wc -l | tr -d ' ')
-  printf '%s\n' "$rows" | jq -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" "$slug_def"'
+  printf '%s\n' "$rows" | jq -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" --arg provider "$provider" "$slug_def"'
     ($branches | [scan("refs/heads/loop-row/(\\S+)")[0]]) as $owned
     | ($merged | split("\n")) as $merged
     | ($branches | split("\n") | map(select(length > 0) | . as $line
@@ -38,6 +39,7 @@ queue() {
     | (($claims | map(select(.merged | not) | .slug)) + $owned) as $taken
     | ($claims | map(select(.merged) | {key: .slug, value: .sha}) | from_entries) as $reusable
     | [ .[] | select(.state == "ready")
+       | select((.provider // "any") == "any" or .provider == $provider)
        | select(.slug as $s | $taken | any(. == $s) | not)
        | if $reusable[.slug] then . + {reclaim: $reusable[.slug]} else . end]
     | sort_by(.priority // 100)
@@ -229,7 +231,7 @@ swept() {
 }
 
 case "${1:-}" in
-  queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" ;;
+  queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" "${3:-claude}" ;;
   claim) claim ;;
   unclaim) unclaim ;;
   recover) recover ;;

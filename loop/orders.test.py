@@ -2,6 +2,8 @@
 import importlib.util
 import unittest
 import subprocess
+import io
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('orders', 'loop/orders.py')
@@ -16,11 +18,35 @@ def issue(number=1, key='U83', **changes):
 
 
 class Orders(unittest.TestCase):
+    def test_l34_only_known_modes_and_providers_are_executable(self):
+        for value in ['Mode: skip-review','Provider: anything']:
+            row=orders.classify([issue(body=issue()['body']+value+'\n')],{},[])[0]
+            self.assertEqual(row['state'],'blocked')
+        row=orders.order(issue(body=issue()['body']+'Mode: specify\nProvider: codex\n'))
+        self.assertEqual((row['mode'],row['provider']),('specify','codex'))
+
+    def test_l34_task_renders_the_authorized_issue_and_mode(self):
+        output = io.StringIO()
+        with patch.object(orders, 'gh', return_value=issue()), \
+             patch.object(orders, 'read_orders', return_value=orders.classify([issue()], {}, [])), \
+             redirect_stdout(output):
+            orders.task(1)
+        self.assertIn('Mode: implement', output.getvalue())
+        self.assertIn('Refs #1', output.getvalue())
+
     def test_l34_ready_issue_does_not_consult_test_names_or_work_tables(self):
         self.assertEqual(orders.classify([issue()], {}, [])[0]['state'], 'ready')
 
     def test_l34_an_unapproved_issue_cannot_authorize_execution(self):
         self.assertEqual(orders.classify([issue(labels=[])], {}, [])[0]['state'], 'unspecified')
+
+    def test_l34_explicit_pr_link_preserves_a_manual_agents_owner(self):
+        prs=[dict(number=12,headRefName='codex/fix',body='Refs #1',isCrossRepository=False)]
+        self.assertEqual(orders.classify([issue()],{},prs)[0]['state'],'in-flight')
+        prs[0]['body']='Refs #10'
+        self.assertEqual(orders.classify([issue()],{},prs)[0]['state'],'ready')
+        prs[0].update(body='Refs #1',isCrossRepository=True)
+        self.assertEqual(orders.classify([issue()],{},prs)[0]['state'],'ready')
 
     def test_l34_existing_branch_owner_survives_migration(self):
         row = orders.classify([issue()], {}, [{'number':12,'headRefName':'build/U83'}])[0]

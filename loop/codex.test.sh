@@ -69,7 +69,7 @@ class Codex(unittest.TestCase):
             fleet.tick(self.state)
         result = json.loads((self.state/'last.json').read_text())
         self.assertEqual(result['state'], 'ready')
-        self.assertTrue(any(a == ('loop/runs.sh','queue','5') for a,k in self.calls))
+        self.assertTrue(any(a == ('loop/runs.sh','queue','5','codex') for a,k in self.calls))
         self.assertEqual(result['usage'], dict(input=40, cache_read=60, output=20, turns=1))
         self.assertEqual(self.env['NEXTEST_TEST_THREADS'], '1')
         self.assertNotIn('CODEX_API_KEY', self.env)

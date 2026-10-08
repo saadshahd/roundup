@@ -9,7 +9,11 @@ Scenarios: U83
 Specification: [scenarios/ui-surfaces.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-surfaces.md)
 Key: U83
 Priority: 1
+Mode: implement
+Provider: any
 ```
+
+Mode is `implement` or `specify`; a specification Issue may propose new scenario headings and files, while an implementation Issue requires them on main. Provider is `any`, `claude` or `codex`; omitted fields default to implementation and any provider. Provider selection never overrides dependencies or ownership.
 
 Key is an immutable branch identity: letters, digits and single hyphens. Existing migrated Keys keep their `build/<key>` and `loop-row/<key>` Claims. Priority is 0 (first) through 100 (last). Native GitHub blocked-by dependencies hold Issue numbers; only a dependency closed as completed frees work. Cancelled dependencies, malformed orders and duplicate Keys need engineering repair, not user escalation. A dependency cycle must be corrected before execution.
 
