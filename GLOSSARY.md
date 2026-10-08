@@ -232,8 +232,11 @@ A screen the Design critic runs that no Builder's prompt lists.
 
 ### The loop
 
+**Work Issue**:
+A GitHub Issue labelled `loop:work` that holds a scoped outcome, acceptance references, immutable Key, priority and native dependencies. Its intake label authorizes execution; its delivery evidence determines completion (L34).
+
 **Builder**:
-The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a Work row, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
+The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a GitHub work Issue, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
 
 **Code PR**:
 A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scenarios:` line (L46).
