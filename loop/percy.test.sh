@@ -54,10 +54,11 @@ l36_run snapshots_every_seed 0
 holds_eval 'serves the harness on the port' 'grep -qx "harness first-run $port" "$TRACE"'
 holds_eval 'snapshots against the served port' 'grep -q "exec percy snapshot .* --base-url http://localhost:$port\$" "$TRACE"'
 seeds=$(sed -n '/^| Seed |/,/^$/p' "$root/.agents/data/harness.md" | sed -nE 's/^\| `([a-z0-9-]+)` \|.*/\1/p' | sort)
-holds_eval 'harness.md lists the five seeds' '[ "$(printf "%s\n" "$seeds" | wc -l | tr -d " ")" = 5 ]'
+seed_count=$(printf '%s\n' "$seeds" | wc -l | tr -d ' ')
+holds_eval 'harness.md includes the first Room states' 'grep -qx "empty-project" <<<"$seeds" && grep -qx "door-stopped" <<<"$seeds"'
 holds_eval 'one snapshot per harness.md seed' '[ "$(sed -n "s/^- name: //p" "$SNAPSHOTS" | sort)" = "$seeds" ]'
-holds_eval 'each snapshot loads its seed' '[ "$(grep -c "url: /harness.html?seed=" "$SNAPSHOTS")" = 5 ]'
-holds_eval 'each snapshot is 1280 wide in Chrome only' '[ "$(grep -c "^  widths: \[1280\]$" "$SNAPSHOTS")" = 5 ] && [ "$(grep -c "^  browsers: \[chrome\]$" "$SNAPSHOTS")" = 5 ]'
+holds_eval 'each snapshot loads its seed' '[ "$(grep -c "url: /harness.html?seed=" "$SNAPSHOTS")" = "$seed_count" ]'
+holds_eval 'each snapshot is 1280 wide in Chrome only' '[ "$(grep -c "^  widths: \[1280\]$" "$SNAPSHOTS")" = "$seed_count" ] && [ "$(grep -c "^  browsers: \[chrome\]$" "$SNAPSHOTS")" = "$seed_count" ]'
 holds_eval 'build link reaches the job summary' 'grep -q "https://percy.io/abc/web/roundup/builds/42" "$GITHUB_STEP_SUMMARY"'
 
 l36_run harness_dies 1

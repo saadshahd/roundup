@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../App";
+import { fakeEmulators } from "../terminal/paneHarness";
 import { fromBase64 } from "../terminal/base64";
 import { SEEDS, seedApp } from "./seeds";
 import type { SeedName } from "./seeds";
@@ -11,7 +12,7 @@ const NOW = 1_700_000_000_000;
 
 const mount = (seed: SeedName) => {
   const controls = seedApp(seed, Date.now());
-  render(() => <App app={controls.app} reducedMotion={() => false} clock={Date.now} />);
+  render(() => <App app={controls.app} reducedMotion={() => false} clock={Date.now} createEmulator={fakeEmulators().factory} />);
 
   return controls;
 };
@@ -21,8 +22,8 @@ const rail = () => screen.findByRole("region", { name: "rail" });
 afterEach(cleanup);
 
 describe("u26 the harness seeds", () => {
-  it("u26_the_seeds_are_the_five_the_recipe_documents", () => {
-    expect(SEEDS).toEqual(["first-run", "agents-10", "tree-40", "daemon-exits", "conflict"]);
+  it("u26_the_seeds_include_the_first_room_screens_the_recipe_documents", () => {
+    expect(SEEDS).toEqual(["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped"]);
   });
 
   it("u26_first_run_shows_the_empty_rail_text", async () => {
@@ -31,6 +32,21 @@ describe("u26 the harness seeds", () => {
     await screen.findByText("open a folder to start");
 
     expect((await rail()).textContent).toBe("agents and terminalsappear here, one per row,nested by indent");
+  });
+
+  it("u143_the_empty_project_seed_exposes_the_first_room_action", async () => {
+    mount("empty-project");
+
+    expect(await screen.findByRole("button", { name: "start a Room" })).toBeTruthy();
+    expect(screen.queryByText("open a folder to start")).toBeNull();
+  });
+
+  it("u143_the_stopped_door_seed_shows_its_exit_and_restart_action", async () => {
+    mount("door-stopped");
+    fireEvent.click(await screen.findByText("first room"));
+
+    expect(await screen.findByText("Door stopped, exited 0")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "start Door" }).length).toBeGreaterThan(0);
   });
 
   it("u26_agents_10_shows_its_first_and_last_agent_in_the_rail", async () => {
