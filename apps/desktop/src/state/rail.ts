@@ -36,8 +36,8 @@ export type RailState = {
   nameOf(actor: Actor): string;
   /** The message of the last failed fetch, until a later fetch succeeds. */
   failure(): string | null;
-  /** Fetches the current tree after a write found that its row had already gone. */
-  refresh(): Promise<void>;
+  /** Fetches the current tree after a write found that its row had already gone; `terminals` also refetches `terminal.list`, so a missed exit shows. */
+  refresh(options?: { terminals?: boolean }): Promise<void>;
   /** Resolves when no fetch is in flight and no queued Event is left to apply. */
   settled(): Promise<void>;
 };
@@ -239,8 +239,9 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       return code === null ? { kind: "signal" } : { kind: "code", code };
     },
     failure,
-    refresh: async () => {
-      fetching(fetchTree);
+    refresh: async (options) => {
+      if (options?.terminals) fetching(async () => { await Promise.all([fetchTree(), fetchTerminals()]); });
+      else fetching(fetchTree);
       await latest;
     },
     selected,
