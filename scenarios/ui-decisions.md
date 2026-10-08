@@ -10,9 +10,3 @@ Module: `apps/desktop/src/decisions`. Ids: U113. Completes the intervention stag
 - Daemon exit disables answering and shows U25's existing failure state. Reopen uses the new connection and proof. Proofs stay in memory and never appear in DOM text, snapshots, storage or diagnostics. Showing or answering a Decision never sends an answer through `terminal.write`.
 
 Observers: `u113_` tests render the real App against the fake App seam, with delayed list/answer/proof promises and opened/cleared events, and assert every race and failure above through visible state and recorded calls. Terminal integration tests assert fitting after Card appearance, replacement and removal, one resize per animation frame, and preserved output/scroll position. A harness seed with multiple Agents includes a permission, an H14 question and an unanswerable Decision; select each using pointer and keyboard. Capture the Card, pending, failure and cleared states at 1280×800 and 700×800, light and dark. Name the D1–D10 readings before and after and regress no passing Check; add the visible states to Percy's existing capture list. The fake proves rendering and interaction; H18's real-Daemon observer proves authentication and answer delivery. No native rendering claim follows from Chromium.
-
-## Work
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|
-| U113 | permission and question Cards for the selected Agent or Room's Door; Moves: D2 D5 D6 | `apps/desktop/src/decisions/**` (new), the narrow mount in `App.tsx`, necessary `state/connectedProject.ts` integration, `testing/{fakeApp,seeds,stores}.ts`, `testing/harness.tsx`, related App fixtures, `.agents/data/harness.md` for Percy seeds, and only the required layout/refit changes in `terminal/Pane.tsx`, `terminal/styles.css` and their tests; reuse the Rail selection and Terminal focus APIs | H18 seam, U12, U25, U37, U40, U133; `u113_` tests and rendered observers | H18 H2 H3 H5 H6 H7 H8 H9 H10 H14 U133 |
