@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+      issues: write
+      pull-requests: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -33,12 +35,16 @@ jobs:
         run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
       - id: prompt
         env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ fromJSON(inputs.row).issue }}
           IDS: ${{ fromJSON(inputs.row).ids }}
           FILE: ${{ fromJSON(inputs.row).file }}
           SLUG: ${{ fromJSON(inputs.row).slug }}
         run: |
-          printf 'Build Work row %s of %s on branch build/%s. That branch exists at an older main commit as the row'"'"'s Claim: branch from origin/main and push, which fast-forwards it. Your Author-Agent id is builder-%s.\n' "$IDS" "$FILE" "$SLUG" "$GITHUB_RUN_ID" |
-            loop/runs.sh prompt builder
+          {
+            python3 loop/orders.py task "$ISSUE"
+            printf '\nBuild on branch build/%s. Its remote Claim is yours; branch from origin/main and fast-forward it. Your Author-Agent id is builder-%s.\n' "$SLUG" "$GITHUB_RUN_ID"
+          } | loop/runs.sh prompt builder
       - id: claude
         uses: anthropics/claude-code-action@v1
         with:

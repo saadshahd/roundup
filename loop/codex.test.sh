@@ -20,7 +20,7 @@ class Codex(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.state = Path(self.temp.name)
-        self.row = dict(ids='U59', file='scenarios/ui.md', slug='U59')
+        self.row = dict(issue=42, ids='U59', file='scenarios/ui.md', slug='U59')
         self.calls = []
         self.ready = True
         self.code = 0
@@ -69,7 +69,7 @@ class Codex(unittest.TestCase):
             fleet.tick(self.state)
         result = json.loads((self.state/'last.json').read_text())
         self.assertEqual(result['state'], 'ready')
-        self.assertTrue(any(a == ('loop/runs.sh','queue','5') for a,k in self.calls))
+        self.assertTrue(any(a == ('loop/runs.sh','queue','5','codex') for a,k in self.calls))
         self.assertEqual(result['usage'], dict(input=40, cache_read=60, output=20, turns=1))
         self.assertEqual(self.env['NEXTEST_TEST_THREADS'], '1')
         self.assertNotIn('CODEX_API_KEY', self.env)
@@ -91,12 +91,14 @@ class Codex(unittest.TestCase):
         fleet.tick(self.state)
         self.assertFalse(any(a[:2] == ('loop/runs.sh','claim') for a,k in self.calls[before:]))
 
-    def test_L87_question_before_any_edits_still_creates_a_draft(self):
+    def test_L87_question_before_any_edits_updates_the_issue_without_changing_specs(self):
         self.ready, self.dirty = False, False
         with self.assertRaisesRegex(RuntimeError, 'did not deliver'): fleet.tick(self.state)
         scenario = next(self.state.glob('*/checkout/scenarios/ui.md')).read_text()
-        self.assertIn('Stopped: unresolved product question.', scenario)
-        self.assertTrue(any(a[:3] == ('gh','pr','create') and '--draft' in a for a,k in self.calls))
+        self.assertEqual(scenario, '# Scenario\n')
+        self.assertTrue(any(a[:4] == ('gh','issue','comment','42') for a,k in self.calls))
+        self.assertTrue(any(a[:4] == ('gh','issue','edit','42') for a,k in self.calls))
+        self.assertFalse(any(a[:3] == ('gh','pr','create') for a,k in self.calls))
 
     def test_L87_failed_engine_with_ready_pr_is_failure(self):
         self.code = 124

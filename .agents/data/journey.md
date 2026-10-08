@@ -2,9 +2,7 @@
 
 User-selected goal: first Project → start Agents → understand Status → intervene → review results. The product destination is `PRINCIPLES.md` P1/P3/P6 and the accepted Room/Door slice in `docs/wireframes.md`. Complete that journey before expanding into Sketch storage, Room nesting or cross-Room dependencies.
 
-Priority: J1 U83 J2 H18 U113 U143 U144 J3 E1 B24 H2 H3 H5 H6 H7 H10 H8 H9 H14 U132 U133 U136
-
-`loop/runs.sh queue` ranks eligible Work rows by the first matching id above, then keeps the other rows in their existing order. Priority never overrides an `After` dependency, an open PR, a Claim or the Builder limit. An id with no eligible row consumes no slot. U143 is the first-project UI slice being developed; the other ids reuse the existing Brief, Door, Decision and visual work rather than duplicating it.
+Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`). A Claim or active PR keeps its ownership regardless of priority.
 
 ## What must work
 
@@ -20,8 +18,8 @@ The latest audit evidence is `artifacts/ux/journey/README.md` (J2, main `4649c5f
 
 ## How a Builder closes a gap
 
-For a UI row or a row affecting the stages above, read the relevant stage and the existing scenarios before changing code. Use `emil-design-eng`; use `animate` for a motion clause. Inspect the rendered App with `agent-browser` at 1280×800 and 700×800, using the real harness and its failure injection. Capture the before/after interaction and its D1–D10 readings; name any pre-existing failing Check and introduce no regression. A mock proves the webview only; the Daemon observer above proves the actual action.
+For a UI Issue or an Issue affecting the stages above, read the relevant stage and the existing scenarios before changing code. Use `emil-design-eng`; use `animate` for a motion clause. Inspect the rendered App with `agent-browser` at 1280×800 and 700×800, using the real harness and its failure injection. Capture the before/after interaction and its D1–D10 readings; name any pre-existing failing Check and introduce no regression. A mock proves the webview only; the Daemon observer above proves the actual action.
 
-If the stage reveals missing behavior outside the owned row, first find the existing scenario/Work row. If none covers it, add one bounded given/when/then scenario with a named observer and a Work row with real `After` ids. Assign the next unused id in the relevant scenario file; the queue can take that row without changing this work order. Never replace the stage's acceptance condition with what the current code happens to do, and never create a test that merely checks a report contains the right words. Missing capability is unfinished work, not an approved visual difference.
+If the stage reveals missing behavior outside the owned Issue, first find the existing scenario and work Issue. If none covers it, add one bounded given/when/then scenario with a named observer and a work Issue with native blocking dependencies. Assign the next unused id in the relevant scenario file; the queue can take that Issue without changing this work order. Never replace the stage's acceptance condition with what the current code happens to do, and never create a test that merely checks a report contains the right words. Missing capability is unfinished work, not an approved visual difference.
 
 The review run checks the stage from the scenario, checkout and evidence; it does not accept the author's assertion that the journey is complete. The goal is complete only after all five stages have behavioral and rendered evidence on the same main revision. Test-name presence and merged-PR counts are queue bookkeeping, not that evidence. A native rendering claim still needs the user's macOS observer.

@@ -67,16 +67,19 @@ def deliver(record):
     body = 'Scenarios: ' + record['ids'] + '\n\n' + result.get('body', 'The local Codex run ended before its final report; changes are preserved for a fix run.')
     if (record['exit'] != 0 or result.get('status') != 'ready') and result.get('status') != 'stopped':
         body += '\n\nStopped: the run ended without marking it ready, local Codex attempt ' + str(record['started']) + '; changes are preserved for repair.'
+    if record.get('issue'):
+        body += f'\n\nRefs #{record["issue"]}'
     body_path = attempt / 'pr.md'
     body_path.write_text(body)
     if head == record['base']:
         if not command('git', 'status', '--porcelain', cwd=checkout):
             if result.get('status') != 'stopped':
                 return
-            # A question still needs a reviewable draft, even before implementation.
-            scenario = checkout / record['file']
-            with scenario.open('a') as output:
-                output.write('\n\n## Unresolved question\n\n' + result['body'] + '\n')
+            if not record.get('issue'):
+                raise RuntimeError('Stopped legacy attempt has no Issue; preserve it for migration')
+            command('gh', 'issue', 'comment', str(record['issue']), '--body-file', str(body_path))
+            command('gh', 'issue', 'edit', str(record['issue']), '--remove-label', 'ready-for-agent')
+            return
         command('git', '-c', 'core.hooksPath=/dev/null', 'add', '-A', cwd=checkout)
         command('git', '-c', 'core.hooksPath=/dev/null', 'commit', '-m', record['ids'] + ': ' + result.get('title', 'continue the interrupted build'),
                 '-m', 'Author-Agent: codex-' + str(record['started']), cwd=checkout)
@@ -151,7 +154,7 @@ def tick(state):
     auth = subprocess.run(['codex', 'login', 'status'], text=True, capture_output=True, timeout=30, check=True)
     if 'Logged in using ChatGPT' not in auth.stdout + auth.stderr:
         raise RuntimeError('Codex fleet requires ChatGPT login; run codex login locally')
-    rows = json.loads(command('loop/runs.sh', 'queue', '5', timeout=300))
+    rows = json.loads(command('loop/runs.sh', 'queue', '5', 'codex', timeout=300))
     failures = [json.loads(path.read_text()) for path in state.glob('*/record.json')]
     rows = [row for row in rows if sum(1 for run in failures if run['base'] == base
             and run['slug'] == row['slug'] and run['state'] == 'failed') < 2][:1]
@@ -178,7 +181,7 @@ def tick(state):
         command('git', 'config', 'credential.helper', '', cwd=checkout)
         command('git', 'config', '--add', 'credential.helper', '!gh auth git-credential', cwd=checkout)
         prompt = Path('.agents/builder.md').read_text() + '\n## Task\n\n' + (
-            f'Build Work row {row["ids"]} of {row["file"]} on the checked-out branch build/{row["slug"]}. '
+            f'Build Issue #{row["issue"]} on the checked-out branch build/{row["slug"]}. '
             f'Its remote Claim is yours. Your Author-Agent id is codex-{started}. '
             'The user authorized this build and routine engineering decisions; proceed without another confirmation. '
             'Use the Builder recipe and existing independent CI/review/merge gates. '
@@ -188,6 +191,7 @@ def tick(state):
             'Return status ready only after checks pass, with a concise title and PR body. '
             'For an unresolved product question return status stopped and include Stopped: with its consequence and recommendation in the body. '
             'The run has a two-hour deadline.\n')
+        prompt += '\n' + command('python3', 'loop/orders.py', 'task', str(row['issue']))
         (attempt / 'prompt.md').write_text(prompt)
         # Pass only non-secret runtime paths/locales. GitHub writes belong to the controller.
         environment = {key: value for key, value in os.environ.items() if key in
