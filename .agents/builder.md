@@ -24,7 +24,7 @@ A fix run starts with `gh pr ready --undo`, answers every finding or failure in 
 
 A missing prerequisite or stale Work table is an engineering repair: cite the missing implementation, put every id of its prerequisite row in `After`, and submit the table correction as a ready spec PR. An isolated contract test does not complete a multi-scenario implementation row. Keep implementation within `Owns`; an Architect or the user authorizes an ownership expansion. Contract approval requirements still apply.
 
-Stop only on a question that no scenario, Item or `GLOSSARY.md` entry settles. State the user-visible consequence and one recommended choice; handle missing prerequisites by the repair above: leave the PR a draft whose body has a `Stopped: <the question>` line, which merge-ready asks the user (L81).
+Stop only on a question that no scenario, Item or `GLOSSARY.md` entry settles. For that unresolved question, leave a draft with `Stopped: <the question>`, its user-visible consequence and one recommended choice; merge-ready asks it (L81).
 
 ## Review run
 
