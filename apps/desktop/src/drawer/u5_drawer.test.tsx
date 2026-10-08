@@ -245,9 +245,9 @@ describe("u5 Drawer and last touch", () => {
     sheet.textContent = styles;
     const { panel } = drawerSetup();
     const close = screen.getByRole("button", { name: "close" });
-    const [color, padding] = [getComputedStyle(close).color, getComputedStyle(panel).paddingRight];
+    const [color, padding] = [getComputedStyle(close).color, getComputedStyle(panel).paddingTop];
     sheet.remove();
 
-    expect([close.classList.contains("word"), color, padding]).toEqual([true, "var(--grey)", "72px"]);
+    expect([close.classList.contains("word"), color, padding]).toEqual([true, "var(--grey)", "var(--space-6)"]);
   });
 });
