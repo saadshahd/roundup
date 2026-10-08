@@ -61,6 +61,13 @@
   text-align: center;
 }
 
+/* The earlier-run line wraps in a narrow pane instead of leaving it. */
+.pane .pane-empty.light {
+  width: max-content;
+  max-width: calc(100% - var(--space-4) * 2);
+  white-space: normal;
+}
+
 .pane .pane-action {
   display: inline-flex;
   align-items: center;
