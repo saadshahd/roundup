@@ -126,11 +126,14 @@ def task(number):
     row = order(issue)
     rows = read_orders()
     current = next((row for row in rows if row['issue'] == number), None)
-    if current is None or current['state'] not in ('ready', 'in-flight'):
+    if current is None or current['state'] != 'ready':
         raise ValueError(f'Issue #{number} is no longer eligible: {current}')
+    completion = ('Close this specification Issue only after its specification acceptance is demonstrated; implementation stays in its dependent Issue.'
+                  if row['mode'] == 'specify' else
+                  'Close this implementation Issue only when its full acceptance is demonstrated; a specification-only PR does not close it.')
     print(f"Work order: {issue['html_url']}\n\n{issue['body']}\n\n"
           f"Mode: {row['mode']}. Use this Issue as the canonical work order. Link the PR with Refs #{number}. "
-          f"Use Closes #{number} only when its full acceptance is demonstrated; a specification-only PR does not close it. "
+          f"{completion} Use Closes #{number} when that condition holds. "
           "Put progress and unresolved engineering questions on the Issue, not in scenario Work tables.")
 
 

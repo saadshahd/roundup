@@ -34,6 +34,22 @@ class Orders(unittest.TestCase):
         self.assertIn('Mode: implement', output.getvalue())
         self.assertIn('Refs #1', output.getvalue())
 
+    def test_l34_task_rechecks_new_pr_ownership_before_starting(self):
+        with patch.object(orders, 'gh', return_value=issue()), \
+             patch.object(orders, 'read_orders', return_value=[dict(issue=1,state='in-flight')]):
+            with self.assertRaisesRegex(ValueError, 'no longer eligible'):
+                orders.task(1)
+
+    def test_l34_specification_delivery_can_release_implementation(self):
+        specification = issue(body=issue()['body']+'Mode: specify\n')
+        output = io.StringIO()
+        with patch.object(orders, 'gh', return_value=specification), \
+             patch.object(orders, 'read_orders', return_value=orders.classify([specification], {}, [])), \
+             redirect_stdout(output):
+            orders.task(1)
+        self.assertIn('Close this specification Issue', output.getvalue())
+        self.assertNotIn('specification-only PR does not close', output.getvalue())
+
     def test_l34_ready_issue_does_not_consult_test_names_or_work_tables(self):
         self.assertEqual(orders.classify([issue()], {}, [])[0]['state'], 'ready')
 
