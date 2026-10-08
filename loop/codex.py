@@ -52,7 +52,7 @@ def usage(path):
 
 
 def deliver(record):
-    """Only the controller can commit, push or open a PR; the Builder has no GitHub credential."""
+    """Only the controller can commit, push or open a PR; the Builder receives no GitHub credential."""
     attempt = Path(record['events']).parent
     checkout = attempt / 'checkout'
     if not checkout.exists():
@@ -71,7 +71,12 @@ def deliver(record):
     body_path.write_text(body)
     if head == record['base']:
         if not command('git', 'status', '--porcelain', cwd=checkout):
-            return
+            if result.get('status') != 'stopped':
+                return
+            # A question still needs a reviewable draft, even before implementation.
+            scenario = checkout / record['file']
+            with scenario.open('a') as output:
+                output.write('\n\n## Unresolved question\n\n' + result['body'] + '\n')
         command('git', '-c', 'core.hooksPath=/dev/null', 'add', '-A', cwd=checkout)
         command('git', '-c', 'core.hooksPath=/dev/null', 'commit', '-m', record['ids'] + ': ' + result.get('title', 'continue the interrupted build'),
                 '-m', 'Author-Agent: codex-' + str(record['started']), cwd=checkout)

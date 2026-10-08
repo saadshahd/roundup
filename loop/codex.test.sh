@@ -27,6 +27,7 @@ class Codex(unittest.TestCase):
         self.enabled = True
         self.rows = [self.row]
         self.claimed = True
+        self.dirty = True
         self.base = 'a' * 40
         self.patches = [patch.object(fleet, 'command', side_effect=self.command),
                         patch.object(fleet.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, '', 'Logged in using ChatGPT')),
@@ -38,14 +39,17 @@ class Codex(unittest.TestCase):
     def command(self, *args, **kw):
         self.calls.append((args, kw))
         if args[:3] == ('gh', 'variable', 'get'): return 'true' if self.enabled else 'false'
-        if args[:3] == ('git', 'status', '--porcelain'): return ' M edited' if kw.get('cwd') else ''
+        if args[:3] == ('git', 'status', '--porcelain'): return ' M edited' if kw.get('cwd') and self.dirty else ''
         if args[:3] == ('git', 'rev-parse', 'HEAD'): return self.base
         if args[:3] == ('gh', 'run', 'list'): return json.dumps([dict(headSha=self.base, conclusion='success')])
         if args[:2] == ('loop/runs.sh', 'queue'): return json.dumps(self.rows)
         if args[:2] == ('loop/runs.sh', 'claim'): return json.dumps([self.row] if self.claimed else [])
         if args[:4] == ('git', 'remote', 'get-url', 'origin'): return 'https://github.com/example/repo'
         if args[:2] == ('git', 'ls-remote'): return self.base + '\trefs/heads/build/U59'
-        if args[:2] == ('git', 'clone'): Path(args[-1]).mkdir()
+        if args[:2] == ('git', 'clone'):
+            checkout = Path(args[-1]); checkout.mkdir()
+            (checkout/'scenarios').mkdir()
+            (checkout/self.row['file']).write_text('# Scenario\n')
         if args[:3] == ('gh', 'pr', 'create'): return 'https://example/pr/1'
         if args[:3] == ('gh', 'pr', 'list'): return json.dumps([dict(number=1, isDraft=not self.ready, url='https://example/pr/1')])
         return ''
@@ -86,6 +90,13 @@ class Codex(unittest.TestCase):
         before = len(self.calls)
         fleet.tick(self.state)
         self.assertFalse(any(a[:2] == ('loop/runs.sh','claim') for a,k in self.calls[before:]))
+
+    def test_L87_question_before_any_edits_still_creates_a_draft(self):
+        self.ready, self.dirty = False, False
+        with self.assertRaisesRegex(RuntimeError, 'did not deliver'): fleet.tick(self.state)
+        scenario = next(self.state.glob('*/checkout/scenarios/ui.md')).read_text()
+        self.assertIn('Stopped: unresolved product question.', scenario)
+        self.assertTrue(any(a[:3] == ('gh','pr','create') and '--draft' in a for a,k in self.calls))
 
     def test_L87_failed_engine_with_ready_pr_is_failure(self):
         self.code = 124
