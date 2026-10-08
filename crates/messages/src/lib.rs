@@ -2,6 +2,7 @@
 //! Builder. Stores Messages and Routes, answers the user's and an Actor's calls, and on an `idle`
 //! hands one Message to `Deliver` (slice 3 maps that to H11's `Agents::prompt`).
 
+mod hops;
 mod step;
 mod store;
 
@@ -35,6 +36,26 @@ pub type Deliver = Arc<
         + Sync,
 >;
 
+/// The Daemon's clock in milliseconds; a test passes a fake (B14).
+pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
+
+/// What the Daemon lends this module besides its Bus: the log where the Touches of Messages it
+/// makes itself (B17) go, and its clock.
+pub struct Env {
+    pub touches: Arc<provenance::Touches>,
+    pub clock: Clock,
+}
+
+impl Env {
+    /// The system clock, logging the Daemon-made Messages' Touches to `touches`.
+    pub fn system(touches: Arc<provenance::Touches>) -> Self {
+        Self {
+            touches,
+            clock: Arc::new(now_ms),
+        }
+    }
+}
+
 /// Why `deliver` could not type a Message, from `Agents::prompt` (B2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -57,9 +78,10 @@ struct Inner {
     /// Subscribed at `open`, before any runtime may exist, so no `agent.status` fires between
     /// `open` and the listener's first poll; `start_listener` takes it out at most once.
     events: Mutex<Option<tokio::sync::broadcast::Receiver<contracts::Event>>>,
-    /// A `Ctx` for the calls the listener makes on its own behalf (B9's resync), never the
-    /// caller's: nothing reads this log.
+    /// A `Ctx` for the calls the listener makes on its own behalf (B9's resync), and where the
+    /// Touches of the Messages the Daemon makes (B17) are logged.
     touches: Arc<provenance::Touches>,
+    clock: Clock,
 }
 
 pub struct Messages {
@@ -76,6 +98,18 @@ impl Messages {
         agents: Arc<dyn Module>,
         deliver: Deliver,
     ) -> Result<Self, OpenError> {
+        let env = Env::system(Arc::new(provenance::Touches::in_memory()?));
+        Self::open_with(dir, bus, agents, deliver, env)
+    }
+
+    /// `open`, with the Daemon's own Touch log and clock.
+    pub fn open_with(
+        dir: &Path,
+        bus: Bus,
+        agents: Arc<dyn Module>,
+        deliver: Deliver,
+        env: Env,
+    ) -> Result<Self, OpenError> {
         let events = bus.subscribe();
         let inner = Arc::new(Inner {
             store: Mutex::new(Store::open(&dir.join("messages.db"))?),
@@ -84,7 +118,8 @@ impl Messages {
             deliver,
             listener_started: std::sync::Once::new(),
             events: Mutex::new(Some(events)),
-            touches: Arc::new(provenance::Touches::in_memory()?),
+            touches: env.touches,
+            clock: env.clock,
         });
         if tokio::runtime::Handle::try_current().is_ok() {
             start_listener(&inner);
@@ -114,6 +149,18 @@ impl Messages {
                 p.to, status.status
             )));
         }
+        // B13: read once, when the sender sends; a Rail move afterwards does not change it.
+        let chain_rest = if p.kind == MessageKind::Question
+            && ctx.actor.kind != ActorKind::User
+            && receiver_status
+                .as_ref()
+                .is_some_and(|node| node.kind == NodeKind::Room)
+        {
+            let nodes = rail_nodes(&self.inner).await?;
+            Some(hops::doors_above(&nodes, &p.to, &ctx.actor.id))
+        } else {
+            None
+        };
         // The reply-to check, the bound check and the insert run while one lock is held, so a
         // second sender racing for the same receiver's last open slot cannot pass its own check
         // before this one's insert lands (B1).
@@ -152,7 +199,7 @@ impl Messages {
                     store.is_takeover_active(&p.to),
                 )
             };
-            store.insert(
+            let message = store.insert(
                 &ctx.actor,
                 &p.to,
                 p.kind,
@@ -160,9 +207,16 @@ impl Messages {
                 p.reply_to,
                 status,
                 reason,
-                now_ms(),
+                (self.inner.clock)(),
                 receiver_status.as_ref().map_or((0, 0), binding),
-            )?
+                None,
+            )?;
+            self.answer(ctx, &store, &message)?;
+            if let Some(rest) = &chain_rest {
+                store.start_chain(&ctx.actor, &message.body, rest, message.id)?;
+            }
+            store.arm_chains((self.inner.clock)())?;
+            message
         };
         ctx.touch(Verb::Wrote, &item(message.id))?;
         ctx.emit(EventData::MessageSent(message.clone()));
@@ -172,7 +226,73 @@ impl Messages {
             MessageStatus::Dropped => ctx.emit(EventData::MessageDropped(message.clone())),
             MessageStatus::Pending => {}
         }
+        if let Some(landing) = self.answered_landing(ctx, &message)? {
+            ctx.emit(EventData::MessageDelivered(landing));
+        }
+        // A hop the Route dropped moves the chain on at once (B16).
+        let _ = settle(&self.inner, None).await;
         reply(&message)
+    }
+
+    /// B17: a `note` from the Agent a question's current hop was delivered to, with `replyTo` that
+    /// hop, answers it: the chain ends and no hop follows.
+    fn answer(&self, ctx: &Ctx, store: &Store, message: &Message) -> Result<(), RpcError> {
+        let Some(hop_id) = message.reply_to else {
+            return Ok(());
+        };
+        if ctx.actor.kind != ActorKind::Agent || message.kind != MessageKind::Note {
+            return Ok(());
+        }
+        let (Some(chain), Some(hop)) = (store.chain_of(hop_id)?, store.get(hop_id)?) else {
+            return Ok(());
+        };
+        if hop.status == MessageStatus::Delivered && hops::is_hop_receiver(&ctx.actor, &hop) {
+            store.move_chain(chain.id, None, &[])?;
+        }
+        Ok(())
+    }
+
+    /// B15: the user's reply to a Landing delivers it. `None` when `message` answers nothing held
+    /// for `escalated`.
+    fn answered_landing(&self, ctx: &Ctx, message: &Message) -> Result<Option<Message>, RpcError> {
+        let Some(landing_id) = message.reply_to else {
+            return Ok(None);
+        };
+        if ctx.actor.kind != ActorKind::User {
+            return Ok(None);
+        }
+        let store = self.store()?;
+        let escalated = store.get(landing_id)?.is_some_and(|held| {
+            held.to == Actor::user().id && held.reason == Some(Reason::Escalated)
+        });
+        if escalated && store.release_held(landing_id, MessageStatus::Delivered, None)? {
+            return store.get(landing_id);
+        }
+        Ok(None)
+    }
+
+    /// B13: the Agent a hop was sent to passes it on at once.
+    async fn pass(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
+        let hop = self.get_or_not_found(p.id)?;
+        if !hops::is_hop_receiver(&ctx.actor, &hop) {
+            return Err(RpcError::forbidden(
+                "only the Agent a hop was sent to may pass it",
+            ));
+        }
+        let live = self.store()?.chain_of(hop.id)?.is_some();
+        if !live
+            || !matches!(
+                hop.status,
+                MessageStatus::Pending | MessageStatus::Delivered
+            )
+        {
+            return Err(RpcError::conflict(format!(
+                "message {} is not a pending or delivered hop of a live question",
+                hop.id
+            )));
+        }
+        settle(&self.inner, Some(hop.id)).await?;
+        reply(&self.get_or_not_found(hop.id)?)
     }
 
     fn get(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
@@ -203,6 +323,11 @@ impl Messages {
     async fn deliver(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "deliver a held Message")?;
         let message = self.get_or_not_found(p.id)?;
+        if message.reason == Some(Reason::Escalated) {
+            return Err(RpcError::conflict(
+                "an escalated Message is answered with a reply, or dropped",
+            ));
+        }
         let receiver = self.resolve_receiver(&message.to).await?;
         {
             let mut store = self.store()?;
@@ -217,12 +342,13 @@ impl Messages {
             if let Some(node) = &receiver {
                 store.bind(p.id, binding(node))?;
             }
+            store.arm_chains((self.inner.clock)())?;
         }
         ctx.touch(Verb::Wrote, &item(p.id))?;
         reply(&self.get_or_not_found(p.id)?)
     }
 
-    fn drop_message(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
+    async fn drop_message(&self, ctx: &Ctx, p: MessageId) -> Result<Value, RpcError> {
         require_user(ctx, "drop a held Message")?;
         let message = self.get_or_not_found(p.id)?;
         if !user_call_moves(&message, Event::UserDrop(p.id)) {
@@ -232,6 +358,7 @@ impl Messages {
         ctx.touch(Verb::Wrote, &item(p.id))?;
         let dropped = self.get_or_not_found(p.id)?;
         ctx.emit(EventData::MessageDropped(dropped.clone()));
+        let _ = settle(&self.inner, None).await;
         reply(&dropped)
     }
 
@@ -275,7 +402,9 @@ impl Messages {
         let held = {
             let mut store = self.store()?;
             accept_receiver(&self.inner, &mut store, &node)?;
-            store.begin_takeover(&agent, hold_for_takeover)?
+            let held = store.begin_takeover(&agent, hold_for_takeover)?;
+            store.arm_chains((self.inner.clock)())?;
+            held
         };
         if let Some(held) = held {
             for message in &held {
@@ -301,11 +430,13 @@ impl Messages {
         let promoted = {
             let mut store = self.store()?;
             accept_receiver(&self.inner, &mut store, &node)?;
-            store.end_takeover(&agent, release_order)?
+            let promoted = store.end_takeover(&agent, release_order)?;
+            store.arm_chains((self.inner.clock)())?;
+            promoted
         };
         if promoted.is_some() {
             ctx.emit(EventData::TakeoverChanged(TakeoverChanged {
-                agent,
+                agent: agent.clone(),
                 on: false,
             }));
         }
@@ -431,10 +562,11 @@ impl Module for Messages {
         start_listener(&self.inner);
         match method {
             "message.send" => self.send(ctx, params(value)?).await,
+            "message.pass" => self.pass(ctx, params(value)?).await,
             "message.get" => self.get(ctx, params(value)?),
             "message.list" => self.list(ctx, params(value)?),
             "message.deliver" => self.deliver(ctx, params(value)?).await,
-            "message.drop" => self.drop_message(ctx, params(value)?),
+            "message.drop" => self.drop_message(ctx, params(value)?).await,
             "route.set" => self.set_route(ctx, params(value)?),
             "route.list" => self.list_routes(),
             "takeover.begin" => self.takeover_begin(ctx, params(value)?).await,
@@ -449,6 +581,7 @@ impl Module for Messages {
 /// `agent.status` fired between `open` and this first poll is lost.
 fn start_listener(inner: &Arc<Inner>) {
     inner.listener_started.call_once(|| {
+        spawn_bound_clock(Arc::downgrade(inner));
         let events = inner
             .events
             .lock()
@@ -457,6 +590,57 @@ fn start_listener(inner: &Arc<Inner>) {
             .expect("subscribed once, at open");
         spawn_status_listener(Arc::clone(inner), events);
     });
+}
+
+/// B14: every half second, passes the hops whose bound ran out by the Daemon's clock; the first
+/// tick after a restart passes those that ran out while the Daemon was down, once.
+fn spawn_bound_clock(inner: std::sync::Weak<Inner>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
+        loop {
+            tick.tick().await;
+            let Some(inner) = inner.upgrade() else {
+                break;
+            };
+            let _ = settle(&inner, None).await;
+        }
+    });
+}
+
+/// B13 to B16: moves every question whose current hop passed, ended or ran out its bound to its
+/// next hop, or to the Landing; `force` passes that hop now (`message.pass`). Emits what it made.
+async fn settle(inner: &Arc<Inner>, force: Option<u32>) -> Result<(), RpcError> {
+    let nodes = rail_nodes(inner).await?;
+    let made = {
+        let mut store = inner.store.lock().unwrap();
+        hops::settle(inner, &mut store, &nodes, (inner.clock)(), force)?
+    };
+    let rupd = Actor::daemon();
+    for hop in made {
+        let message = hop.message;
+        if hop.new {
+            inner
+                .touches
+                .record(&rupd, Verb::Wrote, &item(message.id))
+                .map_err(RpcError::internal)?;
+            inner
+                .bus
+                .emit(rupd.clone(), EventData::MessageSent(message.clone()));
+        }
+        match message.status {
+            MessageStatus::Held => inner
+                .bus
+                .emit(rupd.clone(), EventData::MessageHeld(message)),
+            MessageStatus::Delivered => inner
+                .bus
+                .emit(rupd.clone(), EventData::MessageDelivered(message)),
+            MessageStatus::Dropped => inner
+                .bus
+                .emit(rupd.clone(), EventData::MessageDropped(message)),
+            MessageStatus::Pending => {}
+        }
+    }
+    Ok(())
 }
 
 /// Reads `agent.status` off `events` for as long as `inner` has a subscriber: an `idle` Kind
@@ -471,6 +655,7 @@ fn spawn_status_listener(
 ) {
     tokio::spawn(async move {
         let mut resync_due = !resync(&inner).await;
+        let _ = settle(&inner, None).await;
         loop {
             match events.recv().await {
                 Ok(contracts::Event {
@@ -496,6 +681,7 @@ fn spawn_status_listener(
             }
             if resync_due {
                 resync_due = !resync(&inner).await;
+                let _ = settle(&inner, None).await;
             }
         }
     });
@@ -521,6 +707,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
     if kind == Kind::Idle {
         on_idle(inner, agent, at).await;
     }
+    let _ = settle(inner, None).await;
 }
 
 /// Resync after bus lag or Rail changes so missed endings cannot leave Messages deliverable.
@@ -630,8 +817,30 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
         kind_label(message.kind),
         message.body
     );
-    if (inner.deliver)(agent.to_owned(), text).await.is_err() {
-        // Every refusal is slice 3's to tell apart; here each one undoes the record, back to `pending`, or `held` for `takeover` if one began meanwhile (B6).
+    let refusal = (inner.deliver)(agent.to_owned(), text).await.err();
+    // B2: `NotAccepted` and `NotFound` will never take the Message, so it is `dropped` and nothing
+    // is sent again.
+    if let Some(reason @ (Refusal::NotAccepted | Refusal::NotFound)) = refusal {
+        let reason = if reason == Refusal::NotAccepted {
+            Reason::NotAccepted
+        } else {
+            Reason::ReceiverGone
+        };
+        let dropped = inner
+            .store
+            .lock()
+            .unwrap()
+            .drop_delivered(message.id, reason)
+            .expect("message store");
+        if let Some(dropped) = dropped {
+            inner
+                .bus
+                .emit(Actor::daemon(), EventData::MessageDropped(dropped));
+        }
+        return;
+    }
+    if refusal.is_some() {
+        // `Busy`: nothing was typed, so the record is undone, back to `pending`, or `held` for `takeover` if one began meanwhile (B6).
         let reverted = inner
             .store
             .lock()
@@ -850,6 +1059,7 @@ mod tests {
     use super::*;
 
     mod b_held_tests;
+    mod b_hop_tests;
     mod inv_tests;
 
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,

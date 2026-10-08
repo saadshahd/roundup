@@ -14,6 +14,8 @@ Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`
 | Intervene | Answer one real Decision or enter an Agent directly, then observe it resume. An error remains actionable; stopping a Door preserves its Room and contents. |
 | Review | Read the action's outcome and inspect its resulting work from the Room. Reopen the Project and find that work again. Do not claim Room-scoped storage before its contract and behavior exist. |
 
+The latest audit evidence is `artifacts/ux/journey/README.md`; no stage is yet proved.
+
 ## How a Builder closes a gap
 
 For a UI Issue or an Issue affecting the stages above, read the relevant stage and the existing scenarios before changing code. Use `emil-design-eng`; use `animate` for a motion clause. Inspect the rendered App with `agent-browser` at 1280×800 and 700×800, using the real harness and its failure injection. Capture the before/after interaction and its D1–D10 readings; name any pre-existing failing Check and introduce no regression. A mock proves the webview only; the Daemon observer above proves the actual action.

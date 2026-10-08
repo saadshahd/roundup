@@ -98,6 +98,7 @@ export type RpcMethods = {
   "project.setWorktrees": { params: project_Worktrees; result: null };
   "project.get": { params: null; result: project_ProjectSettings };
   "message.send": { params: message_SendParams; result: message_Message };
+  "message.pass": { params: message_MessageId; result: message_Message };
   "message.get": { params: message_MessageId; result: message_Message };
   "message.list": { params: message_ListParams; result: message_Message[] };
   "message.deliver": { params: message_MessageId; result: message_Message };

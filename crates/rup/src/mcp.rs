@@ -1,11 +1,11 @@
-//! `rup mcp <agent-id>`: Todos and Pads as MCP tools for one Agent, over stdio.
+//! `rup mcp <agent-id>`: Todos, Pads and Messages as MCP tools for one Agent, over stdio.
 //! Every call reaches the Daemon on its own connection identified as that Agent, so it is a Touch by that Agent.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use contracts::{Actor, ActorKind, IdentifyParams, decision, pad, todo};
+use contracts::{Actor, ActorKind, IdentifyParams, decision, message, pad, todo};
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
     Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
@@ -118,6 +118,19 @@ fn offered_tools() -> Vec<Offered> {
         offered::<pad::AppendParams>("pad.append", "Add text to the end of any Pad."),
         offered::<pad::SetOwnerParams>("pad.setOwner", "Give a Pad to another Actor."),
         offered::<pad::PadName>("pad.delete", "Delete a Pad."),
+        offered::<message::SendParams>(
+            "message.send",
+            "Send a note or a question to an Agent or the user. You are the sender.",
+        ),
+        offered::<message::MessageId>("message.get", "Read one Message you sent or received."),
+        offered::<message::ListParams>(
+            "message.list",
+            "List the Messages you sent or received, newest last.",
+        ),
+        offered::<message::MessageId>(
+            "message.pass",
+            "Pass a question sent to you on to the next Door above, at once.",
+        ),
         ask_user(),
     ]
 }

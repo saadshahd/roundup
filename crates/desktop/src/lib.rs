@@ -29,7 +29,8 @@ pub fn build<R: Runtime>(
             project,
             open_project,
             rpc,
-            subscribe
+            subscribe,
+            daemon_proof
         ])
         .setup(move |app| {
             if let Some(project_dir) = project_dir {
@@ -101,4 +102,9 @@ async fn rpc(state: State<'_, AppState>, method: String, params: Value) -> Resul
 #[tauri::command]
 async fn subscribe(state: State<'_, AppState>, channel: Channel<Event>) -> Result<(), RpcError> {
     state.subscribe(channel).await
+}
+
+#[tauri::command]
+fn daemon_proof(state: State<'_, AppState>) -> Result<String, RpcError> {
+    state.daemon_proof()
 }
