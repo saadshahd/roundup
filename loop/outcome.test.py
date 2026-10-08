@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -31,6 +32,25 @@ class OutcomeTests(unittest.TestCase):
         self.assertTrue(report['truncated'])
         self.assertNotIn('secret', report['text'])
         self.assertEqual(outcome.redact('ghp_abcdef sk-ant-private github_pat_abcdef', {}), '[redacted] [redacted] [redacted]')
+
+    def test_l29_all_configured_workflow_secrets_reach_trusted_redaction(self):
+        root = Path(__file__).resolve().parents[1]
+        for workflow in ('build', 'build-row', 'review', 'retro'):
+            source = (root / '.github/workflows' / (workflow + '.yml')).read_text()
+            self.assertNotIn('uses: ./.github/actions/ledger', source)
+            # Retain the complete indented step, rather than depending on input order.
+            ledger = source.split('uses: saadshahd/roundup/.github/actions/ledger@main', 1)[1].split('\n  #', 1)[0].split('\n  post:', 1)[0]
+            names = set(re.findall(r'secrets\.([A-Z_]+)', source))
+            for name in names:
+                self.assertIn('secrets.' + name, ledger, workflow + ': ' + name)
+            self.assertIn('steps.claude.outputs.github_token', ledger)
+        action = (root / '.github/actions/ledger/action.yml').read_text()
+        for name in ('redact-token', 'redact-oauth', 'redact-percy', 'redact-typesafe'):
+            self.assertIn('inputs.' + name, action)
+        self.assertIn('GH_TOKEN: ${{ github.token }}', action)
+        report = outcome.model_outcome([{'type': 'result', 'result': 'opaque-percy opaque-typesafe'}],
+                                      {'PERCY_TOKEN': 'opaque-percy', 'TYPESAFE_API_KEY': 'opaque-typesafe'})
+        self.assertEqual(report['text'], '[redacted] [redacted]')
 
     def test_l29_subtype_cannot_smuggle_unredacted_text(self):
         report = outcome.model_outcome([{'type': 'result', 'subtype': 'secret-value'}], {})

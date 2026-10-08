@@ -19,6 +19,14 @@ inputs:
     description: Observer OAuth token to redact from the retained final explanation
     required: false
     default: ''
+  redact-percy:
+    description: Percy credential to redact from the retained final explanation
+    required: false
+    default: ''
+  redact-typesafe:
+    description: TypeSafe credential to redact from the retained final explanation
+    required: false
+    default: ''
   conclusion:
     description: the claude-code-action step's outcome; empty reads as failure
     required: false
@@ -33,6 +41,9 @@ runs:
         SUBJECT: ${{ inputs.subject }}
         EXECUTION_FILE: ${{ inputs.execution-file }}
         CONCLUSION: ${{ inputs.conclusion }}
+        GH_TOKEN: ${{ github.token }}
+        PERCY_TOKEN: ${{ inputs.redact-percy }}
+        TYPESAFE_API_KEY: ${{ inputs.redact-typesafe }}
         ACTION_GITHUB_TOKEN: ${{ inputs.redact-token }}
         CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.redact-oauth }}
       run: |
