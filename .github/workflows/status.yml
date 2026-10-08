@@ -1,15 +1,12 @@
 name: status
 
-# L80: rewrites Status every five minutes and on build/review/reconcile run events; an edit notifies no one. At
+# L80: full Status scans run every five minutes; run-event fanout exhausted the installation API allowance. At
 # 08:03 UTC, or on dispatch with daily, it also counts the tokens and posts the page as one comment, which notifies the
 # user the issue is assigned to. A PR waiting on the user pings through merge-ready's assignment (L79), not here.
 on:
   schedule:
     - cron: '*/5 * * * *'
     - cron: '3 8 * * *'
-  workflow_run:
-    workflows: [build, review, reconcile, qa, retro, check, loop, visual]
-    types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
       daily:
@@ -20,10 +17,10 @@ on:
 permissions:
   contents: read
 
-# A newer page replaces a running one; the daily run has its own group, so no burst cancels its comment.
+# Finish a running scan; pending refreshes coalesce without discarding API work. Daily reports stay separate.
 concurrency:
   group: status-${{ (github.event.schedule == '3 8 * * *' || inputs.daily) && 'daily' || 'page' }}
-  cancel-in-progress: ${{ !(github.event.schedule == '3 8 * * *' || inputs.daily) }}
+  cancel-in-progress: false
 
 # L82: bash -eo pipefail, so a failure left of a pipe fails the step.
 defaults:
