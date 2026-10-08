@@ -43,6 +43,9 @@ Starting an exited Agent's next Attempt in its saved conversation.
 **Worktree**:
 The git worktree roundup makes for one Agent when the Project's `worktrees` setting is on: its own directory, branch and working directory (`docs/worktrees.md`).
 
+**Worktree state**:
+How far an Agent's Worktree is from its Base: `ahead` and `behind` in commits, and `dirty` when it has changes outside `.roundup/` (`agent.worktreeState`).
+
 **Base**:
 The branch checked out in the Project when the Agent spawned; the Agent's branch starts there.
 

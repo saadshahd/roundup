@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use contracts::agent::{
     CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
-    SpawnParams, SpawnTerminalParams, StatusEvent,
+    SpawnParams, SpawnTerminalParams, StatusEvent, WorktreeState,
 };
 use contracts::decision::{AnswerParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
@@ -1422,6 +1422,19 @@ impl Agents {
         self.shared.node(id)
     }
 
+    /// G3: how far the Agent's Worktree is from its Base. Reads only.
+    async fn worktree_state(&self, id: &str) -> Result<WorktreeState, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        tokio::task::spawn_blocking(move || git.state(&project, &worktree))
+            .await
+            .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))?
+    }
+
     /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
     /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
     /// retains its ownership record when cleanup cannot safely remove the new Worktree.
@@ -1725,6 +1738,10 @@ impl Module for Agents {
                 let NodeId { id } = params(value)?;
                 shared.stop(ctx.actor.clone(), &id).await?;
                 reply(&())
+            }
+            "agent.worktreeState" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.worktree_state(&id).await?)
             }
             "rail.startDoor" => {
                 let NodeId { id } = params(value)?;
