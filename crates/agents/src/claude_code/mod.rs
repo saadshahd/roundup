@@ -240,6 +240,11 @@ pub fn steer_bytes(text: &str) -> Vec<u8> {
     bytes
 }
 
+/// The bytes of an Interrupt (H13): one `ESC`, which ends Claude Code's turn.
+pub fn interrupt_bytes() -> Vec<u8> {
+    vec![0x1b]
+}
+
 /// A21: the conversation a `SessionStart` payload names, accepted only as a UUID; `None` for any
 /// other payload, or one whose `session_id` is not a UUID.
 pub fn conversation_id(payload: &Value) -> Option<String> {

@@ -96,6 +96,8 @@ struct Shared {
     me: Weak<Shared>,
     /// H11: how long a Steer waits for its `UserPromptSubmit` Signal.
     steer_bound: Duration,
+    /// H13: how long an Interrupt waits for the title to change.
+    interrupt_bound: Duration,
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -174,6 +176,9 @@ type Applied = (Option<String>, Option<i64>);
 
 /// H11: how long a Steer waits for its `UserPromptSubmit` Signal before `NOT_ACCEPTED`.
 pub const STEER_BOUND: Duration = Duration::from_secs(10);
+
+/// H13: how long an Interrupt waits for the title to change before `NOT_ACKED`.
+pub const INTERRUPT_BOUND: Duration = Duration::from_secs(5);
 
 /// Why a Steer (`Agents::prompt`) did not land (H11).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -316,6 +321,83 @@ impl Shared {
         } else {
             PromptError::NotAccepted { id: id.to_owned() }
         })
+    }
+
+    /// H13, H16: the other place a Terminal is written on an Agent's behalf. One `ESC` goes out
+    /// when `id` has a turn to end; this returns when the Agent's title shows it is no longer
+    /// working (`Kind::Idle`). Nothing is written again on any failure.
+    async fn interrupt(&self, id: &str) -> Result<(), RpcError> {
+        let not_found = || RpcError::not_found(format!("agent {id} is not running"));
+        let (terminal_id, acked) = {
+            let mut runs = self.runs();
+            let Some(Slot::Running(run)) = runs.get_mut(id) else {
+                return Err(match runs.get(id) {
+                    Some(Slot::Starting { .. } | Slot::Resuming { .. }) => RpcError::new(
+                        code::NOT_RUNNING,
+                        format!("agent {id} has no turn to interrupt yet"),
+                    ),
+                    _ => not_found(),
+                });
+            };
+            if run.ended || run.closing {
+                return Err(not_found());
+            }
+            let kind = run
+                .adapter
+                .status()
+                .map_or(Kind::Working, |status| status.kind);
+            if matches!(kind, Kind::Idle | Kind::Done | Kind::Error) {
+                return Err(RpcError::new(
+                    code::NOT_RUNNING,
+                    format!("agent {id} is {kind:?}, with no turn to interrupt"),
+                ));
+            }
+            if run
+                .interrupt
+                .as_ref()
+                .is_some_and(|waiting| !waiting.is_closed())
+            {
+                return Err(RpcError::conflict(format!(
+                    "agent {id} is already being interrupted"
+                )));
+            }
+            let (waiting, acked) = oneshot::channel();
+            run.interrupt = Some(waiting);
+            (run.terminal_id.clone(), acked)
+        };
+        let written = self
+            .terminals
+            .write(&terminal_id, &claude_code::interrupt_bytes())
+            .await;
+        let lost = match written {
+            Err(err) if err.code == code::NOT_FOUND => return Err(not_found()),
+            Err(err) => {
+                eprintln!("agents: could not write the interrupt to terminal {terminal_id}: {err}");
+                true
+            }
+            Ok(()) => tokio::time::timeout(self.interrupt_bound, acked)
+                .await
+                .map_or(true, |signalled| signalled.is_err()),
+        };
+        if !lost {
+            return Ok(());
+        }
+        let mut runs = self.runs();
+        let ended = match runs.get_mut(id) {
+            Some(Slot::Running(run)) => {
+                run.interrupt = None;
+                run.ended || run.closing
+            }
+            _ => true,
+        };
+        if ended {
+            return Err(not_found());
+        }
+        eprintln!("agents: {id}: the title did not change after the interrupt");
+        Err(RpcError::new(
+            code::NOT_ACKED,
+            format!("agent {id} did not acknowledge the interrupt"),
+        ))
     }
 
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
@@ -555,7 +637,24 @@ impl Shared {
         } else if matches!(observation, Observation::Exit { .. } | Observation::Stopped) {
             run.steer = None;
         }
+        // H13: the Interrupt's wait ends with the title (or the Dismissal of its dialog) that
+        // leaves the Agent idle, or with the Agent.
+        let acks = matches!(
+            observation,
+            Observation::Title(_) | Observation::Tick | Observation::Dismissed
+        );
+        if matches!(observation, Observation::Exit { .. } | Observation::Stopped) {
+            run.interrupt = None;
+        }
         let changed = run.adapter.observe(observation);
+        if acks
+            && changed
+                .as_ref()
+                .is_some_and(|status| status.kind == Kind::Idle)
+            && let Some(waiting) = run.interrupt.take()
+        {
+            let _ = waiting.send(());
+        }
         if exited {
             run.ended = true;
             if let Some(rail) = rail.as_deref_mut() {
@@ -800,6 +899,7 @@ impl Shared {
             adapter: ClaudeCode::starting(move || clock()),
             prompt: None,
             steer: None,
+            interrupt: None,
             named: true,
             terminal_id: terminal_id.clone(),
             cwd,
@@ -1164,6 +1264,8 @@ struct Run {
     prompt: Option<String>,
     /// H11: the Steer written and awaiting its `UserPromptSubmit` Signal.
     steer: Option<tokio::sync::oneshot::Sender<()>>,
+    /// H13: the Interrupt written and awaiting the title that acknowledges it.
+    interrupt: Option<tokio::sync::oneshot::Sender<()>>,
     /// The first prompt has been submitted, or a `rail.rename` came first: either way the name
     /// is settled and no prompt renames the node.
     named: bool,
@@ -1279,6 +1381,7 @@ impl Agents {
                 ),
                 me: me.clone(),
                 steer_bound: STEER_BOUND,
+                interrupt_bound: INTERRUPT_BOUND,
             }),
             dir: dir.to_owned(),
             launcher,
@@ -1318,14 +1421,22 @@ impl Agents {
         self.configure(|shared| shared.steer_bound = bound)
     }
 
+    /// H13: wait `bound` instead of `INTERRUPT_BOUND` for an Interrupt's title. Call it before
+    /// the first call is made.
+    #[must_use]
+    pub fn with_interrupt_bound(self, bound: Duration) -> Self {
+        self.configure(|shared| shared.interrupt_bound = bound)
+    }
+
     /// H11: Steer Agent `id` with `text`. The one function that writes a prompt to a Terminal;
     /// `agent.prompt` and the mailbox series' in-process delivery both call it.
     pub async fn prompt(&self, id: &str, text: &str) -> Result<(), PromptError> {
         self.shared.prompt(id, text).await
     }
 
-    /// H11: the user, or a Door for an Agent in its Room, may Steer; any other caller may not.
-    fn may_steer(&self, actor: &Actor, id: &str) -> Result<(), RpcError> {
+    /// H11, H13: the user, or a Door for an Agent in its Room, may Steer or Interrupt; any other
+    /// caller may not.
+    fn may_steer(&self, actor: &Actor, id: &str, verb: &str) -> Result<(), RpcError> {
         let allowed = match actor.kind {
             ActorKind::User => true,
             ActorKind::Agent => self
@@ -1339,7 +1450,7 @@ impl Agents {
             Ok(())
         } else {
             Err(RpcError::forbidden(format!(
-                "{} may not Steer agent {id}",
+                "{} may not {verb} agent {id}",
                 actor.id
             )))
         }
@@ -1800,6 +1911,7 @@ impl Agents {
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
             steer: None,
+            interrupt: None,
             named,
             terminal_id,
             cwd: run_cwd,
@@ -1965,8 +2077,14 @@ impl Module for Agents {
             "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
             "agent.prompt" => {
                 let PromptParams { id, text } = params(value)?;
-                self.may_steer(&ctx.actor, &id)?;
+                self.may_steer(&ctx.actor, &id, "Steer")?;
                 self.prompt(&id, &text).await?;
+                reply(&())
+            }
+            "agent.interrupt" => {
+                let NodeId { id } = params(value)?;
+                self.may_steer(&ctx.actor, &id, "Interrupt")?;
+                shared.interrupt(&id).await?;
                 reply(&())
             }
             "agent.stop" => {
@@ -2130,6 +2248,7 @@ mod tests {
             decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
             me: std::sync::Weak::new(),
             steer_bound: super::STEER_BOUND,
+            interrupt_bound: super::INTERRUPT_BOUND,
         });
         (dir, bus, shared)
     }
@@ -2158,6 +2277,7 @@ mod tests {
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
                 steer: None,
+                interrupt: None,
                 named: false,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2337,6 +2457,7 @@ mod tests {
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
             steer: None,
+            interrupt: None,
             named,
             terminal_id: "1".into(),
             cwd: "/".into(),
@@ -2383,6 +2504,7 @@ mod tests {
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
             steer: None,
+            interrupt: None,
             named,
             terminal_id: "1".into(),
             cwd: "/".into(),
@@ -2456,6 +2578,7 @@ mod tests {
                             adapter: ClaudeCode::starting(|| 0),
                             prompt: None,
                             steer: None,
+                            interrupt: None,
                             named,
                             terminal_id: id.clone(),
                             cwd: "/".into(),
@@ -2530,6 +2653,7 @@ mod tests {
             decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
             me: std::sync::Weak::new(),
             steer_bound: super::STEER_BOUND,
+            interrupt_bound: super::INTERRUPT_BOUND,
         })
     }
 
@@ -2551,6 +2675,7 @@ mod tests {
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 steer: None,
+                interrupt: None,
                 named: true,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2591,6 +2716,7 @@ mod tests {
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 steer: None,
+                interrupt: None,
                 named: true,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2736,6 +2862,7 @@ mod tests {
             decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
             me: std::sync::Weak::new(),
             steer_bound: super::STEER_BOUND,
+            interrupt_bound: super::INTERRUPT_BOUND,
         });
         (dir, shared)
     }
