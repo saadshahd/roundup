@@ -76,11 +76,9 @@ export const createRailMenu = (app: AppSeam, rail: RailState, onFailure: (messag
         if (error instanceof Error) onFailure(error.message);
         else throw error;
       } else if (error.code === UNKNOWN_OUTCOME) {
-        await rail.refresh();
+        await rail.refresh({ terminals: true });
 
-        const listed = await app.rpc("terminal.list", null).then(() => true, () => false);
-
-        if (!listed || rail.failure() !== null) onFailure("resume outcome unknown: the Daemon may have resumed it");
+        if (rail.failure() !== null) onFailure("resume outcome unknown: the Daemon may have resumed it");
       } else {
         onFailure(error.message);
 

@@ -200,6 +200,27 @@ describe("u68 resume from the Rail menu", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("u68_unknown_outcome_refetches_terminal_list_into_the_rail_so_an_exit_it_missed_offers_resume", async () => {
+    const tree: RailNode[] = [resumable("a")];
+    const { app } = await mountRail(tree, [exited("a")]);
+
+    app.handlers["agent.resume"] = () => {
+      tree[0] = resumable("a", { terminal_id: "t-a2" });
+      app.handlers["terminal.list"] = () => [exitedTerminal("a", 0), { ...exitedTerminal("a", 3), id: "t-a2" }];
+
+      throw new RpcError(-32004, "the Daemon may have run the call");
+    };
+
+    openAt("a");
+    fireEvent.click(screen.getByRole("menuitem", { name: "resume" }));
+
+    await waitFor(() => {
+      openAt("a");
+      expect(labels()).toEqual(["resume", "remove"]);
+    });
+    expect(railCallsTo(app, "agent.resume")).toEqual([{ id: "a" }]);
+  });
+
   it("u68_unknown_outcome_with_a_failed_refresh_says_the_outcome_is_unknown", async () => {
     const { app } = await mountRail([resumable("a")], [exited("a")]);
 
