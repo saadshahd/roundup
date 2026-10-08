@@ -2,7 +2,7 @@
 
 User-selected goal: first Project → start Agents → understand Status → intervene → review results. The product destination is `PRINCIPLES.md` P1/P3/P6 and the accepted Room/Door slice in `docs/wireframes.md`. Complete that journey before expanding into Sketch storage, Room nesting or cross-Room dependencies.
 
-Priority: J1 U83 J2 H18 U113 U143 E1 B24 H2 H3 H5 H6 H7 H10 H8 H9 H14 U132 U133 U136
+Priority: J1 U83 J2 H18 U113 U143 U144 J3 E1 B24 H2 H3 H5 H6 H7 H10 H8 H9 H14 U132 U133 U136
 
 `loop/runs.sh queue` ranks eligible Work rows by the first matching id above, then keeps the other rows in their existing order. Priority never overrides an `After` dependency, an open PR, a Claim or the Builder limit. An id with no eligible row consumes no slot. U143 is the first-project UI slice being developed; the other ids reuse the existing Brief, Door, Decision and visual work rather than duplicating it.
 
@@ -16,7 +16,7 @@ Priority: J1 U83 J2 H18 U113 U143 E1 B24 H2 H3 H5 H6 H7 H10 H8 H9 H14 U132 U133 
 | Intervene | Answer one real Decision or enter an Agent directly, then observe it resume. An error remains actionable; stopping a Door preserves its Room and contents. |
 | Review | Read the action's outcome and inspect its resulting work from the Room. Reopen the Project and find that work again. Do not claim Room-scoped storage before its contract and behavior exist. |
 
-The latest audit evidence is `artifacts/ux/journey/README.md`; no stage is yet proved.
+The latest audit evidence is `artifacts/ux/journey/README.md` (J2, main `4649c5f`); no stage is yet proved.
 
 ## How a Builder closes a gap
 
