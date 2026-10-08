@@ -25,16 +25,25 @@ builders() {
 # still running. It skips loop machinery (scenarios/loop-*.md: the user's or a Retro's) and a row whose Claim, the
 # branch build/<slug>, exists: a Builder holds it, or stopped on its PR. Reads only; `claim` pushes.
 queue() {
-  local max=${1:-4} rows branches running
+  local max=${1:-4} rows branches running priority=""
+  if [ -f .agents/data/journey.md ]; then
+    priority=$(sed -n 's/^Priority: //p' .agents/data/journey.md)
+    [[ $priority =~ ^[A-Z][0-9]+(\ [A-Z][0-9]+)*$ ]] || { echo 'journey.md needs one Priority: line of scenario ids' >&2; exit 2; }
+  fi
   rows=$(loop/rules.sh ready)
   branches=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   running=$(builders | wc -l | tr -d ' ')
-  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" "$slug_def"'
+  printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg priority "$priority" "$slug_def"'
     ($branches | [scan("refs/heads/build/(\\S+)")[0]]) as $taken
+    | ($priority | split(" ") | map(select(length > 0))) as $order
     | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
        | select(.file | startswith("scenarios/loop-") | not)
        | .slug = (.ids | slug)
        | select(.slug as $s | $taken | any(. == $s) | not)]
+    | sort_by([.ids | scan("([A-Z])([0-9]+)(?:\\s*(?:–|-|to)\\s*[A-Z]?([0-9]+))?")
+        | .[0] as $letter | (.[1] | tonumber) as $start | ((.[2] // .[1]) | tonumber) as $end
+        | range($start; $end + 1) | $letter + tostring
+        | . as $id | $order | index($id) | select(. != null)] | min // ($order | length))
     | .[:$max]'
 }
 

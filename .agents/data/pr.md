@@ -13,7 +13,7 @@ Data for Builder runs: a build or fix run writing a PR, a review run judging its
 
 ## Commits and branches
 
-- Every authored commit carries `Author-Agent: <id>` (`human-saad` for the user's own); a clean merge of `main` needs none (L54), and a Copilot Autofix accepted on GitHub is authored by `copilot` (L37).
+- Every authored commit carries `Author-Agent: <id>` (`human-saad` for the user's own) in its final trailer block, with no blank line before `Co-Authored-By` or another trailer; a clean merge of `main` needs none (L54), and a Copilot Autofix accepted on GitHub is authored by `copilot` (L37).
 - A Builder's branch is `build/<slug>`, named in its task; a branch left behind with no open PR and no Builder stops its row from building again until the user deletes it; the Status issue lists it (L80).
 - Rows merge in their `After` order. A stacked PR (its scenario says "after X" or "may stack") branches from its base, touches no file the base touches, and merges after it.
 - Behind `main`: merge `origin/main` in (a stacked branch merges its base first), `just check`, push; never rebase a branch with a review in flight.

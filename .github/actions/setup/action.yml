@@ -1,5 +1,9 @@
 name: setup
 description: The toolchain `just check` needs on a macOS runner, with the workspace's packages installed.
+inputs:
+  browser:
+    description: Install the browser used to inspect the rendered App.
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -28,3 +32,8 @@ runs:
     - uses: taiki-e/install-action@just
     - shell: bash
       run: pnpm install --frozen-lockfile
+    - if: inputs.browser == 'true'
+      shell: bash
+      run: |
+        npm install -g agent-browser@0.27.0
+        agent-browser install

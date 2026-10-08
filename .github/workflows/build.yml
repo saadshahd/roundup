@@ -4,6 +4,8 @@ name: build
 # across all ticks, and a dispatch with a PR number makes the one fix run after its first reject (loop/runs.sh verdict
 # sends it). Each run ends with its PR.
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '7 * * * *'
   workflow_dispatch:
@@ -69,6 +71,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          browser: 'true'
       - id: prompt
         env:
           IDS: ${{ matrix.row.ids }}
@@ -113,6 +117,16 @@ jobs:
         run: |
           printf '%s' "$ROWS" | loop/runs.sh unclaim
           jq -r '.[] | "build/\(.slug)"' <<<"$ROWS" | xargs loop/runs.sh stopped
+      # Refill only after a ready PR was delivered. Empty queues and runs that produced no ready PR end the chain.
+      - if: needs.build.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROWS: ${{ needs.queue.outputs.rows }}
+        run: |
+          prs=$(gh pr list --state open --json headRefName,isDraft)
+          if jq -e --argjson rows "$ROWS" 'any(.[]; . as $pr | ($pr.isDraft | not) and any($rows[]; $pr.headRefName == "build/\(.slug)"))' <<<"$prs" >/dev/null; then
+            gh workflow run build.yml
+          fi
 
   # One fix run per PR at a time.
   fix:
@@ -143,6 +157,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          browser: 'true'
       - id: prompt
         env:
           GH_TOKEN: ${{ github.token }}
