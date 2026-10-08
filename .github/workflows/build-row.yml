@@ -29,6 +29,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           browser: 'true'
+      - name: Stamp Builder commits
+        run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
       - id: prompt
         env:
           IDS: ${{ fromJSON(inputs.row).ids }}

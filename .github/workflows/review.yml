@@ -14,7 +14,7 @@ on:
         description: Expected PR head
         required: true
   workflow_run:
-    workflows: [check]
+    workflows: [check, loop, visual]
     types: [completed]
 
 # Duplicate review dispatches queue; the shared PR Claim prevents duplicate model runs.

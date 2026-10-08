@@ -123,6 +123,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           browser: 'true'
+      - name: Stamp Builder commits
+        run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
       - id: current
         env:
           GH_TOKEN: ${{ github.token }}

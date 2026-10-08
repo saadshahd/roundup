@@ -63,6 +63,15 @@ def decision(pr, checks, verdicts, kinds):
         return None
     if check['conclusion'] in ('failure', 'timed_out', 'cancelled') and can_repair:
         return 'fix', 'check'
+    if check['conclusion'] == 'success':
+        for name in ('rules',) + (('percy',) if 'ui' in kinds else ()):
+            results = [c for c in checks if c['name'] == name and c['head_sha'] == pr['head']['sha']
+                       and c.get('app', {}).get('slug') == 'github-actions' and c.get('conclusion') != 'skipped']
+            latest = max(results, key=lambda c: c['id']) if results else None
+            if not latest or latest['status'] != 'completed':
+                return None
+            if latest['conclusion'] != 'success':
+                return ('fix', 'rules' if name == 'rules' else 'check') if can_repair else None
     if check['conclusion'] == 'success' and 'code' in kinds and not current:
         return 'review', 'review'
     return None
@@ -197,12 +206,13 @@ def start(number, role, head):
         prompt = ('Review ' + prompt + '\nIf an earlier independent approval names an ancestor, focus on the changes since that approved head, including conflict resolutions and their effects. Your verdict must still cover the current head; do not repeat unchanged findings.')
     else:
         evidence = {'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
-                    'check': 'Inspect the failed check on this exact head, read its failing job logs, and fix the cause.',
+                    'check': 'Inspect the failed required CI check on this exact head, read its failing job logs, and fix the cause.',
+                    'rules': 'Inspect the failed rules job and repair its concrete finding. For a missing Author-Agent trailer on your latest commit only, amend its metadata, prove git diff between old and amended commits is empty, and push with an explicit force-with-lease matching the expected head; never rewrite code under that exception.',
                     'reject': 'Read the independent reject findings with loop/rules.sh verdicts and address each one.',
                     'cutoff': 'Continue the interrupted Builder work; inspect the PR body and linked run for what remains.'}[task['cause']]
         prompt = (f"Fix PR #{number} on branch {task['branch']}, expected head {task['head']}. {evidence}\n"
                   f"Your Author-Agent id is builder-{os.environ['GITHUB_RUN_ID']}. Mark the PR a draft while editing. "
-                  "Run the required checks, push without force, remove a resolved Stopped: line, and mark it ready. "
+                  "Run the required checks, remove a resolved Stopped: line, and mark it ready. Ordinary repairs never force-push; the rules task permits only its explicit metadata-only exception. "
                   "If the remote head moved, stop without overwriting it. Leave a precise Stopped: question only for an unresolved product decision.")
     issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')

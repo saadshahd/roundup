@@ -20,7 +20,8 @@ on:
         required: true
 
 permissions:
-  contents: read
+  # Disabling auto-merge requires repository write access; this job executes main only.
+  contents: write
   statuses: write
   pull-requests: write
   checks: read

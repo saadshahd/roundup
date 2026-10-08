@@ -22,16 +22,39 @@ PR = dict(state='open', draft=False, body='', mergeable=True,
           head=dict(sha=HEAD, ref='build/U1', repo=dict(full_name='o/r')),
           base=dict(sha=BASE, ref='main', repo=dict(full_name='o/r')))
 CHECK = dict(id=1, name='check', head_sha=HEAD, status='completed', conclusion='success', app=dict(slug='github-actions'))
+RULES = {**CHECK, 'name': 'rules', 'id': 2}
 TASK = dict(pr=1, role='review', cause='review', head=HEAD, base=BASE, branch='build/U1')
 
 
 class L88(unittest.TestCase):
     def test_l88_review_requires_successful_current_head_check(self):
-        self.assertEqual(d.decision(PR, [CHECK], [], ['code']), ('review', 'review'))
+        self.assertEqual(d.decision(PR, [CHECK, RULES], [], ['code']), ('review', 'review'))
         for change in [dict(head_sha=BASE), dict(status='in_progress'), dict(conclusion='skipped'), dict(app=dict(slug='other'))]:
             self.assertIsNone(d.decision(PR, [{**CHECK, **change}], [], ['code']))
-        self.assertIsNone(d.decision(PR, [CHECK], [dict(current=True, verdict='approve')], ['code']))
-        self.assertIsNone(d.decision(PR, [CHECK], [], ['docs']))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES], [dict(current=True, verdict='approve')], ['code']))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES], [], ['docs']))
+
+    def test_l88_rules_failures_are_repaired_before_review(self):
+        self.assertIsNone(d.decision(PR, [CHECK], [], ['code']))
+        self.assertEqual(d.decision(PR, [CHECK, {**RULES, 'conclusion': 'failure'}], [], ['code']), ('fix', 'rules'))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES], [], ['code', 'ui']))
+        percy = {**CHECK, 'name': 'percy', 'id': 3}
+        self.assertEqual(d.decision(PR, [CHECK, RULES, percy], [], ['code', 'ui']), ('review', 'review'))
+
+    def test_l2_builder_hook_stamps_commits_and_preserves_existing_attribution(self):
+        with tempfile.TemporaryDirectory() as path:
+            def git(*args):
+                return subprocess.run(['git', '-C', path, *args], text=True, capture_output=True, check=True).stdout.strip()
+            git('init')
+            git('config', 'user.name', 'test')
+            git('config', 'user.email', 'test@test')
+            subprocess.run(['bash', str(ROOT / 'loop/author.sh'), 'builder-test'], cwd=path, env={**os.environ, 'RUNNER_TEMP': path}, check=True)
+            git('commit', '--allow-empty', '-m', 'change')
+            self.assertEqual(git('log', '-1', '--format=%(trailers:key=Author-Agent,valueonly)'), 'builder-test')
+            git('commit', '--amend', '--allow-empty', '--no-edit')
+            self.assertEqual(git('log', '-1', '--format=%(trailers:key=Author-Agent,valueonly)'), 'builder-test')
+            git('commit', '--allow-empty', '-m', 'change', '-m', 'Author-Agent: another-author')
+            self.assertEqual(git('log', '-1', '--format=%(trailers:key=Author-Agent,valueonly)'), 'another-author')
 
     def test_l88_conflicts_and_red_checks_get_repair(self):
         self.assertEqual(d.decision({**PR, 'mergeable': False}, [], [], ['code']), ('fix', 'conflict'))
@@ -40,8 +63,8 @@ class L88(unittest.TestCase):
         self.assertIsNone(d.decision(PR, [], [dict(current=False, verdict='reject')], ['code']))
 
     def test_l88_latest_check_wins_and_skipped_is_not_a_result(self):
-        self.assertIsNone(d.decision(PR, [CHECK, {**CHECK, 'id': 2, 'status': 'in_progress'}], [], ['code']))
-        self.assertEqual(d.decision(PR, [CHECK, {**CHECK, 'id': 2, 'conclusion': 'skipped'}], [], ['code']), ('review', 'review'))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES, {**CHECK, 'id': 3, 'status': 'in_progress'}], [], ['code']))
+        self.assertEqual(d.decision(PR, [CHECK, RULES, {**CHECK, 'id': 3, 'conclusion': 'skipped'}], [], ['code']), ('review', 'review'))
 
     def test_l88_explicit_questions_and_second_reject_keep_gates(self):
         self.assertIsNone(d.decision({**PR, 'draft': True, 'body': 'Stopped: choose semantics'}, [CHECK], [], ['code']))
