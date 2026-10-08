@@ -22,7 +22,7 @@ issue() {
 # L80: the Status issue's body. Without --cost it keeps the Tokens row of the previous body (stdin), since counting
 # downloads every Ledger artifact of the week.
 page() {
-  local day week stale cost tokens merged completed open needs blocked pr sha desc main claims running failed watch
+  local day week stale cost tokens merged completed owners open needs blocked pr sha desc main claims running failed watch
   day=$(at "$now" '%Y-%m-%dT00:00:00Z')
   week=$(at $((now - 7 * 86400)) '%Y-%m-%dT%H:%M:%SZ')
   stale=$(at $((now - stuck_hours * 3600)) '%Y-%m-%dT%H:%M:%SZ')
@@ -53,12 +53,17 @@ page() {
 
   main=$(gh_or_4 run list --workflow check.yml --branch main --event push --status completed --limit 1 --json conclusion,headSha)
   # An unfinished Claim with no open PR and no Builder blocks its row (L23).
-  claims=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
+  claims=$(git ls-remote --heads origin 'build/*' 'loop-row/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   completed=$(merged_heads)
   running=$(loop/runs.sh builders)
   # L87: the local service publishes a bounded Claim record, never an immortal running marker.
   running+=$'\n'$(jq -nr --argjson now "$now" --arg status "${CODEX_STATUS:-}" '
     ($status | fromjson? // {}) | select(.state == "running" and .deadline > $now) | .slug // empty')
+  owners=$(jq -nc --arg claims "$claims" --arg running "$running" '
+    ($running | split("\n")) as $running
+    | [$claims | scan("refs/heads/loop-row/(\\S+)")[0]
+       | select(. as $s | $running | index($s) | not)
+       | "build/\(.): Claim owner without a Builder; reconciliation checks the owning run"]')
   claims=$(jq -nc --arg claims "$claims" --arg running "$running" --arg completed "$completed" --argjson open "$open" '
     ($open | map(.headRefName)) as $heads | ($running | split("\n")) as $running
     | ($completed | split("\n")) as $completed
@@ -71,8 +76,8 @@ page() {
   done | jq -s -c --arg since "$(at $((now - 86400)) '%Y-%m-%dT%H:%M:%SZ')" '
     add | map(select(.createdAt >= $since and (.conclusion | IN("failure", "timed_out", "startup_failure")))) | group_by(.workflowName)
     | map("\(.[0].workflowName): \(length) failed in 24 h, latest \(max_by(.createdAt).url)")')
-  watch=$(jq -nc --argjson main "$main" --argjson claims "$claims" --argjson failed "$failed" '
-    [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"] + $claims + $failed')
+  watch=$(jq -nc --argjson main "$main" --argjson claims "$claims" --argjson failed "$failed" --argjson owners "$owners" '
+    [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"] + $claims + $owners + $failed')
 
   jq -nr --arg at "$(at "$now" '%Y-%m-%d %H:%M')" --arg merged "$merged" --arg tokens "$tokens" \
     --argjson activity "${ACTIVITY:-[]}" --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '

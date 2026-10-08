@@ -233,10 +233,10 @@ A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scen
 What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `rust-toolchain.toml`, `tsconfig.json`, `.oxlintrc.json`, `.fallowrc.json`, `.cargo/` and `tools/` (L46).
 
 **Loop machinery**:
-`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching `.github/` waits for the user's merge (L24, L46).
+`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching it requires independent review and the required gates (L24, L46).
 
 **Claim**:
-The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
+The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, created atomically for one Builder. The owner records its run and initial head. Completion releases only its own owner and an unchanged branch without an open PR; reconciliation recovers a cloud owner after its Builder ends, and the local controller recovers a local owner (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
 
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.

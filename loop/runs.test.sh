@@ -36,6 +36,8 @@ set -euo pipefail
 echo "gh $*" >>"$FIXTURES/trace"
 [ ! -e "$FIXTURES/gh-fail" ] || exit 1
 case "$*" in
+  'api repos/{owner}/{repo}/git/commits/'*' --jq .message') git show -s --format=%B "${2##*/}" ;;
+  'run view '*' --json status,jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/owner-run-$3" ;;
   'api repos/{owner}/{repo}/pulls?state=closed&per_page=100 --paginate --jq '*) jq -r "${@: -1}" "$FIXTURES/closed" ;;
   'pr view '*' --json state,headRefOid,body,isDraft') cat "$FIXTURES/view" ;;
   'pr diff '*' --name-only') cat "$FIXTURES/paths" ;;
@@ -184,16 +186,41 @@ printf '[{"slug":"U12"}]\n' >"$FIXTURES/legacy-owner"
 check 'L23 cleanup without ownership changes nothing' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/legacy-owner"'
 holds 'L23 legacy cleanup preserves the new owner' git ls-remote --exit-code origin refs/heads/build/U12
 
-# L23 unclaim
+# L23 unclaim, including same-main retry ownership.
 fresh
-git push -q origin HEAD:refs/heads/build/U10 HEAD:refs/heads/build/U11
+printf '[{"ids":"U10","slug":"U10"},{"ids":"U11","slug":"U11"}]\n' | loop/runs.sh claim >"$FIXTURES/owners"
 echo 1 >"$FIXTURES/prs-U11"
-jq -nc --arg sha "$(git rev-parse HEAD)" '[{ids:"U10",slug:"U10",claim_head:$sha},{ids:"U11",slug:"U11",claim_head:$sha}]' >"$FIXTURES/owners"
 check 'L23 unclaim after the Builders end' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
 holds 'L23 a Claim with no PR is freed, one with a PR stays' bash -c 'test "$(cat "$FIXTURES/out")" = "freed build/U10" && ! git ls-remote --exit-code origin refs/heads/build/U10 >/dev/null && git ls-remote --exit-code origin refs/heads/build/U11 >/dev/null'
+holds 'L23 completion releases its owner even when its PR stays' bash -c '! git ls-remote --exit-code origin refs/heads/loop-row/U11 >/dev/null'
+printf '[{"ids":"U10","slug":"U10"}]\n' | loop/runs.sh claim >"$FIXTURES/retry-owner"
+holds 'L23 retries on unchanged main have different owners' bash -c 'test "$(jq -r ".[0].claim_owner" "$FIXTURES/owners")" != "$(jq -r ".[0].claim_owner" "$FIXTURES/retry-owner")"'
+check 'L23 stale cleanup on unchanged main cannot delete the retry' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
+holds 'L23 the retry keeps its branch and unique owner' bash -c 'git ls-remote --exit-code origin refs/heads/build/U10 >/dev/null && test "$(git ls-remote origin refs/heads/loop-row/U10 | cut -f1)" = "$(jq -r ".[0].claim_owner" "$FIXTURES/retry-owner")"'
+printf '[{"ids":"U14","slug":"U14"}]\n' | loop/runs.sh claim >"$FIXTURES/pushed-owner"
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m partial-implementation
+git push -q origin HEAD:refs/heads/build/U14
+check 'L23 cleanup preserves pushed work without a PR' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/pushed-owner"'
+holds 'L23 preserved work releases its old owner for investigation' bash -c 'test "$(git ls-remote origin refs/heads/build/U14 | cut -f1)" = "$(git rev-parse HEAD)" && ! git ls-remote --exit-code origin refs/heads/loop-row/U14 >/dev/null'
+
 touch "$FIXTURES/gh-fail"
-check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
-holds 'L23 a failed PR list frees nothing' git ls-remote --exit-code origin refs/heads/build/U11
+check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'loop/runs.sh unclaim <"$FIXTURES/retry-owner"'
+holds 'L23 a failed PR list frees nothing' git ls-remote --exit-code origin refs/heads/build/U10
+
+# Cloud cleanup recovery handles retained/deleted build branches without disturbing live owners.
+fresh
+export GITHUB_RUN_ID=900
+printf '[{"ids":"U15","slug":"U15"},{"ids":"U16","slug":"U16"},{"ids":"U17","slug":"U17"}]\n' | loop/runs.sh claim >"$FIXTURES/cloud-owners"
+unset GITHUB_RUN_ID
+git push -q origin --delete refs/heads/build/U16
+printf '{"status":"in_progress","jobs":[{"name":"build (U15, scenarios/ui.md, U15) / build","status":"completed"},{"name":"build (U16, scenarios/ui.md, U16) / build","status":"completed"},{"name":"build (U17, scenarios/ui.md, U17) / build","status":"in_progress"}]}\n' >"$FIXTURES/owner-run-900"
+check 'L23 recovery releases completed cloud owners with retained and deleted branches' 0 loop/runs.sh recover
+holds 'L23 completed model jobs no longer suppress work' bash -c '! git ls-remote --exit-code origin refs/heads/loop-row/U15 refs/heads/loop-row/U16 refs/heads/build/U15 >/dev/null'
+holds 'L23 recovery leaves the live sibling owned' git ls-remote --exit-code origin refs/heads/loop-row/U17
+holds 'L23 recovery leaves local ownership to its process observer' git ls-remote --exit-code origin refs/heads/loop-row/U10
+printf '{"status":"completed","jobs":[]}\n' >"$FIXTURES/owner-run-900"
+check 'L23 terminal workflow recovers an owner even with missing jobs' 0 loop/runs.sh recover
+holds 'L23 terminal workflow leaves no owner ref' bash -c '! git ls-remote --exit-code origin refs/heads/loop-row/U17 >/dev/null'
 
 # prompt
 fresh

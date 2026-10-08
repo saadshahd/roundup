@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The steps between GitHub's events and one-shot agent runs; each workflow step calls one subcommand.
-# Usage: loop/runs.sh queue [max] | claim | unclaim | stopped <branch>... | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
+# Usage: loop/runs.sh queue [max] | claim | unclaim | recover | stopped <branch>... | builders | slug <subject> | prompt <role> | review-due <pr> <head> | verdict <pr> <head> <reviewer-id> | swept <sha>
 # Exit 4 is a gh failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -31,15 +31,16 @@ queue() {
     [[ $priority =~ ^[A-Z][0-9]+(\ [A-Z][0-9]+)*$ ]] || { echo 'journey.md needs one Priority: line of scenario ids' >&2; exit 2; }
   fi
   rows=$(loop/rules.sh ready)
-  branches=$(git ls-remote --heads origin 'build/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
+  branches=$(git ls-remote origin 'refs/heads/build/*' 'refs/heads/loop-row/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   merged=$(merged_heads)
   running=$(builders | wc -l | tr -d ' ')
   printf '%s\n' "$rows" | jq -R -s -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" --arg priority "$priority" "$slug_def"'
-    ($merged | split("\n")) as $merged
+    ($branches | [scan("refs/heads/loop-row/(\\S+)")[0]]) as $owned
+    | ($merged | split("\n")) as $merged
     | ($branches | split("\n") | map(select(length > 0) | . as $line
         | capture("^(?<sha>[^\\s]+)\\s+refs/heads/build/(?<slug>\\S+)$")
         | . + {merged: ($merged | index($line) != null)})) as $claims
-    | ($claims | map(select(.merged | not) | .slug)) as $taken
+    | (($claims | map(select(.merged | not) | .slug)) + $owned) as $taken
     | ($claims | map(select(.merged) | {key: .slug, value: .sha}) | from_entries) as $reusable
     | ($priority | split(" ") | map(select(length > 0))) as $order
     | [split("\n")[] | capture("^ready (?<ids>.+) (?<file>scenarios/[^ ]+)$")
@@ -59,7 +60,7 @@ queue() {
 # or as a lease miss (stale info), belongs to another run, so its row is skipped. Any other result exits 4, a remote
 # rejection included, so a push the token may not make never reads as an empty queue.
 claim() {
-  local sha claimed
+  local sha claimed owner
   sha=$(git rev-parse HEAD)
   claimed=$(jq -c '.[]' | while IFS= read -r row; do
     slug=$(jq -r .slug <<<"$row")
@@ -73,10 +74,16 @@ claim() {
         exit 4
       fi
     fi
-    pushed=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:" origin "$sha:refs/heads/build/$slug" 2>&1) || true
-    if grep -q '^\*' <<<"$pushed"; then
-      jq -c --arg sha "$sha" 'del(.reclaim) + {claim_head: $sha}' <<<"$row"
-    elif ! grep -qE '^(=|!.*\[rejected\] \(stale info\))' <<<"$pushed"; then
+    owner=$(jq -nc --arg slug "$slug" --arg head "$sha" --arg run "${GITHUB_RUN_ID:-}" --arg nonce "$(od -An -N16 -tx1 /dev/urandom)" '{slug:$slug,claim_head:$head,run:$run,nonce:$nonce}' |
+      git -c user.name=roundup -c user.email=loop@roundup.invalid commit-tree "$(git rev-parse HEAD^{tree})")
+    pushed=$(git push --atomic --porcelain --force-with-lease="refs/heads/build/$slug:" --force-with-lease="refs/heads/loop-row/$slug:" origin "$sha:refs/heads/build/$slug" "$owner:refs/heads/loop-row/$slug" 2>&1) || true
+    if awk -F '\t' -v ref="refs/heads/build/$slug" '$1 == "*" && substr($2, index($2, ":") + 1) == ref {won=1} END {exit !won}' <<<"$pushed"; then
+      jq -c --arg sha "$sha" --arg owner "$owner" 'del(.reclaim) + {claim_head: $sha, claim_owner: $owner}' <<<"$row"
+    elif grep -q '^\*' <<<"$pushed"; then
+      # Git treats an existing branch at the same SHA as up-to-date even with an empty lease.
+      # Retire only our new owner ref; the pre-existing branch belongs to another run.
+      git push --porcelain --force-with-lease="refs/heads/loop-row/$slug:$owner" origin ":refs/heads/loop-row/$slug" >/dev/null || exit 4
+    elif ! grep -qE '^(=|!.*\[rejected\] \((stale info|atomic push failed)\))' <<<"$pushed"; then
       echo "git push of build/$slug failed: $pushed" >&2
       exit 4
     fi
@@ -87,23 +94,52 @@ claim() {
 # L23: after a tick's Builders end, however they end, deletes the Claim of each row (stdin: the claimed queue) whose
 # branch has no open PR, so the next tick can build an unfinished row. Historical PRs do not hold a new Claim.
 unclaim() {
-  local rows row slug expected prs retired
+  local rows row slug expected owner refs current prs retired
+  local -a leases updates
   rows=$(jq -c '.[]')
   while IFS= read -r row; do
     slug=$(jq -r .slug <<<"$row")
     expected=$(jq -r '.claim_head // empty' <<<"$row")
-    # Older runs without an ownership record cannot safely delete another run's work.
-    [ -n "$expected" ] || continue
+    owner=$(jq -r '.claim_owner // empty' <<<"$row")
+    # Older runs cannot prove ownership. They leave recovery to a current run.
+    [ -n "$expected" ] && [ -n "$owner" ] || continue
+    refs=$(git ls-remote origin "refs/heads/loop-row/$slug" "refs/heads/build/$slug") || exit 4
+    current=$(awk -v ref="refs/heads/loop-row/$slug" '$2 == ref {print $1}' <<<"$refs")
+    [ "$current" = "$owner" ] || continue
     prs=$(gh_or_4 pr list --head "build/$slug" --state open --json number --jq length)
-    [ "$prs" = 0 ] || continue
-    retired=$(git push --porcelain --force-with-lease="refs/heads/build/$slug:$expected" origin ":refs/heads/build/$slug" 2>&1) || true
+    leases=("--force-with-lease=refs/heads/loop-row/$slug:$owner")
+    updates=(":refs/heads/loop-row/$slug")
+    current=$(awk -v ref="refs/heads/build/$slug" '$2 == ref {print $1}' <<<"$refs")
+    if [ "$prs" = 0 ] && [ "$current" = "$expected" ]; then
+      leases+=("--force-with-lease=refs/heads/build/$slug:$expected")
+      updates+=(":refs/heads/build/$slug")
+    fi
+    retired=$(git push --atomic --porcelain "${leases[@]}" origin "${updates[@]}" 2>&1) || true
     if grep -q '^-' <<<"$retired"; then
-      echo "freed build/$slug"
-    elif ! grep -qE '^!.*\[rejected\] \(stale info\)' <<<"$retired"; then
+      [ "${#updates[@]}" = 1 ] || echo "freed build/$slug"
+    elif ! grep -qE '^!.*\[rejected\] \((stale info|atomic push failed)\)' <<<"$retired"; then
       echo "git push --delete build/$slug failed: $retired" >&2
       exit 4
     fi
   done <<<"$rows"
+}
+
+# Recover a cloud Builder whose model job ended before its completion job released ownership.
+# Local owners are recovered by the local controller, which can observe its process.
+recover() {
+  local refs owner ref slug record run terminal
+  refs=$(git ls-remote --heads origin 'loop-row/*') || exit 4
+  while read -r owner ref; do
+    [ -n "$owner" ] || continue
+    slug=${ref#refs/heads/loop-row/}
+    record=$(gh_or_4 api "repos/{owner}/{repo}/git/commits/$owner" --jq .message)
+    record=$(jq -ce --arg slug "$slug" --arg owner "$owner" 'select(.slug == $slug and (.claim_head | test("^[0-9a-f]{40}$")) and (.run | type == "string")) + {claim_owner:$owner}' <<<"$record") || { echo "invalid Claim owner $ref" >&2; exit 4; }
+    run=$(jq -r .run <<<"$record")
+    [ -n "$run" ] || continue
+    terminal=$(gh_or_4 run view "$run" --json status,jobs --jq ".status == \"completed\" or ([.jobs[] | select(.name | endswith(\", $slug) / build\") or endswith(\", $slug)\"))] | length > 0 and all(.status == \"completed\"))")
+    [ "$terminal" = true ] || continue
+    jq -sc . <<<"$record" | unclaim
+  done <<<"$refs"
 }
 
 # L81: after a Builder or fix run ends, however it ends: gives the open draft PR of each <branch> that has no `Stopped:`
@@ -206,6 +242,7 @@ case "${1:-}" in
   queue) [[ ${2:-4} =~ ^[0-9]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; queue "${2:-4}" ;;
   claim) claim ;;
   unclaim) unclaim ;;
+  recover) recover ;;
   stopped) shift; stopped "$@" ;;
   builders) builders ;;
   slug) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; jq -rn --arg s "$2" "$slug_def"' $s | slug' ;;

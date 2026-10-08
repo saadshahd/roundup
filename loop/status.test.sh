@@ -163,6 +163,13 @@ git remote set-url origin "$dir/origin.git"
 touch "$FIXTURES/gh-fail"
 check 'L80 a page gh failure exits 4' 4 bash -c 'loop/status.sh page </dev/null'
 
+# An owner remains visible even if GitHub deleted its merged build branch.
+fresh
+git push -q origin HEAD:refs/heads/loop-row/U99
+check 'L80 an owner-only orphan is visible' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 Status names ownership waiting for recovery' grep -q 'build/U99: Claim owner without a Builder' "$FIXTURES/out"
+git push -q origin --delete refs/heads/loop-row/U99
+
 # L87 a live Codex Claim has an expiring local record and a readable Status row.
 fresh
 export CODEX_STATUS="$(jq -nc --argjson now "$LOOP_NOW" '{ids:"U8",slug:"U8",state:"running",started:$now,deadline:($now+7200)}')"

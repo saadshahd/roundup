@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   actions: write
   pull-requests: read
   checks: read
@@ -40,4 +40,6 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
-        run: python3 loop/dispatch.py reconcile
+        run: |
+          gh auth setup-git
+          python3 loop/dispatch.py reconcile

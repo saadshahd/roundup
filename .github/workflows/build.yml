@@ -51,6 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAX: ${{ inputs.max || '4' }}
         run: |
+          loop/runs.sh recover
           rows=$(loop/runs.sh queue "$MAX" | loop/runs.sh claim)
           echo "rows=$rows" >>"$GITHUB_OUTPUT"
 

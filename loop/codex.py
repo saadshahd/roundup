@@ -103,8 +103,7 @@ def finish(record, state, code):
     save(state / 'last.json', record)
     save(Path(record['events']).parent / 'record.json', record)
     # L23 retains every PR and frees only Claims without one. Local code/logs are always kept.
-    if command('git', 'ls-remote', '--heads', 'origin', 'refs/heads/build/' + record['slug']):
-        command('loop/runs.sh', 'unclaim', data=json.dumps([record]))
+    command('loop/runs.sh', 'unclaim', data=json.dumps([record]))
     publish(record)
     if len(prs) == 1 and prs[0]['isDraft']:
         command('gh', 'workflow', 'run', 'merge-ready.yml', '-f', 'pr=' + str(prs[0]['number']))
