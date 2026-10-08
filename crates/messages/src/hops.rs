@@ -74,13 +74,20 @@ pub(crate) fn settle(
         if hop.status != MessageStatus::Dropped && !gone && !run_out && !passes {
             continue;
         }
-        if let Some(passed) = store.drop_passed(hop.id)? {
-            made.push(Made {
-                message: passed,
-                new: false,
-            });
-        }
-        advance(inner, store, nodes, now, &chain, &mut made)?;
+        // One transaction per chain: a kill cannot leave the next hop or Landing stored while the
+        // chain still points at the hop it left (B8, B17).
+        let moved = store.atomically(|store| {
+            let mut moved = Vec::new();
+            if let Some(passed) = store.drop_passed(hop.id)? {
+                moved.push(Made {
+                    message: passed,
+                    new: false,
+                });
+            }
+            advance(inner, store, nodes, now, &chain, &mut moved)?;
+            Ok(moved)
+        })?;
+        made.extend(moved);
     }
     store.arm_chains(now)?;
     Ok(made)
