@@ -59,13 +59,11 @@ jobs:
             --max-turns 150
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
       - if: always()
-        uses: saadshahd/roundup/.github/actions/ledger@main
+        uses: ./.github/actions/ledger
         with:
           role: builder
           subject: ${{ fromJSON(inputs.row).ids }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
-          redact-token: ${{ steps.claude.outputs.github_token }}
-          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   # Each row frees its own slot; a slow sibling cannot hold the refill job.
@@ -86,9 +84,7 @@ jobs:
           ROW: ${{ inputs.row }}
         run: |
           jq -c '[.]' <<<"$ROW" | loop/runs.sh unclaim
-          branch="build/$(jq -r .slug <<<"$ROW")"
-          loop/runs.sh stopped "$branch"
-          python3 loop/outcome.py observe "$branch"
+          loop/runs.sh stopped "build/$(jq -r .slug <<<"$ROW")"
       - if: always()
         env:
           GH_TOKEN: ${{ github.token }}
