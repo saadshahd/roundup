@@ -483,7 +483,7 @@ impl Git {
     }
 
     /// G5: delete the Worktree's directory and branch whatever their state; a directory already
-    /// gone is not an error, and git's record of it is pruned.
+    /// gone is not an error, and only git's record of it is removed.
     pub fn discard(&self, project: &Path, worktree: &Worktree) -> Result<(), RpcError> {
         let reference = format!("refs/heads/{}", worktree.branch);
         let path = canonical_path(&worktree.path);
@@ -493,20 +493,16 @@ impl Git {
             .find(|(entry, _)| *entry == path);
         match registered {
             Some((_, branch)) if branch.is_none() || branch.as_deref() == Some(&reference) => {
-                if worktree.path.exists() {
-                    self.run(
-                        project,
-                        &[
-                            "worktree",
-                            "remove",
-                            "--force",
-                            &worktree.path.to_string_lossy(),
-                        ],
-                    )
-                    .map_err(failed)?;
-                } else {
-                    self.run(project, &["worktree", "prune"]).map_err(failed)?;
-                }
+                self.run(
+                    project,
+                    &[
+                        "worktree",
+                        "remove",
+                        "--force",
+                        &worktree.path.to_string_lossy(),
+                    ],
+                )
+                .map_err(failed)?;
             }
             Some(_) => return Err(failed("recorded Worktree path belongs to another branch")),
             None if worktree.path.exists() => {

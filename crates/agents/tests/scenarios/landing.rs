@@ -356,7 +356,26 @@ async fn g5_a_directory_already_gone_is_not_an_error() {
         .unwrap_err();
     assert_refused(&err, code::CONFLICT, "worktree_unlanded");
     assert!(err.message.contains("ahead 1"));
+    let user = f.dir.path().join(".roundup/user-gone");
+    git(
+        f.dir.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "user-gone",
+            user.to_str().unwrap(),
+        ],
+    );
+    std::fs::remove_dir_all(&user).unwrap();
     f.call("agent.discard", json!({"id": ahead})).await.unwrap();
+    assert!(git(f.dir.path(), &["worktree", "list"]).contains("user-gone"));
+    git(
+        f.dir.path(),
+        &["worktree", "remove", "--force", user.to_str().unwrap()],
+    );
+    git(f.dir.path(), &["branch", "-D", "user-gone"]);
 
     let after = (
         git(f.dir.path(), &["branch", "--list"]),
