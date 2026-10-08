@@ -24,5 +24,6 @@ Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
 
 | Ids | Item | Owns | Keeps green | After |
 |---|---|---|---|---|
+| U83 | explain a selected earlier-run Agent or Terminal with no saved output (Moves: D5) | `apps/desktop/src/terminal/Pane.tsx`, narrow terminal styles, new `u83_` tests, `apps/desktop/src/testing/harness.tsx` and `.agents/data/harness.md` for a reproducible earlier-run seed | U12, U13, U38, U57; null Terminal creates no emulator and sends no write or resize; non-null Terminal and error precedence unchanged | U57 U38 |
 | contrast | Live lines and Ink text read at 4.5:1 (U4, U25) (Moves: D1, D5) | `src/styles.css`, `src/rail/styles.css`, the contrast tests, `u5_drawer.test.tsx` | U4, U25, U50 | go from the user; starts when this text is on main; observer: the computed-colour and stylesheet tests, `just check` |
 | notch | U55: report which element draws the empty-Terminal notch | no app file (a report and screenshots under `artifacts/ux/U55/`) | U55 | go from the user; observer: the report |
