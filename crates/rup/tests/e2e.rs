@@ -22,25 +22,44 @@ const RECORDED: &str = concat!(
 
 const D2_EVENTS: &str = "SessionStart,UserPromptSubmit,PermissionRequest,PostToolUse,Stop";
 
-fn d2_project() -> Project {
-    start(&[
+/// The fake `claude` leaves its `rup permission` open and waits for this file, which the test
+/// writes once the Agent is `needs-you` (H7a: the next Signal clears the Decision).
+fn d2_project() -> (Project, std::path::PathBuf) {
+    let gate = std::env::temp_dir().join(format!(
+        "d2-gate-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_file(&gate);
+    let project = start(&[
         ("FAKE_CLAUDE_PAYLOADS", RECORDED),
         ("FAKE_CLAUDE_EVENTS", D2_EVENTS),
         ("FAKE_CLAUDE_PROMPT", "fix the refresh race"),
-    ])
+        ("FAKE_CLAUDE_GATE", gate.to_str().unwrap()),
+    ]);
+    (project, gate)
+}
+
+/// The next five Kinds, opening the gate once the third (`needs-you`) is in.
+async fn d2_kinds(client: &mut rpc::Client, gate: &std::path::Path) -> Vec<Kind> {
+    let mut kinds = Vec::new();
+    for _ in 0..5 {
+        kinds.push(next_kind(client).await);
+        if kinds.len() == 3 {
+            std::fs::write(gate, "").unwrap();
+        }
+    }
+    kinds
 }
 
 #[tokio::test]
 async fn d2_status_follows_the_hooks_in_order() {
-    let project = d2_project();
+    let (project, gate) = d2_project();
     let mut client = project.subscribed().await;
 
     project.spawn_agent(&client).await;
 
-    let mut kinds = Vec::new();
-    for _ in 0..5 {
-        kinds.push(next_kind(&mut client).await);
-    }
+    let kinds = d2_kinds(&mut client, &gate).await;
     assert_eq!(
         kinds,
         [
@@ -55,12 +74,10 @@ async fn d2_status_follows_the_hooks_in_order() {
 
 #[tokio::test]
 async fn d2_the_first_prompt_names_the_agent() {
-    let project = d2_project();
+    let (project, gate) = d2_project();
     let mut client = project.subscribed().await;
     let agent = project.spawn_agent(&client).await;
-    for _ in 0..5 {
-        next_kind(&mut client).await;
-    }
+    d2_kinds(&mut client, &gate).await;
 
     let tree = rail_tree(&client).await;
 
@@ -688,4 +705,123 @@ async fn g6_crashed_agent_provision_is_recovered_without_touching_user_worktree(
 #[tokio::test]
 async fn g6_crashed_door_provision_retains_room_and_children() {
     interrupted_worktree(true).await;
+}
+
+/// What the fake `claude` read from its argv and its `rup mcp`: the Brief file and the tool list.
+struct Seen {
+    brief: String,
+    tools: Vec<String>,
+}
+
+async fn seen_at(report: &std::path::Path) -> Seen {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            if let Ok(text) = std::fs::read_to_string(report)
+                && let Ok(seen) = serde_json::from_str::<serde_json::Value>(&text)
+            {
+                return Seen {
+                    brief: seen["brief"].as_str().unwrap().to_owned(),
+                    tools: seen["tools"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|name| name.as_str().unwrap().to_owned())
+                        .collect(),
+                };
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the fake claude reported")
+}
+
+/// The tool names a Brief puts in backticks.
+fn advertised(brief: &str) -> Vec<String> {
+    let mut names: Vec<String> = brief
+        .lines()
+        .filter_map(|line| line.strip_prefix("- `")?.split('`').next())
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    names
+}
+
+#[tokio::test]
+async fn e1_an_agents_brief_advertises_exactly_the_tools_its_rup_mcp_lists() {
+    let report = tempfile::tempdir().unwrap().keep().join("seen.json");
+    let project = start(&[("FAKE_CLAUDE_BRIEF_REPORT", report.to_str().unwrap())]);
+    let client = project.client().await;
+    let agent = project.spawn_agent(&client).await;
+
+    let seen = seen_at(&report).await;
+
+    let mut listed = seen.tools.clone();
+    listed.sort();
+    assert_eq!(advertised(&seen.brief), listed);
+    assert!(
+        seen.brief
+            .contains(&format!("Your Agent id is {}.", agent.id))
+    );
+    assert!(!seen.brief.contains("coordinating Door"));
+}
+
+#[tokio::test]
+async fn b24_a_door_reads_its_brief_then_creates_and_updates_a_todo_over_mcp() {
+    let report = tempfile::tempdir().unwrap().keep().join("seen.json");
+    let tools = json!([
+        { "name": "todo_create", "arguments": { "title": "plan the room" } },
+        { "name": "todo_update", "arguments": { "id": "$id", "body": "owned files: none yet" } },
+    ]);
+    let project = start(&[
+        ("FAKE_CLAUDE_BRIEF_REPORT", report.to_str().unwrap()),
+        ("FAKE_CLAUDE_TOOLS", &tools.to_string()),
+    ]);
+    let mut client = project.subscribed().await;
+    let room = client
+        .request("rail.createRoom", json!({"name": "room", "parent": null}))
+        .await
+        .unwrap();
+    let door = room["id"].as_str().unwrap().to_owned();
+    client
+        .request("rail.startDoor", json!({ "id": door }))
+        .await
+        .unwrap();
+
+    let updated = next(&mut client, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo),
+        _ => None,
+    })
+    .await;
+    let seen = seen_at(&report).await;
+
+    assert!(seen.brief.contains("coordinating Door"));
+    assert!(seen.brief.contains(&format!("Your Agent id is {door}.")));
+    let mut listed = seen.tools;
+    listed.sort();
+    assert_eq!(advertised(&seen.brief), listed);
+    assert_eq!(updated.title, "plan the room");
+    assert_eq!(updated.body, "owned files: none yet");
+    assert_eq!(
+        updated.creator,
+        Actor {
+            kind: ActorKind::Agent,
+            id: door,
+            parent: None
+        }
+    );
+    let stored: Vec<Todo> = serde_json::from_value(
+        project
+            .client()
+            .await
+            .request("todo.list", json!(null))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(
+        (&stored[0].title, &stored[0].body),
+        (&updated.title, &updated.body)
+    );
 }

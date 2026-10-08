@@ -153,4 +153,15 @@ git remote set-url origin "$dir/origin.git"
 touch "$FIXTURES/gh-fail"
 check 'L80 a page gh failure exits 4' 4 bash -c 'loop/status.sh page </dev/null'
 
+# L87 a live Codex Claim has an expiring local record and a readable Status row.
+fresh
+export CODEX_STATUS="$(jq -nc --argjson now "$LOOP_NOW" '{ids:"U8",slug:"U8",state:"running",started:$now,deadline:($now+7200)}')"
+check 'L87 a local Builder appears on Status' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L87 its live Claim is not called abandoned' bash -c '! grep -q "build/U8: no open PR" "$FIXTURES/out"'
+holds 'L87 Status names the row and run deadline' grep -q '| Codex | U8: running; started' "$FIXTURES/out"
+export CODEX_STATUS="$(jq '.deadline = 1' <<<"$CODEX_STATUS")"
+check 'L87 a stale local record expires' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L87 an expired record cannot hide an orphan' grep -q 'build/U8: no open PR' "$FIXTURES/out"
+unset CODEX_STATUS
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

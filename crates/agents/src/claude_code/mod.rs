@@ -2,13 +2,16 @@
 //! (ADR 0006); `session`, `hook` and `transcript` are Claude Code's own words, so they must not
 //! leak out of this module into public names.
 
+mod brief;
 mod launch;
 
+use contracts::decision::Answer;
 use contracts::{Kind, Status};
 use serde_json::Value;
 
 use crate::{AgentAdapter, Observation};
 
+pub use brief::Role;
 pub use launch::{Launcher, STATE_EVENTS};
 
 /// Env vars Claude Code sets when the program running it is itself inside a Claude Code run
@@ -276,5 +279,75 @@ fn permission_label(payload: &Value) -> String {
     match input["command"].as_str() {
         Some(command) => format!("{tool}: {command}"),
         None => tool.to_owned(),
+    }
+}
+
+/// The `timeout`, in seconds, of the `PermissionRequest` hook in the per-Agent settings (H9).
+pub const PERMISSION_TIMEOUT_SECS: u64 = 86400;
+
+/// How many characters of a tool's input a Decision's `args` keeps (H2).
+const ARGS_LIMIT: usize = 2000;
+
+/// What a `PermissionRequest` payload says the Decision is about (H2, H8).
+pub struct PermissionRequest {
+    pub tool: String,
+    pub args: String,
+    /// `false` when no hook reply can answer it: `AskUserQuestion` (H1c) or a payload this cannot
+    /// read (H8).
+    pub answerable: bool,
+}
+
+/// The Decision a `PermissionRequest` payload opens: the tool name, its input as text cut at
+/// `ARGS_LIMIT` characters with a final `…`, and whether a hook reply can answer it.
+pub fn permission_request(payload: &Value) -> PermissionRequest {
+    let tool = payload["tool_name"].as_str();
+    let input = &payload["tool_input"];
+    let text = if tool == Some("AskUserQuestion") {
+        input["questions"].to_string()
+    } else if input.is_null() {
+        String::new()
+    } else {
+        input.to_string()
+    };
+    let args = match text.char_indices().nth(ARGS_LIMIT) {
+        Some((end, _)) => format!("{}…", &text[..end]),
+        None => text,
+    };
+    PermissionRequest {
+        answerable: tool.is_some()
+            && tool != Some("AskUserQuestion")
+            && payload["hook_event_name"] == "PermissionRequest",
+        tool: tool.unwrap_or_default().to_owned(),
+        args,
+    }
+}
+
+/// `payload` as the `PermissionRequest` Signal the adapter reads, whatever event name it carried:
+/// an Agent is `needs-you` exactly while its Decision is open.
+pub fn as_permission_signal(mut payload: Value) -> Value {
+    match payload.as_object_mut() {
+        Some(fields) => {
+            fields.insert("hook_event_name".into(), "PermissionRequest".into());
+            payload
+        }
+        None => serde_json::json!({"hook_event_name": "PermissionRequest"}),
+    }
+}
+
+/// Whether a Signal means the tool was answered, ran or was abandoned in the Terminal, so an open
+/// Decision is over (H7(a)).
+pub fn ends_decision(payload: &Value) -> bool {
+    matches!(
+        payload["hook_event_name"].as_str(),
+        Some("PostToolUse" | "PostToolUseFailure" | "Stop" | "UserPromptSubmit")
+    )
+}
+
+/// What the hook prints for `answer`, exactly the replies `spikes/hooks-permission/REPORT.md`
+/// findings 12 and 13 record.
+pub fn reply(answer: Answer) -> String {
+    match answer {
+        Answer::Allow => r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#.into(),
+        Answer::Deny => r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied in roundup"}}}"#.into(),
     }
 }

@@ -12,6 +12,8 @@ use rpc::{OpenError, RpcError, code};
 use serde_json::{Map, Value, json};
 use unicode_normalization::UnicodeNormalization;
 
+use super::brief::{self, Role};
+
 /// The hook events that carry state. Notification and SubagentStop are left out on purpose: the
 /// first arrives about 6 s late, the second fires spuriously (ADR 0006). H15's replay rule would
 /// also drop an event here when removing its Signal from every fixture in
@@ -98,7 +100,11 @@ impl Launcher {
         let Some(id) = parse_id(id) else {
             return Ok(());
         };
-        for file in [settings_path(dir, id), mcp_config_path(dir, id)] {
+        for file in [
+            settings_path(dir, id),
+            mcp_config_path(dir, id),
+            brief_path(dir, id),
+        ] {
             match std::fs::remove_file(file) {
                 Err(err) if err.kind() != ErrorKind::NotFound => return Err(err),
                 _ => {}
@@ -107,7 +113,7 @@ impl Launcher {
         Ok(())
     }
 
-    /// Write Agent `id`'s settings and MCP config under `dir` (the Project's `.roundup/`), trust
+    /// Write Agent `id`'s settings, MCP config and Brief (E1, for its `role`) under `dir` (the Project's `.roundup/`), trust
     /// `cwd`, and return the argv that starts it. Only a `cwd` inside the Project folder is trusted: Claude's config
     /// is the user's, and this is the only grant roundup makes in it. A22: `resume` is the saved
     /// conversation id to continue, added to argv as `--resume <id>`; `None` starts fresh.
@@ -118,6 +124,7 @@ impl Launcher {
         attempt: &str,
         cwd: &Path,
         resume: Option<&str>,
+        role: Role,
     ) -> Result<Vec<String>, RpcError> {
         let invalid = |message: String| RpcError::new(code::INVALID_PARAMS, message);
         let id = parse_id(id).ok_or_else(|| invalid(format!("{id:?} is not a node id")))?;
@@ -168,6 +175,8 @@ impl Launcher {
         let mcp_config = mcp_config_path(&dir, id);
         replace_file(&settings, &self.settings_json(id, attempt)).map_err(RpcError::internal)?;
         replace_file(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
+        let brief_file = brief_path(&dir, id);
+        replace_text(&brief_file, &brief::text(id, role)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
         // No `--strict-mcp-config`: the Agent keeps the user's own servers.
         let mut argv = vec![
@@ -176,6 +185,8 @@ impl Launcher {
             settings.to_string_lossy().into_owned(),
             "--mcp-config".into(),
             mcp_config.to_string_lossy().into_owned(),
+            "--append-system-prompt-file".into(),
+            brief_file.to_string_lossy().into_owned(),
         ];
         if let Some(conversation_id) = resume {
             argv.push("--resume".into());
@@ -213,16 +224,29 @@ impl Launcher {
 
     /// A20: the hook command, not the program, carries the launch's Attempt.
     fn settings_json(&self, id: u64, attempt: &str) -> Value {
-        let command = format!(
-            "ROUNDUP_ATTEMPT={} {} signal {}",
-            shell_quote(attempt),
-            shell_quote(&self.rup.to_string_lossy()),
-            shell_quote(&id.to_string())
-        );
-        let hook = json!([{ "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }]);
+        let rup = shell_quote(&self.rup.to_string_lossy());
+        let id = shell_quote(&id.to_string());
+        // H9: `PermissionRequest` waits for the user's answer, so its hook outlives the 5 s of the rest.
+        let signal = json!([{ "hooks": [{
+            "type": "command",
+            "command": format!("ROUNDUP_ATTEMPT={} {rup} signal {id}", shell_quote(attempt)),
+            "timeout": 5,
+        }] }]);
+        let permission = json!([{ "hooks": [{
+            "type": "command",
+            "command": format!("{rup} permission {id}"),
+            "timeout": super::PERMISSION_TIMEOUT_SECS,
+        }] }]);
         let hooks: Map<String, Value> = STATE_EVENTS
             .iter()
-            .map(|event| ((*event).to_owned(), hook.clone()))
+            .map(|event| {
+                let hook = if *event == "PermissionRequest" {
+                    &permission
+                } else {
+                    &signal
+                };
+                ((*event).to_owned(), hook.clone())
+            })
             .collect();
         // Allowed here so a roundup tool never raises a permission dialog.
         json!({ "hooks": hooks, "permissions": { "allow": ["mcp__roundup__*"] } })
@@ -327,10 +351,19 @@ fn shell_quote(word: &str) -> String {
 /// written through: the files in the Project are not ours to trust. The old permissions are kept
 /// (the config holds credentials).
 fn replace_file(path: &Path, value: &Value) -> std::io::Result<()> {
+    replace_bytes(path, &serde_json::to_vec_pretty(value)?)
+}
+
+/// [`replace_file`] for text.
+fn replace_text(path: &Path, text: &str) -> std::io::Result<()> {
+    replace_bytes(path, text.as_bytes())
+}
+
+fn replace_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent)?;
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-    staged.write_all(&serde_json::to_vec_pretty(value)?)?;
+    staged.write_all(bytes)?;
     staged.as_file().sync_all()?;
     if let Ok(existing) = std::fs::symlink_metadata(path)
         && existing.is_file()
@@ -372,4 +405,8 @@ fn settings_path(dir: &Path, id: u64) -> PathBuf {
 
 fn mcp_config_path(dir: &Path, id: u64) -> PathBuf {
     agents_dir(dir).join(format!("{id}.mcp.json"))
+}
+
+fn brief_path(dir: &Path, id: u64) -> PathBuf {
+    agents_dir(dir).join(format!("{id}.brief.md"))
 }

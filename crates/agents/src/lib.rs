@@ -8,9 +8,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
-    SpawnParams, SpawnTerminalParams, StatusEvent,
+    CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
+    SpawnParams, SpawnTerminalParams, StatusEvent, WorktreeState,
 };
+use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
 use contracts::{Actor, EventData, Kind, Status};
@@ -23,11 +24,12 @@ use tokio::sync::oneshot;
 use tokio::time::{Instant, sleep_until};
 
 pub mod claude_code;
+mod decision;
 mod name;
 mod rail;
 pub mod worktree;
 
-use claude_code::{ClaudeCode, Launcher};
+use claude_code::{ClaudeCode, Launcher, Role};
 
 /// One input an adapter reads about its Agent.
 pub enum Observation {
@@ -88,6 +90,8 @@ struct Shared {
     clock: Clock,
     /// Since when an Agent without a Terminal has been `done`.
     opened: i64,
+    /// H2 to H7: the open permission Decisions, in memory only.
+    decisions: decision::Decisions,
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -375,6 +379,24 @@ impl Shared {
         first_prompt: Option<Option<String>>,
     ) -> Result<Applied, RpcError> {
         let exited = matches!(observation, Observation::Exit { .. });
+        match &observation {
+            // H6: an Agent that ends takes its Decision with it.
+            Observation::Exit { .. } => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
+            }
+            Observation::Stopped => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
+            }
+            // H7(a): the tool ran or the prompt moved on, so the dialog was answered in the
+            // Terminal.
+            Observation::Signal(payload) if claude_code::ends_decision(payload) => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::Terminal, "answered in the Terminal");
+            }
+            _ => {}
+        }
         let changed = run.adapter.observe(observation);
         if exited {
             run.ended = true;
@@ -739,8 +761,28 @@ impl Shared {
         self.end(actor, id, true).await
     }
 
+    /// G5: stop the Agent and delete its node, Worktree directory and branch whatever their
+    /// state.
+    async fn discard(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
+        if self.rail().node(id)?.worktree.is_none() {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        }
+        self.end_with(actor, id, true, true).await
+    }
+
     async fn end(&self, actor: Actor, id: &str, remove: bool) -> Result<(), RpcError> {
-        let checked_node = if remove {
+        self.end_with(actor, id, remove, false).await
+    }
+
+    /// `discarding` drops the Worktree whatever its state; otherwise a remove keeps unlanded work.
+    async fn end_with(
+        &self,
+        actor: Actor,
+        id: &str,
+        remove: bool,
+        discarding: bool,
+    ) -> Result<(), RpcError> {
+        let checked_node = if remove && !discarding {
             Some(self.rail().node(id)?)
         } else {
             None
@@ -817,10 +859,15 @@ impl Shared {
             let git = self.git.clone();
             let project = self.project_dir.clone();
             let worktree = worktree::Worktree::from(&worktree);
-            let removed =
-                tokio::task::spawn_blocking(move || git.remove_landed(&project, &worktree))
-                    .await
-                    .map_err(RpcError::internal)?;
+            let removed = tokio::task::spawn_blocking(move || {
+                if discarding {
+                    git.discard(&project, &worktree)
+                } else {
+                    git.remove_landed(&project, &worktree)
+                }
+            })
+            .await
+            .map_err(RpcError::internal)?;
             if let Err(err) = removed {
                 self.rail().detach_terminal(id)?;
                 self.release_closing(id, true);
@@ -1086,10 +1133,25 @@ impl Agents {
                 terminals,
                 clock: Arc::new(now_ms),
                 opened: now_ms(),
+                decisions: decision::Decisions::new(
+                    None,
+                    Duration::from_secs(claude_code::PERMISSION_TIMEOUT_SECS),
+                ),
             }),
             dir: dir.to_owned(),
             launcher,
         })
+    }
+
+    /// H3, H4: answers need `proof`; the App holds it. Without one every `decision.answer` is
+    /// `FORBIDDEN`. Call it before the first call is made.
+    #[must_use]
+    pub fn with_proof(mut self, proof: Option<String>) -> Self {
+        Arc::get_mut(&mut self.shared)
+            .expect("the Agents are not shared yet")
+            .decisions
+            .set_proof(proof);
+        self
     }
 
     /// The Project folder: `.roundup/`'s parent, where its git repository (if any) lives.
@@ -1385,6 +1447,35 @@ impl Agents {
         self.shared.node(id)
     }
 
+    /// G3: how far the Agent's Worktree is from its Base. Reads only.
+    async fn worktree_state(&self, id: &str) -> Result<WorktreeState, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        tokio::task::spawn_blocking(move || git.state(&project, &worktree))
+            .await
+            .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))?
+    }
+
+    /// G4: land the Agent's branch on its Base, after the Project's `check` passes in the Worktree.
+    async fn land(&self, id: &str) -> Result<Landed, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let check = self.shared.rail().get_worktrees()?.check;
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        let base =
+            tokio::task::spawn_blocking(move || git.land(&project, &worktree, check.as_deref()))
+                .await
+                .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))??;
+        Ok(Landed { base })
+    }
+
     /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
     /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
     /// retains its ownership record when cleanup cannot safely remove the new Worktree.
@@ -1558,6 +1649,10 @@ impl Agents {
         resume: Option<&str>,
         attach: bool,
     ) -> Result<terminal::Spawned, RpcError> {
+        let role = match self.shared.rail().node(id)?.kind {
+            NodeKind::Room => Role::Door,
+            _ => Role::Agent,
+        };
         // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
         let (launcher, dir, node, folder, attempt, resume) = (
             self.launcher.clone(),
@@ -1568,7 +1663,7 @@ impl Agents {
             resume.map(str::to_owned),
         );
         let argv = tokio::task::spawn_blocking(move || {
-            launcher.prepare(&dir, &node, &attempt, &folder, resume.as_deref())
+            launcher.prepare(&dir, &node, &attempt, &folder, resume.as_deref(), role)
         })
         .await
         .map_err(RpcError::internal)??;
@@ -1673,7 +1768,7 @@ fn now_ms() -> i64 {
 #[async_trait]
 impl Module for Agents {
     fn namespaces(&self) -> &'static [&'static str] {
-        &["agent", "rail", "project"]
+        &["agent", "rail", "project", "decision"]
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
@@ -1683,6 +1778,19 @@ impl Module for Agents {
             "agent.stop" => {
                 let NodeId { id } = params(value)?;
                 shared.stop(ctx.actor.clone(), &id).await?;
+                reply(&())
+            }
+            "agent.worktreeState" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.worktree_state(&id).await?)
+            }
+            "agent.land" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.land(&id).await?)
+            }
+            "agent.discard" => {
+                let NodeId { id } = params(value)?;
+                shared.discard(ctx.actor.clone(), &id).await?;
                 reply(&())
             }
             "rail.startDoor" => {
@@ -1711,6 +1819,20 @@ impl Module for Agents {
                     &attempt,
                     Observation::Signal(payload),
                 )?;
+                reply(&())
+            }
+            "agent.permission" => {
+                let PermissionParams { id, payload } = params(value)?;
+                reply(&shared.permission(ctx.actor.clone(), &id, payload).await?)
+            }
+            "agent.ask" => {
+                let ask: AskParams = params(value)?;
+                reply(&shared.ask(ctx.actor.clone(), ask).await?)
+            }
+            "decision.list" => reply(&shared.decisions.list()),
+            "decision.answer" => {
+                let AnswerParams { id, answer, proof } = params(value)?;
+                shared.answer(ctx.actor.clone(), &id, &answer, proof.as_deref())?;
                 reply(&())
             }
             "rail.tree" => reply(&shared.tree()?),
@@ -1811,6 +1933,7 @@ mod tests {
             terminals,
             clock,
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
         });
         (dir, bus, shared)
     }
@@ -2204,6 +2327,7 @@ mod tests {
             kill: Arc::new(FailingKill),
             clock: Arc::new(|| 0),
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
         })
     }
 
@@ -2405,6 +2529,7 @@ mod tests {
             kill: Arc::new(FlakyKill(std::sync::atomic::AtomicBool::new(false))),
             clock: Arc::new(|| 0),
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
         });
         (dir, shared)
     }
@@ -2523,5 +2648,75 @@ mod tests {
 
         assert_eq!(err.code, rpc::code::INTERNAL);
         assert!(began.elapsed() < super::KILL_WAIT_BOUND / 2);
+    }
+    /// H7(c): `elapsed_ms` after the hook began, on an injected clock and the 4 s `timeout` the
+    /// Decisions are built with, the hook's connection closes. Returns the events and the Kind.
+    async fn hook_closes_after(
+        elapsed_ms: i64,
+    ) -> (Vec<EventData>, Vec<contracts::decision::Decision>, Kind) {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let now = Arc::new(AtomicI64::new(1_000));
+        let clock = {
+            let now = Arc::clone(&now);
+            Arc::new(move || now.load(Ordering::SeqCst))
+        };
+        let (_dir, bus, shared) = shared_over_temp_dir(clock);
+        let id = running_agent(&shared, None);
+        let mut events = bus.subscribe();
+        let payload = json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                             "tool_input": {"command": "ls"}});
+        let hook = {
+            let (shared, id) = (Arc::clone(&shared), id.clone());
+            tokio::spawn(async move { shared.permission(Actor::daemon(), &id, payload).await })
+        };
+        while shared.decisions.list().is_empty() {
+            tokio::task::yield_now().await;
+        }
+
+        now.fetch_add(elapsed_ms, Ordering::SeqCst);
+        hook.abort();
+        let _ = hook.await;
+
+        let seen = std::iter::from_fn(|| events.try_recv().ok())
+            .map(|event| event.data)
+            .filter(|data| {
+                matches!(
+                    data,
+                    EventData::DecisionOpened(_) | EventData::DecisionCleared(_)
+                )
+            })
+            .collect();
+        let kind = match shared.runs().get(&id) {
+            Some(Slot::Running(run)) => run.adapter.status().unwrap().kind,
+            _ => panic!("the Agent is running"),
+        };
+        (seen, shared.decisions.list(), kind)
+    }
+
+    #[tokio::test]
+    async fn h7_a_close_at_the_hook_timeout_leaves_the_decision_open_and_unanswerable() {
+        let (seen, open, kind) = hook_closes_after(4_000).await;
+
+        assert_eq!(open.len(), 1);
+        assert!(!open[0].answerable);
+        assert_eq!(kind, Kind::NeedsYou);
+        assert_eq!(
+            seen.len(),
+            1,
+            "decision.opened is not repeated and nothing clears: {}",
+            seen.len()
+        );
+        assert!(matches!(seen[0], EventData::DecisionOpened(_)));
+    }
+
+    #[tokio::test]
+    async fn h7_a_close_before_the_hook_timeout_is_a_no_or_an_esc() {
+        let (seen, open, kind) = hook_closes_after(3_999).await;
+
+        assert!(open.is_empty());
+        assert_eq!(kind, Kind::Idle);
+        assert!(
+            matches!(&seen[1], EventData::DecisionCleared(c) if c.outcome == contracts::decision::Outcome::Terminal)
+        );
     }
 }

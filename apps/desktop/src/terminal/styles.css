@@ -76,3 +76,8 @@
   border-radius: var(--radius-control);
   background: var(--ground);
 }
+
+/* U59: xterm.css paints `.xterm-viewport` black; the pane shows the app's ground instead. */
+.pane .xterm .xterm-viewport {
+  background-color: var(--ground);
+}

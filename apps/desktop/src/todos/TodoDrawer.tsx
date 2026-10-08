@@ -19,7 +19,12 @@ const TodoLine = (props: { todo: Todo }) => (
 
 /** The Drawer of one Todo. What it shows follows the list, so an Event from the Daemon reaches it; `todo.get` is called once, on opening, by the shared item Drawer. */
 export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
-  const { app, drawer } = useConnectedProject();
+  const { app, drawer, rail } = useConnectedProject();
+
+  /** T8: `you` for the user, the Agent's name on the Rail, else the creator's id. */
+  const creatorName = (creator: Todo["creator"]) =>
+    creator.kind === "user" ? "you" : (rail.nodes.find((node) => node.kind === "agent" && node.id === creator.id)?.name ?? creator.id);
+
   const [failure, setFailure] = createSignal<string | null>(null);
   const [offering, setOffering] = createSignal(false);
   const [read, setRead] = createSignal(false);
@@ -125,6 +130,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   value={current().body}
                   commit={(body) => attempt(() => app.rpc("todo.update", { id: props.id, title: null, body }))}
                 />
+                <p class="light">created by {creatorName(current().creator)}</p>
               </>
             )}
           </Show>

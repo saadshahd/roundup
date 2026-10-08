@@ -43,11 +43,17 @@ Starting an exited Agent's next Attempt in its saved conversation.
 **Worktree**:
 The git worktree roundup makes for one Agent when the Project's `worktrees` setting is on: its own directory, branch and working directory (`docs/worktrees.md`).
 
+**Worktree state**:
+How far an Agent's Worktree is from its Base: `ahead` and `behind` in commits, and `dirty` when it has changes outside `.roundup/` (`agent.worktreeState`).
+
 **Base**:
 The branch checked out in the Project when the Agent spawned; the Agent's branch starts there.
 
 **Landing**:
-Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base.
+Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base (`agent.land`, which returns `Landed`: the Base's new commit).
+
+**Discard**:
+Deliberately dropping an Agent with its Worktree and branch whatever their state (`agent.discard`); `rail.remove` refuses instead when work would be lost.
 
 ### The App
 
@@ -179,7 +185,7 @@ Anything the user sees in the app (a permission request, a question, an Inbox Me
 _Avoid_: popup
 
 **Decision**:
-The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it.
+The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it. An Agent's `ask_user` call is one, answered with one of its listed answers (outcome `answered`).
 
 **Actor**:
 The user, an Agent, an Extension or the Daemon (as `rupd`) making a call.

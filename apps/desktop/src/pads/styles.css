@@ -204,3 +204,23 @@
 .pad-name {
   min-width: 0;
 }
+
+.rail-pads-control {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.rail-pads {
+  display: flex;
+  flex-direction: column;
+}
+
+.rail-pad {
+  box-sizing: border-box;
+  display: flex;
+  gap: 1ch;
+  align-items: center;
+  min-height: 28px;
+  padding-right: 8px;
+  cursor: pointer;
+}
