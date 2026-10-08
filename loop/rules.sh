@@ -405,9 +405,12 @@ def ids(text):
         else:
             out.append(a)
     return out
+def title_ids(text):
+    prefix = re.match(r'^([A-Z][0-9]+(?:\s*(?:,|–|-|to|and)\s*[A-Z]?[0-9]+|\s+[A-Z][0-9]+)*)\b', text)
+    return ids(prefix[0]) if prefix else []
 def tested(i):
     if i[0] == 'L':
-        args = ['git', 'grep', '-qE', r'\b' + i + r'\b', '--', 'loop/*.test.sh']
+        args = ['git', 'grep', '-qE', r'(^|[^A-Za-z0-9_])' + i + r'([^A-Za-z0-9_]|$)', '--', 'loop/*.test.sh']
     else:
         args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
     return subprocess.run(args).returncode == 0
@@ -416,7 +419,7 @@ if sys.argv[1:] != ['--offline']:
     try:
         result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,title'],
                                 text=True, stdout=subprocess.PIPE, timeout=float(os.environ.get('LOOP_GH_TIMEOUT', '20')), check=True)
-        prs = [(pr['number'], set(ids(pr['title']))) for pr in json.loads(result.stdout)]
+        prs = [(pr['number'], set(title_ids(pr['title']))) for pr in json.loads(result.stdout)]
     except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError) as error:
         print(f'gh: pr list: {error}', file=sys.stderr)
         sys.exit(4)

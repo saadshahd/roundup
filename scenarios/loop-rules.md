@@ -23,7 +23,7 @@ Module: `loop/rules.sh`, `loop/runs.sh`, `loop/retro.sh`, `loop/status.sh`, `loo
 
 **L33 base.** `base <pr>` passes only when the PR's base is `main`.
 
-**L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as the first that holds of `done` (every id has a test), `in-flight #<pr>` (an open PR's title names an id; gh missing, failing or slower than `LOOP_GH_TIMEOUT` exits 4, and `--offline` skips gh), `unspecified` (an id has no heading, or the `After` cell holds anything but ids and `—`), `waiting` (an `After` id is not done) or `ready`.
+**L34 ready.** `ready` prints each `## Work` row of `scenarios/*.md` as the first that holds of `done` (every id has a test), `in-flight #<pr>` (the leading id list in an open PR's title names an id; ids mentioned later in the description reserve no work; gh missing, failing or slower than `LOOP_GH_TIMEOUT` exits 4, and `--offline` skips gh), `unspecified` (an id has no heading, or the `After` cell holds anything but ids and `—`), `waiting` (an `After` id is not done) or `ready`.
 
 **L36 Percy build.** On every PR touching `apps/desktop/src/`, and on each such push to `main` as Percy's baseline, the `visual` workflow's `percy` job (`percy.sh snapshot`) pins the build's commit to the PR head (`PERCY_COMMIT`), so L24 finds it by that SHA, serves `just harness` and runs `percy snapshot` on each seed of `.agents/data/harness.md` at 1280 px wide in Chrome only; it fails without `PERCY_TOKEN`, when the harness never answers, when Percy fails, or when its output has no build link, and writes that link to the job summary.
 
