@@ -1,0 +1,23 @@
+[package]
+name = "agents"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+contracts = { path = "../contracts" }
+rpc = { path = "../rpc" }
+rusqlite.workspace = true
+serde_json.workspace = true
+terminal = { path = "../terminal" }
+tempfile.workspace = true
+tokio.workspace = true
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+provenance = { path = "../provenance" }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

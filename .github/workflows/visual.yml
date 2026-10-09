@@ -1,0 +1,52 @@
+name: visual
+
+# L36: the Percy build of every harness seed; merge-ready needs it green on a PR touching apps/desktop/src (L46), and builds on main are its baseline.
+on:
+  pull_request:
+    paths: ['apps/desktop/src/**']
+  push:
+    branches: [main]
+    paths: ['apps/desktop/src/**']
+  workflow_dispatch:
+
+concurrency:
+  group: visual-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  percy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: taiki-e/install-action@just
+      - run: pnpm install --frozen-lockfile
+      # The build's commit is the PR head, not the merge commit checked out, so review finds it by the head's SHA (L24).
+      - run: loop/percy.sh snapshot
+        env:
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+          PERCY_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          PERCY_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PERCY_CLIENT_ERROR_LOGS: "false"
+
+  summary:
+    needs: [percy]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check rendered UI changes
+      next: Review uses the visual evidence; required Percy results remain a merge gate.

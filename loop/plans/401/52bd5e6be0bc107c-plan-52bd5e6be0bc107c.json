@@ -1,0 +1,80 @@
+{
+  "source": {
+    "number": 401,
+    "title": "L90: turn feedback into reviewed plans and independently verified goals",
+    "body": "## Outcome\nMake collaborator feedback automatically reach a reviewed plan, bounded deliveries and independent goal verification. Preserve source feedback in Issues and iterate from observed results.\n\n## Acceptance\nScenarios: L90\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\n\n## Scope\n`loop/`, the smallest feedback workflow/prompt and vendored widen/anchor skills, and coordinated review gates for planning PRs. Reuse the shared Claims, build/review/repair controllers and canonical Issue format. Do not create a second file-based work queue.\n\n## Preserve\nL23/L24/L34/L46/L80/L87/L88; active migrated Issues and PRs; report-only #351. Read model outputs as data; trusted publication owns Issue/PR writes. A feedback parent closes only after independently reviewed goal evidence, never from a model success assertion or child closure alone.\n\n## Dependencies\nBlocked by #399: the Issue queue and this acceptance specification must be on main first.\n\n## Queue\nKey: feedback-goals\nPriority: 0\nMode: implement\nProvider: any\n\n## Feedback\nParent goal: #394. The user should not have to label, decompose or repeatedly unblock their own feedback. Existing Issues #355, #356, #369, #389 and #391 provide real intake cases; do not duplicate work already represented by #349/#392/#393.",
+    "html_url": "https://github.com/saadshahd/roundup/issues/401",
+    "kind": "work",
+    "revision": "52bd5e6be0bc107ce3e55b6aab39b4c565efd86506dbaccbb96984efcc9f15fc"
+  },
+  "phase": "plan",
+  "trigger": "52bd5e6be0bc107ce3e55b6aab39b4c565efd86506dbaccbb96984efcc9f15fc",
+  "main": "ae5e1c4da27a7a95ca5843d5f0bfe32f3e6e751b",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "A new or substantively edited Issue from a repository owner or collaborator enters feedback intake without a scheduling label, while loop:status, loop:work, bot progress edits, untrusted authors and loop:report-only do not; unready work Issues are triaged instead of waiting for an intake label.",
+        "observer": "python3 loop/feedback.test.py (l90_collaborator_feedback, l90_untrusted_author, l90_report_only, l90_bot_update, l90_changed_human_feedback) on main, plus a real feedback.yml run started from a collaborator Issue with no label added by the user."
+      },
+      {
+        "statement": "A fresh planner's goal and bounded batch reach native child work Issues with real blocked-by dependencies only after an independent exact-head review merges the planning PR; owned work is reused and a model cannot approve its own plan.",
+        "observer": "A real planning PR (loop/plans/<issue>/...) merged after an independent review run on its exact head, followed by trusted publication of native child Issues and dependencies linked to the source Issue; l90_reviewed_plan_publication, l90_reuse_owner, l90_duplicate_and_competing_claims, l90_cancelled_dependency."
+      },
+      {
+        "statement": "After children close, a fresh verifier observes every original goal on current main with retained command/run evidence; the parent closes only after independently reviewed goal evidence, otherwise the next bounded iteration is proposed.",
+        "observer": "A real verify-phase feedback.yml run on a source Issue whose children closed, its evidence reviewed at exact head, and the parent closed or a successor batch published; l90_independent_goal_verification, l90_failed_evidence_successor, l90_unreviewed_or_stale_closure."
+      },
+      {
+        "statement": "One complete real feedback cycle runs through GitHub Issues and its review gates, with source revision, plan, native children, delivery and verification evidence recorded and linked.",
+        "observer": "The source Issue's linked trail: source revision, merged planning PR, published children, merged delivery PRs, verification run and reviewed closure, recorded on #401."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 401,
+        "title": "L90: turn feedback into reviewed plans and independently verified goals",
+        "body": "## Outcome\nMake collaborator feedback automatically reach a reviewed plan, bounded deliveries and independent goal verification. Preserve source feedback in Issues and iterate from observed results.\n\n## Acceptance\nScenarios: L90\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\n\n## Scope\n`loop/`, the smallest feedback workflow/prompt and vendored widen/anchor skills, and coordinated review gates for planning PRs. Reuse the shared Claims, build/review/repair controllers and canonical Issue format. Do not create a second file-based work queue.\n\n## Preserve\nL23/L24/L34/L46/L80/L87/L88; active migrated Issues and PRs; report-only #351. Read model outputs as data; trusted publication owns Issue/PR writes. A feedback parent closes only after independently reviewed goal evidence, never from a model success assertion or child closure alone.\n\n## Dependencies\nBlocked by #399: the Issue queue and this acceptance specification must be on main first.\n\n## Queue\nKey: feedback-goals\nPriority: 0\nMode: implement\nProvider: any\n\n## Feedback\nParent goal: #394. The user should not have to label, decompose or repeatedly unblock their own feedback. Existing Issues #355, #356, #369, #389 and #391 provide real intake cases; do not duplicate work already represented by #349/#392/#393.",
+        "blocked_by": [
+          "#399"
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "python3 loop/feedback.test.py",
+        "output": "Ran 47 tests in 0.917s\n\nOK",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37966658124",
+        "proved": false,
+        "remaining": "Runtime tests pass on ae5e1c4; the real-run half is only partly observed: feedback.yml runs for #401/#408/#423/#428 started without user labels, but none has yet completed publication."
+      },
+      {
+        "goal": 2,
+        "command": "gh pr view 446 --json mergedAt,files,body; gh issue view 438 --json comments",
+        "output": "mergedAt 2026-10-09T17:31:32Z; files [loop/plans/438/4ea315ff2aafc40d-plan-4ea315ff2aafc40d.json]; body 'Refs #438 ... Source revision: 4ea315ff... Independent review authorizes publication'. #438 comment: 'Proposed plan: #446'. Planning PRs #446-#455 now open (the earlier HTTP 403 on POST /pulls from runs 37963935192/37963924894 no longer occurs).",
+        "url": "https://github.com/saadshahd/roundup/pull/446",
+        "proved": false,
+        "remaining": "Trusted publication of #438's native child Issues and blocked-by dependencies after the merge has not yet been observed."
+      },
+      {
+        "goal": 3,
+        "command": "gh run list --workflow feedback.yml -L 12",
+        "output": "No completed verify-phase feedback run exists; latest runs are plan-phase (#401, #408, #423, #428 in progress; earlier #440/#442/#438/#389/#439/#384/#388 failed).",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37966658124",
+        "proved": false,
+        "remaining": "No source Issue has closed children yet, so no real verification run, reviewed evidence or parent closure exists."
+      },
+      {
+        "goal": 4,
+        "command": "gh pr list --state all --search \"L90 feedback\"; gh issue view 401 --json comments",
+        "output": "Merged plans #446 (#438), #447 (#398), #448 (#397); open plans #449-#455. #401's only comment records the earlier 403 stop.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37966658124",
+        "proved": false,
+        "remaining": "Children, delivery, verification and reviewed closure for one source Issue still need to be recorded on #401; the setting blocker is cleared, so #401 can carry the cycle to its observer."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}

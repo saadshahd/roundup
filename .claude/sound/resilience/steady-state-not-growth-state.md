@@ -1,0 +1,4 @@
+Any collection that can grow without bound (logs, caches, in-memory queues, retry buffers) must have an explicit eviction, cap, or TTL.
+_Avoid_: a collection that lives for the whole run — module scope in TypeScript; in Rust a `static` or a field of a struct the Daemon holds until it exits — that only grows (`.push`, `.insert`, `.set`, `.add`) with no corresponding bound, TTL, or LRU eviction anywhere in the same module; an `mpsc::unbounded_channel` whose consumer can fall behind its producer.
+Detect: an in-memory collection with writes but no size cap, expiry, or eviction path reachable from the same module; an unbounded channel or queue whose producer is not throttled by a slower consumer (a socket client, a subscriber).
+Not-when: bounded-by-construction collections (one entry per request, cleared at request end) or genuinely small enumerable sets (config keys, feature flags).

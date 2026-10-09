@@ -1,0 +1,58 @@
+{
+  "source": {
+    "number": 376,
+    "title": "V4b: the rest of V3: M8 and M9 stated in `LAWS.bend` over a `model.bend` that models the escalation chain (B13 to B17: hops, the sender never a hop, the bound) and the store's restart (B8), then `step` grows the same transitions and `inv_m8",
+    "body": "<!-- work-order:scenarios/proofs.md:V4b -->\n## Outcome\nthe rest of V3: M8 and M9 stated in `LAWS.bend` over a `model.bend` that models the escalation chain (B13 to B17: hops, the sender never a hop, the bound) and the store's restart (B8), then `step` grows the same transitions and `inv_m8_escalation_terminates` and `inv_m9_restart_is_a_replay` pass; held by architect-b, who writes the model and laws (another architect approves, V3) and the failing `inv_` tests first, then a Builder makes them pass\n\n## Acceptance\nScenarios: V4b\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\n\n## Scope\n`proofs/messages/model.bend`, `LAWS.bend` and `spec.bend` (architect only), `crates/messages/src/step.rs`, `crates/messages/src/lib.rs`, `crates/messages/src/store.rs`; the `inv_` test file is the architect's\n\n## Preserve\n`bend proofs/messages/PROOF.bend` prints `ALL PROOFS CHECK` with M8 and M9 stated (V5's runner); `inv_m8_` and `inv_m9_` pass\n\n## Dependencies\nafter the V4 row and V5's spike merge; the model must exist before the tests can, because V4 says the model mirrors `step`\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: V4b\nPriority: 100\nMigration state: unspecified\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/376",
+    "kind": "work",
+    "revision": "1b2907bd206c8868bdd9d948868cbd7efe4422cb4f3d9bad3bb1a88bf4df7cc8"
+  },
+  "phase": "plan",
+  "trigger": "1b2907bd206c8868bdd9d948868cbd7efe4422cb4f3d9bad3bb1a88bf4df7cc8",
+  "main": "8d882de75b06e05d90df521e63688eb51a3f6021",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "On main, `proofs/messages/model.bend` models the escalation chain of B13 to B17 (hops, the sender never a hop, the per-hop bound) and the store's restart of B8, and `proofs/messages/LAWS.bend` states `m8_escalation_terminates` and `m9_restart_is_a_replay` over it, with no existing law weakened or deleted.",
+        "observer": "Reading `proofs/messages/LAWS.bend` and `model.bend` on main; `git diff <before>..main -- proofs/messages/LAWS.bend` shows only additions or strengthening; the merging PR's review verdict says the model is not simpler than the Rust (V7)."
+      },
+      {
+        "statement": "`bend proofs/messages/PROOF.bend` (via `just proofs` once V2 exists) prints `ALL PROOFS CHECK` with M8 and M9 stated in `LAWS.bend`.",
+        "observer": "Running the pinned Bend 2.0.34 on a checkout of main and keeping the output."
+      },
+      {
+        "statement": "`step` in `crates/messages` grows the same escalation and restart transitions as `model.bend` (the step/model transition-name check passes), and the `inv_m8_` and `inv_m9_` tests pass alongside the existing `inv_m1_` to `inv_m7_` and `inv_m10_` tests.",
+        "observer": "`cargo test -p messages inv_` on a checkout of main, plus the V4 transition-name check."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 0,
+        "title": "V4b-spec: write the V4b scenario in `scenarios/proofs.md`: M8 and M9 over a model with the escalation chain and the store's restart",
+        "body": "## Outcome\n`scenarios/proofs.md` on main has a `**V4b \u2026**` scenario. Work Issue #376 cites `Scenarios: V4b`, but no such heading exists on main (`grep -c '^\\*\\*V4b' scenarios/proofs.md` prints 0). V3 names `m8_escalation_terminates` and `m9_restart_is_a_replay`, and V4 asks for an `inv_` test per law, but neither says what the model must add for them. #376 can't be built until this lands.\n\n## Scope\n`scenarios/proofs.md` only: add the V4b paragraph and update the header's id range. Mode: specify. No change to `proofs/`, `crates/` or `LAWS.bend`.\n\nThe paragraph states:\n- the `model.bend` additions and their source rules: the hop chain (B13: the chain read once, Groups skipped, the sender `c` skipped if it appears), the per-hop bound as an explicit clock event (B14), landing as `held escalated` (B15), skipped hops and no loops (B16), an answer stopping the bubble (B17), and a restart event that drops `pending` and replays the stored records (B8, D6). Each one names the `step.rs` `Event` it mirrors, and the V4 transition-name check covers the new names.\n- the exact claims of the two laws: M8 means every question reaches an answer, a drop or `held escalated` within hops + 1 bounds, never revisits a hop, and the sender is never a hop. M9 means the World after `restart` equals the replay of the stored records, and the next id continues the sequence.\n- the replay bounds for `inv_m8_` and `inv_m9_` (V4 says at most 6 events and 3 Messages; if a chain needs more, the scenario names the bound and gives the reason).\n- one mutant per new law in `proofs/messages/mutants/` that makes `bend` print `SOME PROOFS FAIL` naming that law (V3).\n- who changes `LAWS.bend`: an author's PR whose independent review run approves the law text, per rule 4 and the Architect sweep (#371). A Builder never weakens a law.\n- the dependencies: V5 (#375), and B1-B18 (#372) for the Rust escalation and restart behaviour that `step` must expose.\n\n## Acceptance\nScenarios: V3, V4\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\nObserver: on main, `grep -n '^\\*\\*V4b ' scenarios/proofs.md` prints one heading. Its paragraph names the model events for B8 and B13 to B17, the M8 and M9 claims, the `inv_m8_`/`inv_m9_` replay bounds, the mutants and the dependencies above. The specification PR's review run approves it.\n\n## Preserve\nV1 to V7 text stays unchanged apart from the header's id range. No law in V3 is weakened. `scenarios/messages.md` B8 and B13 to B17 stay the source of truth: V4b restates them and adds no new rule.\n\n## Queue\nKey: V4b-spec\nPriority: 100\nMode: specify\nProvider: any",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "grep -n 'm8\\|m9' proofs/messages/LAWS.bend; grep -n 'Escalation\\|restart' proofs/messages/model.bend | head -3",
+        "output": "(no m8/m9 law lines; LAWS.bend:7 says '# Not stated yet: M8 (escalation terminates) and M9 (restart is a replay) need the escalation chain and the store in the model.'; model.bend:4-5 says 'Escalation (B13 to B17) and the store (B8's restart) are not modelled yet: M8 and M9 need them.')",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37980232083",
+        "proved": false,
+        "remaining": "M8 and M9 aren't stated, and the model has no escalation chain or restart. This waits on the V4b scenario (V4b-spec), then #376."
+      },
+      {
+        "goal": 3,
+        "command": "grep -rn 'inv_m8\\|inv_m9\\|Restart' crates/messages/src; sed -n 40,48p crates/messages/src/step.rs",
+        "output": "(no matches) ; Event = Send, Idle, Busy, Exit, TakeoverBegin, TakeoverEnd, UserDeliver, UserDrop: no hop, bound or restart event",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37980232083",
+        "proved": false,
+        "remaining": "`step` has no escalation or restart transitions, and there are no `inv_m8_`/`inv_m9_` tests. This needs #376 after V4b-spec, V5 (#375) and B1-B18 (#372)."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}

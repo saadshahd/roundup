@@ -1,0 +1,10 @@
+{
+  "cold_start_ms": {"limit": 300, "baseline": {"macos": 7.1}, "noise": 0.3, "max_load_per_cpu": {"macos": 0.45}},
+  "hook_loop_ms": {"limit": 2000},
+  "rss_extra_mb": {"limit": 150, "noise": 0.05, "baseline": {"linux": 1.6, "macos": 3.1}},
+  "write_to_output_p95_ms": {"limit": 16, "noise": 0.001, "baseline": {"linux": 0.066, "macos": 0.056}, "max_load_per_cpu": {"linux": 2.0, "macos": 0.45}},
+  "terminal_write_p95_ms": {"noise": 0.001, "baseline": {"linux": 0.055, "macos": 0.0365}, "max_load_per_cpu": {"linux": 2.0, "macos": 0.45}},
+  "ping_p95_ms": {"noise": 0.001, "baseline": {"linux": 0.025}, "max_load_per_cpu": {"linux": 2.0}},
+  "rail_tree_10_p95_ms": {"limit": 2},
+  "rail_tree_40_p95_ms": {"noise": 0.001, "baseline": {"linux": 0.265, "macos": 0.1345}, "max_load_per_cpu": {"linux": 2.0, "macos": 0.45}}
+}

@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.295
+▝▜██████▀  Haiku 5.5 · Claude API
+ ▝▝   ▝▝   ~/work/_temp/f7/roundup-f7.nWhJk6/w3
+
+  Get to finished work sooner with Opus 5.5. Switch anytime with /model.
+
+❯ Run the bash command: echo hi-int . Reply with its output, or the word CANNOT if you have no way to run it.
+
+● CANNOT
+
+  I don't have a shell tool in this session. The tools I can call are Glob, Grep, and Read, and none of them can run commands.
+
+✻ Cogitated for 1s · done 4:22 PM
+
+❯ Call the Agent tool now with the prompt: say hi. Reply with the tool result, or the words NO SUCH TOOL.
+
+● NO SUCH TOOL
+
+✻ Sautéed for 0s · done 4:22 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

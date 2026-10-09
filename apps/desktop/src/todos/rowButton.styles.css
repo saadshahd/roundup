@@ -1,0 +1,3 @@
+.todo-row-button {
+  --todo-row-indent: calc(var(--space-4) + 1ch);
+}

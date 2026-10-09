@@ -1,0 +1,36 @@
+[package]
+name = "desktop"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "roundup"
+path = "src/main.rs"
+
+[features]
+# Makes a release build load the files embedded from frontendDist instead of the dev server.
+custom-protocol = ["tauri/custom-protocol"]
+
+[dependencies]
+contracts = { path = "../contracts" }
+getrandom = "0.3"
+rpc = { path = "../rpc" }
+serde.workspace = true
+serde_json.workspace = true
+tauri = "2"
+tauri-plugin-dialog = "2"
+tokio = { workspace = true, features = ["process", "io-util"] }
+
+[build-dependencies]
+tauri-build = "2"
+
+[dev-dependencies]
+rupd = { path = "../rupd" }
+tauri = { version = "2", features = ["test"] }
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

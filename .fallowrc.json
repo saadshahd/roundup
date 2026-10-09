@@ -1,0 +1,14 @@
+{
+  "entry": [
+    "contracts/**/*.ts",
+    "apps/*/harness.html"
+  ],
+  "ignorePatterns": [
+    "tools/oxlint/anti-slop/**",
+    "spikes/**"
+  ],
+  "ignoreDependencies": [
+    "@oxlint/plugins",
+    "@percy/cli"
+  ]
+}

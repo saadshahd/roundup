@@ -1,0 +1,33 @@
+/* Keep "styles.css" in the name: vite.config.ts loads only CSS files matching it. */
+
+.decision-card {
+  flex: none;
+  box-sizing: border-box;
+  max-height: 50%;
+  overflow: auto;
+  padding: var(--space-2);
+  background: var(--sunken);
+}
+
+.decision-args {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.decision-question {
+  overflow-wrap: anywhere;
+}
+
+.decision-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.decision-list-failure {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+}
