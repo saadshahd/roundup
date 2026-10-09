@@ -13,7 +13,7 @@ git -C "$dir" init -q
 git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U105-U107-U109
-cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/feedback.md" "$dir/loop/"
+cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/trail.py" "$root/loop/feedback.md" "$dir/loop/"
 printf '# Builder\n\nFixed text.\n' >"$dir/.agents/builder.md"
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
