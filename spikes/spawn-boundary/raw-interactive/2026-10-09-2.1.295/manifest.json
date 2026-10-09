@@ -1,0 +1,18 @@
+{
+  "head": "2bf38afbe2f81a409ff47c554e3775405d81e1d1",
+  "run": "37958168926",
+  "cli": "2.1.295",
+  "files": [
+    "i_base.txt",
+    "i_base.version.txt",
+    "i_proj.txt",
+    "i_proj.version.txt",
+    "i_user.txt",
+    "i_user.version.txt",
+    "i_shim.txt",
+    "i_shim.version.txt"
+  ],
+  "state": "captured-not-judged",
+  "missing": [],
+  "observer": "Inspect every pane for login, trust, timeout and tool errors before any REPORT claim."
+}
