@@ -82,7 +82,7 @@ The field `⌘K` opens over the centre pane, listing every Rail node by name to 
 The panel `?` opens over the centre pane, listing each chord and what it does.
 
 **Todo**:
-An item with an optional blocker list of other Todos, with a Home.
+An item with an optional blocker list of other Todos, with a Home, in one order, the user's.
 _Avoid_: task, ticket
 
 **Sketch**:
