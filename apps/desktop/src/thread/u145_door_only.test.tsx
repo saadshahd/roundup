@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agent, door, terminal, USER } from "../testing/nodes";
+import { agent, door, room, terminal, USER } from "../testing/nodes";
 import { message, mountThread, threadInput } from "./threadFixture";
 
 const input = () => document.querySelector("[data-thread-input]");
@@ -122,6 +122,26 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
 
     connected.rail.select("a");
     connected.rail.select("room");
+
+    expect(document.activeElement).not.toBe(input());
+  });
+
+  it("u145_start_a_room_moves_no_focus_into_the_thread", async () => {
+    const { app } = await mountThread([]);
+
+    app.handlers["rail.createRoom"] = () => room("g");
+    fireEvent.click(screen.getByText("start a Room"));
+    await vi.waitFor(() => expect(app.calls.some((call) => call.method === "rail.createRoom")).toBe(true));
+
+    expect(document.activeElement).not.toBe(input());
+  });
+
+  it("u145_start_door_moves_no_focus_into_the_thread", async () => {
+    const { app } = await mountThread([room("g")]);
+
+    app.handlers["rail.startDoor"] = () => door("g", "idle", "idle");
+    fireEvent.click(screen.getByText("start Door", { selector: ".pane-action" }));
+    await vi.waitFor(() => expect(app.calls.some((call) => call.method === "rail.startDoor")).toBe(true));
 
     expect(document.activeElement).not.toBe(input());
   });
