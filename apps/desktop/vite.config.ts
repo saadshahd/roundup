@@ -1,8 +1,11 @@
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
+import { realDaemon, realDaemonFromEnv } from "./src/testing/realDaemonPlugin";
+
+const served = realDaemonFromEnv(process.env);
 
 export default defineConfig({
-  plugins: [solid(), {
+  plugins: [solid(), ...(served ? [realDaemon(served)] : []), {
     name: "roundup-dev-ready",
     apply: "serve",
     configureServer(server) {

@@ -9,11 +9,14 @@ Data for the QA sweep, the Design critic and the Percy build: `loop/percy.sh` (L
 | `first-run` | no open Project |
 | `empty-project` | open Project with no rows; U143’s first Room action |
 | `door-stopped` | selected Room whose Door exited 0; U143’s state and restart action |
+| `decisions` | `agents-10` with a permission, an `ask_user` and an unanswerable Decision on `agent-1` to `agent-3`; answering clears it |
 | `earlier-run` | selected `done` Agent with no Terminal; U83’s `no output kept from an earlier run` |
 | `agents-10` | ten Agents, one per Kind in turn |
 | `tree-40` | forty nodes (nested Rooms, a Door, Terminals), eight Todos, four Pads |
 | `daemon-exits` | `agents-10`, then `daemon-exited` with code 1 |
 | `conflict` | `agents-10`; the first call fails with `CONFLICT` |
+
+`just harness-real <project-path> <port>` (U144; default port `5199`) serves the same App on a running `rupd` at `http://localhost:<port>/harness.html?daemon=1`: the dev server relays `rpc` and `subscribe` over the socket `rpc::socket_path` names (`RUPD_SOCKET` if set), the choosers answer `null`, and `daemon-exited` fires when the socket closes. It listens on loopback only, has no `window.__fake`, and `vite build` leaves it out. Start `rupd` first; the proof it answers is `ROUNDUP_REAL_PROOF`, else 64 zeros as the end-to-end tests start it. It proves the webview against the real Daemon, never WKWebView, the native chooser or a real `claude`.
 
 `window.__fake` (drive with `agent-browser eval`):
 
