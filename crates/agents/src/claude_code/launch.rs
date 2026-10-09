@@ -237,13 +237,18 @@ impl Launcher {
             "command": format!("{rup} permission {id}"),
             "timeout": super::PERMISSION_TIMEOUT_SECS,
         }] }]);
+        // E3: at start the Agent is told its Context, by a second command beside the Signal.
+        let session_start = json!([{ "hooks": [
+            signal[0]["hooks"][0].clone(),
+            { "type": "command", "command": format!("{rup} context {id}"), "timeout": 5 },
+        ] }]);
         let hooks: Map<String, Value> = STATE_EVENTS
             .iter()
             .map(|event| {
-                let hook = if *event == "PermissionRequest" {
-                    &permission
-                } else {
-                    &signal
+                let hook = match *event {
+                    "PermissionRequest" => &permission,
+                    "SessionStart" => &session_start,
+                    _ => &signal,
                 };
                 ((*event).to_owned(), hook.clone())
             })

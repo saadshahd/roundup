@@ -153,6 +153,9 @@ The user typing into an Agent directly; meanwhile no other Actor sends it anythi
 **Brief**:
 The text roundup gives an Agent at start about itself, its Home, its peers and its open Todos (`docs/awareness.md`).
 
+**Context**:
+What `agent.context` returns for one Agent: its own Status, its parent, whom to ask (a Door's id, or the user's), its peers and its open Todos. An Agent's Brief at start (`agent.brief`) says the same in words.
+
 **Channel**:
 Whether one Agent's `roundup` MCP server (`rup mcp <id>`) has reported to the Daemon: `pending`, `up` or `missing`. Not the vendor's own channels feature.
 
@@ -252,6 +255,10 @@ The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, crea
 
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.
+
+**Trail**:
+A work Issue's record of its runs: one comment per cloud build or fix run, posted by the run's completion job even after a crash, plus the run's `Changed:` entry before it commits. Build and fix tasks read its last six entries; review tasks never do (L92).
+_Avoid_: handoff
 
 **Status issue**:
 The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it every five minutes and on run events, and posts it as a comment at 08:03 UTC (L80).
