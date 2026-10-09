@@ -18,7 +18,7 @@ A UI Issue, or a Brief, Door or Decision Issue in the first user journey, also r
 
 ## Build run
 
-1. Branch as the task says from `origin/main`. When the task holds a Trail, post its `Changed:` entry on the Issue before the first commit. Commit the spec or the red tests first, push, and open a draft PR as `.agents/data/pr.md` says, and link its work Issue.
+1. Branch as the task says from `origin/main`. Commit the spec or the red tests first, push, and open a draft PR as `.agents/data/pr.md` says, and link its work Issue.
 2. Fulfil the Issue acceptance. A missing implementation prerequisite becomes a linked blocking Issue; a specification-only PR keeps the implementation Issue open.
 3. `gh pr ready`, then `gh pr merge --auto --merge`.
 
@@ -26,7 +26,7 @@ A fix run starts with `gh pr ready --undo`, answers every finding or failure in 
 
 A missing prerequisite is an engineering repair: identify the missing implementation and update the native Issue dependency. An isolated contract test does not complete a multi-scenario implementation Issue. Keep implementation within its Scope; an Architect or the user authorizes an ownership expansion. Contract approval requirements still apply.
 
-Stop only on an unresolved product decision that changes the requested outcome and that no scenario, Item or `GLOSSARY.md` entry settles. Engineering uncertainty calls for investigation, a tested repair or a scoped prerequisite Issue under the existing direction. For that unresolved question, leave a draft with `Stopped: <the question>`, its user-visible consequence and one recommended choice; merge-ready asks it (L81).
+Stop only on an unresolved product decision that changes the requested outcome and that no scenario, Item or `GLOSSARY.md` entry settles. Engineering uncertainty calls for investigation, a tested repair or a scoped prerequisite Issue under the existing direction. For that unresolved question, leave a draft with `Stopped: <the question>`, its user-visible consequence and one recommended choice; the end of your run asks the user (L81).
 
 ## Review run
 

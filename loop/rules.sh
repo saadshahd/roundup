@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | touches | ready [--json] | delta <base-dir> <head-dir> | base|ci-trailers|verdicts|merge-ready|publication-ready <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -46,25 +46,6 @@ vocab() {
     done <<<"$names"
   done <<<"$phrases"
   return "$bad"
-}
-
-# L46: reads changed paths on stdin; prints `code` when one is product code or a Build file (a Code PR), `ui` when one
-# is under apps/desktop/src, and `loop` when one is loop machinery requiring independent review. The one definition of each.
-touches() {
-  local path code="" ui="" loop="" planning=""
-  while IFS= read -r path || [ -n "$path" ]; do
-    case $path in apps/* | crates/* | contracts/*) code=1 ;; esac
-    # Build files: what `just check` runs and builds with, so a change to one alone still needs a Reviewer's approve.
-    case $path in justfile | Cargo.toml | Cargo.lock | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | rust-toolchain.toml | \
-      tsconfig.json | .oxlintrc.json | .fallowrc.json | .cargo/* | tools/*) code=1 ;; esac
-    case $path in apps/desktop/src/*) ui=1 ;; esac
-    case $path in loop/plans/*) planning=1 ;; esac
-    case $path in loop/* | .github/* | .agents/* | .claude/* | AGENTS.md | */AGENTS.md | CLAUDE.md | */CLAUDE.md) loop=1 ;; esac
-  done
-  [ -z "$code" ] || echo code
-  [ -z "$ui" ] || echo ui
-  [ -z "$loop" ] || echo loop
-  [ -z "$planning" ] || echo planning
 }
 
 visual_check_ids="D1 D2 D3 D4 D5 D6 D7 D8 D9 D10"
@@ -136,7 +117,6 @@ clean_merge() {
 pr_rule() {
   python3 - "$1" "$2" <<'PY'
 import json
-from datetime import datetime
 import os
 import re
 import subprocess
@@ -175,13 +155,6 @@ def one(route):
     require(len(pages) == 1 and isinstance(pages[0], dict), f'invalid object: {route}')
     return pages[0]
 
-def listing(route):
-    pages = gh(route)
-    require(all(isinstance(page, list) for page in pages), f'invalid list: {route}')
-    items = [item for page in pages for item in page]
-    require(all(isinstance(item, dict) for item in items), f'invalid entries: {route}')
-    return items
-
 repo = 'repos/{owner}/{repo}'
 pull = f'{repo}/pulls/{number}'
 
@@ -190,15 +163,6 @@ def git(*args):
 
 def present(value):
     return subprocess.run(['git', 'cat-file', '-e', value+'^{commit}'], stderr=subprocess.DEVNULL).returncode == 0
-
-def ancestor(older, newer):
-    result = subprocess.run(['git', 'merge-base', '--is-ancestor', older, newer], timeout=limit)
-    require(result.returncode in (0, 1), f'cannot compare {older} to {newer}')
-    return result.returncode == 0
-
-# A SHA this repo does not hold is in no PR history: a rewritten branch dropped it.
-def reaches(older, newer):
-    return present(older) and present(newer) and ancestor(older, newer)
 
 def sha(value):
     require(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{40}', value), 'missing or invalid SHA')
@@ -248,7 +212,7 @@ def history(base, head):
         authors.update(author)
         records.append((commit, parents, author, reviewer))
     require(authors, 'no Author-Agent trailers')
-    return authors, records
+    return records
 
 def clean_merge(commit, base):
     try:
@@ -266,168 +230,25 @@ def trailer_gate(records, base):
         else:
             require(author or clean_merge(commit, base), f'trailers: merge {commit} needs Author-Agent or must be a clean merge of main')
 
-# The named SHA is the head, or the head adds only clean merges of main on top of it (L54).
-def covers(named, head, base):
-    if named == head:
-        return True
-    if not reaches(named, head):
-        return False
-    for commit in git('rev-list', '--first-parent', named+'..'+head).splitlines():
-        if len(git('rev-list', '--parents', '-n', '1', commit).split()) != 3 or not clean_merge(commit, base):
-            return False
-    return True
-
-# Only a workflow on main or a person with write access can post a verdict; anyone can comment on a public repo.
-TRUSTED = {'OWNER', 'MEMBER', 'COLLABORATOR'}
-
-def verdicts(authors, head, base):
-    data = listing(f'{repo}/issues/{number}/comments?per_page=100')
-    require(all(isinstance(c.get('body'), str) and isinstance(c.get('created_at'), str)
-                and isinstance(c.get('id'), int) and isinstance(c.get('user'), dict) for c in data), 'invalid comment data')
-    for item in data:
-        require(re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', item['created_at']), 'invalid comment time')
-        datetime.fromisoformat(item['created_at'].replace('Z', '+00:00'))
-    events = []
-    for item in sorted(data, key=lambda c: (c['created_at'], c['id'])):
-        if item['user'].get('login') != 'github-actions[bot]' and item.get('author_association') not in TRUSTED:
-            continue
-        body = item['body']
-        verdict = re.match(r'VERDICT: (approve|reject)\b', body)
-        ids = re.findall(r'^Reviewed-by-Agent: ([A-Za-z0-9_.-]+)\s*$', body, re.M)
-        if not verdict or len(ids) != 1 or ids[0] in authors | {'copilot'}:
-            continue
-        named = set(re.findall(r'^Head: ([0-9a-f]{40})\s*$', body, re.M)) or \
-            set(re.findall(r'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])', body))
-        named_head = next(iter(named)) if len(named) == 1 else None
-        events.append({'verdict': verdict[1], 'head': named_head, 'current': bool(named_head) and covers(named_head, head, base),
-                       'at': item['created_at'], 'agent': ids[0], 'body': body})
-    return events
-
-# A reject blocks until a later approve names a head holding the rejected one; a reject naming no single SHA blocks
-# until any later approve that names one.
-def rejected(events, head):
-    blocking = set()
-    for event in events:
-        if event['verdict'] == 'reject':
-            blocking.add(event['head'])
-        elif event['head']:
-            blocking = {held for held in blocking if held is not None and not reaches(held, event['head'])}
-    return {held for held in blocking if held is None or reaches(held, head)}
-
-def changed(base, head):
-    files = listing(pull+'/files?per_page=100')
-    require(all(isinstance(f.get('filename'), str) for f in files), 'invalid changed files')
-    paths = git('diff', '--name-only', '--no-renames', '-z', base+'...'+head).split('\0')
-    paths = set(filter(None, paths))
-    reported = {p for f in files for p in (f['filename'], f.get('previous_filename')) if p}
-    require(paths == reported, 'incomplete or changed PR file list')
-    return paths
-
-def touches(paths):
-    result = subprocess.run(['bash', 'loop/rules.sh', 'touches'], input='\n'.join(sorted(paths))+'\n',
-                            text=True, stdout=subprocess.PIPE, timeout=limit, check=True)
-    return set(result.stdout.split())
-
-def checks(head, names):
-    pages = gh(f'{repo}/commits/{head}/check-runs?per_page=100&filter=latest')
-    require(all(isinstance(page, dict) and isinstance(page.get('check_runs'), list) for page in pages), 'invalid check runs')
-    runs = [run for page in pages for run in page['check_runs']]
-    require(all(isinstance(run, dict) for run in runs), 'invalid check run')
-    # A skipped run is no result: check skips a draft's head, then runs on that same head once it is ready (L24).
-    for name in names:
-        matches = [run for run in runs if run.get('name') == name and run.get('conclusion') != 'skipped']
-        require(matches and all(run.get('head_sha') == head and run.get('status') == 'completed'
-                and run.get('conclusion') == 'success' and run.get('app', {}).get('slug') == 'github-actions'
-                for run in matches), f'{name}: missing or not successful on head {head}')
-
 try:
     pr = one(pull)
-    if command == 'base':
-        base_gate(pr)
-        sys.exit(0)
-    head, base = sha(pr['head']['sha']), sha(pr['base']['sha'])
-    fetch(head)
-    fetch(base)
-    if command == 'publication-ready':
-        require(pr.get('merged') is True, 'publication needs a merged planning PR')
-        merged = sha(pr.get('merge_commit_sha'))
-        fetch(merged)
-        parents = git('rev-list', '--parents', '-n', '1', merged).split()
-        require(len(parents) == 3 and parents[2] == head, 'publication needs the reviewed head in a main merge')
-        base = parents[1]
-    authors, records = history(base, head)
+    base_gate(pr)
     if command == 'ci-trailers':
-        base_gate(pr)
-        trailer_gate(records, base)
-        sys.exit(0)
-    events = verdicts(authors, head, base)
-    if command == 'verdicts':
-        for event in events:
-            print(json.dumps(event))
-        sys.exit(0)
-    paths = changed(base, head)
-    touched = touches(paths)
-    body = pr['body'] if isinstance(pr.get('body'), str) else ''
-    errors = []
-    def gate(call):
-        try:
-            call()
-        except subprocess.CalledProcessError as error:
-            if error.returncode == 4:
-                sys.exit(4)
-            errors.append(str(error))
-        except subprocess.TimeoutExpired as error:
-            print(str(error), file=sys.stderr)
-            sys.exit(4)
-        except Refused as error:
-            errors.append(str(error))
-    gate(lambda: base_gate(pr))
-    if command == 'publication-ready':
-        gate(lambda: require(pr.get('merged') is True and 'planning' in touched, 'publication needs a merged planning PR'))
-    else:
-        gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
-    # L81: a draft whose body says why its Builder stopped waits on the user.
-    stopped = re.search(r'^Stopped: *(\S.*)$', body, re.M) if pr['draft'] is True else None
-    gate(lambda: require(not stopped, 'the Builder stopped: ' + (stopped.group(1).strip() if stopped else '')))
-    gate(lambda: checks(head, ('check', 'rules') + (('percy',) if 'ui' in touched else ())))
-    gate(lambda: trailer_gate(records, base))
-    gate(lambda: require(not rejected(events, head), 'newest independent verdict on this head is reject'))
-    if 'code' in touched or 'loop' in touched:
-        gate(lambda: require(re.search(r'^Scenarios:.*\b[A-Z][0-9]+\b', body, re.M), 'a Code PR needs a Scenarios: line'))
-        gate(lambda: require(any(event['verdict'] == 'approve' and event['current'] for event in events),
-                             'a Code PR needs an independent VERDICT: approve naming its head'))
-    if 'planning' in touched:
-        gate(lambda: require(any(event['verdict'] == 'approve' and event['head'] == head for event in events),
-                             'a planning PR needs independent exact-head approval'))
-        gate(lambda: subprocess.run(['python3', 'loop/feedback.py', 'gate', number], check=True, timeout=max(limit, 120)))
-    if any(path.startswith('crates/desktop/') for path in paths):
-        gate(lambda: require(re.search(r'^macOS: \S.+$', body, re.M), 'a crates/desktop PR needs a macOS: line'))
-    latest = one(pull)
-    # Embedded repository counters may change during a gate without changing the PR.
-    def gate_inputs(value):
-        return {key: value.get(key) for key in ('state', 'draft', 'body', 'updated_at')} | {
-            'head': value['head']['sha'], 'base': value['base']['sha'], 'ref': value['base']['ref']}
-    gate(lambda: require(gate_inputs(latest) == gate_inputs(pr), 'PR changed during merge-ready'))
-    require(not errors, '\n'.join(errors))
-    print('ready '+head)
+        head, base = sha(pr['head']['sha']), sha(pr['base']['sha'])
+        fetch(head)
+        fetch(base)
+        trailer_gate(history(base, head), base)
 except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError) as error:
     print(f'{command}: {error}', file=sys.stderr)
     sys.exit(1)
 PY
 }
 
-# L34: Issues are the only work queue. API failures never mean there is no work.
-ready() { python3 loop/orders.py ready "$@"; }
-
 case "${1:-}" in
-  base | ci-trailers | verdicts | merge-ready | publication-ready)
+  base | ci-trailers)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
-  touches) touches ;;
   vocab) vocab ;;
-  ready)
-    [[ -z ${2:-} || $2 == --json ]] || { echo "usage: loop/rules.sh ready [--json]" >&2; exit 2; }
-    ready "${@:2}" ;;
   delta) delta "${2:-}" "${3:-}" ;;
   clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
     clean_merge "$2" "${3:-origin/main}" ;;

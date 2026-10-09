@@ -236,7 +236,7 @@ A screen the Design critic runs that no Builder's prompt lists.
 ### The loop
 
 **Work Issue**:
-A GitHub Issue labelled `loop:work` that holds a scoped outcome, acceptance references, immutable Key, priority and native dependencies. Its intake label authorizes execution; its delivery evidence determines completion (L34).
+A GitHub Issue labelled `loop:work` that holds a scoped outcome, acceptance references, immutable Key, priority and native dependencies, or a request without them that a build run specifies first. Its intake label authorizes execution; its delivery evidence determines completion (L34).
 
 **Builder**:
 The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a GitHub work Issue, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
@@ -248,24 +248,11 @@ A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scen
 What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `rust-toolchain.toml`, `tsconfig.json`, `.oxlintrc.json`, `.fallowrc.json`, `.cargo/` and `tools/` (L46).
 
 **Loop machinery**:
-`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching it requires independent review and the required gates (L24, L46).
-
-**Claim**:
-The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, created atomically for one Builder. The owner records its run and initial head. Completion releases only its own owner and an unchanged branch without an open PR; reconciliation recovers a cloud owner after its Builder ends, and the local controller recovers a local owner (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
-
-**Ledger**:
-One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.
-
-**Trail**:
-A work Issue's record of its runs: one comment per cloud build or fix run, posted by the run's completion job even after a crash, plus the run's `Changed:` entry before it commits. Build and fix tasks read its last six entries; review tasks never do (L92).
-_Avoid_: handoff
-
-**Status issue**:
-The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it every five minutes and on run events, and posts it as a comment at 08:03 UTC (L80).
-
-**Retro**:
-One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); it passes independent review and the required checks.
+`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; review and `macos-line` runs read `main`'s copy, never the PR's, and a review run rejects a change that lets a PR pass its own gate (L24, L46).
 
 **Percy build**:
-Percy's Chromium render of every harness seed for one PR head, made by the `percy` job (L36); merge-ready needs it green on a PR touching `apps/desktop/src/` (L46). Its images are not Snapshots.
+Percy's Chromium render of every harness seed for one PR head, made by the `percy` job when the PR touches `apps/desktop/src/` (L36); the ruleset requires that job on every PR (L46). Its images are not Snapshots.
 _Avoid_: proof branch
+
+**macOS line**:
+The PR body's `macOS: <what the user saw in just app>` line, which only the user writes. The `macos-line` job fails a ready PR that changes `crates/desktop/` without one and asks the user under `flag:needs-user` (L46).

@@ -78,4 +78,4 @@ jobs:
     with:
       results: ${{ toJSON(needs) }}
       purpose: Check Rust and web behavior
-      next: Review and reconciliation inspect this head; failures block merge and eligible Builder PRs receive repair.
+      next: Success starts review of this head; a failure blocks merge and starts a fix run on a Builder PR.
