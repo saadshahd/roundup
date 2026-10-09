@@ -441,6 +441,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 terminal_id: row.get(6)?,
                 worktree,
                 can_resume: false,
+                channel: None,
             })
         })
         .map_err(sql)?;

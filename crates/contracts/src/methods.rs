@@ -67,6 +67,9 @@ pub const METHODS: &[Method] = &[
     m("agent.worktreeState", "agent_NodeId", "agent_WorktreeState"),
     m("agent.land", "agent_NodeId", "agent_Landed"),
     m("agent.discard", "agent_NodeId", "null"),
+    m("agent.context", "agent_NodeId", "agent_Context"),
+    m("agent.brief", "agent_NodeId", "agent_Brief"),
+    m("agent.channelUp", "agent_NodeId", "null"),
     m("agent.signal", "agent_SignalParams", "null"),
     m(
         "agent.permission",
