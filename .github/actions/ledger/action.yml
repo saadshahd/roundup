@@ -2,7 +2,7 @@ name: ledger
 description: Keeps one Ledger row (L29) for an agent run as the artifact ledger-<run id>-<attempt>-<role>-<slug>, which loop/retro.sh reads. It runs main's copy of the scripts, so a branch cannot change its own row.
 inputs:
   role:
-    description: builder, reviewer or retro
+    description: builder, reviewer, retro or feedback
     required: true
   subject:
     description: the Work row's ids, the PR number, or retro

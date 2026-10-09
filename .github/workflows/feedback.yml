@@ -1,0 +1,160 @@
+name: feedback
+run-name: "${{ inputs.pr && format('Repair plan #{0}', inputs.pr) || format('Feedback #{0}', inputs.issue) }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Source feedback or unready work Issue
+        required: false
+      pr:
+        description: Planning PR to repair through its shared Claim
+        required: false
+      head:
+        description: Expected planning PR head
+        required: false
+
+concurrency:
+  group: feedback-${{ inputs.issue || inputs.pr }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  due:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+      actions: read
+      checks: read
+      pull-requests: write
+    outputs:
+      issue: ${{ steps.due.outputs.issue }}
+      main: ${{ steps.due.outputs.main }}
+      pr: ${{ steps.due.outputs.pr }}
+      head: ${{ steps.due.outputs.head }}
+      branch: ${{ steps.due.outputs.branch }}
+      prompt: ${{ steps.due.outputs.prompt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/loop-ledger-cache
+          key: loop-ledger-v1-${{ github.run_id }}
+          restore-keys: loop-ledger-v1-
+      - id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue }}
+          PR: ${{ inputs.pr }}
+          HEAD: ${{ inputs.head }}
+          LOOP_DAILY_TOKENS: ${{ vars.LOOP_DAILY_TOKENS }}
+          LOOP_LEDGER_CACHE: ${{ runner.temp }}/loop-ledger-cache
+        run: |
+          if [ -n "$PR" ]; then
+            python3 loop/feedback.py repair "$PR" "$HEAD"
+          else
+            python3 loop/feedback.py start "$ISSUE"
+          fi
+
+  observe:
+    needs: due
+    if: needs.due.outputs.issue != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    outputs:
+      answer: ${{ steps.claude.outputs.structured_output }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.due.outputs.main }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browser: 'true'
+      - id: schema
+        run: echo "schema=$(jq -c . loop/feedback.schema.json)" >>"$GITHUB_OUTPUT"
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: ${{ needs.due.outputs.prompt }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          allowed_bots: github-actions
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 80
+            --allowedTools Bash,Read,Glob,Grep,Skill
+            --json-schema '${{ steps.schema.outputs.schema }}'
+      - if: always()
+        uses: ./.github/actions/ledger
+        with:
+          role: feedback
+          subject: ${{ needs.due.outputs.issue }}
+          execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          conclusion: ${{ steps.claude.outcome }}
+
+  propose:
+    needs: [due, observe]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ needs.due.outputs.issue }}
+          ANSWER: ${{ needs.observe.outputs.answer }}
+          PR: ${{ needs.due.outputs.pr }}
+          HEAD: ${{ needs.due.outputs.head }}
+          MAIN: ${{ needs.due.outputs.main }}
+        run: |
+          if [ -n "$PR" ]; then
+            printf '%s' "$ANSWER" | python3 loop/feedback.py repair-propose "$PR" "$HEAD" "$MAIN"
+          else
+            printf '%s' "$ANSWER" | python3 loop/feedback.py propose "$ISSUE"
+          fi
+
+  after:
+    needs: [due, observe, propose]
+    if: always() && needs.due.outputs.issue != ''
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ needs.due.outputs.branch }}
+        run: |
+          if [ -n "$BRANCH" ]; then loop/runs.sh stopped "$BRANCH"; fi
+          gh workflow run reconcile.yml
