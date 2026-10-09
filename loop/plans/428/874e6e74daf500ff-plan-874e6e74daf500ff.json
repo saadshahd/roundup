@@ -1,0 +1,90 @@
+{
+  "source": {
+    "number": 428,
+    "title": "L82: Recover exhausted repairs through diagnosis and renewable budgets",
+    "body": "Replace permanent two-attempt abandonment with bounded diagnostic recovery.\n\nScenarios: L82, L88\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nKey: diagnostic-recovery\nPriority: 0\nMode: implement\nProvider: claude\n\nEvidence from PRs #330, #349, #393, #405 and #425: all ten charged repairs invoked the model. Four attempts dealt with cancelled CI rather than failed tests. #393 advanced its implementation and resolved a conflict, then exhausted the same lifetime budget. #330 made no observed progress and its older final explanations were not retained.\n\nDeliver controller-only cancellation reruns; diagnostic repair after two ordinary attempts; rolling limits and backoff that become eligible automatically; preserved atomic ownership and independent gates. Older PRs must use current runner setup. No manual counter reset and no user decision for engineering failures.\n\nObserver: regression tests for classification, second CI rerun, ownership, rolling expiry, diagnostic evidence instructions; independently reviewed PR; a real formerly exhausted PR picked up and a cancelled-CI rerun without a model. Retain the run links and remaining failures. Claude owns further work. Earlier Codex work in codex/adaptive-repair is retained; inspect merged delivery and remaining acceptance before resuming.\n\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/428",
+    "kind": "work",
+    "revision": "874e6e74daf500fff2b16d03292d891bcec88f9a49711fa453a20aead1278eea"
+  },
+  "phase": "plan",
+  "trigger": "874e6e74daf500fff2b16d03292d891bcec88f9a49711fa453a20aead1278eea",
+  "main": "199d669899c205bc54543a87ac120a0e3f61b6a3",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "When a build/ PR's current-head `check` (or its rust/web lane) ends cancelled with no failed lane, the trusted controller reruns that CI itself, up to two times, without invoking a model or charging a repair attempt; only then does it escalate to diagnostic repair.",
+        "observer": "`l82_cancelled_ci_is_not_a_code_repair` and `l82_second_ci_reservation_runs_before_escalating` in loop/dispatch.test.py pass, and a real reconcile run log prints `#<pr>: reran cancelled CI <run>; no model invoked` for a real PR head, with no build.yml `Repair PR #<pr>` model run for that head and cause."
+      },
+      {
+        "statement": "After two ordinary repair attempts, a PR gets diagnostic repair instead of being abandoned: the repair prompt names the earlier repair runs and requires reading their logs and the Trail, classifying the failure (code, cancelled CI, setup/authentication, publication) and posting the observed cause and changed approach before editing.",
+        "observer": "`l82_two_repairs_escalate_without_abandoning_changed_or_unchanged_heads` and `l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach` pass, and a real Repair run log shows the `Diagnostic repair: earlier repair runs ...` instruction."
+      },
+      {
+        "statement": "Repair budgets roll and back off instead of exhausting permanently: at most six started model repairs per PR in any rolling 24 hours, unchanged-head backoff from 15 minutes up to two hours, and expired budget becomes eligible again automatically, with no manual counter reset or user decision; Status names diagnostic eligibility or the next retry time with the last run link.",
+        "observer": "`l82_rolling_budget_survives_new_heads_and_expires_without_user_reset`, `l82_reviews_and_ci_recovery_preserve_repair_history` and `l82_repeated_setup_failure_waits_even_after_head_changes` pass; a real PR that was exhausted under the old two-attempt limit gets a new repair run with no counter reset; the Status issue shows eligibility or retry time for a waiting PR."
+      },
+      {
+        "statement": "Recovery keeps atomic per-PR ownership and the independent gates: one `loop-pr/<number>` owner at a time, stale or duplicate dispatches invoke no model, and merges still need an independent exact-head review plus check, rules and merge-ready.",
+        "observer": "The L88 ownership tests in loop/dispatch.test.py pass, and the implementing PR carries an independent `VERDICT: approve` for its head (or for a head it extends only with clean merges of main) before merging."
+      },
+      {
+        "statement": "Repairs on older PRs use main's current runner setup, not the setup on the PR's own branch.",
+        "observer": "A real Repair run on a PR whose branch predates the current setup runs main's setup steps, such as the rustup checksum retry loop."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 428,
+        "title": "L82: Recover exhausted repairs through diagnosis and renewable budgets",
+        "body": "Replace permanent two-attempt abandonment with bounded diagnostic recovery.\n\nScenarios: L82, L88\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nKey: diagnostic-recovery\nPriority: 0\nMode: implement\nProvider: claude\n\nEvidence from PRs #330, #349, #393, #405 and #425: all ten charged repairs invoked the model. Four attempts dealt with cancelled CI rather than failed tests. #393 advanced its implementation and resolved a conflict, then exhausted the same lifetime budget. #330 made no observed progress and its older final explanations were not retained.\n\nDeliver controller-only cancellation reruns; diagnostic repair after two ordinary attempts; rolling limits and backoff that become eligible automatically; preserved atomic ownership and independent gates. Older PRs must use current runner setup. No manual counter reset and no user decision for engineering failures.\n\nObserver: regression tests for classification, second CI rerun, ownership, rolling expiry, diagnostic evidence instructions; independently reviewed PR; a real formerly exhausted PR picked up and a cancelled-CI rerun without a model. Retain the run links and remaining failures. Claude owns further work. Earlier Codex work in codex/adaptive-repair is retained; inspect merged delivery and remaining acceptance before resuming.\n\n",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "python3 loop/dispatch.test.py -v (checkout 199d669899c205bc54543a87ac120a0e3f61b6a3)",
+        "output": "test_l82_cancelled_ci_is_not_a_code_repair ... ok\ntest_l82_second_ci_reservation_runs_before_escalating ... ok\nRan 41 tests in 0.188s\nOK\n#1: reran cancelled CI 12; no model invoked",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37980737601",
+        "proved": false,
+        "remaining": "No real controller rerun observed yet. I grepped every successful or failed reconcile.yml run created since #429 merged (2026-10-09T13:50Z; 209 runs) for `reran cancelled CI` and found no match. Each cancelled PR `check` in that window (for example 37978641410 on #471 and 37980157542 on #468) was superseded by a later successful run on the same head, so the latest check was never cancelled. The attempt-2 reruns (37981240540, 37966847941, 37966681536) were started by the user, not the controller. Still needed: a real cancelled current-head check on a build/ PR, the reconcile log line, and proof that no model Repair run happened for that head."
+      },
+      {
+        "goal": 2,
+        "command": "python3 loop/dispatch.test.py -v; gh run view 37940324940 --log | grep 'Diagnostic repair'",
+        "output": "test_l82_two_repairs_escalate_without_abandoning_changed_or_unchanged_heads ... ok\ntest_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach ... ok\nRepair PR #393 (13:55:15Z): \"Diagnostic repair: earlier repair runs 37854883943. Read their job logs and retained outcome.json/Ledger artifacts first. ... Distinguish failed tests from cancelled CI, setup/authentication failure, stale work ...\"\nRepair PR #330 run 37954011003: \"Diagnostic repair: earlier repair runs 37856720879, 37940351339, 37942651092. ...\"",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37940324940",
+        "proved": false,
+        "remaining": "Those hosted prompts came before the L92 wording change (the Trail and a posted `Changed:` entry). Still needed: a real diagnostic repair on current main showing the Trail instruction and a posted `Changed:` entry with the observed cause and the changed approach."
+      },
+      {
+        "goal": 3,
+        "command": "gh run list --workflow build.yml --limit 400 (Repair runs for #330/#349/#393/#405/#425); python3 loop/dispatch.test.py -v",
+        "output": "Before #429: #349 x3, #393 x2, #405 x2, #330 x3, #425 x3 Repair runs on 2026-10-08/09. After #429 merged at 13:53:54Z, with no counter reset: Repair PR #425 37940293684 (13:55:00Z success), #393 37940324940 (13:55:15Z success), #330 37940351339/37942651092/37954011003 (failure), then #425 37942630981, 37943110794, 37953988177, 37954335383. All five PRs then merged (#349 14:00, #393 14:12, #405 15:49, #425 16:08, #330 16:29). Tests: test_l82_rolling_budget_survives_new_heads_and_expires_without_user_reset ok; test_l82_reviews_and_ci_recovery_preserve_repair_history ok; test_l82_repeated_setup_failure_waits_even_after_head_changes ok. Reconcile logs print `#468: owner active or bounded retry waiting` (run 37980982227).",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37940293684",
+        "proved": false,
+        "remaining": "Formerly exhausted PRs were picked up again (observed). Still unobserved: a real rolling-window expiry or backoff wait that later turns eligible on its own, and the Status issue showing diagnostic eligibility or a next retry time with the last run link."
+      },
+      {
+        "goal": 4,
+        "command": "python3 loop/dispatch.test.py -v; gh pr view 429 --json comments,headRefOid",
+        "output": "L88 ownership tests pass, including test_l88_git_rejects_competing_sibling_claims, test_l88_claimed_pr_is_not_redispatched, test_l88_stale_or_duplicate_dispatch_never_invokes_model_prompt and test_l88_live_owner_blocks_both_review_and_repair (41 tests OK). PR #429 has `VERDICT: approve` naming head eeac5e17d40c01ec18e75e5ac5346254ee9532a8 (https://github.com/saadshahd/roundup/pull/429#issuecomment-6082312286); its merged head is 7f32431fd62cfd08373a6234c8a7dbe546c518d5.",
+        "url": "https://github.com/saadshahd/roundup/pull/429#issuecomment-6082312286",
+        "proved": false,
+        "remaining": "Needs an independent check that the commits between the approved head eeac5e1 and the merged head 7f32431 are only clean merges of main. Separately, commit 199d6698 (planning PR #473 for #423) replaced scenarios/loop-rules.md, which removed L82/L88 from this task's main. Merged PR #478 restored the file on current main, so no specification delivery is needed, but the verifier must use a main that contains #478."
+      },
+      {
+        "goal": 5,
+        "command": "gh run view 37940351339 --log | grep 'rustup'",
+        "output": "Repair PR #330 (branch build/F7-re-run, opened before #429) ran main's setup: `for attempt in 1 2 3 4 5; do ... grep -Fq 'checksum failed for ' ... echo \"Retrying rustup toolchain install in 30 seconds (retry $attempt of 4)\"`. The same step appears in 37940293684 (#425) and 37940324940 (#393).",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37940351339",
+        "proved": false,
+        "remaining": "Still needed: confirm that this setup step comes from main's workflow rather than the PR branch (that is, the PR's own tree lacks it), and work out why the #330 repair runs failed (37940351339, 37942651092, 37954011003)."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}
