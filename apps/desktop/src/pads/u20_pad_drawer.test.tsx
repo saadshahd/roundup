@@ -27,7 +27,8 @@ const methodsAfterOpen = (calls: string[]) =>
     (method) =>
       method !== "rail.tree" &&
       method !== "terminal.list" &&
-      method !== "pad.list",
+      method !== "pad.list" &&
+      method !== "decision.list",
   );
 
 describe("u20 open and edit", () => {

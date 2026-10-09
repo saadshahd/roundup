@@ -104,6 +104,12 @@ button[aria-disabled="true"] {
   overflow: auto;
 }
 
+/* Surfaces and depth (docs/design-system.md; U134): the Rail and the Shelf sit on `--sunken`, the pane and the Drawer on `--ground`. */
+.rail,
+.shelf {
+  background-color: var(--sunken);
+}
+
 /* Out of flow, so showing `complete` never shrinks, wraps or moves the title or any row; it covers the title's last characters on that line while it shows (QA F7). */
 .shelf .row-head {
   position: relative;
@@ -114,11 +120,11 @@ button[aria-disabled="true"] {
   top: 0;
   right: 0;
   padding-left: 1ch;
-  background: var(--ground);
+  background: var(--sunken);
 }
 
 .centre {
-  background: var(--ground);
+  background-color: var(--ground);
 }
 
 .word {
@@ -153,13 +159,21 @@ button[aria-disabled="true"] {
   display: flex;
   flex-direction: column;
   width: min(560px, 70%, calc(100% - 252px));
-  padding: 16px 72px 16px 16px;
+  /* The close word sits in the top-right corner (top 8px, 24px high), so the content starts below it: 32px of top padding. */
+  padding-top: var(--space-6);
+  padding-right: var(--space-4);
+  padding-bottom: var(--space-4);
+  padding-left: var(--space-4);
   box-sizing: border-box;
   overflow: auto;
-  background: var(--ground);
+  background-color: var(--ground);
   border-left-width: 1px;
   border-left-style: solid;
   border-left-color: var(--hairline);
+}
+
+.drawer[data-open="true"] {
+  box-shadow: var(--shadow-drawer);
 }
 
 .drawer > .close {
@@ -170,4 +184,22 @@ button[aria-disabled="true"] {
 
 .header .ink {
   display: inline;
+}
+
+/* Settings (docs/design-system.md, "Surfaces and depth"; U135). Colour and contrast settings live in tokens.css; these two remove a look. */
+@media (prefers-reduced-transparency: reduce) {
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
 }

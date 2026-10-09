@@ -102,7 +102,7 @@ describe("u18 list and ownership", () => {
 
     expect(
       calls().filter(
-        (method) => method !== "rail.tree" && method !== "terminal.list",
+        (method) => method !== "rail.tree" && method !== "terminal.list" && method !== "decision.list",
       ),
     ).toEqual(["pad.list", "pad.list"]);
     await waitFor(() => expect(calls()).not.toContain("pad.read"));
