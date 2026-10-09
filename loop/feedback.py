@@ -2,6 +2,7 @@
 """L90: reviewed proposals publish native Issues; source Issues retain human feedback."""
 import argparse
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -13,6 +14,8 @@ import orders
 from outcome import describe, redact
 
 NAMESPACE = 'loop-feedback'
+# PR changes and finished runs touch no feedback Issue; each feedback run dispatches its own sweep (L88).
+UNSWEPT_EVENTS = ('workflow_run', 'pull_request_target')
 
 
 def digest(value):
@@ -142,11 +145,14 @@ def read_source(number, previous=None, closed=False):
                  state=node['state'].lower(), labels=node['labels']['nodes'])
     actor = node['editor'] or node['author']
     login = actor['login'] if actor else ''
-    trusted = False
-    if login and not login.endswith('[bot]'):
-        permission = d.api(f'collaborators/{login}/permission')['permission']
-        trusted = permission in ('admin', 'maintain', 'write')
+    trusted = bool(login) and not login.endswith('[bot]') and permission(login) in ('admin', 'maintain', 'write')
     return intake({**issue, 'state': 'open'} if closed else issue, trusted, previous)
+
+
+@functools.cache
+def permission(login):
+    # One process is one sweep or one run; a collaborator's role does not change within it.
+    return d.api(f'collaborators/{login}/permission')['permission']
 
 
 def read_claim(number):
@@ -189,6 +195,10 @@ def next_task(source, record):
     return dict(role=role, cause=cause, head=head, base='')
 
 
+def under_spend_cap():
+    return int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
+
+
 def start(number):
     old, record = read_claim(number)
     source = read_source(number, record['source'] if record else None)
@@ -198,7 +208,7 @@ def start(number):
     if record and record['key'] == d.key(task) and read_proposal_head(record):
         # Reconciliation publishes the retained answer; a queued job must not spend another model attempt.
         return
-    require(int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS']), 'spend cap reached')
+    require(under_spend_cap(), 'spend cap reached')
     # Immutable Claim commits retain every accepted human revision, including earlier bodies.
     attempt = d.consumed(record) + 1 if record and record['key'] == d.key(task) else 1
     previous = (record.get('plan') or record.get('previous')) if record and task['role'] == 'verify' else None
@@ -617,6 +627,10 @@ def publish(number):
 
 def reconcile():
     # One sweep is serialized by reconcile.yml. Native Issues, never proposal files, own the queue.
+    event = os.environ.get('GITHUB_EVENT_NAME', '')
+    if event in UNSWEPT_EVENTS:
+        print(f'feedback: {event} changes no feedback Issue; the next Issue event, main push, dispatch or five-minute sweep reconciles', file=sys.stderr)
+        return
     issues = [item for item in listing('issues?state=open&per_page=100') if 'pull_request' not in item]
     refs = d.api('git/matching-refs/heads/' + NAMESPACE + '/')
     claimed = {int(ref['ref'].rsplit('/', 1)[1]) for ref in refs}
@@ -665,7 +679,7 @@ def sweep(issue, claimed, within_budget, queued):
     task = next_task(source, record)
     if task and d.available(task, record) and queued < 4:
         if within_budget is None:
-            within_budget = int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
+            within_budget = under_spend_cap()
         if not within_budget:
             print('feedback: spend cap reached', file=sys.stderr)
             return within_budget, queued
