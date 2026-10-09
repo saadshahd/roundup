@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import trail
 
@@ -356,6 +356,25 @@ def reconcile():
         run('gh', 'workflow', 'run', 'build.yml')
 
 
+def budget():
+    """Defer full scans when the authenticated token has little API capacity left."""
+    resources = gh('api', 'rate_limit')['resources']
+    limits = {name: resources[name] for name in ('core', 'graphql')}
+    if any(type(limit.get(field)) is not int or limit[field] < 0
+           for limit in limits.values() for field in ('remaining', 'reset')):
+        raise ValueError('invalid GitHub API budget')
+    low = {name: limit for name, limit in limits.items() if limit['remaining'] < 100}
+    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+        output.write('available=' + str(not low).lower() + '\n')
+    if low:
+        reset = datetime.fromtimestamp(max(limit['reset'] for limit in low.values()), tz=timezone.utc).isoformat()
+        message = 'Full API scan deferred: ' + ', '.join(f"{name}={limit['remaining']} remaining" for name, limit in low.items()) + f'. Budget resets at {reset}; a later scheduled run retries.'
+        print(message)
+        if os.environ.get('GITHUB_STEP_SUMMARY'):
+            with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                summary.write(message + '\n')
+
+
 def activity():
     import feedback
     rows = feedback.activity()
@@ -398,10 +417,12 @@ if __name__ == '__main__':
             start(int(sys.argv[2]), sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else '')
         elif sys.argv[1] == 'repaired':
             repaired(int(sys.argv[2]))
+        elif sys.argv[1] == 'budget':
+            budget()
         elif sys.argv[1] == 'activity':
             print(json.dumps(activity()))
         else:
-            raise ValueError('expected reconcile, start, repaired or activity')
+            raise ValueError('expected reconcile, start, repaired, budget or activity')
     except (subprocess.SubprocessError, ValueError, KeyError, TypeError, OSError) as error:
         print(f'PR dispatch failed: {error}', file=sys.stderr)
         sys.exit(4)
