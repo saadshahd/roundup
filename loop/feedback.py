@@ -383,10 +383,10 @@ def resume_publication(number, old, record):
 
 
 def ensure_checks(pr):
-    # GITHUB_TOKEN writes do not emit pull_request workflows. Missed dispatches are recoverable.
+    # A GITHUB_TOKEN write starts no pull_request run, or one GitHub holds for a person's approval. Missed dispatches are recoverable.
     for workflow in ('check.yml', 'loop.yml'):
         runs = d.gh('run', 'list', '--workflow', workflow, '--branch', pr['head']['ref'], '--limit', '100', '--json', 'headSha,status,conclusion')
-        if not any(run['headSha'] == pr['head']['sha'] for run in runs):
+        if not any(run['headSha'] == pr['head']['sha'] and run['conclusion'] != 'action_required' for run in runs):
             args = ('-f', f'pr={pr["number"]}') if workflow == 'loop.yml' else ()
             d.run('gh', 'workflow', 'run', workflow, '--ref', pr['head']['ref'], *args)
     if not pr.get('auto_merge'):

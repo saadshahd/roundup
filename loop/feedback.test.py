@@ -52,6 +52,7 @@ class GitHub:
         self.events = {}
         self.runs = {}
         self.writes = []
+        self.workflow_runs = []
         self.counter = 1000
         self.editor = 'owner'
         self.permission = 'write'
@@ -192,7 +193,7 @@ class GitHub:
                         labels=dict(totalCount=len(issue['labels']), nodes=issue['labels']), editor=dict(login=self.editor), author=dict(login=issue['user']['login']))
             return dict(data=dict(repository=dict(issue=node)))
         if args[:2] == ('run', 'list'):
-            return []
+            return copy.deepcopy(self.workflow_runs)
         if args[:2] == ('pr', 'list'):
             branch = args[args.index('--head')+1] if '--head' in args else None
             return [dict(number=p['number'], headRefOid=p['head']['sha'], headRefName=p['head']['ref'], body=p['body'], isCrossRepository=False)
@@ -395,6 +396,19 @@ class Lifecycle(unittest.TestCase):
         self.assertIn(dict(name='ready-for-agent'), self.hub.issues[356]['labels'])
         self.assertEqual(self.hub.issues[355]['body'], source()['body'])
         self.assertEqual(self.hub.issues[355]['state'], 'open')
+
+    def test_l90_a_held_planning_run_still_gets_dispatched_checks(self):
+        pr = self.plan()
+        head = self.hub.prs[pr]['head']['sha']
+        dispatched = lambda: [args[3] for args, _ in self.hub.writes if args[:3] == ('gh', 'workflow', 'run')]
+        self.hub.workflow_runs = [dict(headSha=head, status='completed', conclusion='action_required')]
+        self.hub.writes.clear()
+        f.publish(355)
+        self.assertEqual(dispatched(), ['check.yml', 'loop.yml'])
+        self.hub.workflow_runs = [dict(headSha=head, status='queued', conclusion='')]
+        self.hub.writes.clear()
+        f.publish(355)
+        self.assertEqual(dispatched(), [])
 
     def test_l93_waiting_publication_reason_survives_the_process_boundary(self):
         pr = self.plan()
