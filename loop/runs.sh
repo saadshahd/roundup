@@ -26,10 +26,12 @@ builders() {
 queue() {
   local max=${1:-4} provider=${2:-claude} rows branches merged running
   [[ $provider =~ ^(claude|codex)$ ]] || { echo "unknown Builder provider: $provider" >&2; exit 2; }
+  [[ $max =~ ^[0-9]+$ ]] || { echo 'max must be a nonnegative number' >&2; exit 2; }
+  running=$(builders | wc -l | tr -d ' ')
+  if [ "$running" -ge "$max" ]; then printf '[]\n'; return; fi
   rows=$(loop/rules.sh ready --json)
   branches=$(git ls-remote origin 'refs/heads/build/*' 'refs/heads/loop-row/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   merged=$(merged_heads)
-  running=$(builders | wc -l | tr -d ' ')
   printf '%s\n' "$rows" | jq -c --argjson max "$((max > running ? max - running : 0))" --arg branches "$branches" --arg merged "$merged" --arg provider "$provider" "$slug_def"'
     ($branches | [scan("refs/heads/loop-row/(\\S+)")[0]]) as $owned
     | ($merged | split("\n")) as $merged
