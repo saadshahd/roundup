@@ -110,7 +110,7 @@ jobs:
     concurrency:
       group: build-${{ inputs.pr }}
       cancel-in-progress: false
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
       contents: read
