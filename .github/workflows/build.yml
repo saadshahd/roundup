@@ -4,9 +4,12 @@ run-name: Build ready work Issues
 # L23: one-shot build runs. `pick` starts the fix runs open Builder PRs need and fills up to four build jobs with ready
 # work Issues; each build job builds one Issue. `after` holds the write token the Builder never sees: it hands each
 # run's PR on, or strikes its Issue (L81).
+# claude-code-action rejects push events, so a merge starts the build once `check` ends on `main`.
 on:
-  push:
+  workflow_run:
+    workflows: [check]
     branches: [main]
+    types: [completed]
   schedule:
     - cron: '17 * * * *'
   issues:
