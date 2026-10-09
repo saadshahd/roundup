@@ -9,12 +9,12 @@
   },
   "phase": "plan",
   "trigger": "c4ab93d917f1d8066b01540f76307714a12136a7fbacc2d85296e9bad635b0d7",
-  "main": "b19c144ffbce99c0b8db795fa553de3bad0f435b",
+  "main": "4597df41ed56b5fefd37f7df5d05b08372867f06",
   "previous": null,
   "answer": {
     "goals": [
       {
-        "statement": "On main, `bend proofs/messages/PROOF.bend` (Bend 2.0.34) checks a `def Laws.<name>` for M1, M2, M3 and M10, then M4 to M7 as stated in LAWS.bend, with no `@unsafe` or `?TODO`, and prints `ALL PROOFS CHECK`; or a committed written record names each law Bend rejects with the checker's `expected` and `observed`, where it stalled, what would unblock it and a rough cost.",
+        "statement": "On main, `bend proofs/messages/PROOF.bend` (Bend 2.0.34) checks a `def Laws.<name>` for M1, M2, M3 and M10, then M4 to M7 as stated in LAWS.bend, with no `@unsafe` or `?TODO`, and prints `ALL PROOFS CHECK`; or a committed written record names each law Bend rejects with the checker's `expected` and `observed`, where it stalled, what would unblock it and a rough cost. M8 and M9 are not yet stated in LAWS.bend; #376 (V4b) owns stating and proving them after V5.",
         "observer": "A reviewer runs Bend 2.0.34 (installed under /tmp with BEND_NO_TELEMETRY=1) on `proofs/messages/PROOF.bend` at main and greps it for `@unsafe`/`?TODO` and for one `def Laws.` per law in LAWS.bend; for each law not proved, reads the committed rejection record."
       },
       {
@@ -36,7 +36,9 @@
         "title": "V5: spike: prove M1 to M3, then M10, then the rest of the Messages laws in Bend 2.0.34, or record exactly what Bend rejects (prompt `.work/prompts/proofs-spike.md`; the laws, `model.bend` and `spec.bend` are human-owned and already in `proo",
         "body": "<!-- work-order:scenarios/proofs.md:V5 -->\n## Outcome\nspike: prove M1 to M3, then M10, then the rest of the Messages laws in Bend 2.0.34, or record exactly what Bend rejects (prompt `.work/prompts/proofs-spike.md`; the laws, `model.bend` and `spec.bend` are human-owned and already in `proofs/messages/`)\n\n## Acceptance\nScenarios: V5\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\n\n## Scope\n`proofs/messages/PROOF.bend` and `proofs/messages/mutants/**` only; never `LAWS.bend`, `model.bend` or `spec.bend`\n\n## Preserve\n`bend proofs/messages/PROOF.bend` prints `ALL PROOFS CHECK` or the report names each law Bend rejects\n\n## Dependencies\nBend 2.0.34 installed in `/tmp` per V1; (B6's rulings that `model.bend` encodes) merged; M3 is proved for the model's atomic record-and-type step, and the Rust's cut rests on's `b6_` tests\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: V5\nPriority: 100\nMigration state: waiting\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
         "blocked_by": [
-          "#372"
+          "#372",
+          "V1",
+          "V2"
         ]
       },
       {
