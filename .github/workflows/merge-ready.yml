@@ -113,3 +113,13 @@ jobs:
             [ "$labelled" = false ] || gh api -X DELETE "repos/$REPO/issues/$pr/labels/flag:needs-user" >/dev/null
             [ "$assigned" = false ] || gh api -X DELETE "repos/$REPO/issues/$pr/assignees" -f "assignees[]=$OWNER" >/dev/null
           fi
+
+  summary:
+    needs: [compute]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check whether a PR may merge
+      next: Auto-merge waits for required evidence; reconciliation repairs engineering failures.
