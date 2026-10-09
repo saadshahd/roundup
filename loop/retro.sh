@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # What a Retro reads: the Ledger, merged PRs and their rejects, each reject classified by Jev.
-# Usage: loop/retro.sh ledger <role> <subject> <execution-file> <conclusion> | due | report | classify | cost <since>
+# Usage: loop/retro.sh ledger <role> <subject> <execution-file> <conclusion> | due | report | classify | cost <since> | spent
 # Exit 4 is a gh, git or Jev failure, never read as "nothing to do".
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -13,9 +13,17 @@ jev_model=jev-1.13.0
 # `kinds`) and $rows (Ledger rows). Weights: input 1, cache write 1.25, cache read 0.1, output 5.
 # shellcheck disable=SC2016 # jq variables, not the shell's
 weights='def weighted: .input + 1.25 * .cache_write + 0.1 * .cache_read + 5 * .output;
-  def m: . / 1000000 | . * 10 | round / 10 | tostring + "M";
+  def m: if . >= 1000000 then (. / 100000 | round / 10 | tostring) + "M"
+    elif . >= 1000 then (. / 100 | round / 10 | tostring) + "K"
+    else (. * 10 | round / 10 | tostring) end;
+  def recorded: (.usage // (if (.model // "") != "" then "legacy" else "unavailable" end)) != "unavailable";
   def per_product($prs; $rows): ($prs | map(select(.kind == "product")) | length) as $n
-    | if $n > 0 then ($rows | map(weighted) | add // 0) / $n | m else "no product PR merged" end;'
+    | ($rows | map(select(recorded))) as $known
+    | if ($known | length) == 0 then "unavailable: no recorded usage (\($n) product PRs)"
+      else ($known | map(weighted) | add) as $total
+        | (if $n > 0 then "≥\($total / $n | m) recorded/product PR" else "\($total | m) recorded; no product PR merged" end)
+          + "; \($n) product PRs, \($known | length)/\($rows | length) usage records; partial coverage"
+      end;'
 
 # L29: one Ledger row for an agent run. Its models, turns and tokens come from the run's `result` entry; a run cut off before it
 # has one sums its assistant messages, each message id once, since a message repeats per content block.
@@ -32,8 +40,12 @@ ledger() {
     | {role: $role, subject: $subject, run: $run,
        model: ((if $result then ($result.modelUsage // {} | keys) else ($said | map(.message.model // empty) | unique) end) | join(","))}
     + if $result then {turns: ($result.num_turns // 0), exit: ($result.subtype // $conclusion)} + ($result.usage // {} | tokens)
-      else {turns: ($said | length), exit: (if length == 0 then "no-run" else $conclusion end)} + ($said | map(.message.usage // {} | tokens) | total)
-      end'
+      else {turns: ($said | length), exit: (if length == 0 then "missing-output" else $conclusion end)} + ($said | map(.message.usage // {} | tokens) | total)
+      end
+    | . + {usage: (if $result then [$result.usage // {}] else $said | map(.message.usage // {}) end
+        | map([.input_tokens, .output_tokens, .cache_creation_input_tokens, .cache_read_input_tokens]) | flatten
+        | if length == 0 or all(. == null) then "unavailable"
+          elif all(type == "number") then "recorded" else "partial" end)}'
 }
 
 # The time the last Retro PR merged, else the time this script was added: the Ledger starts with it.
@@ -108,15 +120,31 @@ process	PR body, trailers, branch or other loop paperwork'
 
 # Ledger rows of runs after <since>, one per line, from the ledger-* artifacts.
 ledger_rows() {
-  local dir run name
+  local dir run name cache
   dir=$(mktemp -d)
+  cache=${LOOP_LEDGER_CACHE:-$dir/artifacts}
+  mkdir -p "$cache"
+  # Cached downloads outlive a scan, not the reporting window indefinitely.
+  find "$cache" -type f -mtime +2 -delete
+  find "$cache" -mindepth 1 -depth -type d -empty -delete
   gh_or_4 api 'repos/{owner}/{repo}/actions/artifacts?per_page=100' --paginate \
     --jq ".artifacts[] | select((.name | startswith(\"ledger-\")) and .expired == false and .created_at > \"$1\") | \"\(.workflow_run.id) \(.name)\"" >"$dir/list"
   while read -r run name; do
-    gh_or_4 run download "$run" --name "$name" --dir "$dir/$name" >/dev/null
-    cat "$dir/$name/ledger.json" || exit 4
+    [ -s "$cache/$name/ledger.json" ] || gh_or_4 run download "$run" --name "$name" --dir "$cache/$name" >/dev/null
+    cat "$cache/$name/ledger.json" || exit 4
   done <"$dir/list"
   rm -rf "$dir"
+}
+
+# L83: reuse the Ledger reader so legacy artifact names remain countable.
+spent() {
+  local start rows
+  start=$(python3 -c 'from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
+  rows=$(ledger_rows "$start" | jq -s -c .)
+  jq -r "$weights"' if any(.[]; .usage != "recorded") then "spend coverage is partial: only recorded token fields are included" else empty end' <<<"$rows" >&2
+  jq -er "$weights"' if length == 0 then 0
+    elif all(.[]; recorded | not) then error("spend unavailable: no Ledger row has recorded usage")
+    else map(select(recorded) | weighted) | add | ceil end' <<<"$rows" || exit 4
 }
 
 # L80: weighted tokens per merged product PR since <since>, as the Status issue shows them.
@@ -167,7 +195,8 @@ report() {
 }
 
 case "${1:-}" in
-  ledger) [ $# -eq 5 ] && [[ $2 =~ ^(builder|reviewer|retro)$ ]] || { sed -n '3p' "$0" >&2; exit 2; }; ledger "$2" "$3" "$4" "$5" ;;
+  ledger) [ $# -eq 5 ] && [[ $2 =~ ^(builder|reviewer|retro|feedback)$ ]] || { sed -n '3p' "$0" >&2; exit 2; }; ledger "$2" "$3" "$4" "$5" ;;
+  spent) spent ;;
   due) due ;;
   report) report ;;
   classify) classify ;;

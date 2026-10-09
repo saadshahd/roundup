@@ -46,11 +46,6 @@
   background: var(--sunken);
 }
 
-.pane .pane-latest:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .pane .pane-latest:active {
   background: var(--grey);
   color: var(--ground);
@@ -64,6 +59,13 @@
   white-space: nowrap;
   transform: translate(-50%, -50%);
   text-align: center;
+}
+
+/* The earlier-run line wraps in a narrow pane instead of leaving it. */
+.pane .pane-empty.light {
+  width: max-content;
+  max-width: calc(100% - var(--space-4) * 2);
+  white-space: normal;
 }
 
 .pane .pane-action {
@@ -80,4 +82,9 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: var(--ground);
+}
+
+/* U59: xterm.css paints `.xterm-viewport` black; the pane shows the app's ground instead. */
+.pane .xterm .xterm-viewport {
+  background-color: var(--ground);
 }

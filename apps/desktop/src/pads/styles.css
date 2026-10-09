@@ -17,18 +17,7 @@
   padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-control);
-  background: var(--ground);
   color: var(--grey);
-  cursor: pointer;
-}
-
-.pad-actions button:hover {
-  background: var(--hover);
-}
-
-.pad-actions button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
 }
 
 .pad-markdown,
@@ -120,9 +109,9 @@
   padding: var(--space-2) 0;
 }
 
-.pad-editor .cm-focused {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+/* The editor's own box draws no ring; `.cm-content` takes the one `:focus-visible` ring. */
+.pad-editor .cm-editor.cm-focused {
+  outline-width: 0;
 }
 
 .pad-rich-editor > div,
@@ -178,12 +167,7 @@
 
 .pad-rich-editor .milkdown button:active {
   background: var(--selected);
-}
-
-.pad-rich-editor .milkdown button:focus-visible,
-.pad-rich-editor .milkdown .ProseMirror:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  transition-duration: 0s;
 }
 
 .pad-rich-editor .milkdown .ProseMirror {
@@ -215,4 +199,28 @@
 .pad-editor-failure {
   color: var(--red);
   padding: var(--space-4);
+}
+
+.pad-name {
+  min-width: 0;
+}
+
+.rail-pads-control {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.rail-pads {
+  display: flex;
+  flex-direction: column;
+}
+
+.rail-pad {
+  box-sizing: border-box;
+  display: flex;
+  gap: 1ch;
+  align-items: center;
+  min-height: 28px;
+  padding-right: 8px;
+  cursor: pointer;
 }

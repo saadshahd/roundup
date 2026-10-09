@@ -1,0 +1,110 @@
+name: build-row
+
+on:
+  workflow_call:
+    inputs:
+      row:
+        type: string
+        required: true
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          browser: 'true'
+      - name: Stamp Builder commits
+        run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
+      - id: prompt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ fromJSON(inputs.row).issue }}
+          IDS: ${{ fromJSON(inputs.row).ids }}
+          FILE: ${{ fromJSON(inputs.row).file }}
+          SLUG: ${{ fromJSON(inputs.row).slug }}
+        run: |
+          {
+            python3 loop/orders.py task "$ISSUE"
+            printf '\nBuild on branch build/%s. Its remote Claim is yours; branch from origin/main and fast-forward it. Your Author-Agent id is builder-%s.\n' "$SLUG" "$GITHUB_RUN_ID"
+          } | loop/runs.sh prompt builder
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        # Isolated CLI observers use a fresh config and cannot inherit the action's stored login.
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        with:
+          prompt: ${{ steps.prompt.outputs.prompt }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: claude,github-actions
+          # The App's default token omits workflows; writers need to publish proposed workflow changes.
+          additional_permissions: |
+            actions: read
+            checks: read
+            workflows: write
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 150
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
+      - if: always()
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
+        with:
+          role: builder
+          subject: ${{ fromJSON(inputs.row).ids }}
+          execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          conclusion: ${{ steps.claude.outcome }}
+
+  # Each row frees its own slot; a slow sibling cannot hold the refill job.
+  after:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ROW: ${{ inputs.row }}
+        run: |
+          jq -c '[.]' <<<"$ROW" | loop/runs.sh unclaim
+          branch="build/$(jq -r .slug <<<"$ROW")"
+          loop/runs.sh stopped "$branch"
+          python3 loop/outcome.py observe "$branch"
+      - if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run reconcile.yml

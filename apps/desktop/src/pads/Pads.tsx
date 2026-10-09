@@ -1,6 +1,6 @@
 import { OwnerMark } from "../ink/OwnerMark";
 import { Icon } from "../ink/Icon";
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Pad } from "@contracts/pad/Pad";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -9,49 +9,16 @@ import { createFailure } from "./failure";
 import { PadDrawer } from "./PadDrawer";
 import { cutName, markedLine, wholeWord } from "./nameLine";
 import { USER } from "./owner";
+import { isOwnedOnRail } from "../rail/pads/owned";
+import { usePadList } from "../rail/pads/padList";
 
 /** The Shelf's `pads` list; `pad.list` logs no Touch, so refetching it on every `pad.changed` leaves no trace in Provenance. One fetch serves the list and any open Drawer. */
 export const Pads = () => {
   const connected = useConnectedProject();
-  const [pads, setPads] = createSignal<readonly Pad[]>([]);
+  const list = usePadList();
+  const pads = list.pads;
   const [naming, setNaming] = createSignal(false);
   const failure = createFailure();
-  const listFailure = createFailure();
-  let newestReload = 0;
-  /** True once the newest `pad.list` has answered, so U38's empty line never flashes before it. */
-  const [isLoaded, setIsLoaded] = createSignal(false);
-
-  /** Only the newest request may set the list, or its failure, or `isLoaded`: a slower, older reply must not put stale Pads back, overwrite a later failure, or flash the empty line while a retry is still in flight. */
-  const reload = async () => {
-    newestReload += 1;
-
-    const mine = newestReload;
-
-    try {
-      const listed = await connected.app.rpc("pad.list", null);
-
-      if (mine !== newestReload) return;
-
-      setPads(listed);
-      listFailure.clear();
-    } catch (thrown) {
-      if (!(thrown instanceof Error)) throw thrown;
-
-      if (mine !== newestReload) return;
-
-      listFailure.show(thrown.message);
-    }
-
-    setIsLoaded(true);
-  };
-
-  onCleanup(
-    connected.events.subscribe((event) => {
-      if (event.name === "pad.changed") void reload();
-    }),
-  );
-
-  void reload();
 
   const create = (name: string) =>
     failure.run(async () => {
@@ -62,10 +29,13 @@ export const Pads = () => {
   const makeYours = (name: string) =>
     failure.run(async () => {
       await connected.app.rpc("pad.setOwner", { name, owner: USER });
-      await reload();
+      await list.reload();
     });
 
-  const isEmpty = createMemo(() => isLoaded() && pads().length === 0 && listFailure.message() === null);
+  /** U58: a Pad whose owner is an Agent on the Rail shows under that Agent instead. */
+  const shown = createMemo(() => pads().filter((pad) => !isOwnedOnRail(pad, connected.rail.nodes)));
+
+  const isEmpty = createMemo(() => list.loaded() && shown().length === 0 && list.failure() === null);
 
   return (
     <section aria-label="pads">
@@ -93,7 +63,7 @@ export const Pads = () => {
       >
         {(message) => <ErrorLine message={message()} />}
       </Show>
-      <Show when={listFailure.message()}>
+      <Show when={list.failure()}>
         {(message) => <ErrorLine message={message()} />}
       </Show>
       <Show when={isEmpty()}>
@@ -101,6 +71,7 @@ export const Pads = () => {
       </Show>
       <PadRows
         pads={pads}
+        shown={shown}
         onMakeYours={(name) => void makeYours(name)}
         onLateFailure={failure.show}
       />
@@ -110,15 +81,16 @@ export const Pads = () => {
 
 const PadRows = (props: {
   pads: Accessor<readonly Pad[]>;
+  shown: Accessor<readonly Pad[]>;
   onMakeYours: (name: string) => void;
   onLateFailure: (message: string) => void;
 }) => {
   const connected = useConnectedProject();
 
   return (
-    <For each={props.pads()}>
+    <For each={props.shown()}>
       {(pad) => (
-        <p style={markedLine}>
+        <p data-shelf-row style={markedLine}>
           <Show
             when={pad.owner.kind === "user"}
             fallback={
@@ -140,7 +112,8 @@ const PadRows = (props: {
           <button
             type="button"
             title={pad.name}
-            style={{ all: "unset", cursor: "pointer", ...cutName }}
+            class="pad-name"
+            style={cutName}
             onClick={() =>
               connected.drawer.open(() => (
                 <PadDrawer

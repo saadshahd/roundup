@@ -7,6 +7,7 @@ import { ItemDrawer } from "../drawer/ItemDrawer";
 import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { createFailure } from "./failure";
+import { USER } from "./owner";
 import { cutName, markedLine, wholeWord } from "./nameLine";
 
 import type { PadEditorHandle } from "./PadEditor";
@@ -185,6 +186,12 @@ const PadBody = (props: {
     setMode(next);
   };
 
+  /** U58: a Pad opened from under its Agent is taken here, by the owner mark, as U18's click does in the Shelf. */
+  const takeIt = () =>
+    act(async () => {
+      adopt(await connected.app.rpc("pad.setOwner", { name, owner: USER }));
+    });
+
   const keepMine = () =>
     act(async () => {
       adopt(await connected.app.rpc("pad.write", { name, text: currentDraft() }));
@@ -197,7 +204,16 @@ const PadBody = (props: {
   return (
     <div class="pad-body">
       <p style={markedLine}>
-        <span style={wholeWord}><OwnerMark owner={pad().owner} decorative /></span>{" "}
+        <Show
+          when={ownedByUser()}
+          fallback={
+            <button type="button" class="word" style={wholeWord} aria-label="make yours" onClick={() => void takeIt()}>
+              <OwnerMark owner={pad().owner} decorative />
+            </button>
+          }
+        >
+          <span style={wholeWord}><OwnerMark owner={pad().owner} decorative /></span>
+        </Show>{" "}
         <span title={name} style={cutName}>
           {name}
         </span>{" "}
@@ -208,8 +224,7 @@ const PadBody = (props: {
       <p style={{ "text-align": "right" }}>
         <button
           type="button"
-          class="light"
-          style={{ all: "unset", cursor: "pointer", color: "var(--grey)" }}
+          class="word light"
           onClick={() => void exportToFile()}
         >
           export .md

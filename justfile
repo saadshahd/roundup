@@ -1,11 +1,16 @@
 # The one definition of "check": CI runs exactly this.
-check:
+check: check-rust check-web
+
+check-rust:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
     cargo nextest run
     just contracts-fresh
     cargo machete crates
     spikes/context-injection/e7_report.test.sh
+
+check-web:
+    test -z "$(find .claude/skills -xtype l)"
     pnpm lint
     pnpm typecheck
     pnpm slop
@@ -25,6 +30,14 @@ packages script:
 harness seed="tree-40" port="5199":
     @echo "http://localhost:{{port}}/harness.html?seed={{seed}}"
     pnpm --filter desktop exec vite --port {{port}} --strictPort
+
+# Serves the real App on the running `rupd` of a Project (U144) at http://localhost:<port>/harness.html?daemon=1; start `rupd` first, with RUPD_SOCKET if it has one. Loopback only.
+harness-real project port="5199":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    path=$(cd {{quote(invocation_directory())}} && realpath -- {{quote(project)}})
+    echo "http://localhost:{{port}}/harness.html?daemon=1"
+    ROUNDUP_REAL_PROJECT="$path" pnpm --filter desktop exec vite --host 127.0.0.1 --port {{port}} --strictPort
 
 # Opens the development App only after its imports transform; an HTML response alone can hide a Vite error.
 app project:

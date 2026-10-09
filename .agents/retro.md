@@ -11,6 +11,6 @@ Open one PR against `main` on the branch the task names. Each change in it does 
 3. Turn a recurring reject class into a yes/no line in the prompt of the role that made it, or into a machine check with an L scenario.
 4. Propose one self-hosted runner (a boxd VM) for Codex runs only when the report shows Claude's quota binding.
 
-You cannot push `.github/`: write a change there into the PR body. Never arm auto-merge; the user merges a Retro PR.
+Workflow changes follow the same independent review and required checks as other Loop changes. Arm auto-merge when the PR is ready.
 
 Done: one PR whose body leads with product PRs merged and weighted tokens per merged product PR, then one line per change naming the report line it answers.

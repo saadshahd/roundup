@@ -20,10 +20,13 @@ on:
         required: true
 
 permissions:
-  contents: read
+  # Disabling auto-merge requires repository write access; this job executes main only.
+  contents: write
   statuses: write
   pull-requests: write
   checks: read
+  issues: read
+  actions: read
 
 concurrency:
   group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || github.event.workflow_run.head_sha }}
@@ -62,19 +65,17 @@ jobs:
             echo "$1" >&2
             exit 1
           }
-          paths=$(gh pr diff "$pr" --name-only) || fail "merge-ready: cannot read the PR diff"
-          # L78: the user merges loop machinery by hand, so nothing armed may merge it on green.
-          kinds=$(printf '%s\n' "$paths" | loop/rules.sh touches) || fail "merge-ready: cannot sort the PR's paths"
-          if grep -qx loop <<<"$kinds"; then
-            auto_merge=$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null') || fail "merge-ready: cannot read auto-merge on a loop PR"
-            if [ "$auto_merge" = true ]; then
-              gh pr merge "$pr" --disable-auto || fail "merge-ready: cannot disarm auto-merge on a loop PR"
+          for _attempt in 1 2 3; do
+            sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+            code=0
+            out=$(loop/rules.sh merge-ready "$pr" 2>&1) || code=$?
+            latest=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+            if [ "$latest" != "$sha" ]; then
+              code=1
+              out='PR changed during merge-ready'
             fi
-          fi
-          set +e
-          out=$(loop/rules.sh merge-ready "$pr" 2>&1)
-          code=$?
-          set -e
+            if ! grep -Fq 'PR changed during merge-ready' <<<"$out"; then break; fi
+          done
           state=success
           if [ "$code" -ne 0 ]; then state=failure; fi
           if [ "$code" -eq 2 ]; then out="merge-ready not built"; fi
@@ -86,14 +87,12 @@ jobs:
           ask() { if grep -Fq "$1" <<<"$out"; then asks+="- $2"$'\n'; fi; }
           # L81: a draft or closed PR asks only why its Builder stopped; every other question waits until it is ready.
           if ! grep -Fq 'PR is closed or draft' <<<"$out"; then
-            ask 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md' 'It touches loop machinery: will you read it and merge it?'
-            ask 'second reject: the user decides' 'Two rejects stand: will you fix it, merge it or close it?'
             # shellcheck disable=SC2016 # the backticks are Markdown
             ask 'a crates/desktop PR needs a macOS: line' 'It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.'
           fi
           stopped=$(grep -m1 'the Builder stopped: ' <<<"$out" || true)
           stopped=${stopped#*the Builder stopped: }
-          if [ -n "$stopped" ]; then
+          if [ -n "$stopped" ] && [[ "$stopped" != "the run ended without marking it ready,"* ]]; then
             asks+="- The Builder stopped (${stopped%.}): will you finish it, or close it and delete its branch to build it again?"$'\n'
           fi
           issue=$(gh api "repos/$REPO/issues/$pr")

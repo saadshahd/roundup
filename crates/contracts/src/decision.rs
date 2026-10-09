@@ -1,6 +1,7 @@
 //! Decisions: the Card that blocks an Agent on a live hook or tool call (`GLOSSARY.md`). Only the
 //! user answers one; see `scenarios/decisions.md`.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -38,6 +39,23 @@ pub struct PermissionOutput {
     pub output: String,
 }
 
+/// Called by the `ask_user` tool of `rup mcp` (H14) for the Agent that calls it; waits until the
+/// user answers with one of `answers` (one to four short texts) or the Decision is cleared.
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(export, export_to = "decision/")]
+pub struct AskParams {
+    pub question: String,
+    pub answers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "decision/")]
+pub struct AskOutput {
+    /// The user's answer: one of the asked `answers`.
+    pub answer: String,
+}
+
+/// The two words that answer a permission Decision (H3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "decision/")]
@@ -46,13 +64,25 @@ pub enum Answer {
     Deny,
 }
 
+impl Answer {
+    pub fn from_word(word: &str) -> Option<Self> {
+        match word {
+            "allow" => Some(Self::Allow),
+            "deny" => Some(Self::Deny),
+            _ => None,
+        }
+    }
+}
+
+/// `answer` is `allow` or `deny` for a permission Decision (H3) and one of the asked `answers` for
+/// an `ask_user` Decision (H14); anything else is `INVALID_PARAMS`.
 /// `proof` is checked against the value the Daemon holds (H4); a missing or wrong one is
 /// `FORBIDDEN`, so the field must deserialize even when the caller sends none.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "decision/")]
 pub struct AnswerParams {
     pub id: String,
-    pub answer: Answer,
+    pub answer: String,
     #[ts(optional)]
     pub proof: Option<String>,
 }
@@ -66,6 +96,7 @@ pub enum Outcome {
     Replaced,
     AgentGone,
     Terminal,
+    Answered,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
@@ -152,7 +183,7 @@ mod tests {
     fn h2_answer_params_round_trip_with_the_proof() {
         let params = AnswerParams {
             id: "d1".into(),
-            answer: Answer::Deny,
+            answer: "deny".into(),
             proof: Some("secret".into()),
         };
 
@@ -164,13 +195,26 @@ mod tests {
         assert_eq!(back.proof, params.proof);
     }
 
-    /// H3: "an `answer` that is neither word is `INVALID_PARAMS`"; `rpc::params` maps any
-    /// deserialize failure of this type to that code, so the enum alone is the whole check.
+    /// H3 and H14: any text deserializes, so an `ask_user` answer reaches the Daemon, which
+    /// judges it against the Decision; only the two words answer a permission Decision.
     #[test]
-    fn h2_answer_params_reject_a_word_that_is_neither_allow_nor_deny() {
-        let bad = json!({"id": "d1", "answer": "ask", "proof": "secret"});
+    fn h14_answer_params_carry_any_text_and_the_two_words_parse() {
+        let text = json!({"id": "d1", "answer": "cats", "proof": "secret"});
 
-        assert!(serde_json::from_value::<AnswerParams>(bad).is_err());
+        let params: AnswerParams = serde_json::from_value(text).unwrap();
+
+        assert_eq!(params.answer, "cats");
+        assert_eq!(Answer::from_word("allow"), Some(Answer::Allow));
+        assert_eq!(Answer::from_word("deny"), Some(Answer::Deny));
+        assert_eq!(Answer::from_word("ask"), None);
+    }
+
+    #[test]
+    fn h14_outcome_answered_is_a_word_on_the_wire() {
+        assert_eq!(
+            serde_json::to_value(Outcome::Answered).unwrap(),
+            json!("answered")
+        );
     }
 
     /// H4: a missing `proof` must still deserialize, as `None`, so the Daemon can answer

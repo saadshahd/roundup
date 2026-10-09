@@ -6,7 +6,8 @@ import { KindGlyph } from "../ink/KindGlyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { failureOf } from "./failureOf";
 import { RowButton } from "./RowButton";
-import { createTodosState } from "./state";
+import { isTodoOnRail } from "../rail/pads/owned";
+import { useTodoList } from "./todoList";
 import { TodoDrawer } from "./TodoDrawer";
 import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
 
@@ -17,12 +18,14 @@ export const rowAfter = (id: number, openIds: readonly number[]): number | null 
   return openIds[at + 1] ?? openIds[at - 1] ?? null;
 };
 
-const OpenRow = (props: {
+/** One open Todo as U15 draws it, with U35's `complete` and `waits on`; `nested` is the Rail's copy (U60), which leaves `data-id` to the Agent rows. */
+export const OpenRow = (props: {
+  nested?: boolean;
   todo: Todo;
   known: ReadonlyMap<number, Todo>;
   onOpen: (todo: Todo) => void;
   onComplete: (todo: Todo) => Promise<string | null>;
-  registerRow: (id: number, row: HTMLButtonElement | null) => void;
+  registerRow?: (id: number, row: HTMLButtonElement | null) => void;
 }) => {
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
   const [hovered, setHovered] = createSignal(false);
@@ -39,11 +42,13 @@ const OpenRow = (props: {
     onCleanup(() => document.removeEventListener("click", clear));
   });
 
-  onCleanup(() => props.registerRow(props.todo.id, null));
+  onCleanup(() => props.registerRow?.(props.todo.id, null));
 
   return (
     <div
-      data-id={props.todo.id}
+      data-id={props.nested ? undefined : props.todo.id}
+      data-todo={props.todo.id}
+      data-shelf-row={props.nested ? undefined : ""}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocusIn={() => setFocused(true)}
@@ -56,7 +61,7 @@ const OpenRow = (props: {
       }}
     >
       <div class="row-head">
-        <RowButton onClick={() => props.onOpen(props.todo)} ref={(row) => props.registerRow(props.todo.id, row)}>
+        <RowButton onClick={() => props.onOpen(props.todo)} ref={(row) => props.registerRow?.(props.todo.id, row)}>
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
         <Show when={hovered() || focused()}>
@@ -91,11 +96,12 @@ const OpenRow = (props: {
 /** The Shelf's `todos` list: open Todos in id order, done ones folded, and the inline field that makes a new one. */
 export const Todos = () => {
   const connected = useConnectedProject();
-  const todos = createTodosState(connected.app, connected.events);
+  const todos = useTodoList();
   const [typing, setTyping] = createSignal(false);
   const [createFailure, setCreateFailure] = createSignal<string | null>(null);
   const [unfolded, setUnfolded] = createSignal(false);
-  const open = createMemo(() => openTodos(todos.all()));
+  /** U60: an open Todo whose creator is an Agent on the Rail shows under that Agent instead. */
+  const open = createMemo(() => openTodos(todos.all()).filter((todo) => !isTodoOnRail(todo, connected.rail.nodes)));
   const done = createMemo(() => doneTodos(todos.all()));
   const isEmpty = createMemo(() => todos.isLoaded() && todos.all().length === 0 && todos.failure() === null);
 

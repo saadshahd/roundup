@@ -9,6 +9,7 @@ import type { ExitState } from "../state/rail";
 import { isRoom } from "./layout";
 import type { NodeRow } from "./layout";
 import { isUnprompted, liveLineOf, liveTitleOf } from "./liveLine";
+import { createAgentPads, PadRows, PadsControl } from "./pads/AgentPads";
 
 /** A Kind's mark, or a bare mark for a Room, which has no Kind. */
 type Mark = { kind: Kind } | { bare: "right" | "down" };
@@ -77,6 +78,7 @@ export const RailRowView = (props: {
 }) => {
   const [hovered, setHovered] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
+  const pads = createAgentPads(() => props.row.node);
 
   const mark = () => markOfRow(props.row, props.exit);
 
@@ -96,6 +98,7 @@ export const RailRowView = (props: {
   const showsLiveLine = () => !props.dragging && (props.selected || hovered() || isUnprompted(props.row.node));
 
   return (
+    <>
     <div
       class="rail-row"
       role="treeitem"
@@ -104,6 +107,7 @@ export const RailRowView = (props: {
       aria-expanded={isRoom(props.row.node) ? props.row.collapsed === null : undefined}
       data-selected={props.selected}
       data-id={props.row.node.id}
+      data-kind={kind() ?? undefined}
       data-lifted={props.lifted}
       data-shift={props.shift}
       tabIndex={props.tabbable ? 0 : -1}
@@ -176,6 +180,7 @@ export const RailRowView = (props: {
           <button
             class="word"
             disabled={props.doorPending}
+            aria-disabled={props.doorPending ? true : undefined}
             onClick={(click) => {
               click.stopPropagation();
               props.onStartDoor();
@@ -185,7 +190,10 @@ export const RailRowView = (props: {
             {props.doorFailure ? "retry Door" : "start Door"}
           </button>
         </Show>
+        <PadsControl pads={pads} />
       </p>
     </div>
+    <PadRows pads={pads} depth={props.row.depth} />
+    </>
   );
 };

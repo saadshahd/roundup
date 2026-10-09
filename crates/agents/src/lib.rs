@@ -3,17 +3,19 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateRoomParams, MoveParams, NodeId, NodeKind, RailNode, RenameParams, SignalParams,
-    SpawnParams, SpawnTerminalParams, StatusEvent,
+    Channel, ChannelEvent, CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, PromptParams,
+    RailNode, RenameParams, SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent,
+    WorktreeState,
 };
+use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
 use contracts::terminal::SpawnParams as TerminalSpawn;
-use contracts::{Actor, EventData, Kind, Status};
+use contracts::{Actor, ActorKind, EventData, Kind, Status};
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code, params, reply};
 use serde_json::Value;
 use terminal::Terminals;
@@ -23,11 +25,12 @@ use tokio::sync::oneshot;
 use tokio::time::{Instant, sleep_until};
 
 pub mod claude_code;
+mod decision;
 mod name;
 mod rail;
 pub mod worktree;
 
-use claude_code::{ClaudeCode, Launcher};
+use claude_code::{ClaudeCode, Launcher, Role};
 
 /// One input an adapter reads about its Agent.
 pub enum Observation {
@@ -88,6 +91,19 @@ struct Shared {
     clock: Clock,
     /// Since when an Agent without a Terminal has been `done`.
     opened: i64,
+    /// H2 to H7: the open permission Decisions, in memory only.
+    decisions: decision::Decisions,
+    /// Itself, so a Signal's fold can start H12's first Steer on a task of its own.
+    me: Weak<Shared>,
+    /// H11: how long a Steer waits for its `UserPromptSubmit` Signal.
+    steer_bound: Duration,
+    /// H13: how long an Interrupt waits for the title to change.
+    interrupt_bound: Duration,
+    /// E6: the Channel of each Agent's current Attempt that has left `pending`, as
+    /// `(attempt, channel)`; an entry of an earlier Attempt reads as `pending`.
+    channels: Mutex<HashMap<String, (String, Channel)>>,
+    /// E6: how long after a start `agent.channelUp` may take before the Channel is `missing`.
+    channel_deadline: Duration,
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -159,11 +175,241 @@ async fn wait_for_exit(events: &mut Receiver<EventData>) {
 
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
-/// What `Shared::apply` leaves to do once its locks are let go: the Terminal id and prompt to
-/// type at the first idle, and when, on `clock`, the adapter wants its next `Observation::Tick`.
-type Applied = (Option<(String, String)>, Option<i64>);
+/// What `Shared::apply` leaves to do once its locks are let go: the first prompt to Steer at the
+/// first `SessionStart` (H12), and when, on `clock`, the adapter wants its next
+/// `Observation::Tick`.
+type Applied = (Option<String>, Option<i64>);
+
+/// H11: how long a Steer waits for its `UserPromptSubmit` Signal before `NOT_ACCEPTED`.
+pub const STEER_BOUND: Duration = Duration::from_secs(10);
+
+/// H13: how long an Interrupt waits for the title to change before `NOT_ACKED`.
+pub const INTERRUPT_BOUND: Duration = Duration::from_secs(5);
+
+/// E6: how long after a start the Channel may stay `pending`. `ROUNDUP_CHANNEL_DEADLINE_MS`
+/// shortens it for a test.
+pub const CHANNEL_DEADLINE: Duration = Duration::from_secs(15);
+
+/// Why a Steer (`Agents::prompt`) did not land (H11).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PromptError {
+    /// The Agent is not `idle`, or its last Steer is still waiting to be submitted.
+    Busy { id: String, kind: Kind },
+    /// The text was written (or could not be) and no `UserPromptSubmit` Signal followed; the
+    /// Terminal's input line keeps it and nothing is sent again.
+    NotAccepted { id: String },
+    /// No Agent `id` is running.
+    NotFound { id: String },
+}
+
+impl std::fmt::Display for PromptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Busy { id, kind } => write!(f, "agent {id} is {kind:?}, not idle"),
+            Self::NotAccepted { id } => write!(f, "agent {id} did not accept the prompt"),
+            Self::NotFound { id } => write!(f, "agent {id} is not running"),
+        }
+    }
+}
+
+impl std::error::Error for PromptError {}
+
+impl From<PromptError> for RpcError {
+    fn from(error: PromptError) -> Self {
+        let message = error.to_string();
+        match error {
+            PromptError::Busy { .. } => Self::busy(message),
+            PromptError::NotAccepted { .. } => Self::not_accepted(message),
+            PromptError::NotFound { .. } => Self::not_found(message),
+        }
+    }
+}
 
 impl Shared {
+    /// H12: Steer the first prompt of `id`'s `attempt` on a task of its own, since `agent.spawn`
+    /// has returned by now. A Steer that fails settles the Status to `error`, never silently.
+    fn steer_first_prompt(&self, id: &str, attempt: &str, prompt: String) {
+        let Some(shared) = self.me.upgrade() else {
+            return;
+        };
+        let (id, attempt) = (id.to_owned(), attempt.to_owned());
+        tokio::spawn(async move {
+            if let Err(err) = shared.prompt(&id, &prompt).await {
+                eprintln!("agents: the first prompt of {id} failed: {err}");
+                shared.refuse_prompt(&id, &attempt);
+            }
+        });
+    }
+
+    /// H12: settle `id` to `error` with the label `prompt not accepted`, if `attempt` is still
+    /// its current Attempt.
+    fn refuse_prompt(&self, id: &str, attempt: &str) {
+        let mut runs = self.runs();
+        let Some(Slot::Running(run)) = runs.get_mut(id) else {
+            return;
+        };
+        if run.attempt != attempt {
+            return;
+        }
+        if let Some(status) = run.adapter.refuse_prompt() {
+            run.status_revision = run
+                .status_revision
+                .checked_add(1)
+                .expect("Status revision exhausted");
+            self.bus.emit(
+                Actor::daemon(),
+                EventData::AgentStatus(StatusEvent {
+                    id: id.to_owned(),
+                    attempt: run.attempt.clone(),
+                    status_revision: run.status_revision.to_string(),
+                    status,
+                }),
+            );
+        }
+    }
+
+    /// H11, H16: the one place a prompt is written to a Terminal. `text` goes out once, as one
+    /// bracketed paste and `\r`, when `id` is `idle`; this returns when its `UserPromptSubmit`
+    /// Signal arrives. Nothing is written again on any failure.
+    async fn prompt(&self, id: &str, text: &str) -> Result<(), PromptError> {
+        let not_found = || PromptError::NotFound { id: id.to_owned() };
+        let (terminal_id, submitted) = {
+            let mut runs = self.runs();
+            let Some(Slot::Running(run)) = runs.get_mut(id) else {
+                return Err(match runs.get(id) {
+                    Some(Slot::Starting { .. } | Slot::Resuming { .. }) => PromptError::Busy {
+                        id: id.to_owned(),
+                        kind: Kind::Working,
+                    },
+                    _ => not_found(),
+                });
+            };
+            if run.ended || run.closing {
+                return Err(not_found());
+            }
+            let kind = run
+                .adapter
+                .status()
+                .map_or(Kind::Working, |status| status.kind);
+            if kind != Kind::Idle || run.steer.as_ref().is_some_and(|steer| !steer.is_closed()) {
+                return Err(PromptError::Busy {
+                    id: id.to_owned(),
+                    kind,
+                });
+            }
+            let (steer, submitted) = oneshot::channel();
+            run.steer = Some(steer);
+            (run.terminal_id.clone(), submitted)
+        };
+        let written = self
+            .terminals
+            .write(&terminal_id, &claude_code::steer_bytes(text))
+            .await;
+        let lost = match written {
+            Err(err) if err.code == code::NOT_FOUND => return Err(not_found()),
+            Err(err) => {
+                eprintln!("agents: could not write the prompt to terminal {terminal_id}: {err}");
+                true
+            }
+            Ok(()) => tokio::time::timeout(self.steer_bound, submitted)
+                .await
+                .map_or(true, |signalled| signalled.is_err()),
+        };
+        if !lost {
+            return Ok(());
+        }
+        let mut runs = self.runs();
+        let ended = match runs.get_mut(id) {
+            Some(Slot::Running(run)) => {
+                run.steer = None;
+                run.ended || run.closing
+            }
+            _ => true,
+        };
+        Err(if ended {
+            not_found()
+        } else {
+            PromptError::NotAccepted { id: id.to_owned() }
+        })
+    }
+
+    /// H13, H16: the other place a Terminal is written on an Agent's behalf. One `ESC` goes out
+    /// when `id` has a turn to end; this returns when the Agent's title shows it is no longer
+    /// working (`Kind::Idle`). Nothing is written again on any failure.
+    async fn interrupt(&self, id: &str) -> Result<(), RpcError> {
+        let not_found = || RpcError::not_found(format!("agent {id} is not running"));
+        let (terminal_id, acked) = {
+            let mut runs = self.runs();
+            let Some(Slot::Running(run)) = runs.get_mut(id) else {
+                return Err(match runs.get(id) {
+                    Some(Slot::Starting { .. } | Slot::Resuming { .. }) => RpcError::new(
+                        code::NOT_RUNNING,
+                        format!("agent {id} has no turn to interrupt yet"),
+                    ),
+                    _ => not_found(),
+                });
+            };
+            if run.ended || run.closing {
+                return Err(not_found());
+            }
+            let kind = run
+                .adapter
+                .status()
+                .map_or(Kind::Working, |status| status.kind);
+            if matches!(kind, Kind::Idle | Kind::Done | Kind::Error) {
+                return Err(RpcError::new(
+                    code::NOT_RUNNING,
+                    format!("agent {id} is {kind:?}, with no turn to interrupt"),
+                ));
+            }
+            if run
+                .interrupt
+                .as_ref()
+                .is_some_and(|waiting| !waiting.is_closed())
+            {
+                return Err(RpcError::conflict(format!(
+                    "agent {id} is already being interrupted"
+                )));
+            }
+            let (waiting, acked) = oneshot::channel();
+            run.interrupt = Some(waiting);
+            (run.terminal_id.clone(), acked)
+        };
+        let written = self
+            .terminals
+            .write(&terminal_id, &claude_code::interrupt_bytes())
+            .await;
+        let lost = match written {
+            Err(err) if err.code == code::NOT_FOUND => return Err(not_found()),
+            Err(err) => {
+                eprintln!("agents: could not write the interrupt to terminal {terminal_id}: {err}");
+                true
+            }
+            Ok(()) => tokio::time::timeout(self.interrupt_bound, acked)
+                .await
+                .map_or(true, |signalled| signalled.is_err()),
+        };
+        if !lost {
+            return Ok(());
+        }
+        let mut runs = self.runs();
+        let ended = match runs.get_mut(id) {
+            Some(Slot::Running(run)) => {
+                run.interrupt = None;
+                run.ended || run.closing
+            }
+            _ => true,
+        };
+        if ended {
+            return Err(not_found());
+        }
+        eprintln!("agents: {id}: the title did not change after the interrupt");
+        Err(RpcError::new(
+            code::NOT_ACKED,
+            format!("agent {id} did not acknowledge the interrupt"),
+        ))
+    }
+
     fn rail(&self) -> MutexGuard<'_, rail::Rail> {
         self.rail.lock().expect("rail lock")
     }
@@ -229,8 +475,67 @@ impl Shared {
                 None => true,
             };
             node.can_resume = exited && rail.has_conversation(&node.id).unwrap_or(false);
+            let channels = self.channels.lock().expect("channels lock");
+            node.channel = channel_in(&channels, &node.id, runs.get(&node.id));
         }
         node
+    }
+
+    /// E6: `agent.channelUp` from Agent `id`. Nothing to report when no program of the Agent
+    /// runs, and a second call while the Channel is `up` emits nothing.
+    fn channel_up(&self, actor: &Actor, id: &str) -> Result<(), RpcError> {
+        let node = self.rail().node(id)?;
+        if node.kind == NodeKind::Terminal {
+            return Err(RpcError::not_found(format!("agent {id}")));
+        }
+        if actor.kind != ActorKind::Agent || actor.id != id {
+            return Err(RpcError::forbidden(format!(
+                "only agent {id} may report its Channel"
+            )));
+        }
+        let attempt = self.runs().get(id).map(|slot| slot.attempt().to_owned());
+        if let Some(attempt) = attempt {
+            self.set_channel(actor.clone(), id, &attempt, Channel::Up);
+        }
+        Ok(())
+    }
+
+    /// E6: move the Channel of `attempt` to `channel` and say so, unless it is there already or
+    /// the Attempt is no longer the live one.
+    fn set_channel(&self, by: Actor, id: &str, attempt: &str, channel: Channel) {
+        let changed = {
+            let runs = self.runs();
+            let slot = runs.get(id).filter(|slot| slot.attempt() == attempt);
+            let mut channels = self.channels.lock().expect("channels lock");
+            let current = channel_in(&channels, id, slot);
+            // `up` is final for an Attempt; `missing` never replaces it.
+            let moves = match (current, channel) {
+                (None, _) | (Some(Channel::Up), _) => false,
+                (Some(now), next) => now != next,
+            };
+            if moves {
+                channels.insert(id.to_owned(), (attempt.to_owned(), channel));
+            }
+            moves
+        };
+        if changed {
+            self.bus.emit(
+                by,
+                EventData::AgentChannel(ChannelEvent {
+                    id: id.to_owned(),
+                    channel,
+                }),
+            );
+        }
+    }
+
+    /// E6: after `channel_deadline`, an Attempt still `pending` is `missing`.
+    fn watch_channel(self: &Arc<Self>, id: &str, attempt: &str) {
+        let (shared, id, attempt) = (Arc::clone(self), id.to_owned(), attempt.to_owned());
+        tokio::spawn(async move {
+            tokio::time::sleep(shared.channel_deadline).await;
+            shared.set_channel(Actor::daemon(), &id, &attempt, Channel::Missing);
+        });
     }
 
     fn node(&self, id: &str) -> Result<RailNode, RpcError> {
@@ -250,7 +555,7 @@ impl Shared {
     }
 
     /// Fold `observation` into Agent `id`'s Status. A change is announced as `agent.status`, and
-    /// the first idle types the prompt the Agent was spawned with. Returns when, on `clock`, the
+    /// the first `SessionStart` Steers the prompt the Agent was spawned with. Returns when, on `clock`, the
     /// adapter wants its next `Observation::Tick`.
     fn observe(
         &self,
@@ -352,12 +657,8 @@ impl Shared {
                 }
             }
         };
-        if let Some((terminal_id, prompt)) = prompt {
-            tokio::spawn(type_prompt(
-                Arc::clone(&self.terminals),
-                terminal_id,
-                prompt,
-            ));
+        if let Some(prompt) = prompt {
+            self.steer_first_prompt(id, attempt, prompt);
         }
         Ok(tick_at)
     }
@@ -375,16 +676,60 @@ impl Shared {
         first_prompt: Option<Option<String>>,
     ) -> Result<Applied, RpcError> {
         let exited = matches!(observation, Observation::Exit { .. });
+        match &observation {
+            // H6: an Agent that ends takes its Decision with it.
+            Observation::Exit { .. } => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
+            }
+            Observation::Stopped => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::AgentGone, "the Agent ended");
+            }
+            // H7(a): the tool ran or the prompt moved on, so the dialog was answered in the
+            // Terminal.
+            Observation::Signal(payload) if claude_code::ends_decision(payload) => {
+                self.decisions
+                    .clear(&self.bus, id, Outcome::Terminal, "answered in the Terminal");
+            }
+            _ => {}
+        }
+        let session_start = matches!(&observation, Observation::Signal(payload)
+            if claude_code::is_session_start(payload));
+        // H11: the Steer's wait ends with the Signal that names it, or with the Agent.
+        if matches!(&observation, Observation::Signal(payload)
+            if claude_code::submitted_prompt(payload).is_some())
+        {
+            if let Some(steer) = run.steer.take() {
+                let _ = steer.send(());
+            }
+        } else if matches!(observation, Observation::Exit { .. } | Observation::Stopped) {
+            run.steer = None;
+        }
+        // H13: the Interrupt's wait ends with the title (or the Dismissal of its dialog) that
+        // leaves the Agent idle, or with the Agent.
+        let acks = matches!(
+            observation,
+            Observation::Title(_) | Observation::Tick | Observation::Dismissed
+        );
+        if matches!(observation, Observation::Exit { .. } | Observation::Stopped) {
+            run.interrupt = None;
+        }
         let changed = run.adapter.observe(observation);
+        if acks
+            && changed
+                .as_ref()
+                .is_some_and(|status| status.kind == Kind::Idle)
+            && let Some(waiting) = run.interrupt.take()
+        {
+            let _ = waiting.send(());
+        }
         if exited {
             run.ended = true;
             if let Some(rail) = rail.as_deref_mut() {
                 rail.detach_terminal(id)?;
             }
         }
-        let idle = changed
-            .as_ref()
-            .is_some_and(|status| status.kind == Kind::Idle);
         // Announced while `runs` is held, so announcements leave in the order the Status
         // changed; `emit` never blocks.
         if let Some(status) = changed {
@@ -408,11 +753,8 @@ impl Shared {
             rail.rename(id, &name)?;
             self.bus.emit(actor.clone(), EventData::RailChanged);
         }
-        let prompt = run.prompt.take_if(|_| idle);
-        Ok((
-            prompt.map(|prompt| (run.terminal_id.clone(), prompt)),
-            run.adapter.tick_at(),
-        ))
+        let prompt = run.prompt.take_if(|_| session_start);
+        Ok((prompt, run.adapter.tick_at()))
     }
 
     /// Swap `id` from `Starting` to `Running` (the Run `build` makes, told whether a
@@ -420,14 +762,14 @@ impl Shared {
     /// order, all under one `rail`-then-`runs` lock section: a Signal that arrives once the
     /// Agent is registered can never be applied ahead of one still held for it (A14), and
     /// `agent.signal` never finds `id` missing between the two (it is never `NOT_FOUND` for an
-    /// id that was spawned). Returns the Terminal id and prompt to type for each applied Signal
-    /// that left the Agent idle, to type once the locks are let go.
+    /// id that was spawned). Returns the first prompt, if an applied `SessionStart` released it,
+    /// to Steer once the locks are let go.
     fn finish_starting(
         &self,
         id: &str,
         attempt: &str,
         build: impl FnOnce(bool) -> Run,
-    ) -> Result<Vec<(String, String)>, RpcError> {
+    ) -> Result<Vec<String>, RpcError> {
         let mut rail = self.rail();
         let mut runs = self.runs();
         if !matches!(runs.get(id), Some(Slot::Starting { attempt: active, .. }) if active == attempt)
@@ -625,6 +967,8 @@ impl Shared {
             ended: false,
             adapter: ClaudeCode::starting(move || clock()),
             prompt: None,
+            steer: None,
+            interrupt: None,
             named: true,
             terminal_id: terminal_id.clone(),
             cwd,
@@ -739,8 +1083,28 @@ impl Shared {
         self.end(actor, id, true).await
     }
 
+    /// G5: stop the Agent and delete its node, Worktree directory and branch whatever their
+    /// state.
+    async fn discard(&self, actor: Actor, id: &str) -> Result<(), RpcError> {
+        if self.rail().node(id)?.worktree.is_none() {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        }
+        self.end_with(actor, id, true, true).await
+    }
+
     async fn end(&self, actor: Actor, id: &str, remove: bool) -> Result<(), RpcError> {
-        let checked_node = if remove {
+        self.end_with(actor, id, remove, false).await
+    }
+
+    /// `discarding` drops the Worktree whatever its state; otherwise a remove keeps unlanded work.
+    async fn end_with(
+        &self,
+        actor: Actor,
+        id: &str,
+        remove: bool,
+        discarding: bool,
+    ) -> Result<(), RpcError> {
+        let checked_node = if remove && !discarding {
             Some(self.rail().node(id)?)
         } else {
             None
@@ -817,10 +1181,15 @@ impl Shared {
             let git = self.git.clone();
             let project = self.project_dir.clone();
             let worktree = worktree::Worktree::from(&worktree);
-            let removed =
-                tokio::task::spawn_blocking(move || git.remove_landed(&project, &worktree))
-                    .await
-                    .map_err(RpcError::internal)?;
+            let removed = tokio::task::spawn_blocking(move || {
+                if discarding {
+                    git.discard(&project, &worktree)
+                } else {
+                    git.remove_landed(&project, &worktree)
+                }
+            })
+            .await
+            .map_err(RpcError::internal)?;
             if let Err(err) = removed {
                 self.rail().detach_terminal(id)?;
                 self.release_closing(id, true);
@@ -854,6 +1223,37 @@ impl Shared {
         result?;
         self.bus.emit(actor, EventData::RailChanged);
         Ok(())
+    }
+}
+
+/// E6: the Channel of the live Attempt in `slot`; `None` when no program runs (a Room whose Door
+/// never started, an Agent with no live Terminal). An entry of an earlier Attempt reads `pending`.
+fn channel_in(
+    channels: &HashMap<String, (String, Channel)>,
+    id: &str,
+    slot: Option<&Slot>,
+) -> Option<Channel> {
+    let slot = slot?;
+    let live = match slot {
+        Slot::Running(run) => !run.ended && !run.closing,
+        Slot::Starting { .. } | Slot::Resuming { .. } => true,
+        Slot::Closing => false,
+    };
+    live.then(|| match channels.get(id) {
+        Some((attempt, channel)) if attempt == slot.attempt() => *channel,
+        _ => Channel::Pending,
+    })
+}
+
+/// E6: `ROUNDUP_CHANNEL_DEADLINE_MS` when it is a whole number of milliseconds, else
+/// `CHANNEL_DEADLINE`.
+fn channel_deadline_from_env() -> Duration {
+    match std::env::var("ROUNDUP_CHANNEL_DEADLINE_MS") {
+        Ok(ms) => ms.parse().map(Duration::from_millis).unwrap_or_else(|_| {
+            eprintln!("agents: ROUNDUP_CHANNEL_DEADLINE_MS={ms:?} is not milliseconds; ignored");
+            CHANNEL_DEADLINE
+        }),
+        Err(_) => CHANNEL_DEADLINE,
     }
 }
 
@@ -960,8 +1360,12 @@ struct Run {
     closing: bool,
     ended: bool,
     adapter: ClaudeCode,
-    /// Typed into the Terminal at the first idle, then gone.
+    /// H12: sent as a Steer at the first `SessionStart`, then gone.
     prompt: Option<String>,
+    /// H11: the Steer written and awaiting its `UserPromptSubmit` Signal.
+    steer: Option<tokio::sync::oneshot::Sender<()>>,
+    /// H13: the Interrupt written and awaiting the title that acknowledges it.
+    interrupt: Option<tokio::sync::oneshot::Sender<()>>,
     /// The first prompt has been submitted, or a `rail.rename` came first: either way the name
     /// is settled and no prompt renames the node.
     named: bool,
@@ -969,21 +1373,6 @@ struct Run {
     /// A21: the effective working directory this launch runs in, after Worktree mapping; saved
     /// to `agents.db` alongside the conversation id the first Signal to name one carries.
     cwd: String,
-}
-
-/// Claude Code reads a prompt typed and submitted in one burst as a paste, so Enter follows after
-/// a pause, as in the spike (`spikes/hooks-state/drive.py`).
-const SUBMIT_DELAY: Duration = Duration::from_secs(1);
-
-async fn type_prompt(terminals: Arc<Terminals>, terminal_id: String, prompt: String) {
-    let typed = async {
-        terminals.write(&terminal_id, prompt.as_bytes()).await?;
-        tokio::time::sleep(SUBMIT_DELAY).await;
-        terminals.write(&terminal_id, b"\r").await
-    };
-    if let Err(err) = typed.await {
-        eprintln!("agents: could not type the prompt into terminal {terminal_id}: {err}");
-    }
 }
 
 /// `spawn` registers an Agent before its watcher starts, so the watcher always finds it.
@@ -1076,7 +1465,7 @@ impl Agents {
             }
         }
         Ok(Self {
-            shared: Arc::new(Shared {
+            shared: Arc::new_cyclic(|me| Shared {
                 git,
                 project_dir: dir.parent().unwrap_or(dir).to_owned(),
                 rail: Mutex::new(rail),
@@ -1086,10 +1475,87 @@ impl Agents {
                 terminals,
                 clock: Arc::new(now_ms),
                 opened: now_ms(),
+                decisions: decision::Decisions::new(
+                    None,
+                    Duration::from_secs(claude_code::PERMISSION_TIMEOUT_SECS),
+                ),
+                me: me.clone(),
+                steer_bound: STEER_BOUND,
+                interrupt_bound: INTERRUPT_BOUND,
+                channels: Mutex::new(HashMap::new()),
+                channel_deadline: channel_deadline_from_env(),
             }),
             dir: dir.to_owned(),
             launcher,
         })
+    }
+
+    /// H3, H4: answers need `proof`; the App holds it. Without one every `decision.answer` is
+    /// `FORBIDDEN`. Call it before the first call is made.
+    #[must_use]
+    pub fn with_proof(self, proof: Option<String>) -> Self {
+        self.configure(|shared| shared.decisions.set_proof(proof))
+    }
+
+    /// Change a setting before any call has shared the Agents: the only holder of `shared` is
+    /// `self`, plus its own `me`.
+    fn configure(mut self, set: impl FnOnce(&mut Shared)) -> Self {
+        let mut shared = Arc::into_inner(self.shared).expect("the Agents are not shared yet");
+        set(&mut shared);
+        self.shared = Arc::new_cyclic(|me| {
+            shared.me = me.clone();
+            shared
+        });
+        self
+    }
+
+    /// Stamp Statuses and time Ticks by `clock`, milliseconds since the Unix epoch, instead of
+    /// the system's. Call it before the first call is made.
+    #[must_use]
+    pub fn with_clock(self, clock: impl Fn() -> i64 + Send + Sync + 'static) -> Self {
+        self.configure(|shared| shared.clock = Arc::new(clock))
+    }
+
+    /// H11: wait `bound` instead of `STEER_BOUND` for a Steer's `UserPromptSubmit`. Call it
+    /// before the first call is made.
+    #[must_use]
+    pub fn with_steer_bound(self, bound: Duration) -> Self {
+        self.configure(|shared| shared.steer_bound = bound)
+    }
+
+    /// H13: wait `bound` instead of `INTERRUPT_BOUND` for an Interrupt's title. Call it before
+    /// the first call is made.
+    #[must_use]
+    pub fn with_interrupt_bound(self, bound: Duration) -> Self {
+        self.configure(|shared| shared.interrupt_bound = bound)
+    }
+
+    /// H11: Steer Agent `id` with `text`. The one function that writes a prompt to a Terminal;
+    /// `agent.prompt` and the mailbox series' in-process delivery both call it.
+    pub async fn prompt(&self, id: &str, text: &str) -> Result<(), PromptError> {
+        self.shared.prompt(id, text).await
+    }
+
+    /// H11, H13: the user, or a Door for an Agent in its Room, may Steer or Interrupt; any other
+    /// caller may not.
+    fn may_steer(&self, actor: &Actor, id: &str, verb: &str) -> Result<(), RpcError> {
+        let allowed = match actor.kind {
+            ActorKind::User => true,
+            ActorKind::Agent => self
+                .shared
+                .rail()
+                .node(id)
+                .is_ok_and(|node| node.parent.as_deref() == Some(actor.id.as_str())),
+            ActorKind::Ext => false,
+        };
+        if allowed {
+            Ok(())
+        } else {
+            Err(RpcError::forbidden(format!(
+                "{} may not {verb} agent {id}",
+                actor.id
+            )))
+        }
     }
 
     /// The Project folder: `.roundup/`'s parent, where its git repository (if any) lives.
@@ -1385,6 +1851,35 @@ impl Agents {
         self.shared.node(id)
     }
 
+    /// G3: how far the Agent's Worktree is from its Base. Reads only.
+    async fn worktree_state(&self, id: &str) -> Result<WorktreeState, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        tokio::task::spawn_blocking(move || git.state(&project, &worktree))
+            .await
+            .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))?
+    }
+
+    /// G4: land the Agent's branch on its Base, after the Project's `check` passes in the Worktree.
+    async fn land(&self, id: &str) -> Result<Landed, RpcError> {
+        let record = self.shared.node(id)?.worktree;
+        let Some(record) = record else {
+            return Err(RpcError::new(code::NOT_FOUND, format!("no_worktree: {id}")));
+        };
+        let check = self.shared.rail().get_worktrees()?.check;
+        let (git, project) = (self.shared.git.clone(), self.project_dir().to_owned());
+        let worktree = worktree::Worktree::from(&record);
+        let base =
+            tokio::task::spawn_blocking(move || git.land(&project, &worktree, check.as_deref()))
+                .await
+                .map_err(|err| RpcError::internal(format!("worktree_failed: {err}")))??;
+        Ok(Landed { base })
+    }
+
     /// When the Project's `worktrees` setting is on, make a Worktree for `id` (G2) and map `cwd`
     /// into it; `None` when the setting is off, so `run_agent` uses `cwd` unchanged. Any failure
     /// retains its ownership record when cleanup cannot safely remove the new Worktree.
@@ -1517,6 +2012,8 @@ impl Agents {
             ended: false,
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
+            steer: None,
+            interrupt: None,
             named,
             terminal_id,
             cwd: run_cwd,
@@ -1531,12 +2028,8 @@ impl Agents {
                 return Err(err);
             }
         };
-        for (terminal_id, prompt) in prompts {
-            tokio::spawn(type_prompt(
-                Arc::clone(&self.shared.terminals),
-                terminal_id,
-                prompt,
-            ));
+        for prompt in prompts {
+            self.shared.steer_first_prompt(id, attempt, prompt);
         }
         tokio::spawn(watch(
             Arc::clone(&self.shared),
@@ -1558,6 +2051,11 @@ impl Agents {
         resume: Option<&str>,
         attach: bool,
     ) -> Result<terminal::Spawned, RpcError> {
+        let role = match self.shared.rail().node(id)?.kind {
+            NodeKind::Room => Role::Door,
+            _ => Role::Agent,
+        };
+        let started = attempt.to_owned();
         // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
         let (launcher, dir, node, folder, attempt, resume) = (
             self.launcher.clone(),
@@ -1568,7 +2066,7 @@ impl Agents {
             resume.map(str::to_owned),
         );
         let argv = tokio::task::spawn_blocking(move || {
-            launcher.prepare(&dir, &node, &attempt, &folder, resume.as_deref())
+            launcher.prepare(&dir, &node, &attempt, &folder, resume.as_deref(), role)
         })
         .await
         .map_err(RpcError::internal)??;
@@ -1587,7 +2085,9 @@ impl Agents {
             self.shared.git.finish(self.project_dir(), &plan)?;
             self.shared.rail().clear_provisioning_owner(id)?;
         }
-        self.spawn_behind(id, cwd, Some(argv), attach).await
+        let spawned = self.spawn_behind(id, cwd, Some(argv), attach).await?;
+        self.shared.watch_channel(id, &started);
+        Ok(spawned)
     }
 
     /// Start `command` (the login shell when `None`) in a Terminal and, when `attach`, record it
@@ -1673,16 +2173,41 @@ fn now_ms() -> i64 {
 #[async_trait]
 impl Module for Agents {
     fn namespaces(&self) -> &'static [&'static str] {
-        &["agent", "rail", "project"]
+        &["agent", "rail", "project", "decision"]
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
         let shared = &self.shared;
         match method {
             "agent.spawn" => reply(&self.spawn(ctx, params(value)?).await?),
+            "agent.prompt" => {
+                let PromptParams { id, text } = params(value)?;
+                self.may_steer(&ctx.actor, &id, "Steer")?;
+                self.prompt(&id, &text).await?;
+                reply(&())
+            }
+            "agent.interrupt" => {
+                let NodeId { id } = params(value)?;
+                self.may_steer(&ctx.actor, &id, "Interrupt")?;
+                shared.interrupt(&id).await?;
+                reply(&())
+            }
             "agent.stop" => {
                 let NodeId { id } = params(value)?;
                 shared.stop(ctx.actor.clone(), &id).await?;
+                reply(&())
+            }
+            "agent.worktreeState" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.worktree_state(&id).await?)
+            }
+            "agent.land" => {
+                let NodeId { id } = params(value)?;
+                reply(&self.land(&id).await?)
+            }
+            "agent.discard" => {
+                let NodeId { id } = params(value)?;
+                shared.discard(ctx.actor.clone(), &id).await?;
                 reply(&())
             }
             "rail.startDoor" => {
@@ -1692,6 +2217,11 @@ impl Module for Agents {
             "agent.resume" => {
                 let NodeId { id } = params(value)?;
                 reply(&self.resume(ctx, &id).await?)
+            }
+            "agent.channelUp" => {
+                let NodeId { id } = params(value)?;
+                shared.channel_up(&ctx.actor, &id)?;
+                reply(&())
             }
             "agent.signal" => {
                 let SignalParams {
@@ -1711,6 +2241,20 @@ impl Module for Agents {
                     &attempt,
                     Observation::Signal(payload),
                 )?;
+                reply(&())
+            }
+            "agent.permission" => {
+                let PermissionParams { id, payload } = params(value)?;
+                reply(&shared.permission(ctx.actor.clone(), &id, payload).await?)
+            }
+            "agent.ask" => {
+                let ask: AskParams = params(value)?;
+                reply(&shared.ask(ctx.actor.clone(), ask).await?)
+            }
+            "decision.list" => reply(&shared.decisions.list()),
+            "decision.answer" => {
+                let AnswerParams { id, answer, proof } = params(value)?;
+                shared.answer(ctx.actor.clone(), &id, &answer, proof.as_deref())?;
                 reply(&())
             }
             "rail.tree" => reply(&shared.tree()?),
@@ -1811,6 +2355,12 @@ mod tests {
             terminals,
             clock,
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
+            me: std::sync::Weak::new(),
+            steer_bound: super::STEER_BOUND,
+            interrupt_bound: super::INTERRUPT_BOUND,
+            channels: Mutex::new(HashMap::new()),
+            channel_deadline: super::CHANNEL_DEADLINE,
         });
         (dir, bus, shared)
     }
@@ -1838,6 +2388,8 @@ mod tests {
                 ended: false,
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
+                steer: None,
+                interrupt: None,
                 named: false,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2016,13 +2568,15 @@ mod tests {
             ended: false,
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
+            steer: None,
+            interrupt: None,
             named,
             terminal_id: "1".into(),
             cwd: "/".into(),
         });
 
         drop(lock);
-        assert_eq!(prompts.unwrap(), Vec::new());
+        assert_eq!(prompts.unwrap(), Vec::<String>::new());
         // Neither lock was poisoned by the failed write: both can still be acquired.
         assert!(matches!(shared.runs().get(&id), Some(Slot::Running(_))));
         shared.rail().tree().unwrap();
@@ -2061,6 +2615,8 @@ mod tests {
             ended: false,
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
+            steer: None,
+            interrupt: None,
             named,
             terminal_id: "1".into(),
             cwd: "/".into(),
@@ -2133,6 +2689,8 @@ mod tests {
                             ended: false,
                             adapter: ClaudeCode::starting(|| 0),
                             prompt: None,
+                            steer: None,
+                            interrupt: None,
                             named,
                             terminal_id: id.clone(),
                             cwd: "/".into(),
@@ -2204,6 +2762,12 @@ mod tests {
             kill: Arc::new(FailingKill),
             clock: Arc::new(|| 0),
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
+            me: std::sync::Weak::new(),
+            steer_bound: super::STEER_BOUND,
+            interrupt_bound: super::INTERRUPT_BOUND,
+            channels: Mutex::new(HashMap::new()),
+            channel_deadline: super::CHANNEL_DEADLINE,
         })
     }
 
@@ -2224,6 +2788,8 @@ mod tests {
                 ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
+                steer: None,
+                interrupt: None,
                 named: true,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2263,6 +2829,8 @@ mod tests {
                 ended: false,
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
+                steer: None,
+                interrupt: None,
                 named: true,
                 terminal_id: "1".into(),
                 cwd: "/".into(),
@@ -2405,6 +2973,12 @@ mod tests {
             kill: Arc::new(FlakyKill(std::sync::atomic::AtomicBool::new(false))),
             clock: Arc::new(|| 0),
             opened: 0,
+            decisions: super::decision::Decisions::new(None, Duration::from_secs(4)),
+            me: std::sync::Weak::new(),
+            steer_bound: super::STEER_BOUND,
+            interrupt_bound: super::INTERRUPT_BOUND,
+            channels: Mutex::new(HashMap::new()),
+            channel_deadline: super::CHANNEL_DEADLINE,
         });
         (dir, shared)
     }
@@ -2523,5 +3097,75 @@ mod tests {
 
         assert_eq!(err.code, rpc::code::INTERNAL);
         assert!(began.elapsed() < super::KILL_WAIT_BOUND / 2);
+    }
+    /// H7(c): `elapsed_ms` after the hook began, on an injected clock and the 4 s `timeout` the
+    /// Decisions are built with, the hook's connection closes. Returns the events and the Kind.
+    async fn hook_closes_after(
+        elapsed_ms: i64,
+    ) -> (Vec<EventData>, Vec<contracts::decision::Decision>, Kind) {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let now = Arc::new(AtomicI64::new(1_000));
+        let clock = {
+            let now = Arc::clone(&now);
+            Arc::new(move || now.load(Ordering::SeqCst))
+        };
+        let (_dir, bus, shared) = shared_over_temp_dir(clock);
+        let id = running_agent(&shared, None);
+        let mut events = bus.subscribe();
+        let payload = json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                             "tool_input": {"command": "ls"}});
+        let hook = {
+            let (shared, id) = (Arc::clone(&shared), id.clone());
+            tokio::spawn(async move { shared.permission(Actor::daemon(), &id, payload).await })
+        };
+        while shared.decisions.list().is_empty() {
+            tokio::task::yield_now().await;
+        }
+
+        now.fetch_add(elapsed_ms, Ordering::SeqCst);
+        hook.abort();
+        let _ = hook.await;
+
+        let seen = std::iter::from_fn(|| events.try_recv().ok())
+            .map(|event| event.data)
+            .filter(|data| {
+                matches!(
+                    data,
+                    EventData::DecisionOpened(_) | EventData::DecisionCleared(_)
+                )
+            })
+            .collect();
+        let kind = match shared.runs().get(&id) {
+            Some(Slot::Running(run)) => run.adapter.status().unwrap().kind,
+            _ => panic!("the Agent is running"),
+        };
+        (seen, shared.decisions.list(), kind)
+    }
+
+    #[tokio::test]
+    async fn h7_a_close_at_the_hook_timeout_leaves_the_decision_open_and_unanswerable() {
+        let (seen, open, kind) = hook_closes_after(4_000).await;
+
+        assert_eq!(open.len(), 1);
+        assert!(!open[0].answerable);
+        assert_eq!(kind, Kind::NeedsYou);
+        assert_eq!(
+            seen.len(),
+            1,
+            "decision.opened is not repeated and nothing clears: {}",
+            seen.len()
+        );
+        assert!(matches!(seen[0], EventData::DecisionOpened(_)));
+    }
+
+    #[tokio::test]
+    async fn h7_a_close_before_the_hook_timeout_is_a_no_or_an_esc() {
+        let (seen, open, kind) = hook_closes_after(3_999).await;
+
+        assert!(open.is_empty());
+        assert_eq!(kind, Kind::Idle);
+        assert!(
+            matches!(&seen[1], EventData::DecisionCleared(c) if c.outcome == contracts::decision::Outcome::Terminal)
+        );
     }
 }

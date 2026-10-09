@@ -3,7 +3,7 @@ use std::process::{Output, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
-use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, pad, todo};
+use contracts::{Actor, ActorKind, IdentifyParams, Touch, Verb, message, pad, todo};
 use rmcp::ServiceExt;
 use rmcp::model::{CallToolRequestParams, CallToolResult, ProtocolVersion};
 use rmcp::service::{RoleClient, RunningService};
@@ -150,7 +150,7 @@ fn assert_exit_1_with_one_line_naming(output: &Output, socket: &Path) {
     assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
 }
 
-const M1_METHODS: [&str; 13] = [
+const M1_METHODS: [&str; 18] = [
     "todo.create",
     "todo.get",
     "todo.list",
@@ -164,6 +164,13 @@ const M1_METHODS: [&str; 13] = [
     "pad.append",
     "pad.setOwner",
     "pad.delete",
+    // B12
+    "message.send",
+    "message.get",
+    "message.list",
+    "message.pass",
+    // E2
+    "agent.context",
 ];
 
 #[tokio::test]
@@ -180,7 +187,7 @@ async fn m1_the_server_is_named_roundup() {
 }
 
 #[tokio::test]
-async fn m1_offers_one_tool_per_method_and_no_others() {
+async fn m1_offers_one_tool_per_method_and_ask_user_and_no_others() {
     let project = start_daemon();
     let shim = spawn_shim(&project.socket, "a1").await;
 
@@ -188,6 +195,8 @@ async fn m1_offers_one_tool_per_method_and_no_others() {
 
     let mut names: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
     let mut expected: Vec<_> = M1_METHODS.iter().map(|m| m.replace('.', "_")).collect();
+    // H14: `ask_user` is the one tool that is not a method's name.
+    expected.push("ask_user".into());
     names.sort();
     expected.sort();
     assert_eq!(names, expected);
@@ -241,12 +250,30 @@ async fn m1_input_schemas_are_the_contract_schemas() {
             derived(schemars::schema_for!(pad::SetOwnerParams)),
         ),
         ("pad_delete", derived(schemars::schema_for!(pad::PadName))),
+        (
+            "message_send",
+            derived(schemars::schema_for!(message::SendParams)),
+        ),
+        (
+            "message_get",
+            derived(schemars::schema_for!(message::MessageId)),
+        ),
+        (
+            "message_list",
+            derived(schemars::schema_for!(message::ListParams)),
+        ),
+        (
+            "message_pass",
+            derived(schemars::schema_for!(message::MessageId)),
+        ),
     ];
     for (name, contract_schema) in expected {
         assert_eq!(schema(name), contract_schema, "{name}");
     }
     assert_eq!(schema("todo_list"), json!({ "type": "object" }));
     assert_eq!(schema("pad_list"), json!({ "type": "object" }));
+    // E4: the shim fills the id, so the tool takes no input.
+    assert_eq!(schema("agent_context"), json!({ "type": "object" }));
 }
 
 #[tokio::test]
@@ -290,6 +317,41 @@ async fn m2_a_created_todo_is_a_touch_by_the_calling_agent() {
             .iter()
             .any(|t| t.verb == Verb::Wrote && t.actor == agent("a1"))
     );
+}
+
+#[tokio::test]
+async fn b12_a_call_is_made_as_the_agent_and_returns_the_daemons_result() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+
+    // `from` is never a parameter: a forged one is ignored.
+    let sent = shim
+        .call(
+            "message_send",
+            json!({"to": "you", "kind": "note", "body": "hi", "from": {"kind": "user", "id": "you"}}),
+        )
+        .await;
+
+    assert_eq!(sent.is_error, Some(false));
+    let message = text(&sent);
+    assert_eq!(message["id"], 1);
+    assert_eq!(message["from"]["id"], "a1");
+    assert_eq!(message["from"]["kind"], "agent");
+    assert_eq!(message["status"], "delivered");
+    assert_eq!(
+        text(&shim.call("message_get", json!({"id": 1})).await),
+        message
+    );
+    assert_eq!(
+        text(&shim.call("message_list", json!({})).await),
+        json!([message])
+    );
+    let other = spawn_shim(&project.socket, "a2").await;
+    let refused = other.call("message_get", json!({"id": 1})).await;
+    assert_eq!(refused.is_error, Some(true));
+    assert_eq!(text(&refused)["code"], rpc::code::FORBIDDEN);
+    let pass = shim.call("message_pass", json!({"id": 1})).await;
+    assert_eq!(text(&pass)["code"], rpc::code::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -523,7 +585,11 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let result = raw_tools_list(&socket, None).await;
 
     assert_matches_tools_list_schema(&result);
-    assert_eq!(result["tools"].as_array().unwrap().len(), M1_METHODS.len());
+    // The methods' tools and `ask_user` (H14).
+    assert_eq!(
+        result["tools"].as_array().unwrap().len(),
+        M1_METHODS.len() + 1
+    );
     assert_eq!(result["cacheScope"], "public", "{result}");
 }
 
@@ -559,4 +625,77 @@ async fn m3_the_call_after_the_daemon_goes_away_makes_the_shim_exit_nonzero() {
         .expect("the shim exited")
         .unwrap();
     assert!(!status.success());
+}
+
+/// A stand-in Daemon that answers `agent.ask` with `{"answer": "dogs"}` after `delay` and `null` to `daemon.identify`.
+fn asking_daemon(socket: &Path, delay: Duration) -> mpsc::UnboundedReceiver<Value> {
+    let listener = UnixListener::bind(socket).unwrap();
+    let (seen, requests) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    let result = match request["method"].as_str() {
+                        Some("agent.ask") => {
+                            tokio::time::sleep(delay).await;
+                            json!({ "answer": "dogs" })
+                        }
+                        _ => Value::Null,
+                    };
+                    let reply = json!({ "jsonrpc": "2.0", "id": request["id"], "result": result });
+                    let _ = seen.send(request);
+                    write_line(&mut write, &reply).await;
+                }
+            });
+        }
+    });
+    requests
+}
+
+/// The call outlasts the ten seconds every other tool call is bound by (the user may take minutes) and returns the answer's text, not JSON.
+#[tokio::test]
+async fn h14_ask_user_waits_past_the_call_bound_and_returns_the_answer_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let mut requests = asking_daemon(&socket, Duration::from_secs(11));
+    let shim = spawn_shim(&socket, "a1").await;
+
+    let result = shim
+        .call(
+            "ask_user",
+            json!({"question": "Cats or dogs?", "answers": ["cats", "dogs"]}),
+        )
+        .await;
+
+    assert_eq!(result.is_error, Some(false));
+    assert_eq!(result.content[0].as_text().unwrap().text, "dogs");
+    let sent = loop {
+        let request = requests.recv().await.unwrap();
+        if request["method"] == "agent.ask" {
+            break request;
+        }
+    };
+    assert_eq!(
+        sent["params"],
+        json!({"question": "Cats or dogs?", "answers": ["cats", "dogs"]})
+    );
+}
+
+#[tokio::test]
+async fn h14_ask_user_schema_is_the_contract_schema() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+
+    let tools = shim.client.list_all_tools().await.unwrap();
+
+    let tool = tools.iter().find(|t| t.name == "ask_user").unwrap();
+    assert_eq!(
+        Value::Object((*tool.input_schema).clone()),
+        serde_json::to_value(schemars::schema_for!(contracts::decision::AskParams)).unwrap()
+    );
 }

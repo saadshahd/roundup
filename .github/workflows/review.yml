@@ -1,17 +1,26 @@
 name: review
+run-name: "${{ inputs.pr && format('Review PR #{0}', inputs.pr) || format('Review {0}', github.event.workflow_run.head_branch) }}"
 
 # L24: one Reviewer run per Code PR head, once check passes on it. The Reviewer holds only a read token and answers in
 # a fixed schema; the post job publishes that answer as the verdict merge-ready trusts. It runs on Opus, since a
 # missed defect merges; Builders and the Retro run on Sonnet, whose misses the Reviewer or the user still sees.
 on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR needing review
+        required: true
+      head:
+        description: Expected PR head
+        required: true
   workflow_run:
-    workflows: [check]
+    workflows: [check, loop, visual]
     types: [completed]
 
-# A newer head of the same branch makes a running review stale.
+# Duplicate review dispatches queue; the shared PR Claim prevents duplicate model runs.
 concurrency:
-  group: review-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+  group: review-${{ inputs.pr || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,39 +34,40 @@ jobs:
   # Reads main's scripts and shared Builder prompt, never the PR's.
   due:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
+      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      actions: read
+      checks: read
       pull-requests: read
     outputs:
       pr: ${{ steps.due.outputs.pr }}
+      head: ${{ steps.due.outputs.head }}
       prompt: ${{ steps.due.outputs.prompt }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - id: due
         env:
           GH_TOKEN: ${{ github.token }}
           PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
-          HEAD: ${{ github.event.workflow_run.head_sha }}
+          HEAD: ${{ inputs.head || github.event.workflow_run.head_sha }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          PR: ${{ inputs.pr }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
         run: |
-          pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
-          [ -n "$pr" ] || { echo "no open PR at $HEAD"; exit 0; }
-          code=0
-          task=$(loop/runs.sh review-due "$pr" "$HEAD") || code=$?
-          case $code in
-            0) ;;
-            1) echo "$task"; exit 0 ;;
-            *) echo "$task" >&2; exit "$code" ;;
-          esac
-          printf 'Review %s\n' "$task" | loop/runs.sh prompt builder
-          echo "pr=$pr" >>"$GITHUB_OUTPUT"
+          pr="$PR"
+          if [ -z "$pr" ]; then
+            pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
+          fi
+          [ -n "$pr" ] || exit 0
+          python3 loop/dispatch.py start "$pr" review "$HEAD"
 
   review:
     needs: due
@@ -67,14 +77,18 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: read
+      actions: read
     outputs:
       answer: ${{ steps.claude.outputs.structured_output }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.due.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Install main's reviewer instructions
+        run: git show origin/main:loop/review-checkout.sh | bash
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -83,18 +97,31 @@ jobs:
           prompt: ${{ needs.due.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          allowed_bots: claude
+          allowed_bots: claude,github-actions
           claude_args: >-
             --model claude-opus-5-5
             --max-turns 60
             --allowedTools Bash,Read,Glob,Grep,Skill
             --json-schema '{"type":"object","properties":{"verdict":{"enum":["approve","reject"]},"findings":{"type":"string"}},"required":["verdict","findings"]}'
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: reviewer
           subject: ${{ needs.due.outputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          redact-percy: ${{ secrets.PERCY_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   post:
@@ -108,11 +135,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ needs.due.outputs.pr }}
-          HEAD: ${{ github.event.workflow_run.head_sha }}
+          HEAD: ${{ needs.due.outputs.head }}
           ANSWER: ${{ needs.review.outputs.answer }}
         run: printf '%s' "$ANSWER" | loop/runs.sh verdict "$PR" "$HEAD" "reviewer-$GITHUB_RUN_ID"

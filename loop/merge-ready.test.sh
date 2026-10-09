@@ -44,6 +44,10 @@ set -euo pipefail
 if [ "$*" = touches ]; then exec bash "$ROOT/loop/rules.sh" touches; fi
 [ "$*" = 'merge-ready 281' ]
 echo gates >>"$TRACE"
+if [ "$CASE" = transient ] && [ "$(grep -c '^gates$' "$TRACE")" -eq 1 ]; then
+  echo 'merge-ready: PR changed during merge-ready'
+  exit 1
+fi
 printf '%s\n' "$GATES_OUT"
 exit "$GATES_CODE"
 RULES
@@ -66,41 +70,30 @@ expect() {
     failures=$((failures + 1))
   fi
 }
-PR_PATH=.github/workflows/check.yml
-CASE=null AUTO_MERGE=null
-expect l78_null_skips_disarm 0 $'read\ngates\nstate=success'
-CASE=enabled AUTO_MERGE='{"enabledAt":"2026-10-04T00:00:00Z"}'
-expect l78_enabled_disarms_before_gates 0 $'read\ndisarm\ngates\nstate=success'
-CASE=read_error
-expect l78_read_error_fails_closed 1 $'read\nstate=failure' 'merge-ready: cannot read auto-merge on a loop PR'
-CASE=disarm_error
-expect l78_disarm_error_fails_closed 1 $'read\ndisarm\nstate=failure' 'merge-ready: cannot disarm auto-merge on a loop PR'
-for PR_PATH in loop/rules.sh .agents/builder.md AGENTS.md; do
+for PR_PATH in .github/workflows/check.yml loop/rules.sh .agents/builder.md AGENTS.md crates/rupd/src/main.rs; do
   CASE=enabled AUTO_MERGE='{"enabledAt":"2026-10-04T00:00:00Z"}'
-  expect "l78_enabled_disarms_${PR_PATH//[^A-Za-z]/_}" 0 $'read\ndisarm\ngates\nstate=success'
+  expect "l78_approved_changes_keep_auto_merge_${PR_PATH//[^A-Za-z]/_}" 0 $'gates\nstate=success'
 done
-CASE=outside PR_PATH=$'docs/perf.md\ncrates/rupd/src/main.rs'
-expect l78_other_paths_leave_auto_merge_alone 0 $'gates\nstate=success'
 
-# L79: the reasons only the user clears, as rules.sh prints them.
-loop='the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md'
-second='second reject: the user decides'
+CASE=transient PR_PATH=crates/rupd/src/main.rs
+expect l46_transient_gate_mutation_retries 0 $'gates\ngates\nstate=success'
+CASE=outside GATES_OUT='merge-ready: PR changed during merge-ready' GATES_CODE=1
+expect l46_repeated_mutation_is_bounded 0 $'gates\ngates\ngates\nstate=failure'
+GATES_OUT='ready head' GATES_CODE=0
+
+# L79: only a decision requiring the user raises a question.
 mac='a crates/desktop PR needs a macOS: line'
-asked_loop=$'<!-- needs-user -->\nmerge-ready waits on you:\n\n- It touches loop machinery: will you read it and merge it?'
+asked_mac=$'<!-- needs-user -->\nmerge-ready waits on you:\n\n- It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.'
 body_is() {
   if [ "$(cat "$BODY")" = "$1" ]; then echo "ok: $2"; else echo "FAIL: $2"; cat "$BODY"; failures=$((failures + 1)); fi
 }
 CASE=outside PR_PATH=crates/rupd/src/main.rs GATES_CODE=1
-GATES_OUT="merge-ready: check: missing or not successful on head head"$'\n'"$loop"
+GATES_OUT="merge-ready: check: missing or not successful on head head"$'\n'"$mac"
 expect l79_a_reason_on_a_later_line_labels_assigns_and_asks 0 $'gates\nstate=failure\nlabel\nassign\ncomment'
-body_is "$asked_loop" l79_the_comment_asks_the_reason_after_a_marker
+body_is "$asked_mac" l79_the_comment_asks_the_reason_after_a_marker
 ISSUE='{"labels":[{"name":"flag:needs-user"}],"assignees":[{"login":"owner"}]}'
-COMMENTS=$(jq -nc --arg b "$asked_loop" '[{id: 9, user: {login: "github-actions[bot]"}, body: $b}]')
+COMMENTS=$(jq -nc --arg b "$asked_mac" '[{id: 9, user: {login: "github-actions[bot]"}, body: $b}]')
 expect l79_a_repeat_changes_nothing 0 $'gates\nstate=failure'
-GATES_OUT="merge-ready: $second"$'\n'"$loop"$'\n'"$mac"
-COMMENTS=$(jq -nc --arg b "$asked_loop" '[{id: 5, user: {login: "someone"}, body: $b}], [{id: 9, user: {login: "github-actions[bot]"}, body: $b}]')
-expect l79_a_new_reason_edits_the_one_comment 0 $'gates\nstate=failure\nedit'
-body_is $'<!-- needs-user -->\nmerge-ready waits on you:\n\n- It touches loop machinery: will you read it and merge it?\n- Two rejects stand: will you fix it, merge it or close it?\n- It changes crates/desktop: did `just app` work on your Mac? If so, add a `macOS:` line to the body.' l79_the_comment_asks_every_reason
 GATES_OUT='ready head' GATES_CODE=0
 expect l79_no_reason_left_takes_the_label_and_the_assignee_off 0 $'gates\nstate=success\nunlabel\nunassign'
 GATES_OUT='merge-ready: check: missing or not successful on head head' GATES_CODE=1
@@ -110,12 +103,14 @@ expect l79_another_reason_touches_no_label_or_assignee 0 $'gates\nstate=failure'
 # L81: a draft or closed PR asks only why its Builder stopped.
 draft='merge-ready: PR is closed or draft'
 COMMENTS='[]' ISSUE='{"labels":[{"name":"flag:needs-user"}],"assignees":[{"login":"owner"}]}'
-GATES_OUT="$draft"$'\n'"$loop" GATES_CODE=1
+GATES_OUT="$draft"$'\n'"historical loop path prohibition" GATES_CODE=1
 expect l81_a_draft_touching_loop_machinery_asks_nothing_and_clears_the_label 0 $'gates\nstate=failure\nunlabel\nunassign'
 ISSUE='{"labels":[],"assignees":[]}'
-GATES_OUT="$draft"$'\n'"$second"
+GATES_OUT="$draft"$'\n'"historical second reject prohibition"
 expect l81_a_closed_pr_asks_nothing 0 $'gates\nstate=failure'
-GATES_OUT="$draft"$'\n'"the Builder stopped: needs a GLOSSARY term for Pin."$'\n'"$loop"
+GATES_OUT="$draft"$'\n'"the Builder stopped: needs a GLOSSARY term for Pin."$'\n'"historical loop path prohibition"
 expect l81_a_stopped_draft_labels_assigns_and_asks 0 $'gates\nstate=failure\nlabel\nassign\ncomment'
 body_is $'<!-- needs-user -->\nmerge-ready waits on you:\n\n- The Builder stopped (needs a GLOSSARY term for Pin): will you finish it, or close it and delete its branch to build it again?' l81_the_comment_asks_only_why_it_stopped
+GATES_OUT="$draft"$'\n'"the Builder stopped: the run ended without marking it ready, https://example.test/run."
+expect l88_interrupted_work_is_repaired_without_asking_the_user 0 $'gates\nstate=failure'
 [ "$failures" -eq 0 ]

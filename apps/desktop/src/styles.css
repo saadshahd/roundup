@@ -1,6 +1,4 @@
 :root {
-  --light: #86868b;
-  --lightest: #c7c7cc;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   font-family: var(--mono);
   font-size: var(--text-body);
@@ -17,6 +15,45 @@ body,
 
 p {
   margin: 0;
+}
+
+/* Click targets (docs/design-system.md, "Click targets"; U133): one rest, hover, pressed and focus look for every button, and the one focus ring every stylesheet defers to. */
+:focus-visible {
+  outline-width: 2px;
+  outline-style: solid;
+  outline-color: var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  box-sizing: border-box;
+  min-height: var(--space-5);
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled),
+.rail-row:hover {
+  background-color: var(--hover);
+}
+
+/* Takes effect at `pointerdown` and is instant: a press answers at once (U133). */
+button:active:not(:disabled),
+.rail-row:active {
+  background-color: var(--selected);
+  transition-duration: 0s;
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  color: var(--grey);
+  cursor: default;
 }
 
 .window {
@@ -67,6 +104,12 @@ p {
   overflow: auto;
 }
 
+/* Surfaces and depth (docs/design-system.md; U134): the Rail and the Shelf sit on `--sunken`, the pane and the Drawer on `--ground`. */
+.rail,
+.shelf {
+  background-color: var(--sunken);
+}
+
 /* Out of flow, so showing `complete` never shrinks, wraps or moves the title or any row; it covers the title's last characters on that line while it shows (QA F7). */
 .shelf .row-head {
   position: relative;
@@ -77,20 +120,18 @@ p {
   top: 0;
   right: 0;
   padding-left: 1ch;
-  background: var(--ground);
+  background: var(--sunken);
 }
 
 .centre {
-  background: var(--ground);
+  background-color: var(--ground);
 }
 
 .word {
-  all: unset;
   color: var(--grey);
-  cursor: pointer;
 }
 
-.word:hover {
+.word:hover:not(:disabled) {
   color: var(--text);
 }
 
@@ -100,14 +141,6 @@ p {
 
 .glyph[data-tone="grey"] {
   color: var(--grey);
-}
-
-.glyph[data-tone="light"] {
-  color: var(--light);
-}
-
-.glyph[data-tone="lightest"] {
-  color: var(--lightest);
 }
 
 .ink {
@@ -126,13 +159,21 @@ p {
   display: flex;
   flex-direction: column;
   width: min(560px, 70%, calc(100% - 252px));
-  padding: 16px 72px 16px 16px;
+  /* The close word sits in the top-right corner (top 8px, 24px high), so the content starts below it: 32px of top padding. */
+  padding-top: var(--space-6);
+  padding-right: var(--space-4);
+  padding-bottom: var(--space-4);
+  padding-left: var(--space-4);
   box-sizing: border-box;
   overflow: auto;
-  background: var(--ground);
+  background-color: var(--ground);
   border-left-width: 1px;
   border-left-style: solid;
-  border-left-color: var(--lightest);
+  border-left-color: var(--hairline);
+}
+
+.drawer[data-open="true"] {
+  box-shadow: var(--shadow-drawer);
 }
 
 .drawer > .close {
@@ -143,4 +184,22 @@ p {
 
 .header .ink {
   display: inline;
+}
+
+/* Settings (docs/design-system.md, "Surfaces and depth"; U135). Colour and contrast settings live in tokens.css; these two remove a look. */
+@media (prefers-reduced-transparency: reduce) {
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
 }

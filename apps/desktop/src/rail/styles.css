@@ -6,13 +6,13 @@
   gap: 16px;
   height: var(--rail-actions-height);
   box-sizing: border-box;
-  background: var(--ground);
+  background: var(--sunken);
 }
 
 .rail-row {
   min-height: 28px;
   padding-right: 8px;
-  cursor: default;
+  cursor: pointer;
   scroll-margin-bottom: var(--rail-actions-height);
 }
 
@@ -22,13 +22,6 @@
 
 .rail-row[data-selected="true"] {
   background: var(--selected);
-}
-
-.rail-row:focus {
-  outline-style: solid;
-  outline-width: 2px;
-  outline-color: var(--text);
-  outline-offset: -2px;
 }
 
 .rail-row .line {
@@ -91,20 +84,16 @@
   font: inherit;
   color: var(--text);
   background: var(--ground);
-  border: 1px solid var(--lightest);
+  border: 1px solid var(--hairline);
 }
 
 .spawn-prompt-field:hover {
-  background: var(--lightest);
+  background-color: var(--hover);
 }
 
 .spawn-prompt-field:active {
-  background: var(--light);
-}
-
-.spawn-prompt-field:focus {
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
+  background-color: var(--selected);
+  transition-duration: 0s;
 }
 
 .rail-tree {
@@ -118,7 +107,7 @@
   position: sticky;
   bottom: var(--rail-actions-height);
   z-index: 1;
-  background: var(--ground);
+  background: var(--sunken);
 }
 
 .rail-row {
@@ -185,20 +174,7 @@
 .rail-menu button {
   min-height: 28px;
   padding: 0 var(--space-2);
-  color: var(--text);
-  background: transparent;
-  border: 0;
   border-radius: var(--radius-row);
-  text-align: left;
-  cursor: pointer;
-}
-
-.rail-menu button:hover {
-  background: var(--hover);
-}
-
-.rail-menu button:active {
-  background: var(--selected);
 }
 
 .rail-menu-question {

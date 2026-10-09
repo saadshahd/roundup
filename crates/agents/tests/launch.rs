@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use agents::claude_code::Launcher;
+use agents::claude_code::{Launcher, Role};
 use rpc::code;
 use serde_json::{Value, json};
 
@@ -72,7 +72,12 @@ impl Setup {
     }
 
     fn prepare(&self, id: &str) -> Result<Vec<String>, rpc::RpcError> {
-        self.launcher().prepare(&self.dir, id, "1", &self.cwd, None)
+        self.prepare_as(id, Role::Agent)
+    }
+
+    fn prepare_as(&self, id: &str, role: Role) -> Result<Vec<String>, rpc::RpcError> {
+        self.launcher()
+            .prepare(&self.dir, id, "1", &self.cwd, None, role)
     }
 
     fn real(&self, path: &Path) -> String {
@@ -86,7 +91,7 @@ fn a4_the_argv_runs_claude_with_a_per_agent_settings_file() {
     let argv = s.prepare("7").unwrap();
     assert_eq!(argv[..2], ["fake-claude", "--settings"]);
     assert_eq!(argv[3], "--mcp-config");
-    assert_eq!(argv.len(), 5);
+    assert_eq!(argv.len(), 7);
     for file in [&argv[2], &argv[4]] {
         assert!(Path::new(file).starts_with(s.dir.canonicalize().unwrap()));
     }
@@ -149,23 +154,54 @@ fn a11_discarding_an_agent_deletes_both_of_its_files() {
     let s = setup();
     let argv = s.prepare("7").unwrap();
     Launcher::discard(&s.dir, "7").unwrap();
-    assert!(!Path::new(&argv[2]).exists() && !Path::new(&argv[4]).exists());
+    assert!(
+        ![&argv[2], &argv[4], &argv[6]]
+            .iter()
+            .any(|file| Path::new(file).exists())
+    );
 }
 
 #[test]
-fn a4_the_settings_hold_exactly_one_signal_command_per_state_event() {
+fn a4_the_settings_hold_one_command_per_state_event_and_two_at_start() {
     let s = setup();
     let mut settings = read(Path::new(&s.prepare("7").unwrap()[2]));
     settings.as_object_mut().unwrap().remove("permissions");
     assert!(s.rup.is_absolute() && s.rup.exists());
     let command = format!("ROUNDUP_ATTEMPT='1' '{}' signal '7'", s.rup.display());
-    let entry = json!([{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]);
+    let signal = json!({"type": "command", "command": command, "timeout": 5});
+    let entry = json!([{"hooks": [signal]}]);
+    // E3: `SessionStart` has a second command, `rup context`, beside the Signal.
+    let context = format!("'{}' context '7'", s.rup.display());
+    let at_start =
+        json!([{"hooks": [signal, {"type": "command", "command": context, "timeout": 5}]}]);
     let expected: serde_json::Map<String, Value> = EVENTS
         .iter()
-        .map(|event| ((*event).to_owned(), entry.clone()))
+        .filter(|event| **event != "PermissionRequest")
+        .map(|event| {
+            let hook = if **event == *"SessionStart" {
+                &at_start
+            } else {
+                &entry
+            };
+            ((*event).to_owned(), hook.clone())
+        })
         .collect();
     // The late Notification and the spurious SubagentStop are not among the events.
-    assert_eq!(settings, json!({ "hooks": expected }));
+    assert_eq!(settings["hooks"].as_object().unwrap().len(), EVENTS.len());
+    for (event, hook) in &expected {
+        assert_eq!(&settings["hooks"][event], hook, "{event}");
+    }
+}
+
+#[test]
+fn h9_the_permission_request_hook_runs_rup_permission_with_a_day_long_timeout() {
+    let s = setup();
+    let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    let command = format!("'{}' permission '7'", s.rup.display());
+    assert_eq!(
+        settings["hooks"]["PermissionRequest"],
+        json!([{"hooks": [{"type": "command", "command": command, "timeout": 86400}]}])
+    );
 }
 
 #[test]
@@ -212,7 +248,9 @@ fn a4_a_config_folder_that_does_not_exist_yet_is_created() {
     let s = setup();
     let config = s.root.path().join("config dir").join(".claude.json");
     let launcher = Launcher::new("fake-claude", config.clone(), s.rup.clone(), None);
-    launcher.prepare(&s.dir, "1", "1", &s.cwd, None).unwrap();
+    launcher
+        .prepare(&s.dir, "1", "1", &s.cwd, None, Role::Agent)
+        .unwrap();
     assert_eq!(
         read(&config)["projects"][&s.real(&s.cwd)]["hasTrustDialogAccepted"],
         true
@@ -224,7 +262,9 @@ fn a4_a_symlinked_cwd_is_trusted_under_its_resolved_path() {
     let s = setup();
     let link = s.cwd.parent().unwrap().join("link");
     std::os::unix::fs::symlink(&s.cwd, &link).unwrap();
-    s.launcher().prepare(&s.dir, "1", "1", &link, None).unwrap();
+    s.launcher()
+        .prepare(&s.dir, "1", "1", &link, None, Role::Agent)
+        .unwrap();
     let config = read(&s.claude_json);
     let keys: Vec<_> = config["projects"]
         .as_object()
@@ -330,7 +370,14 @@ fn a4_concurrent_spawns_each_get_their_cwd_trusted() {
                 gate.wait();
                 for (n, cwd) in mine.iter().enumerate() {
                     launcher
-                        .prepare(&dir, &(spawner * 10 + n).to_string(), "1", cwd, None)
+                        .prepare(
+                            &dir,
+                            &(spawner * 10 + n).to_string(),
+                            "1",
+                            cwd,
+                            None,
+                            Role::Agent,
+                        )
                         .unwrap();
                 }
             })
@@ -353,7 +400,7 @@ fn a4_only_a_cwd_inside_the_project_folder_is_trusted() {
     std::fs::create_dir(&elsewhere).unwrap();
     let err = s
         .launcher()
-        .prepare(&s.dir, "1", "1", &elsewhere, None)
+        .prepare(&s.dir, "1", "1", &elsewhere, None, Role::Agent)
         .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(!s.claude_json.exists());
@@ -379,7 +426,7 @@ fn a4_a_cwd_that_is_a_file_is_the_callers_error() {
     std::fs::write(&file, "").unwrap();
     let err = s
         .launcher()
-        .prepare(&s.dir, "1", "1", &file, None)
+        .prepare(&s.dir, "1", "1", &file, None, Role::Agent)
         .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(!s.claude_json.exists());
@@ -397,7 +444,14 @@ fn a4_a_relative_project_dir_still_gives_claude_an_absolute_settings_path() {
     let launcher = Launcher::new("fake-claude", root.path().join("claude.json"), rup, None);
 
     let argv = launcher
-        .prepare(dir.strip_prefix(&here).unwrap(), "1", "1", &cwd, None)
+        .prepare(
+            dir.strip_prefix(&here).unwrap(),
+            "1",
+            "1",
+            &cwd,
+            None,
+            Role::Agent,
+        )
         .unwrap();
 
     assert!(Path::new(&argv[2]).is_absolute(), "{}", argv[2]);
@@ -465,7 +519,7 @@ fn a4_trust_waits_while_claude_holds_its_config_lock() {
     let mut saving = read(&s.claude_json);
     let trusting = {
         let (launcher, dir, cwd) = (s.launcher(), s.dir.clone(), s.cwd.clone());
-        std::thread::spawn(move || launcher.prepare(&dir, "1", "1", &cwd, None))
+        std::thread::spawn(move || launcher.prepare(&dir, "1", "1", &cwd, None, Role::Agent))
     };
 
     // An observation window: while the lock is held, trust must not write.
@@ -508,7 +562,7 @@ fn a4_a_cwd_that_does_not_exist_is_the_callers_error() {
     let s = setup();
     let err = s
         .launcher()
-        .prepare(&s.dir, "1", "1", &s.cwd.join("missing"), None)
+        .prepare(&s.dir, "1", "1", &s.cwd.join("missing"), None, Role::Agent)
         .unwrap_err();
     assert_eq!(err.code, code::INVALID_PARAMS);
 }
@@ -612,7 +666,7 @@ fn a4_a_cwd_that_is_not_in_nfc_is_trusted_under_its_nfc_name() {
     std::fs::create_dir(&decomposed).unwrap();
 
     s.launcher()
-        .prepare(&s.dir, "1", "1", &decomposed, None)
+        .prepare(&s.dir, "1", "1", &decomposed, None, Role::Agent)
         .unwrap();
 
     let config = read(&s.claude_json);
@@ -633,13 +687,15 @@ fn a4_the_home_folder_is_refused_and_never_trusted() {
     );
 
     let err = launcher
-        .prepare(&s.dir, "1", "1", project, None)
+        .prepare(&s.dir, "1", "1", project, None, Role::Agent)
         .unwrap_err();
 
     assert_eq!(err.code, code::INVALID_PARAMS);
     assert!(!s.claude_json.exists());
     assert!(!s.dir.join("agents").exists());
-    launcher.prepare(&s.dir, "1", "1", &s.cwd, None).unwrap();
+    launcher
+        .prepare(&s.dir, "1", "1", &s.cwd, None, Role::Agent)
+        .unwrap();
 }
 
 #[test]
@@ -663,4 +719,88 @@ fn a4_a_symlink_planted_where_a_file_goes_is_replaced_not_written_through() {
     }
     assert!(read(&agents.join("1.settings.json"))["hooks"]["Stop"].is_array());
     assert!(read(&agents.join("1.mcp.json"))["mcpServers"]["roundup"].is_object());
+}
+
+fn brief(s: &Setup, id: &str, role: Role) -> String {
+    let argv = s.prepare_as(id, role).unwrap();
+    assert_eq!(argv[5], "--append-system-prompt-file");
+    assert_eq!(
+        Path::new(&argv[6]).file_name().unwrap(),
+        format!("{id}.brief.md").as_str()
+    );
+    std::fs::read_to_string(&argv[6]).unwrap()
+}
+
+#[test]
+fn e1_the_brief_names_the_agent_by_id_and_the_tools_and_holds_nothing_mutable() {
+    let s = setup();
+    let text = brief(&s, "7", Role::Agent);
+    assert!(text.contains("Your Agent id is 7."));
+    assert!(text.contains("supervises you"));
+    for tool in [
+        "todo_create",
+        "todo_update",
+        "pad_write",
+        "pad_append",
+        "message_send",
+        "ask_user",
+        "agent_context",
+    ] {
+        assert!(text.contains(&format!("`{tool}`")), "{tool}");
+    }
+    assert!(!text.contains("agent_spawn"), "agent_spawn");
+    assert!(!text.contains(&s.cwd.to_string_lossy().into_owned()));
+}
+
+#[test]
+fn e1_the_flag_adds_to_the_argv_and_leaves_the_users_files_alone() {
+    let s = setup();
+    std::fs::write(s.cwd.join("CLAUDE.md"), "mine").unwrap();
+    let argv = s.prepare("7").unwrap();
+    assert_eq!(argv[..5], s.prepare("7").unwrap()[..5]);
+    assert_eq!(
+        std::fs::read_to_string(s.cwd.join("CLAUDE.md")).unwrap(),
+        "mine"
+    );
+    assert!(!s.cwd.join(".claude").exists());
+}
+
+#[test]
+fn b24_only_a_door_brief_carries_the_role_guidance() {
+    let s = setup();
+    let door = brief(&s, "7", Role::Door);
+    let agent = brief(&s, "8", Role::Agent);
+    assert!(door.contains("coordinating Door"));
+    assert!(door.contains("ask in this Terminal"));
+    assert!(!agent.contains("Door"));
+    assert!(!agent.contains("Your role"));
+}
+
+#[test]
+fn e1_preparing_the_same_id_and_role_twice_writes_the_same_text() {
+    let s = setup();
+    assert_eq!(brief(&s, "7", Role::Door), brief(&s, "7", Role::Door));
+}
+
+#[test]
+fn e3_the_signal_stays_first_and_the_context_command_follows_with_five_seconds() {
+    let s = setup();
+    let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    let at_start = settings["hooks"]["SessionStart"][0]["hooks"]
+        .as_array()
+        .unwrap();
+    assert_eq!(at_start.len(), 2);
+    assert!(
+        at_start[0]["command"]
+            .as_str()
+            .unwrap()
+            .contains(" signal '7'")
+    );
+    assert_eq!(at_start[1]["timeout"], 5);
+    assert!(
+        at_start[1]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with(" context '7'")
+    );
 }

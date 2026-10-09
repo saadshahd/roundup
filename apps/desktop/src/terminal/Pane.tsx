@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, Show, untrack } from "solid-js";
+import { DecisionCard } from "../decisions/DecisionCard";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
 import { doorStateOf, doorStateText } from "../rail/doorState";
@@ -147,6 +148,40 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
   onCleanup(() => pane?.removeEventListener("keydown", onKeyDown, true));
 
+  const decision = createMemo(() => connected.decisions.of(selected()?.id ?? null));
+  let card: HTMLElement | undefined;
+  let focusInCard = false;
+
+  // The Card is the one thing the user types into besides the Terminal, so its removal hands the keyboard back, but only if it held it.
+  createEffect(on(() => decision()?.id, (id, previous) => {
+    if (previous === undefined || id === previous) return;
+
+    const held = focusInCard;
+
+    focusInCard = false;
+
+    const current = terminalId();
+
+    if (held && current !== null) screens.emulatorFor(current).focus();
+  }));
+
+  const focusTerminal = () => {
+    const current = terminalId();
+
+    if (current !== null) screens.emulatorFor(current).focus();
+  };
+
+  let watched: ResizeObserver | undefined;
+
+  // A Card appearing, growing or going changes the Terminal's room without a window resize.
+  const watch = (body: HTMLElement) => {
+    if (typeof ResizeObserver === "undefined") return;
+
+    watched = new ResizeObserver(refitNextFrame);
+    watched.observe(body);
+    onCleanup(() => watched?.disconnect());
+  };
+
   window.addEventListener("resize", onWindowResize);
   onCleanup(() => {
     window.removeEventListener("resize", onWindowResize);
@@ -161,23 +196,49 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
       pane = element;
       element.addEventListener("keydown", onKeyDown, true);
     }}>
-      <div class="pane-body">
+      <Show when={connected.decisions.listFailure()}>
+        {(message) => (
+          <div class="decision-list-failure">
+            <ErrorLine message={message()} />
+            <button type="button" class="word" onClick={() => connected.decisions.retryList()}>retry</button>
+          </div>
+        )}
+      </Show>
+      <Show when={decision()}>
+        {(open) => (
+          <DecisionCard
+              decision={open()}
+              name={selected()?.name ?? ""}
+              focusTerminal={focusTerminal}
+              ref={(element) => { card = element; }}
+              onFocusIn={() => { focusInCard = true; }}
+              onFocusOut={(leave) => {
+                if (leave.relatedTarget instanceof Node && !card?.contains(leave.relatedTarget)) focusInCard = false;
+                else if (leave.relatedTarget === null) queueMicrotask(() => { if (card?.isConnected && !card.contains(document.activeElement)) focusInCard = false; });
+              }}
+            />
+        )}
+      </Show>
+      <div class="pane-body" ref={watch}>
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
           <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>
             <div class="pane-empty pane-door">
               <p class="light">{rail.roomCreating() ? "creating Room…" : "no Room yet"}</p>
-              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} onClick={() => void rail.createRoom()}>
+              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} aria-disabled={rail.roomCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createRoom()}>
                 <Icon name="plus" /> start a Room
               </button>
             </div>
           </Show>
         </Show>
+        <Show when={selected()?.kind !== "room" && selected() !== null && terminalId() === null && notice() === null}>
+          <p class="pane-empty light">no output kept from an earlier run</p>
+        </Show>
         <Show when={doorState()}>
           {(state) => (
             <div class="pane-empty pane-door">
               <p class="light">{doorStateText(state())}</p>
-              <button class="word pane-action" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
+              <button class="word pane-action" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} aria-disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.startDoor(selected()!.id)}>
                 <Icon name="right" />
                 {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
               </button>

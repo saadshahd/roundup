@@ -43,11 +43,17 @@ Starting an exited Agent's next Attempt in its saved conversation.
 **Worktree**:
 The git worktree roundup makes for one Agent when the Project's `worktrees` setting is on: its own directory, branch and working directory (`docs/worktrees.md`).
 
+**Worktree state**:
+How far an Agent's Worktree is from its Base: `ahead` and `behind` in commits, and `dirty` when it has changes outside `.roundup/` (`agent.worktreeState`).
+
 **Base**:
 The branch checked out in the Project when the Agent spawned; the Agent's branch starts there.
 
 **Landing**:
-Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base.
+Rebasing an Agent's branch onto its Base, running the Project's check, then fast-forwarding the Base (`agent.land`, which returns `Landed`: the Base's new commit).
+
+**Discard**:
+Deliberately dropping an Agent with its Worktree and branch whatever their state (`agent.discard`); `rail.remove` refuses instead when work would be lost.
 
 ### The App
 
@@ -147,6 +153,9 @@ The user typing into an Agent directly; meanwhile no other Actor sends it anythi
 **Brief**:
 The text roundup gives an Agent at start about itself, its Home, its peers and its open Todos (`docs/awareness.md`).
 
+**Context**:
+What `agent.context` returns for one Agent: its own Status, its parent, whom to ask (a Door's id, or the user's), its peers and its open Todos. An Agent's Brief at start (`agent.brief`) says the same in words.
+
 **Channel**:
 Whether one Agent's `roundup` MCP server (`rup mcp <id>`) has reported to the Daemon: `pending`, `up` or `missing`. Not the vendor's own channels feature.
 
@@ -172,14 +181,20 @@ A sender→receiver pair with a delivery value: `auto | ask-first | drop`.
 A Message waiting on an ask-first Route, the end of a Takeover, or the user's answer to an escalated question.
 
 **Reason**:
-The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone` or `not accepted` (dropped).
+The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone`, `not accepted` or `passed` (dropped).
+
+**Hop**:
+One Message of a bubbling question: sent to a Door, then to the Doors of the Rooms above it, nearest first, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
+
+**Landing**:
+The Message to the user that ends a bubbling question: `held` with the reason `escalated`, never `delivered` until the user answers it.
 
 **Card**:
 Anything the user sees in the app (a permission request, a question, an Inbox Message, a status, a summary); it has a kind.
 _Avoid_: popup
 
 **Decision**:
-The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it.
+The kind of Card that blocks an Agent on a live hook or tool call; only the user answers it. An Agent's `ask_user` call is one, answered with one of its listed answers (outcome `answered`).
 
 **Actor**:
 The user, an Agent, an Extension or the Daemon (as `rupd`) making a call.
@@ -194,6 +209,9 @@ The append-only log of Touches.
 
 **Daemon**:
 `rupd`, the local process everything else is a client of.
+
+**Proof**:
+The random secret the App gives its attached Daemon on stdin and the webview reads through `daemon_proof`; `decision.answer` needs it, so only the user can answer a Decision (H4, H18).
 
 **Extension**:
 A directory with a manifest and one module.
@@ -217,8 +235,11 @@ A screen the Design critic runs that no Builder's prompt lists.
 
 ### The loop
 
+**Work Issue**:
+A GitHub Issue labelled `loop:work` that holds a scoped outcome, acceptance references, immutable Key, priority and native dependencies. Its intake label authorizes execution; its delivery evidence determines completion (L34).
+
 **Builder**:
-The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a Work row, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
+The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a GitHub work Issue, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
 
 **Code PR**:
 A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scenarios:` line (L46).
@@ -227,19 +248,23 @@ A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scen
 What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `rust-toolchain.toml`, `tsconfig.json`, `.oxlintrc.json`, `.fallowrc.json`, `.cargo/` and `tools/` (L46).
 
 **Loop machinery**:
-`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching `.github/` waits for the user's merge (L24, L46).
+`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching it requires independent review and the required gates (L24, L46).
 
 **Claim**:
-The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23).
+The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, created atomically for one Builder. The owner records its run and initial head. Completion releases only its own owner and an unchanged branch without an open PR; reconciliation recovers a cloud owner after its Builder ends, and the local controller recovers a local owner (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
 
 **Ledger**:
-One row per agent run (role, subject, model, turns, tokens, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads.
+One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.
+
+**Trail**:
+A work Issue's record of its runs: one comment per cloud build or fix run, posted by the run's completion job even after a crash, plus the run's `Changed:` entry before it commits. Build and fix tasks read its last six entries; review tasks never do (L92).
+_Avoid_: handoff
 
 **Status issue**:
-The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it each hour and posts it as a comment at 08:03 UTC (L80).
+The one open issue labelled `loop:status`, pinned and assigned to the user: what merged, the tokens per merged product PR, the PRs waiting on the user, the PRs stuck and what to watch. `status.yml` rewrites it every five minutes and on run events, and posts it as a comment at 08:03 UTC (L80).
 
 **Retro**:
-One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); the user merges it.
+One run, after every 20 merged PRs, that reads the Ledger and the rejects and opens one PR cutting what does not pay (L27); it passes independent review and the required checks.
 
 **Percy build**:
 Percy's Chromium render of every harness seed for one PR head, made by the `percy` job (L36); merge-ready needs it green on a PR touching `apps/desktop/src/` (L46). Its images are not Snapshots.

@@ -1,5 +1,6 @@
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { EventData } from "@contracts/EventData";
+import type { Decision } from "@contracts/decision/Decision";
 import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { Pad } from "@contracts/pad/Pad";
@@ -18,7 +19,7 @@ const NOT_FOUND = -32001;
 
 const KINDS: Kind[] = ["error", "needs-you", "blocked", "working", "idle", "done"];
 
-export const SEEDS = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped"] as const;
+export const SEEDS = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped", "decisions", "earlier-run"] as const;
 
 export type SeedName = (typeof SEEDS)[number];
 
@@ -287,12 +288,30 @@ export const seedApp = (name: SeedName, now: number): Controls => {
 
   const nodes = name === "first-run" || name === "empty-project"
     ? []
-    : name === "door-stopped"
+    : name === "earlier-run"
+      ? [agent("earlier-agent", "done", "finished", { name: "earlier agent", terminal_id: null, status: statusAt(now, "done", "finished", 0) })]
+      : name === "door-stopped"
       ? [door("first-room", "done", "finished", { name: "first room", status: statusAt(now, "done", "finished", 0) })]
       : tree;
 
   const controls = installDaemon(app, nodes, now, name === "tree-40");
   app.opened.project = name === "first-run" ? null : PROJECT;
+
+  if (name === "decisions") {
+    const open = new Map<string, Decision>([
+      ["d-1", { id: "d-1", agent: "agent-1", tool: "Bash", args: JSON.stringify({ command: "rm -rf build && cargo build --release" }), opened_at: now, answerable: true }],
+      ["d-2", { id: "d-2", agent: "agent-2", tool: "ask_user", args: JSON.stringify({ question: "keep v1 routes?", answers: ["keep", "drop"] }), opened_at: now, answerable: true }],
+      ["d-3", { id: "d-3", agent: "agent-3", tool: "AskUserQuestion", args: "{}", opened_at: now, answerable: false }],
+    ]);
+
+    app.handlers["decision.list"] = () => [...open.values()];
+    app.handlers["decision.answer"] = ({ id }) => {
+      open.delete(id);
+      controls.emit({ actor: USER, name: "decision.cleared", data: { id, outcome: "answered" } });
+
+      return null;
+    };
+  }
 
   if (name === "daemon-exits") afterFirstLoad(app, () => app.exitDaemon({ code: 1 }));
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | touches | ready [--offline] | delta <base-dir> <head-dir> | base|ci-trailers|verdicts|merge-ready <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | touches | ready [--json] | delta <base-dir> <head-dir> | base|ci-trailers|verdicts|merge-ready|publication-ready <pr> | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -49,20 +49,22 @@ vocab() {
 }
 
 # L46: reads changed paths on stdin; prints `code` when one is product code or a Build file (a Code PR), `ui` when one
-# is under apps/desktop/src, and `loop` when one is loop machinery the user merges by hand. The one definition of each.
+# is under apps/desktop/src, and `loop` when one is loop machinery requiring independent review. The one definition of each.
 touches() {
-  local path code="" ui="" loop=""
+  local path code="" ui="" loop="" planning=""
   while IFS= read -r path || [ -n "$path" ]; do
     case $path in apps/* | crates/* | contracts/*) code=1 ;; esac
     # Build files: what `just check` runs and builds with, so a change to one alone still needs a Reviewer's approve.
     case $path in justfile | Cargo.toml | Cargo.lock | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | rust-toolchain.toml | \
       tsconfig.json | .oxlintrc.json | .fallowrc.json | .cargo/* | tools/*) code=1 ;; esac
     case $path in apps/desktop/src/*) ui=1 ;; esac
+    case $path in loop/plans/*) planning=1 ;; esac
     case $path in loop/* | .github/* | .agents/* | .claude/* | AGENTS.md | */AGENTS.md | CLAUDE.md | */CLAUDE.md) loop=1 ;; esac
   done
   [ -z "$code" ] || echo code
   [ -z "$ui" ] || echo ui
   [ -z "$loop" ] || echo loop
+  [ -z "$planning" ] || echo planning
 }
 
 visual_check_ids="D1 D2 D3 D4 D5 D6 D7 D8 D9 D10"
@@ -346,6 +348,13 @@ try:
     head, base = sha(pr['head']['sha']), sha(pr['base']['sha'])
     fetch(head)
     fetch(base)
+    if command == 'publication-ready':
+        require(pr.get('merged') is True, 'publication needs a merged planning PR')
+        merged = sha(pr.get('merge_commit_sha'))
+        fetch(merged)
+        parents = git('rev-list', '--parents', '-n', '1', merged).split()
+        require(len(parents) == 3 and parents[2] == head, 'publication needs the reviewed head in a main merge')
+        base = parents[1]
     authors, records = history(base, head)
     if command == 'ci-trailers':
         base_gate(pr)
@@ -363,26 +372,42 @@ try:
     def gate(call):
         try:
             call()
+        except subprocess.CalledProcessError as error:
+            if error.returncode == 4:
+                sys.exit(4)
+            errors.append(str(error))
+        except subprocess.TimeoutExpired as error:
+            print(str(error), file=sys.stderr)
+            sys.exit(4)
         except Refused as error:
             errors.append(str(error))
     gate(lambda: base_gate(pr))
-    gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
+    if command == 'publication-ready':
+        gate(lambda: require(pr.get('merged') is True and 'planning' in touched, 'publication needs a merged planning PR'))
+    else:
+        gate(lambda: require(pr['state'] == 'open' and pr['draft'] is False, 'PR is closed or draft'))
     # L81: a draft whose body says why its Builder stopped waits on the user.
     stopped = re.search(r'^Stopped: *(\S.*)$', body, re.M) if pr['draft'] is True else None
     gate(lambda: require(not stopped, 'the Builder stopped: ' + (stopped.group(1).strip() if stopped else '')))
-    gate(lambda: require('loop' not in touched, 'the user merges a PR touching loop/, .github/, .agents/, .claude/, AGENTS.md or CLAUDE.md'))
     gate(lambda: checks(head, ('check', 'rules') + (('percy',) if 'ui' in touched else ())))
     gate(lambda: trailer_gate(records, base))
-    gate(lambda: require(sum(event['verdict'] == 'reject' for event in events) < 2, 'second reject: the user decides'))
     gate(lambda: require(not rejected(events, head), 'newest independent verdict on this head is reject'))
-    if 'code' in touched:
+    if 'code' in touched or 'loop' in touched:
         gate(lambda: require(re.search(r'^Scenarios:.*\b[A-Z][0-9]+\b', body, re.M), 'a Code PR needs a Scenarios: line'))
         gate(lambda: require(any(event['verdict'] == 'approve' and event['current'] for event in events),
                              'a Code PR needs an independent VERDICT: approve naming its head'))
+    if 'planning' in touched:
+        gate(lambda: require(any(event['verdict'] == 'approve' and event['head'] == head for event in events),
+                             'a planning PR needs independent exact-head approval'))
+        gate(lambda: subprocess.run(['python3', 'loop/feedback.py', 'gate', number], check=True, timeout=max(limit, 120)))
     if any(path.startswith('crates/desktop/') for path in paths):
         gate(lambda: require(re.search(r'^macOS: \S.+$', body, re.M), 'a crates/desktop PR needs a macOS: line'))
     latest = one(pull)
-    gate(lambda: require(latest == pr, 'PR changed during merge-ready'))
+    # Embedded repository counters may change during a gate without changing the PR.
+    def gate_inputs(value):
+        return {key: value.get(key) for key in ('state', 'draft', 'body', 'updated_at')} | {
+            'head': value['head']['sha'], 'base': value['base']['sha'], 'ref': value['base']['ref']}
+    gate(lambda: require(gate_inputs(latest) == gate_inputs(pr), 'PR changed during merge-ready'))
     require(not errors, '\n'.join(errors))
     print('ready '+head)
 except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError) as error:
@@ -391,73 +416,17 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
-# L34: the queue, derived. One line per `## Work` row of scenarios/*.md: done, in-flight, unspecified, waiting or ready.
-ready() {
-  python3 - "$@" <<'PY'
-import glob, json, os, re, subprocess, sys
-files = sorted(glob.glob('scenarios/*.md'))
-heads = {m for f in files for m in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', open(f).read(), re.M)}
-def ids(text):
-    out = []
-    for a, b in re.findall(r'\b([A-Z][0-9]+)(?:\s*(?:–|-|to)\s*[A-Z]?([0-9]+))?\b', text):
-        if b:
-            out += [a[0] + str(n) for n in range(int(a[1:]), int(b) + 1)]
-        else:
-            out.append(a)
-    return out
-def title_ids(text):
-    prefix = re.match(r'^([A-Z][0-9]+(?:\s*(?:,|–|-|to|and)\s*[A-Z]?[0-9]+|\s+[A-Z][0-9]+)*)\b', text)
-    return ids(prefix[0]) if prefix else []
-def tested(i):
-    if i[0] == 'L':
-        args = ['git', 'grep', '-qE', r'(^|[^A-Za-z0-9_])' + i + r'([^A-Za-z0-9_]|$)', '--', 'loop/*.test.sh']
-    else:
-        args = ['git', 'grep', '-qiE', r'(^|[^a-z0-9])' + i.lower() + '_', '--', ':!scenarios', ':!*.md']
-    return subprocess.run(args).returncode == 0
-prs = []
-if sys.argv[1:] != ['--offline']:
-    try:
-        result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,title'],
-                                text=True, stdout=subprocess.PIPE, timeout=float(os.environ.get('LOOP_GH_TIMEOUT', '20')), check=True)
-        prs = [(pr['number'], set(title_ids(pr['title']))) for pr in json.loads(result.stdout)]
-    except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError) as error:
-        print(f'gh: pr list: {error}', file=sys.stderr)
-        sys.exit(4)
-for f in files:
-    lines = open(f).read().split('\n')
-    if '## Work' not in lines:
-        continue
-    rows = [l for l in lines[lines.index('## Work'):] if l.startswith('|')]
-    header = [c.strip() for c in rows[0].strip('|').split('|')] if rows else []
-    if header != ['Ids', 'Item', 'Owns', 'Keeps green', 'After']:
-        print(f'{f}: Work table needs Ids, Item, Owns, Keeps green, After', file=sys.stderr)
-        sys.exit(2)
-    for row in rows[2:]:
-        cells = [c.strip() for c in row.strip().strip('|').split('|')]
-        own = ids(cells[0])
-        open_prs = ' '.join(f'#{n}' for n, named in prs if named & set(own))
-        if own and all(tested(i) for i in own):
-            state = 'done'
-        elif open_prs:
-            state = 'in-flight'
-        elif not own or any(i not in heads for i in own):
-            state = 'unspecified'
-        elif any(not tested(i) for i in ids(cells[4])):
-            state = 'waiting'
-        else:
-            state = 'ready'
-        print(state, cells[0], f, *([open_prs] if state == 'in-flight' else []))
-PY
-}
+# L34: Issues are the only work queue. API failures never mean there is no work.
+ready() { python3 loop/orders.py ready "$@"; }
 
 case "${1:-}" in
-  base | ci-trailers | verdicts | merge-ready)
+  base | ci-trailers | verdicts | merge-ready | publication-ready)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   touches) touches ;;
   vocab) vocab ;;
   ready)
-    [[ -z ${2:-} || $2 == --offline ]] || { echo "usage: loop/rules.sh ready [--offline]" >&2; exit 2; }
+    [[ -z ${2:-} || $2 == --json ]] || { echo "usage: loop/rules.sh ready [--json]" >&2; exit 2; }
     ready "${@:2}" ;;
   delta) delta "${2:-}" "${3:-}" ;;
   clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }

@@ -12,6 +12,12 @@ git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U7 HEAD:refs/heads/build/U8
 cp "$root/loop/status.sh" "$root/loop/lib.sh" "$dir/loop/"
+cat >"$dir/loop/rules.sh" <<'RULES'
+#!/usr/bin/env bash
+[ ! -e "$FIXTURES/orders-fail" ] || exit 4
+cat "$FIXTURES/orders"
+RULES
+chmod +x "$dir/loop/rules.sh"
 cat >"$dir/loop/runs.sh" <<'RUNS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -37,11 +43,13 @@ filter=.
 args=("$@")
 for i in "${!args[@]}"; do [ "${args[$i]}" != --jq ] || filter=${args[$((i + 1))]}; done
 case "$*" in
+  'api repos/{owner}/{repo}/pulls?state=closed&per_page=100 --paginate --jq '*) jq -r "${@: -1}" "$FIXTURES/closed" ;;
   'issue list --state open --label loop:status --json number') cat "$FIXTURES/issues" ;;
   'pr list --state merged --search merged:>='*' --limit 1000 --json mergedAt') cat "$FIXTURES/merged" ;;
   'pr list --state open --limit 200 --json '*) cat "$FIXTURES/open" ;;
   'api repos/{owner}/{repo}/commits/'*'/status --jq '*) sha=${2#repos/\{owner\}/\{repo\}/commits/}; jq -r "$filter" "$FIXTURES/status-${sha%/status}" ;;
   'run list --workflow check.yml --branch main --event push --status completed --limit 1 '*) cat "$FIXTURES/main" ;;
+  'run view '*' --json jobs --jq '*) cat "$FIXTURES/linux-jobs" 2>/dev/null | jq -r "$filter" || true ;;
   'run list --workflow '*'.yml --limit 100 '*) cat "$FIXTURES/runs-${4%.yml}" 2>/dev/null || echo '[]' ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
@@ -59,10 +67,12 @@ row() { grep "^| $1 |" "$FIXTURES/out" | sed "s/^| $1 | //; s/ |\$//"; }
 fresh() {
   rm -rf "${FIXTURES:?}"/*
   : >"$FIXTURES/trace"
+  echo '[]' >"$FIXTURES/orders"
+  echo '[]' >"$FIXTURES/closed"
   : >"$FIXTURES/builders"
   echo '[]' >"$FIXTURES/merged"
   echo '[]' >"$FIXTURES/open"
-  echo '[{"conclusion":"success","headSha":"0123456789abcdef"}]' >"$FIXTURES/main"
+  echo '[{"conclusion":"success","headSha":"0123456789abcdef","databaseId":5}]' >"$FIXTURES/main"
 }
 # pr <number> <title> <updatedAt> [draft] [labels] [merge-ready state] [head]: one open PR, appended to the fixture.
 pr() {
@@ -138,12 +148,28 @@ holds 'L80 blocked holds each ready PR merge-ready fails that nothing changed fo
 fresh
 pr 30 'U5 building' 2026-10-09T11:00:00Z true '' FAILURE build/U5
 echo U7 >"$FIXTURES/builders"
-echo '[{"conclusion":"failure","headSha":"abcdef0123456789"}]' >"$FIXTURES/main"
+echo '[{"conclusion":"failure","headSha":"abcdef0123456789","databaseId":6}]' >"$FIXTURES/main"
 echo '[{"workflowName":"build","createdAt":"2026-10-09T10:00:00Z","url":"u/1","conclusion":"failure"},{"workflowName":"build","createdAt":"2026-10-09T11:00:00Z","url":"u/2","conclusion":"timed_out"},{"workflowName":"build","createdAt":"2026-10-09T11:30:00Z","url":"u/3","conclusion":"cancelled"},{"workflowName":"build","createdAt":"2026-10-08T11:00:00Z","url":"u/4","conclusion":"failure"},{"workflowName":"build","createdAt":"2026-10-09T11:40:00Z","url":"u/5","conclusion":"success"}]' >"$FIXTURES/runs-build"
 echo '[{"workflowName":"review","createdAt":"2026-10-09T09:00:00Z","url":"r/1","conclusion":"startup_failure"}]' >"$FIXTURES/runs-review"
 check 'L80 page reads main, Claims and failed runs' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 watch names a red main, a Claim with no PR or Builder, and failed agent runs of 24 hours' test "$(row Watch)" = \
   'main is red: check failure on abcdef0<br>build/U8: no open PR and no Builder; delete it to build its row again<br>build: 2 failed in 24 h, latest u/2<br>review: 1 failed in 24 h, latest r/1'
+# L84: a failed linux job of main's push run is named; a green one, or a failed macOS job alone, is not.
+echo '{"jobs":[{"name":"rust","conclusion":"success"},{"name":"linux","conclusion":"failure"}]}' >"$FIXTURES/linux-jobs"
+check 'L84 page reads the push run jobs' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L84 watch says Linux just check failed on main' bash -c 'grep -q "Linux check failed: just check on ubuntu-latest at abcdef0; Builders run there" "$FIXTURES/out"'
+echo '{"jobs":[{"name":"rust","conclusion":"failure"},{"name":"linux","conclusion":"success"}]}' >"$FIXTURES/linux-jobs"
+check 'L84 page with a green linux job' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L84 a green linux job raises no Linux warning' bash -c '! grep -q "Linux check failed" "$FIXTURES/out"'
+rm "$FIXTURES/linux-jobs"
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U8",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
+check 'L80 a merged branch is not an orphan' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 completed work raises no branch warning' bash -c '! grep -q "build/U8: no open PR" "$FIXTURES/out"'
+jq '.[0].head.sha = "older"' "$FIXTURES/closed" >"$FIXTURES/changed"
+mv "$FIXTURES/changed" "$FIXTURES/closed"
+check 'L80 an older merge cannot hide a new orphan' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 a changed unowned head remains visible' grep -q 'build/U8: no open PR' "$FIXTURES/out"
+echo '[]' >"$FIXTURES/closed"
 touch "$FIXTURES/builders-fail"
 check 'L80 a failed Builder list exits 4, never a Claim with no Builder' 4 bash -c 'loop/status.sh page </dev/null'
 rm "$FIXTURES/builders-fail"
@@ -152,5 +178,30 @@ check 'L80 a failed ls-remote exits 4' 4 bash -c 'loop/status.sh page </dev/null
 git remote set-url origin "$dir/origin.git"
 touch "$FIXTURES/gh-fail"
 check 'L80 a page gh failure exits 4' 4 bash -c 'loop/status.sh page </dev/null'
+
+# An owner remains visible even if GitHub deleted its merged build branch.
+fresh
+git push -q origin HEAD:refs/heads/loop-row/U99
+check 'L80 an owner-only orphan is visible' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 Status names ownership waiting for recovery' grep -q 'build/U99: Claim owner without a Builder' "$FIXTURES/out"
+git push -q origin --delete refs/heads/loop-row/U99
+
+# L87 a live Codex Claim has an expiring local record and a readable Status row.
+fresh
+export CODEX_STATUS="$(jq -nc --argjson now "$LOOP_NOW" '{ids:"U8",slug:"U8",state:"running",started:$now,deadline:($now+7200)}')"
+check 'L87 a local Builder appears on Status' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L87 its live Claim is not called abandoned' bash -c '! grep -q "build/U8: no open PR" "$FIXTURES/out"'
+holds 'L87 Status names the row and run deadline' grep -q '| Codex | U8: running; started' "$FIXTURES/out"
+export CODEX_STATUS="$(jq '.deadline = 1' <<<"$CODEX_STATUS")"
+check 'L87 a stale local record expires' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L87 an expired record cannot hide an orphan' grep -q 'build/U8: no open PR' "$FIXTURES/out"
+unset CODEX_STATUS
+
+fresh
+echo '[{"issue":381,"state":"ready"},{"issue":380,"state":"waiting"},{"issue":362,"state":"done"}]' >"$FIXTURES/orders"
+check 'L80 Status counts live work Issues without reopening delivered work' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L80 the Issue queue is visible' grep -q '^| Work Issues | 1 ready<br>1 waiting |$' "$FIXTURES/out"
+touch "$FIXTURES/orders-fail"
+check 'L80 unavailable Issue data fails instead of reporting an empty queue' 4 bash -c 'loop/status.sh page </dev/null'
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

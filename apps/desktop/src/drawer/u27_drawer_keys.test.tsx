@@ -172,7 +172,7 @@ describe("u28 Esc closes", () => {
 });
 
 describe("u27 hairline edge", () => {
-  it("u27_the_open_drawer_has_a_one_pixel_lightest_left_edge", () => {
+  it("u27_the_open_drawer_has_a_one_pixel_hairline_left_edge", () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     const drawer = mountDrawer();
@@ -181,6 +181,6 @@ describe("u27 hairline edge", () => {
     const seen = [edge.borderLeftWidth, edge.borderLeftStyle, edge.borderLeftColor];
     sheet.remove();
 
-    expect(seen).toEqual(["1px", "solid", "var(--lightest)"]);
+    expect(seen).toEqual(["1px", "solid", "var(--hairline)"]);
   });
 });

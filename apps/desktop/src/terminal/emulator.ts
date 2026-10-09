@@ -1,4 +1,5 @@
 import { DEFAULT_FONT_SIZE } from "./fontSize";
+import { terminalTheme } from "./theme";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -71,6 +72,7 @@ export const xtermOptions: ITerminalOptions = {
   fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: DEFAULT_FONT_SIZE,
   scrollback: SCROLLBACK_LINES,
+  theme: terminalTheme,
 };
 
 /** What the keystroke run (`scenarios/perf.md` K1 to K3) watches: each chunk the emulator has parsed, each render, and which renderer drew. A build without the run passes none. */

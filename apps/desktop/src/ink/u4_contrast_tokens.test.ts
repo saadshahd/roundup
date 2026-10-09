@@ -23,11 +23,13 @@ describe("u4 stylesheet text-colour allowlist", () => {
     const sheets = allStylesheets();
 
     expect(Object.keys(sheets).sort()).toEqual([
+      "../decisions/styles.css",
       "../pads/styles.css",
       "../rail/attentionChip.styles.css",
       "../rail/styles.css",
       "../styles.css",
       "../terminal/styles.css",
+      "../thread/styles.css",
       "../todos/rowButton.styles.css",
       "../tokens.css",
       "./styles.css",
@@ -55,9 +57,9 @@ describe("u4 stylesheet text-colour allowlist", () => {
   it("u4_the_word_hover_colour_is_text", () => {
     const styles = allStylesheets()["../styles.css"]!;
     const tokens = tokensFrom(allStylesheets()["../tokens.css"]!, styles);
-    const hoverRule = rulesOf(styles).find((rule) => rule.selector === ".word:hover");
+    const hoverRule = rulesOf(styles).find((rule) => rule.selector === ".word:hover:not(:disabled)");
 
-    if (!hoverRule) throw new Error("no .word:hover rule in styles.css");
+    if (!hoverRule) throw new Error("no .word:hover:not(:disabled) rule in styles.css");
 
     const colour = /(?:^|[\s;])color:\s*([^;]+);/.exec(hoverRule.body)?.[1];
 

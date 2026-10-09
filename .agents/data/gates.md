@@ -4,7 +4,7 @@ Data for review runs. Rule numbers are `AGENTS.md`'s.
 
 ## Merge
 
-GitHub auto-merge merges a PR once `check`, `rules` and `merge-ready` pass on its head. `loop/rules.sh merge-ready <pr>` (L46) passes only when `check` and `rules`, and `percy` for `apps/desktop/src`, are green on that exact head; every authored commit carries `Author-Agent`; fewer than two rejects stand; every PR has a `VERDICT: approve` naming its head, or a head that adds only clean merges of `main` (L54); and a Code PR has a `Scenarios:` line. A second reject goes to the user, and so do a PR touching `.github/` and a PR whose two fix runs are spent (L82).
+GitHub auto-merge merges a PR once `check`, `rules` and `merge-ready` pass on its head. `loop/rules.sh merge-ready <pr>` (L46) passes only when `check` and `rules`, and `percy` for `apps/desktop/src`, are green on that exact head; every authored commit carries `Author-Agent`; every PR has a `VERDICT: approve` naming its head, or a head that adds only clean merges of `main` (L54); and Code or Loop PRs have a `Scenarios:` line. Loop changes use the same independent review and required checks. Earlier rejects do not veto a corrected, approved head; exhausted repair attempts remain visible engineering work on Status (L88).
 
 ## Verdicts
 

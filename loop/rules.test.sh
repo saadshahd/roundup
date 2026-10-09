@@ -42,6 +42,18 @@ pipefail_everywhere() {
 }
 expect pass 'L82 every workflow runs its steps under bash -eo pipefail' pipefail_everywhere
 
+# L84
+actions="$(dirname "$script")/../.github/actions"
+job_runner() { awk -v job="$2" '$0 ~ "^  "job":$" {f=1; next} f && /^  [a-z-]+:$/ {f=0} f && /runs-on:/ {print $2; exit}' "$1"; }
+runs_on() { [ "$(job_runner "$workflows/$1.yml" "$2")" = "$3" ]; }
+expect pass 'L84 build runs on ubuntu-latest' runs_on build-row build ubuntu-latest
+expect pass 'L84 fix runs on ubuntu-latest' runs_on build fix ubuntu-latest
+expect pass 'L84 check on a PR stays on macos-latest' runs_on check rust macos-latest
+expect pass 'L84 each push to main runs just check on ubuntu-latest' bash -c "runs_on() { $(declare -f job_runner); job_runner \"\$@\"; }; [ \"\$(runs_on '$workflows/check.yml' linux)\" = ubuntu-latest ] && grep -q 'github.event_name == .push.' '$workflows/check.yml' && grep -q 'run: just check\$' '$workflows/check.yml'"
+expect pass 'L84 no Linux green merges alone' bash -c "! grep -E 'needs: \\[.*linux' '$workflows/check.yml'"
+expect pass 'L84 setup installs Tauri packages on Linux and coreutils on macOS' bash -c "for p in libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev; do grep -q \"\$p\" '$actions/setup/action.yml' || exit 1; done; grep -q 'brew install coreutils' '$actions/setup/action.yml'"
+expect pass 'L84 the Rust cache is keyed by the runner OS' grep -q 'shared-key: check-${{ runner.os }}' "$actions/setup/action.yml"
+
 # vocab
 new_repo
 expect pass "L3 vocab: clean" rules vocab
@@ -217,7 +229,7 @@ def git(*args):
 head = d.get('head') or git('rev-parse', 'work')
 base = git('rev-parse', 'main')
 pr = {'head': {'sha': head}, 'base': {'ref': d.get('base', 'main'), 'sha': base},
-      'state': 'open', 'draft': d.get('draft', False), 'body': d.get('body', 'Scenarios: L46\n')}
+      'state': d.get('state', 'open'), 'merged': d.get('merged', False), 'merge_commit_sha': d.get('merge_commit_sha'), 'draft': d.get('draft', False), 'body': d.get('body', 'Scenarios: L46\n')}
 if '/pulls/' in route and route.endswith('/files?per_page=100'):
     files = []
     for name in git('diff', '--name-only', '--no-renames', base+'...'+head).splitlines():
@@ -228,6 +240,8 @@ elif '/pulls/' in route:
     Path(os.environ['GATE_DATA']).write_text(json.dumps(d))
     if d.get('change_head') and d['reads'] > 1:
         pr['head']['sha'] = '0'*40
+    if d['reads'] > 1:
+        pr.update(d.get('change_pr', {}))
     out = [pr]
 elif '/issues/' in route:
     out = d.get('comments', [[{'id': 1, 'created_at': '2026-10-03T00:00:00Z', 'user': {'login': 'github-actions[bot]'},
@@ -408,8 +422,7 @@ ready_at 'L46 an approve of the fix clears the reject of its parent'
 gate_quiet; gate_say reject "$(git rev-parse HEAD)"; gate_say approve "$rejected"
 expect pass 'L46 an approve of an ancestor cannot clear a reject on the head' gate_error_contains 'on this head is reject' gate merge-ready 12
 gate_quiet; gate_say reject "$rejected"; gate_say reject "$(git rev-parse HEAD)"; gate_say approve "$(git rev-parse HEAD)"
-expect_exit 1 'L46 a second reject blocks even after an approve' gate merge-ready 12
-expect pass 'L46 a second reject names the user' gate_error_contains 'second reject: the user decides' gate merge-ready 12
+ready_at 'L46 historical rejects do not veto a corrected approved head'
 gate_quiet; gate_say reject "$rejected" builder; gate_say reject "$rejected" builder; gate_say approve "$(git rev-parse HEAD)"
 ready_at 'L46 author verdicts count for nothing'
 gate_quiet; gate_say reject "$rejected"; gate_say reject "$rejected" builder; gate_say approve "$(git rev-parse HEAD)"
@@ -421,10 +434,13 @@ expect_exit 2 'L46 verdicts needs a number' gate verdicts
 gate_repo; git reset -q --hard main; echo prose >docs/notes.md; commit docs 'Author-Agent: builder'; gate_quiet
 ready_at 'L46 a docs PR needs no verdict'
 echo 'more' >loop/x.sh; commit loop 'Author-Agent: builder'
-expect_exit 1 'L46 a loop PR waits for the user' gate merge-ready 12
-expect pass 'L46 a loop PR names the user' gate_error_contains 'the user merges' gate merge-ready 12
+expect_exit 1 'L46 a loop PR requires independent approval' gate merge-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+ready_at 'L46 an approved loop PR can merge'
 gate_repo; git reset -q --hard main; mkdir -p docs/sub; echo x >docs/sub/AGENTS.md; commit agents 'Author-Agent: builder'; gate_quiet
-expect_exit 1 'L46 a nested AGENTS.md waits for the user' gate merge-ready 12
+expect_exit 1 'L46 nested instructions require independent approval' gate merge-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+ready_at 'L46 independently approved nested instructions can merge'
 gate_repo; git reset -q --hard main; echo prose >docs/notes.md; commit docs; gate_quiet
 expect_exit 1 'L46 a docs PR still needs Author-Agent' gate merge-ready 12
 
@@ -467,6 +483,33 @@ expect fail 'L81 a draft without a Stopped line is not stopped' gate_error_conta
 gate_set '.draft=false | .body="Scenarios: L46\nStopped: needs a GLOSSARY term for Pin\n"'
 ready_at 'L81 a ready PR with an old Stopped line is ready'
 
+# L90 uses the same L46 gate for publication, with merged instead of open state.
+# The feedback controller's revision observer is independently exercised in feedback.test.py.
+gate_repo
+mkdir -p loop/plans
+printf '{}\n' >loop/plans/goal.json
+printf 'import os, sys\nsys.exit(int(os.environ.get("FEEDBACK_GATE_EXIT", "0")))\n' >loop/feedback.py
+commit plan 'Author-Agent: planner'
+expect_output 'loop planning' 'L90 plans are loop changes with exact-head review' touches 'loop/plans/goal.json\n'
+ready_at 'L90 an approved current planning head passes the shared gate'
+merged=$(git commit-tree 'HEAD^{tree}' -p main -p HEAD -m 'Merge planning PR')
+gate_set --arg merged "$merged" '.state="closed" | .merged=true | .merge_commit_sha=$merged'
+expect_exit 0 'L90 reviewed merged plans can publish' gate publication-ready 12
+gate_quiet
+expect_exit 1 'L90 unreviewed merged plans cannot publish' gate publication-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+gate_set '.checks=[{check_runs:[]}]'
+expect_exit 1 'L90 merged plans without CI cannot publish' gate publication-ready 12
+gate_set 'del(.checks)'
+FEEDBACK_GATE_EXIT=1 expect_exit 1 'L90 stale feedback cannot publish' gate publication-ready 12
+FEEDBACK_GATE_EXIT=4 expect_exit 4 'L90 feedback API failures stay failures' gate publication-ready 12
+gate_set '.state="open" | .merged=false'
+expect_exit 1 'L90 open plans cannot publish' gate publication-ready 12
+approved=$(git rev-parse HEAD)
+git checkout -q main; echo change >other.txt; commit main 'Author-Agent: another'
+git checkout -q work; git merge -q --no-ff main -m 'Merge main'
+expect pass 'L90 a clean main merge needs another exact-head review' gate_error_contains 'planning PR needs independent exact-head' gate merge-ready 12
+
 # L46 merge-ready: checks, base and the pinned head.
 gate_repo
 gate_set '.checks=[{"check_runs":[]}]'
@@ -492,6 +535,12 @@ for command in ci-trailers verdicts merge-ready; do
   expect_exit 4 "L46 $command propagates gh failure" gate "$command" 12
 done
 
+gate_repo; gate_set '.change_pr={head_repository_counter: 10}'
+ready_at 'L46 unrelated repository metadata cannot stale the gate'
+for field in 'draft:true' 'body:"Scenarios: L99"' 'state:"closed"' 'updated_at:"later"'; do
+  gate_repo; gate_set ".change_pr={$field}"
+  expect_exit 1 'L46 relevant PR mutations fail closed' gate merge-ready 12
+done
 gate_repo
 gate_set '.change_head=true'
 expect_exit 1 'L46 head changing during the gate fails' gate merge-ready 12
@@ -516,95 +565,6 @@ expect fail 'L46 trusted checkout initially lacks PR objects' git cat-file -e "$
 expect_output "ready $pr_head" 'L46 fetches missing PR objects as data' gate merge-ready 12
 expect_output main 'L46 leaves the trusted branch checked out' git branch --show-current
 
-ready_repo() {
-  new_repo
-  mkdir -p scenarios apps
-  printf '%s\n' '**U1 one.** a' '**U2 two.** b' '**U3 three.** c' '' '## Work' '' \
-    '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' \
-    '| U1 | first | `a` | — | — |' '| U2 | second | `b` | — | after U3 |' '| U3 | third | `c` | — | — |' \
-    '| U9 | unwritten | — | — | — |' '| U1, U3 | both | — | — | — |' >scenarios/ui.md
-  echo 'test("u1_works", () => {});' >apps/u1.test.ts
-  commit x
-  # A fake `gh pr list` printing gh-prs, failing on GH_FAIL and hanging on GH_HANG.
-  mkdir -p .git/ready-bin
-  printf '#!/bin/sh\n[ -z "${GH_FAIL:-}" ] || exit 1\n[ -z "${GH_HANG:-}" ] || exec sleep 5\ncat "$PWD/.git/gh-prs"\n' >.git/ready-bin/gh
-  chmod +x .git/ready-bin/gh
-  echo '[]' >.git/gh-prs
-  export PATH="$PWD/.git/ready-bin:$PATH"
-}
-ready() { loop/rules.sh ready "$@"; }
-
-ready_repo
-expect_output "done U1 scenarios/ui.md
-waiting U2 scenarios/ui.md
-ready U3 scenarios/ui.md
-unspecified U9 scenarios/ui.md
-ready U1, U3 scenarios/ui.md" 'L34 ready prints each Work row with its state' ready
-
-ready_repo
-echo 'test("u3_works", () => {});' >apps/u3.test.ts; commit x
-expect_output "done U1 scenarios/ui.md
-ready U2 scenarios/ui.md
-done U3 scenarios/ui.md
-unspecified U9 scenarios/ui.md
-done U1, U3 scenarios/ui.md" 'L34 a done After frees the row' ready
-
-ready_repo
-printf '%s\n' '**L7 x.** a' '## Work' '| Ids | Item | Owns | Keeps green | After |' '|---|---|---|---|---|' '| L7 | x | — | — | — |' '| U4–U5 | y | — | — | — |' '**U4 a.** x' '**U5 b.** y' >scenarios/loop.md
-printf 'echo L7\n' >loop/x.test.sh; echo 'fn u4_a() {} fn u5_b() {}' >crates/u.rs; commit x
-expect_output "done L7 scenarios/loop.md
-done U4–U5 scenarios/loop.md" 'L34 L ids read loop tests; a range needs every id' bash -c 'loop/rules.sh ready | grep loop.md'
-
-ready_repo
-printf '%s\n' '## Work' '| Ids | Item |' '|---|---|' '| U1 | x |' >scenarios/bad.md; commit x
-expect_exit 2 'L34 a Work table missing a column exits 2' ready
-
-ready_repo
-echo '[{"number":301,"title":"U3 and U9: third"},{"number":302,"title":"U31 elsewhere"},{"number":303,"title":"U1 again"}]' >.git/gh-prs
-expect_output "done U1 scenarios/ui.md
-waiting U2 scenarios/ui.md
-in-flight U3 scenarios/ui.md #301
-in-flight U9 scenarios/ui.md #301
-in-flight U1, U3 scenarios/ui.md #301 #303" 'L34 an open PR naming a row id makes it in-flight after done; every naming PR is listed' ready
-
-ready_repo
-expect_output "done U1 scenarios/ui.md
-waiting U2 scenarios/ui.md
-ready U3 scenarios/ui.md
-unspecified U9 scenarios/ui.md
-ready U1, U3 scenarios/ui.md" 'L34 no open PR leaves every state' ready
-
-ready_repo
-echo '[{"number":301,"title":"U2: waits for the U3 row"},{"number":302,"title":"Investigate U3 readiness"}]' >.git/gh-prs
-expect_output "done U1 scenarios/ui.md
-in-flight U2 scenarios/ui.md #301
-ready U3 scenarios/ui.md
-unspecified U9 scenarios/ui.md
-ready U1, U3 scenarios/ui.md" 'L34 dependency mentions in titles never reserve prerequisite work' ready
-
-ready_repo
-echo '[{"number":301,"title":"U2–U3, U9: after U1"}]' >.git/gh-prs
-expect_output "done U1 scenarios/ui.md
-in-flight U2 scenarios/ui.md #301
-in-flight U3 scenarios/ui.md #301
-in-flight U9 scenarios/ui.md #301
-in-flight U1, U3 scenarios/ui.md #301" 'L34 leading grouped ranges reserve every owned id' ready
-
-ready_repo
-expect_exit 4 'L34 gh failure exits 4' env GH_FAIL=1 loop/rules.sh ready
-expect pass 'L34 gh failure names gh' gate_error_contains gh env GH_FAIL=1 loop/rules.sh ready
-expect pass 'L34 gh slower than LOOP_GH_TIMEOUT names gh' gate_error_contains gh env GH_HANG=1 LOOP_GH_TIMEOUT=0.2 loop/rules.sh ready
-expect pass 'L34 a fractional LOOP_GH_TIMEOUT is honoured' env LOOP_GH_TIMEOUT=0.5 loop/rules.sh ready
-mkdir .git/no-gh-bin
-for tool in bash dirname python3 git; do ln -s "$(command -v "$tool")" .git/no-gh-bin/; done
-expect_exit 4 'L34 gh missing exits 4' env PATH="$PWD/.git/no-gh-bin" loop/rules.sh ready
-
-ready_repo
-echo '[{"number":301,"title":"U3"}]' >.git/gh-prs
-expect_output "done U1 scenarios/ui.md
-waiting U2 scenarios/ui.md
-ready U3 scenarios/ui.md
-unspecified U9 scenarios/ui.md
-ready U1, U3 scenarios/ui.md" 'L34 --offline skips gh and keeps the four states' env GH_FAIL=1 loop/rules.sh ready --offline
+# L34 Issue queue behavior is exercised by loop/orders.test.py.
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

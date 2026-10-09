@@ -2,7 +2,7 @@
 export const Reopen = (props: { onReopen: () => void; busy: boolean }) => (
   <>
     {"   "}
-    <button class="word" disabled={props.busy} onClick={props.onReopen}>
+    <button class="word" disabled={props.busy} aria-disabled={props.busy ? true : undefined} onClick={props.onReopen}>
       reopen
     </button>
   </>

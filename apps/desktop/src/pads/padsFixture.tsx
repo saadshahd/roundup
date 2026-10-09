@@ -52,8 +52,8 @@ export const deferred = <T,>(): Deferred<T> => {
   return { promise, resolve, reject };
 };
 
-/** The Shelf and the Drawer over a fake Daemon whose Pads are `state.pads`; `state.history` answers `provenance.history`. */
-export const openShelf = async (pads: Pad[]) => {
+/** The Shelf and the Drawer over a fake Daemon whose Pads are `state.pads`, with `AGENT` off the Rail unless `onRail`; `state.history` answers `provenance.history`. */
+export const openShelf = async (pads: Pad[], onRail = false) => {
   const history: Touch[] = [];
   const state: PadStore = { pads, history };
   currentPads = state;
@@ -61,7 +61,8 @@ export const openShelf = async (pads: Pad[]) => {
   app.handlers["rail.tree"] = () => [
     {
       id: AGENT.id,
-      kind: "agent",
+      // U58 lists a Pad under its Agent once that Agent is on the Rail. Off it, `AGENT` stays a named owner as a Terminal node, which `nameOf` reads and the Shelf's filter does not take for an Agent.
+      kind: onRail ? "agent" : "terminal",
       name: AGENT_NAME,
       parent: null,
       order: 0,
@@ -70,6 +71,7 @@ export const openShelf = async (pads: Pad[]) => {
       terminal_id: null,
       worktree: null,
       can_resume: false,
+      channel: null,
     },
   ];
   Object.assign(app.handlers, padHandlers(state, () => {}));
