@@ -574,6 +574,19 @@ class Lifecycle(unittest.TestCase):
         f.reconcile()
         self.assertIn((('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=355'), None), self.hub.writes)
 
+    def test_l90_spend_timeout_leaves_no_claim_or_dispatch(self):
+        original = self.hub.run
+        def timeout(*args, **kwargs):
+            if args[:3] == ('bash', 'loop/retro.sh', 'spent'):
+                self.assertEqual(kwargs['timeout'], 600)
+                raise subprocess.TimeoutExpired(args, kwargs['timeout'])
+            return original(*args, **kwargs)
+        with patch.object(f.d, 'run', side_effect=timeout):
+            for operation in (lambda: f.start(355), f.reconcile):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    operation()
+                self.assertEqual(self.hub.writes, [])
+
     def test_l90_spend_cap_does_not_create_a_dispatch_chain(self):
         os.environ['LOOP_DAILY_TOKENS'] = '0'
         f.reconcile()
