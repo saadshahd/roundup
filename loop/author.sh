@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# L2/L88: stamp authored commits in a disposable Builder checkout before the model runs.
+# L2, L23: stamp authored commits in a disposable Builder checkout before the model runs.
 set -euo pipefail
 [[ ${1:-} =~ ^[A-Za-z0-9_.-]+$ ]] || { echo 'expected an Author-Agent id' >&2; exit 2; }
 : "${RUNNER_TEMP:?requires a disposable runner directory}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""L23, L24, L46, L81: what GitHub Actions leaves to roundup around Builder runs: which Issues to build, how a run
+"""L23, L24, L46, L79, L81, L82: what GitHub Actions leaves to roundup around Builder runs: which Issues to build, how a run
 ended, when a PR gets a fix run, how a review run's answer reaches the PR and when a PR waits on the user's `macOS:`
 line. Exit 4: GitHub could not be read or written."""
 import json
@@ -22,6 +22,8 @@ STRIKES = 3
 DAY = 24 * 3600
 # A draft PR untouched this long has no live run: build and fix jobs time out after two hours.
 IDLE = 3 * 3600
+# A review run whose model did no work (a usage limit) leaves `review` pending; pick reruns it this many times in all.
+RERUNS = 6
 FAILED = '`{cause}` failed on this head. `gh pr checks {pr}` lists the failed run; `gh run view <id> --log-failed` shows why.'
 CAUSES = {
     'check': FAILED,
@@ -131,12 +133,35 @@ def repairs(prs, now):
     return due
 
 
+def unreviewed(prs):
+    """(pr, run id) for each ready PR whose `review` status is pending: its review run did no model work."""
+    return [(pr['number'], check['targetUrl'].rstrip('/').rsplit('/', 1)[1])
+            for pr in prs if not pr['isDraft']
+            for check in pr.get('statusCheckRollup') or []
+            if check.get('context') == 'review' and check.get('state') == 'PENDING']
+
+
+def rerun_review(pr, run):
+    """Rerun an ended review run that did no model work; after RERUNS attempts, ask the user instead."""
+    state = orders.gh('run', 'view', run, '--json', 'status,attempt,url')
+    if state['status'] != 'completed':
+        return
+    if state['attempt'] >= RERUNS:
+        flag(pr, f"The review run {state['url']} did no model work in {RERUNS} attempts: a usage limit or a setup "
+                 'failure. Rerun it from that page once it can work.')
+        return
+    call('run', 'rerun', run)
+
+
 def pick(most):
-    """Start the fix runs open Builder PRs need, then print the build matrix as JSON."""
+    """Start the fix runs open Builder PRs need, rerun review runs that did no model work, then print the build matrix
+    as JSON."""
     prs = orders.gh('pr', 'list', '--state', 'open', '--limit', '200', '--json',
                     'number,headRefName,headRefOid,isDraft,isCrossRepository,mergeable,body,updatedAt,statusCheckRollup')
     for pr, head, cause in repairs(prs, time.time()):
         dispatch_fix(pr, head, cause)
+    for pr, run in unreviewed(prs):
+        rerun_review(pr, run)
     print(json.dumps(choose(orders.read_orders(), busy(), most)))
 
 
@@ -226,15 +251,19 @@ def status(head, state, description, run_url):
          '-f', f'description={description}', '-f', f'target_url={run_url}')
 
 
-def review_post(pr, head, reviewer, answer, run_url):
+def review_post(pr, head, reviewer, answer, ran, run_url):
     """Publish a review run's answer on `head`: a VERDICT comment and the `review` status; a reject on a Builder PR
-    starts a fix run. Lines that would forge a verdict field are dropped. False when the answer holds no verdict."""
+    starts a fix run. Lines that would forge a verdict field are dropped. A run whose model did no work (`ran` false)
+    leaves `review` pending for pick to rerun. False when a run that worked holds no verdict."""
     current = view(pr)
     if current['state'] != 'OPEN' or current['headRefOid'] != head:
         print(f'PR #{pr} moved past {head}; the newer head gets its own review')
         return True
     answer = json.loads(answer) if answer.strip() else {}
     verdict = answer.get('verdict')
+    if verdict not in ('approve', 'reject') and not ran:
+        status(head, 'pending', 'The review run did no model work; the next build pick reruns it', run_url)
+        return True
     if verdict not in ('approve', 'reject'):
         status(head, 'error', 'The review run gave no verdict', run_url)
         flag(pr, f'The review run {run_url} gave no verdict on {head}; rerun it from that page.')
@@ -288,14 +317,14 @@ def main(args):
             fixed(int(pr), cause, ran == 'true', run_url)
         case ['review-task', pr, head] if pr.isdigit():
             return task_or_nothing(review_task(int(pr), head))
-        case ['review-post', pr, head, reviewer] if pr.isdigit():
-            return 0 if review_post(int(pr), head, reviewer, sys.stdin.read(), run_url) else 1
+        case ['review-post', pr, head, reviewer, ran] if pr.isdigit() and ran in ('true', 'false'):
+            return 0 if review_post(int(pr), head, reviewer, sys.stdin.read(), ran == 'true', run_url) else 1
         case ['macos-line', pr] if pr.isdigit():
             return 0 if macos_line(int(pr)) else 1
         case _:
             print('usage: builder.py prompt | worked <file> | pick <most> | built <issue> <slug> <ran> | '
                   'fix-task <pr> <head> <cause> | fixed <pr> <cause> <ran> | review-task <pr> <head> | '
-                  'review-post <pr> <head> <reviewer> | macos-line <pr>', file=sys.stderr)
+                  'review-post <pr> <head> <reviewer> <ran> | macos-line <pr>', file=sys.stderr)
             return 2
     return 0
 
