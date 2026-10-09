@@ -1,0 +1,71 @@
+{
+  "source": {
+    "number": 433,
+    "title": "L92: Trail: each work Issue keeps what every run tried, and a repeat waits",
+    "body": "## Outcome\nA fresh Builder run on a work Issue starts from what earlier runs tried, failed on and proved, and a run that keeps failing the same way waits instead of repeating (L92).\n\n## Evidence\n- A build run's task holds only the Issue body. On #372 two runs, 16 minutes apart, each reported no PR needed; the owner's comment then showed B1\u2013B18 incomplete, and no later run would have read it.\n- Build retries on an Issue have no count and no cap; only PR repairs have one (L82 fix runs).\n- Final explanations are kept in Ledger artifacts (L29), but no script reads them back.\n\n## Scope\n- `loop/`: the completion job posts the end entry; build and fix tasks include the last six entries and writers' comments since the last end entry; the Issue wait reuses the rule of L82 fix runs; Status names waiting Issues; `retro.sh report` lists repeats.\n- The completion steps of `build-row.yml` and `build.yml`.\n- `.agents/builder.md`: the `Changed:` entry before the first commit.\n- Amend L29, L81 and L82 fix runs in the same PR: the Trail replaces the retained `outcome.json` explanation and the diagnostic instruction to record cause and approach on the PR. Delete the replaced code.\n\n## Acceptance\nScenarios: L92\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nObserver: L92's tests pass; then cancel one cloud Builder run after a failed step and link here the next run's `Changed:` entry and end entry.\n\n## Preserve\nL23 Claims, review inputs (L24, rule 5), the PR repair limits of L82 fix runs, L83 spend cap, L87 Codex runs unchanged.\n\nKey: L92\nPriority: 1\nMode: implement\nProvider: any\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/433",
+    "kind": "work",
+    "revision": "5e2af150bf5a11a8def00bdcab1b10566a22c88153619e65ad0dd654cffe407d"
+  },
+  "phase": "plan",
+  "trigger": "5e2af150bf5a11a8def00bdcab1b10566a22c88153619e65ad0dd654cffe407d",
+  "main": "caf55898dfa1c910afe9988bd9b27978cd0ba062",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "After every cloud build or fix run (finished, failed, timed out or cancelled), the trusted completion job posts one end entry on the served work Issue with role, run link, cause, observed delivery, head or none, result subtype and the redacted, bounded final explanation.",
+        "observer": "L92 tests pass on main; a cancelled cloud Builder run leaves an end entry on its Issue."
+      },
+      {
+        "statement": "A fresh build or fix run starts from the Trail: its task holds the Issue's last six entries oldest first plus every writer comment since the last end entry, and when entries exist it posts a `Changed:` entry before its first commit; review tasks never hold the Trail.",
+        "observer": "L92 tests pass; the run after a cancelled cloud Builder run posts a `Changed:` entry that continues from the recorded evidence."
+      },
+      {
+        "statement": "A build run that keeps ending the same way waits: after two consecutive same-cause, same-delivery end entries with no new head the next run is diagnostic, further unchanged runs back off 15 minutes doubling to two hours, at most six build runs per Issue per rolling 24 hours, a writer's edit or comment lifts the wait, and Status names each waiting Issue with its next eligible time and last entry link.",
+        "observer": "L92 orders/status tests pass on main."
+      },
+      {
+        "statement": "The Trail is the one record of a run's final explanation and a repair's observed cause and changed approach (L29, L81, L82 amended, no outcome.json explanation retained), and `retro.sh report` lists each Trail with two consecutive same-cause entries and no new head.",
+        "observer": "L92 retro/outcome tests pass on main."
+      }
+    ],
+    "deliveries": [],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "python3 loop/trail.test.py; python3 loop/outcome.test.py; grep trail.py .github/workflows/build-row.yml .github/workflows/build.yml; gh issue view 433 --json comments",
+        "output": "trail.test.py: Ran 18 tests OK; outcome.test.py OK. build-row.yml:110 `python3 loop/trail.py end \"$ISSUE\" builder build ...`; build.yml:212 `python3 loop/trail.py end-pr \"$PR\" builder \"$CAUSE\" ...`. #433 holds github-actions end entries for runs 37968889794, 37969301137, 37969861850, 37974225999 (Cause: build, Delivery: no-delivery, Head: none, Result: success, Model claim).",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979174867",
+        "proved": false,
+        "remaining": "No end entry yet observed for a cancelled or failed cloud run; the Observer's live cancellation check is outstanding."
+      },
+      {
+        "goal": 2,
+        "command": "bash loop/runs.test.sh; gh issue view 433 --json comments",
+        "output": "ok: L92 l92_review_task_excludes_trail: a review task never holds a Trail (exit 0). #433 holds claude `Entry: changed` entries for runs 37969861850, 37972435792, 37974225999, each citing earlier entries.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979174867",
+        "proved": false,
+        "remaining": "The Observer requires cancelling a cloud Builder run after a failed step and linking the next run's `Changed:` entry and end entry; this needs a writer to cancel a run (read-only verifier cannot)."
+      },
+      {
+        "goal": 3,
+        "command": "bash loop/status.test.sh; python3 loop/orders.test.py",
+        "output": "ok: L92 Status names a waiting Issue; ok: L92 the waiting row has the next eligible time and the last entry; orders.test.py OK.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979174867",
+        "proved": false,
+        "remaining": "Only fixture tests observed; no live Status waiting row observed yet."
+      },
+      {
+        "goal": 4,
+        "command": "bash loop/retro.test.sh",
+        "output": "ok: L92 the action outputs an explicit explanation without raw events and keeps no outcome.json; ok: L92 report lists each Trail that ended the same way twice; ok: L92 an unreadable Trail makes the report exit 4 (exit 0).",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979174867",
+        "proved": false,
+        "remaining": "Independent verification of the scenario amendments to L29/L81/L82 and a live retro report."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}
