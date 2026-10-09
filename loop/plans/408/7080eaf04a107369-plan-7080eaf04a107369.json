@@ -1,0 +1,49 @@
+{
+  "source": {
+    "number": 408,
+    "title": "U144: serve the App on a real Daemon so the Enter, Request and Review stages can be rendered against it",
+    "body": "<!-- work-order:scenarios/ui-first-journey.md:U144 -->\n## Outcome\nserve the App on a real Daemon so the Enter, Request and Review stages can be rendered against it\n\n## Acceptance\nScenarios: U144\nSpecification: [scenarios/ui-first-journey.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-first-journey.md)\n\n## Scope\n`apps/desktop/vite.config.ts`, `apps/desktop/src/testing/**`, `justfile` (`harness-real`), `.agents/data/harness.md`\n\n## Preserve\nU26, U137, S4, D1\u2013D10\n\n## Dependencies\nU143\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: U144\nPriority: 6\nMigration state: ready\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/408",
+    "kind": "work",
+    "revision": "7080eaf04a107369f9027da71a419467e9d4469b11ae1bc89ea97f29a2d62af0"
+  },
+  "phase": "plan",
+  "trigger": "7080eaf04a107369f9027da71a419467e9d4469b11ae1bc89ea97f29a2d62af0",
+  "main": "e523b9329cf5ac8cb8319a338f81861eebe8f2b4",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "With a running `rupd` for a temporary Project, `just harness-real <project-path> <port>` serves `http://localhost:<port>/harness.html?daemon=1`, which mounts the same App with an AppSeam whose `rpc` and `subscribe` are relayed by the dev server over that `rupd`'s socket (`rpc::socket_path`, `RUPD_SOCKET` if set), and whose `project`, `openProject` and `daemonProof` answer from the path given at start.",
+        "observer": "`u144_` Vitest cases in `apps/desktop/src/testing/` against a real `rupd` started with `crates/rup/tests/e2e/fake_claude.py`, plus an agent-browser headless session on `just harness-real` reading `project` and `daemonProof`"
+      },
+      {
+        "statement": "Creating a Room and starting its Door by pointer in the served App puts a Rail row and a Terminal on screen that come from the Daemon, as `rail.tree` and `terminal.list` show, not from a seed.",
+        "observer": "`u144_a_room_made_and_started_by_pointer_comes_from_the_daemon`, plus agent-browser captures at 1280 by 800 and 700 by 800 in `artifacts/ux/U144/`"
+      },
+      {
+        "statement": "In daemon mode the choosers return `null`, the Dock badge does nothing, and closing the socket fires `daemon-exited`, so the App shows U25's failure state.",
+        "observer": "`u144_the_choosers_answer_null_and_the_dock_badge_does_nothing` and `u144_closing_the_socket_fires_daemon_exited_and_the_header_says_so`"
+      },
+      {
+        "statement": "When a method is called that the real Daemon rejects, the App shows the Daemon's rejection message on screen, not only as an `RpcError` handed to the caller.",
+        "observer": "A `u144_` Vitest case that reaches a Daemon rejection through the mounted App and asserts that the rendered text contains the Daemon's message"
+      },
+      {
+        "statement": "The rest of the App is unchanged: `?seed=` works as before, `vite build` leaves the real-Daemon relay out of `dist`, and the dev server listens only on loopback.",
+        "observer": "The U26/U137/S4 harness tests stay green, a `vite build` output check for the absence of the relay, and the listening address of `just harness-real`"
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 408,
+        "title": "U144: serve the App on a real Daemon so the Enter, Request and Review stages can be rendered against it",
+        "body": "<!-- work-order:scenarios/ui-first-journey.md:U144 -->\n## Outcome\nserve the App on a real Daemon so the Enter, Request and Review stages can be rendered against it\n\n## Acceptance\nScenarios: U144\nSpecification: [scenarios/ui-first-journey.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-first-journey.md)\n\n## Scope\n`apps/desktop/vite.config.ts`, `apps/desktop/src/testing/**`, `justfile` (`harness-real`), `.agents/data/harness.md`\n\n## Preserve\nU26, U137, S4, D1\u2013D10\n\n## Dependencies\nU143\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: U144\nPriority: 6\nMigration state: ready\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [],
+    "rules": [],
+    "question": ""
+  }
+}
