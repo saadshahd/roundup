@@ -1,6 +1,11 @@
 name: loop
 
 on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Planning PR needing the same rules gate
+        required: true
   pull_request:
 
 concurrency:
@@ -19,9 +24,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: loop/rules.sh ci-trailers ${{ github.event.pull_request.number }}
+      - run: loop/rules.sh ci-trailers "$PR"
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
       - run: loop/rules.sh vocab
       - run: python3 loop/orders.py lint
       - run: python3 loop/orders.test.py
@@ -30,6 +36,7 @@ jobs:
       - run: loop/percy.test.sh
       - run: loop/qa-sweep.test.sh
       - run: python3 loop/dispatch.test.py
+      - run: python3 loop/feedback.test.py
       - run: python3 loop/outcome.test.py
       - run: loop/runs.test.sh
       - run: loop/codex.test.sh
