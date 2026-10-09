@@ -60,7 +60,7 @@ describe("u107 jump to an Agent", () => {
   });
 
   it("u107_a_number_with_no_agent_does_nothing", async () => {
-    const { app, connected } = await mountThread(tree());
+    const { app, connected } = await mountThread(tree(), { select: null });
 
     alt(9);
 
