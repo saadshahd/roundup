@@ -101,12 +101,25 @@ jobs:
             --max-turns 60
             --allowedTools Bash,Read,Glob,Grep,Skill
             --json-schema '{"type":"object","properties":{"verdict":{"enum":["approve","reject"]},"findings":{"type":"string"}},"required":["verdict","findings"]}'
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: reviewer
           subject: ${{ needs.due.outputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          redact-percy: ${{ secrets.PERCY_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   post:

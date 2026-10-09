@@ -16,6 +16,7 @@ const emptyReads: Handlers = {
   "rail.tree": () => [],
   "terminal.list": () => [],
   "todo.list": () => [],
+  "message.list": () => [],
   "pad.list": () => [],
   "decision.list": () => [],
   "provenance.history": () => [],
