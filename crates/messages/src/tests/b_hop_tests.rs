@@ -556,3 +556,110 @@ async fn b15_a_reply_addressed_elsewhere_does_not_deliver_the_landing() {
 
     assert_eq!(h.get(2).await["status"], "held");
 }
+
+/// Marks `ids` `idle` on the Rail, with no status event.
+fn idle(h: &Hops, ids: &[&str]) {
+    for node in h.rail.0.lock().unwrap().iter_mut() {
+        if ids.contains(&node.id.as_str()) {
+            node.status = Some(Status {
+                kind: Kind::Idle,
+                label: "x".into(),
+                since: 0,
+            });
+        }
+    }
+}
+
+/// Waits for the delivery callback to have typed `n` prompts, then lets a stray one show.
+async fn typed_after(h: &Hops, n: usize) -> usize {
+    for _ in 0..100 {
+        if h.typed.lock().unwrap().len() >= n {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    h.typed.lock().unwrap().len()
+}
+
+#[tokio::test]
+async fn b2_a_message_to_an_already_idle_door_is_typed_without_a_new_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    idle(&h, &["sub"]);
+    h.ask("c", "sub").await;
+    assert_eq!(typed_after(&h, 1).await, 1);
+    assert_eq!(h.get(1).await["status"], "delivered");
+}
+
+#[tokio::test]
+async fn b3_a_released_message_to_an_already_idle_agent_is_typed_without_a_new_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    idle(&h, &["d"]);
+    let route = json!({"from": "c", "to": "d", "delivery": "ask-first"});
+    h.call_as(Actor::user(), "route.set", route).await.unwrap();
+    let note = json!({"to": "d", "kind": "note", "body": "hi"});
+    h.call_as(agent("c"), "message.send", note).await.unwrap();
+    assert_eq!(h.get(1).await["status"], "held");
+    h.call_as(Actor::user(), "message.deliver", json!({"id": 1}))
+        .await
+        .unwrap();
+    assert_eq!(typed_after(&h, 1).await, 1);
+    assert_eq!(h.get(1).await["status"], "delivered");
+}
+
+#[tokio::test]
+async fn b6_ending_a_takeover_of_an_already_idle_agent_types_what_it_held() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    idle(&h, &["d"]);
+    let take = json!({"agent": "d"});
+    h.call_as(Actor::user(), "takeover.begin", take.clone())
+        .await
+        .unwrap();
+    let note = json!({"to": "d", "kind": "note", "body": "hi"});
+    h.call_as(agent("c"), "message.send", note).await.unwrap();
+    assert_eq!(typed_after(&h, 1).await, 0);
+    h.call_as(Actor::user(), "takeover.end", take)
+        .await
+        .unwrap();
+    assert_eq!(typed_after(&h, 1).await, 1);
+    assert_eq!(h.get(1).await["status"], "delivered");
+}
+
+#[tokio::test]
+async fn b13_a_hop_to_an_already_idle_door_is_typed_without_a_new_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    idle(&h, &["mid"]);
+    h.ask("c", "sub").await;
+    h.call_as(agent("sub"), "message.pass", json!({"id": 1}))
+        .await
+        .unwrap();
+    assert_eq!(typed_after(&h, 1).await, 1);
+    assert_eq!(h.get(2).await["to"], "mid");
+    assert_eq!(h.get(2).await["status"], "delivered");
+}
+
+#[tokio::test]
+async fn b17_a_kill_between_the_landing_and_the_chain_move_leaves_neither() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    h.ask("c", "top").await;
+    // The chain move fails, as a kill between the two writes would.
+    let db = rusqlite::Connection::open(dir.path().join("messages.db")).unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER kill BEFORE UPDATE ON chains BEGIN SELECT RAISE(ABORT, 'killed'); END",
+    )
+    .unwrap();
+    h.clock.store(60_000, Ordering::SeqCst);
+    assert!(settle(&h.messages.inner, None).await.is_err());
+    assert_eq!(h.all().await.len(), 1);
+    db.execute_batch("DROP TRIGGER kill").unwrap();
+    let h = h.restarted();
+    h.at(60_000).await;
+    h.at(120_000).await;
+    let rows = h.all().await;
+    assert_eq!(rows.iter().filter(|r| r.0 == Actor::user().id).count(), 1);
+}
