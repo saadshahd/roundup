@@ -183,6 +183,14 @@ review_due() {
   if grep -qx planning <<<"$touched"; then
     verdicts=$(jq -c --arg head "$head" '.current = (.head == $head)' <<<"$verdicts")
   fi
+  if [ -n "${3:-}" ]; then
+    local latest fingerprint
+    latest=$(jq -sc 'map(select(.current)) | last' <<<"$verdicts")
+    [ "$(jq -r '.verdict' <<<"$latest")" = reject ] || { echo 'repair verdict changed' >&2; return 1; }
+    fingerprint=$(python3 -c 'import json,sys; sys.path.insert(0,"loop"); from dispatch import review_request; print(review_request("",json.load(sys.stdin))["verdict"])' <<<"$latest")
+    [ "$fingerprint" = "$3" ] || { echo 'repair verdict changed' >&2; return 1; }
+    verdicts=$(jq -c '.current = false' <<<"$verdicts")
+  fi
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }
@@ -245,7 +253,7 @@ case "${1:-}" in
   builders) builders ;;
   slug) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; jq -rn --arg s "$2" "$slug_def"' $s | slug' ;;
   prompt) [ -n "${2:-}" ] || { sed -n '2p' "$0" >&2; exit 2; }; prompt "$2" ;;
-  review-due) [[ ${2:-} =~ ^[0-9]+$ && ${3:-} =~ ^[0-9a-f]{40}$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; review_due "$2" "$3" ;;
+  review-due) [[ ${2:-} =~ ^[0-9]+$ && ${3:-} =~ ^[0-9a-f]{40}$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; review_due "$2" "$3" "${4:-}" ;;
   verdict) [[ ${2:-} =~ ^[0-9]+$ && ${3:-} =~ ^[0-9a-f]{40}$ && ${4:-} =~ ^[A-Za-z0-9_.-]+$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; verdict "$2" "$3" "$4" ;;
   swept) [[ ${2:-} =~ ^[0-9a-f]{40}$ ]] || { sed -n '2p' "$0" >&2; exit 2; }; swept "$2" ;;
   *) sed -n '2p' "$0" >&2; exit 2 ;;

@@ -15,6 +15,27 @@ import outcome
 
 
 class OutcomeTests(unittest.TestCase):
+    def test_f7_retention_excludes_auth_and_redacts_partial_captures(self):
+        workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/f7.yml').read_text()
+        block = workflow.split('        shell: python\n        run: |\n', 1)[1].split('      - uses:', 1)[0]
+        code = '\n'.join(line[10:] for line in block.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            private = root / 'f7/roundup-f7.test'
+            (private / 'out').mkdir(parents=True)
+            (private / 'auth-status.json').write_text('private authentication')
+            (private / 'out/i_base.txt').write_text('oauth-value github-value ghp_example')
+            (private / 'out/i_base.version.txt').write_text('2.1.295')
+            (root / 'f7/run.log').write_text('oauth-value')
+            with patch.dict(os.environ, RUNNER_TEMP=directory, GITHUB_RUN_ID='9', CLAUDE_CODE_OAUTH_TOKEN='oauth-value', GH_TOKEN='github-value'), contextlib.redirect_stdout(io.StringIO()):
+                exec(compile(code, 'f7-retention', 'exec'), {})
+            output = root / 'f7-evidence'
+            self.assertEqual({p.name for p in output.iterdir()}, {'i_base.txt', 'i_base.version.txt', 'run.log', 'manifest.json'})
+            self.assertEqual((output / 'i_base.txt').read_text(), '[redacted] [redacted] [redacted]')
+            manifest = json.loads((output / 'manifest.json').read_text())
+            self.assertEqual(len(manifest['missing']), 6)
+            self.assertEqual(manifest['state'], 'captured-not-judged')
+
     def test_l29_retains_final_explanation_without_tool_output(self):
         report = outcome.model_outcome([
             {'type': 'user', 'content': 'private tool output'},
