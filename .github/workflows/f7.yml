@@ -86,3 +86,13 @@ jobs:
           path: ${{ runner.temp }}/f7-evidence
           retention-days: 14
           if-no-files-found: error
+
+  summary:
+    needs: [observe]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Capture F7 observer evidence
+      next: The linked artifacts retain the experiment evidence for assessment; capture alone does not prove acceptance.
