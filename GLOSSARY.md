@@ -150,6 +150,12 @@ _Avoid_: cancel, abort
 **Takeover**:
 The user typing into an Agent directly; meanwhile no other Actor sends it anything.
 
+**Work order**:
+The ask an Agent works on and what it must not do (its limits), held on the Agent's Rail node. Not a Work Issue.
+
+**Clarification order**:
+The open question an Agent holds instead of a Work order; the Agent finds the intent, elicits what is missing and shapes a Work order.
+
 **Brief**:
 The text roundup gives an Agent at start about itself, its Home, its peers and its open Todos (`docs/awareness.md`).
 
