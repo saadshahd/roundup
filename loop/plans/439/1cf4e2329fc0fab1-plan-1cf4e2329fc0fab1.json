@@ -1,0 +1,47 @@
+{
+  "source": {
+    "number": 439,
+    "title": "No way to delete a Todo or a Pad from the app",
+    "body": "User report: there is no way to delete Todos and Pads.\n\nSeen in code (not reproduced in the app): the Daemon already has `todo.delete` and `pad.delete` (`crates/todos/src/lib.rs:95`, `crates/pads/src/lib.rs:111`; a Pad's owner or the user may delete it). In `apps/desktop/src` only tests and the fake store call them; no control does.\n\nExpected: each Todo and each Pad has a delete action in the UI. It asks before it destroys, and the list updates at once. A Pad owned by another Agent shows why the user may still delete it, or why not.\n\nRelated: #398 (Todos panel too raw), #397 (Pad editor), #400 (button design).\nReport only; no code change performed.",
+    "html_url": "https://github.com/saadshahd/roundup/issues/439",
+    "kind": "feedback",
+    "revision": "1cf4e2329fc0fab13b069245517dd8470e027d0c3d1109832781911bcbdfbf4e"
+  },
+  "phase": "plan",
+  "trigger": "1cf4e2329fc0fab13b069245517dd8470e027d0c3d1109832781911bcbdfbf4e",
+  "main": "a950d0a0411eb943a47d01e0f671fc2c6aa7aef2",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "From the open Drawer of any Todo (Shelf list or under its Agent), the user can delete that Todo. `delete` asks inline first and calls nothing before the answer. Confirming calls `todo.delete {id}` once, closes the Drawer without a `was deleted` line, and the row leaves every Todo list without a reload. `keep` or Esc calls nothing and leaves the Todo in place.",
+        "observer": "`u145_` Vitest cases in `apps/desktop/src/todos/` against the fake App seam (call log, rendered list after `todo.deleted`), plus an agent-browser capture in the U26 harness at 1280 by 800 showing the question, then the list without the row."
+      },
+      {
+        "statement": "Every Pad's Drawer offers `delete`. It asks inline first and calls nothing before the answer. Confirming calls `pad.delete {name}` once, closes the Drawer without a `pad <name> was deleted` line, and the Pad leaves the Shelf's `pads` list and its Agent's `\u25c8` group without a reload. `keep` or Esc calls nothing.",
+        "observer": "`u145_` Vitest cases in `apps/desktop/src/pads/` against the fake App seam (call log, list after `pad.changed`), plus an agent-browser capture in the U26 harness at 1280 by 800."
+      },
+      {
+        "statement": "For a Pad owned by an Agent, the delete question names that owning Agent and says the user may still delete it, since P9 lets the owner or the user delete any Pad. A refused or failed `pad.delete` or `todo.delete` shows `\u2715 <message>`, keeps the Drawer open and leaves the item listed.",
+        "observer": "`u145_` Vitest cases for an Agent-owned Pad's question text and for a rejected call (`FORBIDDEN`/`NOT_FOUND` from the fake seam), plus the agent-browser capture of an Agent-owned Pad's question."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 0,
+        "title": "U145 specification: delete a Todo or a Pad from its Drawer, asking first",
+        "body": "## Outcome\nSpecify U145 in `scenarios/ui.md` so a Builder can make deletion of Todos and Pads reachable, confirmed and immediately visible (feedback #439). Today the Todo Drawer's `delete` (U17) destroys a Todo without asking, and no control in `apps/desktop/src` calls `pad.delete` (P9). The Daemon side already exists, at `crates/todos/src/lib.rs` (`todo.delete`) and `crates/pads/src/lib.rs` (`pad.delete`, owner or user).\n\n## Scope\n`scenarios/ui.md` only: add U145 under `## Pads` (or a new `## Deleting (U145)` section), add the narrowing notes it needs to U17 and U20, and add any GLOSSARY.md term it introduces in the same PR. Then open the implementation work Issue (Key `U145`, Mode `implement`, owner scope `apps/desktop/src/todos/**` and `apps/desktop/src/pads/**`, blocked by this Issue), and close this Issue from the specification PR. No product code.\n\nProposed scenario text (the Builder may tighten the wording but keeps every clause):\n\n> **U145 delete asks first.** Narrows U17 and U20. A control that destroys a stored item the user cannot get back (a Todo, a Pad) asks first, in place, as U56 does; nothing is called before the answer. Given an open Todo Drawer (U17), when the user chooses `delete`, then the light `complete  delete` line is replaced in place by `delete #<id>?  delete  keep`, with no row moving or growing (U46). Enter or a click on `delete` calls `todo.delete {id}` once and closes the Drawer, and no `was deleted` line shows. Esc, `keep` or closing the Drawer calls nothing. The row leaves the Shelf's `todos` list, or its Agent's group (U60), through `todo.deleted` and the U15 refetch, with no other read. Given an open Pad Drawer (U20) for any Pad, a light `delete` sits beside `export .md`, and choosing it asks `delete <name>?  delete  keep` in place. For a Pad an Agent owns, the question adds `<agent name> owns it; you may delete any Pad` (P9: the owner or the user may delete). `<agent name>` comes from `nameOf`, with no Daemon read. Confirming calls `pad.delete {name}` once and closes the Drawer, without U20's `pad <name> was deleted` line. The Pad leaves the Shelf's `pads` list and its Agent's `\u25c8` group (U58, U60) on the `pad.changed` refetch. An error from either call (`FORBIDDEN`, `NOT_FOUND`, any other) shows `\u2715 <message>` in the Drawer as U21 does, keeps the Drawer open and leaves the item listed. While an editor draft is dirty (U36), the Pad question also says `unsaved changes are lost`. The words use the light-word style and Tokens only (U4, U130). Each control has a 24 px hit area and visible focus (U86), and focus moves to the question's `keep` and back to `delete` on cancel. Observer: `u145_` Vitest cases in `apps/desktop/src/todos/` and `apps/desktop/src/pads/` against the fake App seam assert the question text (user-owned and Agent-owned Pad), that no call happens before the answer, one call after it, the closed Drawer with no deleted line, the list without the item after the event, `keep`/Esc calling nothing, an error keeping the Drawer, and keyboard focus. An agent-browser capture in the U26 harness at 1280 by 800 shows each question and the list afterwards. Narrowing: `u17_delete_calls_todo_delete_and_closes_the_drawer`, `u17_a_failed_delete_keeps_the_drawer_open_and_shows_the_message` and `u17_deleting_your_own_todo_while_the_drawer_slides_out_shows_no_deleted_message` click `delete` and then confirm. `u20_a_pad_deleted_while_its_drawer_is_open_says_so` keeps passing for another Actor's delete. Owns `apps/desktop/src/todos/**` and `apps/desktop/src/pads/**`. No contract, App seam command or Token change.\n\n## Acceptance\nScenarios: U145\nSpecification: [scenarios/ui.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui.md)\nObserver: the merged specification PR adds a `**U145` heading to `scenarios/ui.md` that holds every clause above. An implementation work Issue with Key `U145` exists, is blocked by this Issue and names the `u145_` observers.\n\n## Preserve\nU15, U17, U18, U20, U21, U35, U36, U46, U56, U60 and P9 outcomes, except for the three named U17 tests' added confirm step. MCP still offers no `todo.delete` tool (M1). No Daemon, contract or Token change.\n\n## Queue\nKey: U145-spec\nPriority: 20\nMode: specify\nProvider: any",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [],
+    "rules": [
+      {
+        "path": "scenarios/ui.md",
+        "content": "A control that destroys a stored item the user cannot get back asks first, in place, without moving any row. It calls nothing before the answer, and `keep`, Esc or closing the surface cancels. A control whose effect the user can reverse, or that only stops a process and leaves the item stored, goes at once.",
+        "cases": "Cases: U56 `remove` of a working, needs-you or blocked Agent, or of a running Terminal, asks (work could be lost), and so does a Todo Drawer's `delete` (the reported gap: it destroys at once today) and a Pad Drawer's `delete` (body and file removed, P9). Situations: `agent.discard` asks (drops the Worktree and branch). Deleting an empty Pad still asks, because the item itself is destroyed. U56 `remove` of an idle or done Agent, an exited Terminal or a Group goes at once (nothing stored is lost, and Pads and Todos stay, A16). `stop` alone goes at once. `complete` on a Todo goes at once (it stays in `\u2713 n done`). `pad.setOwner` (taking a Pad) goes at once. Closing a Drawer goes at once. `use theirs` in U36 goes at once (the draft is the user's own pending text, and the U36 line already asked). `export .md` overwriting a file goes to the macOS chooser's own question. Counterexample the rule forbids: a single click on `delete` that calls `todo.delete` before any answer, as U17 does on main a950d0a."
+      }
+    ],
+    "question": ""
+  }
+}
