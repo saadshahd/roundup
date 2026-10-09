@@ -344,6 +344,7 @@ class Lifecycle(unittest.TestCase):
                             patch.dict(os.environ, GITHUB_REPOSITORY='o/r', GITHUB_RUN_ID='42', GITHUB_OUTPUT=output.name, LOOP_DAILY_TOKENS='1000')):
             replacement.start()
             self.addCleanup(replacement.stop)
+        self.addCleanup(f.permission.cache_clear)
 
     def plan(self, result=None):
         f.start(355)
@@ -721,6 +722,22 @@ class Lifecycle(unittest.TestCase):
                 f.reconcile()
                 read.assert_not_called()
             self.assertEqual(self.hub.writes, [])
+
+    def test_l88_pr_and_run_events_skip_the_feedback_sweep(self):
+        for event in f.UNSWEPT_EVENTS:
+            with patch.dict(os.environ, GITHUB_EVENT_NAME=event), patch.object(f, 'listing') as listing:
+                f.reconcile()
+                listing.assert_not_called()
+        self.assertEqual(self.hub.writes, [])
+        with patch.dict(os.environ, GITHUB_EVENT_NAME='schedule'):
+            f.reconcile()
+        self.assertIn((('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=355'), None), self.hub.writes)
+
+    def test_l88_one_sweep_reads_each_editor_permission_once(self):
+        self.second_source()
+        with patch.object(f.d, 'api', side_effect=self.hub.api) as api:
+            f.reconcile()
+        self.assertEqual([call.args[0] for call in api.call_args_list if call.args[0].startswith('collaborators/')], ['collaborators/owner/permission'])
 
     def test_l90_intake_dispatches_without_a_user_label(self):
         f.reconcile()
