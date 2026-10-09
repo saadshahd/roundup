@@ -39,6 +39,8 @@ pub enum EventData {
     TakeoverChanged(message::TakeoverChanged),
     #[serde(rename = "agent.status")]
     AgentStatus(agent::StatusEvent),
+    #[serde(rename = "agent.channel")]
+    AgentChannel(agent::ChannelEvent),
     #[serde(rename = "rail.changed")]
     RailChanged,
     #[serde(rename = "decision.opened")]

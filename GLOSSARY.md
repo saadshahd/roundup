@@ -153,6 +153,9 @@ The user typing into an Agent directly; meanwhile no other Actor sends it anythi
 **Brief**:
 The text roundup gives an Agent at start about itself, its Home, its peers and its open Todos (`docs/awareness.md`).
 
+**Context**:
+What `agent.context` returns for one Agent: its own Status, its parent, whom to ask (a Door's id, or the user's), its peers and its open Todos. An Agent's Brief at start (`agent.brief`) says the same in words.
+
 **Channel**:
 Whether one Agent's `roundup` MCP server (`rup mcp <id>`) has reported to the Daemon: `pending`, `up` or `missing`. Not the vendor's own channels feature.
 

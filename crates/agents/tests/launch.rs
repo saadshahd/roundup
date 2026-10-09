@@ -162,17 +162,29 @@ fn a11_discarding_an_agent_deletes_both_of_its_files() {
 }
 
 #[test]
-fn a4_the_settings_hold_one_command_per_state_event() {
+fn a4_the_settings_hold_one_command_per_state_event_and_two_at_start() {
     let s = setup();
     let mut settings = read(Path::new(&s.prepare("7").unwrap()[2]));
     settings.as_object_mut().unwrap().remove("permissions");
     assert!(s.rup.is_absolute() && s.rup.exists());
     let command = format!("ROUNDUP_ATTEMPT='1' '{}' signal '7'", s.rup.display());
-    let entry = json!([{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]);
+    let signal = json!({"type": "command", "command": command, "timeout": 5});
+    let entry = json!([{"hooks": [signal]}]);
+    // E3: `SessionStart` has a second command, `rup context`, beside the Signal.
+    let context = format!("'{}' context '7'", s.rup.display());
+    let at_start =
+        json!([{"hooks": [signal, {"type": "command", "command": context, "timeout": 5}]}]);
     let expected: serde_json::Map<String, Value> = EVENTS
         .iter()
         .filter(|event| **event != "PermissionRequest")
-        .map(|event| ((*event).to_owned(), entry.clone()))
+        .map(|event| {
+            let hook = if **event == *"SessionStart" {
+                &at_start
+            } else {
+                &entry
+            };
+            ((*event).to_owned(), hook.clone())
+        })
         .collect();
     // The late Notification and the spurious SubagentStop are not among the events.
     assert_eq!(settings["hooks"].as_object().unwrap().len(), EVENTS.len());
@@ -732,12 +744,11 @@ fn e1_the_brief_names_the_agent_by_id_and_the_tools_and_holds_nothing_mutable() 
         "pad_append",
         "message_send",
         "ask_user",
+        "agent_context",
     ] {
         assert!(text.contains(&format!("`{tool}`")), "{tool}");
     }
-    for unshipped in ["agent_context", "agent_spawn"] {
-        assert!(!text.contains(unshipped), "{unshipped}");
-    }
+    assert!(!text.contains("agent_spawn"), "agent_spawn");
     assert!(!text.contains(&s.cwd.to_string_lossy().into_owned()));
 }
 
@@ -769,4 +780,27 @@ fn b24_only_a_door_brief_carries_the_role_guidance() {
 fn e1_preparing_the_same_id_and_role_twice_writes_the_same_text() {
     let s = setup();
     assert_eq!(brief(&s, "7", Role::Door), brief(&s, "7", Role::Door));
+}
+
+#[test]
+fn e3_the_signal_stays_first_and_the_context_command_follows_with_five_seconds() {
+    let s = setup();
+    let settings = read(Path::new(&s.prepare("7").unwrap()[2]));
+    let at_start = settings["hooks"]["SessionStart"][0]["hooks"]
+        .as_array()
+        .unwrap();
+    assert_eq!(at_start.len(), 2);
+    assert!(
+        at_start[0]["command"]
+            .as_str()
+            .unwrap()
+            .contains(" signal '7'")
+    );
+    assert_eq!(at_start[1]["timeout"], 5);
+    assert!(
+        at_start[1]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with(" context '7'")
+    );
 }
