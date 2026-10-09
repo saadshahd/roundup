@@ -116,6 +116,11 @@ def failing(pr):
     return None
 
 
+def stopped(pr):
+    """Whether the PR body holds a `Stopped:` line: the Builder ended on a question only the user can answer."""
+    return bool(re.search(r'^Stopped:', pr['body'] or '', re.M))
+
+
 def repairs(prs, now):
     """(pr, head, cause) for each open Builder PR that needs a fix run: a conflict, a failed required check, or a draft
     without a `Stopped:` line that no run has touched for IDLE seconds."""
@@ -124,7 +129,7 @@ def repairs(prs, now):
         if not pr['headRefName'].startswith('build/') or pr['isCrossRepository']:
             continue
         if pr['isDraft']:
-            if now - created(pr['updatedAt']) >= IDLE and not re.search(r'^Stopped:', pr['body'] or '', re.M):
+            if now - created(pr['updatedAt']) >= IDLE and not stopped(pr):
                 due.append((pr['number'], pr['headRefOid'], 'unfinished'))
         elif pr['mergeable'] == 'CONFLICTING':
             due.append((pr['number'], pr['headRefOid'], 'conflict'))
@@ -169,7 +174,7 @@ def ended(pr):
     """After a run that worked: a draft with a `Stopped:` line waits on the user; another draft gets a fix run."""
     if not pr['isDraft']:
         return
-    if re.search(r'^Stopped:', pr['body'] or '', re.M):
+    if stopped(pr):
         flag(pr['number'], 'The Builder stopped on a question only you can answer: see the `Stopped:` line in the PR body.')
     else:
         dispatch_fix(pr['number'], pr['headRefOid'], 'unfinished')
