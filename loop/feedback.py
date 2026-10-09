@@ -583,17 +583,19 @@ def publish(number):
     require(pr['base']['ref'] == 'main' and pr['head']['repo']['full_name'] == os.environ['GITHUB_REPOSITORY'], 'planning PR must merge into this repository main')
     # A verdict comment updates the PR, so an unchanged refused PR is not gated again.
     waiting = record.get('waiting') or {}
-    if (waiting.get('pr'), waiting.get('updated')) == (pr['number'], pr['updated_at']):
-        return
-    # Reuse all L46 checks and independent authorship, with merged instead of open state.
-    try:
-        d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
-    except subprocess.CalledProcessError as error:
-        if error.returncode != 1:
-            raise
-        reason = redact(' '.join((error.stderr or 'publication-ready refused').split()), os.environ)[:300]
-        save_claim(number, old, {**record, 'waiting': dict(pr=pr['number'], updated=pr['updated_at'], reason=reason)})
-        print(f'feedback #{number}: merged plan #{pr["number"]} waits: {reason}', file=sys.stderr)
+    if (waiting.get('pr'), waiting.get('updated')) != (pr['number'], pr['updated_at']):
+        waiting = {}
+        # Reuse all L46 checks and independent authorship, with merged instead of open state.
+        try:
+            d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 1:
+                raise
+            reason = redact(' '.join((error.stderr or 'publication-ready refused').split()), os.environ)[:300]
+            waiting = dict(pr=pr['number'], updated=pr['updated_at'], reason=reason)
+            save_claim(number, old, {**record, 'waiting': waiting})
+    if waiting:
+        print(f'feedback #{number}: merged plan #{pr["number"]} waits: {waiting["reason"]}')
         return
     proposal = gate(pr['number'])
     answer = proposal['answer']

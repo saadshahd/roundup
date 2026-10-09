@@ -4,6 +4,8 @@ import sys
 sys.dont_write_bytecode = True
 import unittest
 import copy
+import contextlib
+import io
 import base64
 import json
 import os
@@ -211,7 +213,9 @@ class GitHub:
                     old, record = f.read_claim(number)
                     result = f.resume_publication(number, old, record)
                     return str(result) if result else ''
-                f.publish(number)
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    f.publish(number)
+                return output.getvalue().strip()
             except (ValueError, subprocess.CalledProcessError) as error:
                 raise subprocess.CalledProcessError(1, args, stderr=str(error)) from error
             return ''
@@ -390,6 +394,16 @@ class Lifecycle(unittest.TestCase):
         self.assertIn(dict(name='ready-for-agent'), self.hub.issues[356]['labels'])
         self.assertEqual(self.hub.issues[355]['body'], source()['body'])
         self.assertEqual(self.hub.issues[355]['state'], 'open')
+
+    def test_l93_waiting_publication_reason_survives_the_process_boundary(self):
+        pr = self.plan()
+        self.hub.merge(pr, approve=False)
+        for _ in range(2):
+            status, text = f.publication('publish', 355)
+            self.assertEqual(status, 'ok')
+            self.assertIn(f'merged plan #{pr} waits:', text)
+            self.assertIn('independent exact-head approval', text)
+        self.assertEqual(self.hub.gated, [pr])
 
     def test_l90_unreviewed_merge_gets_a_fresh_plan_not_delivery(self):
         pr = self.plan()
