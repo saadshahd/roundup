@@ -72,6 +72,96 @@ pub struct RailNode {
     /// A22: true only for an exited Agent or Door with saved conversation data (A21) and no
     /// start in flight. `false` for a Terminal.
     pub can_resume: bool,
+    /// E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Room that is
+    /// no Door, a Terminal, and an Agent with no live Terminal.
+    pub channel: Option<Channel>,
+}
+
+/// E6: `pending` from the start, `up` once `agent.channelUp` arrived, `missing` when it had not
+/// within the Daemon's deadline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "agent/")]
+pub enum Channel {
+    Pending,
+    Up,
+    Missing,
+}
+
+/// The `agent.channel` event: Agent `id`'s Channel changed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct ChannelEvent {
+    pub id: String,
+    pub channel: Channel,
+}
+
+/// What `agent.brief` returns (E3): the text `rup context` prints, verbatim.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Brief {
+    pub stdout: String,
+}
+
+/// The node an Agent sits under: a plain Room, or a Room whose Door runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "agent/")]
+pub enum ParentNode {
+    Group,
+    MetaAgent,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct ContextSelf {
+    pub id: String,
+    pub name: String,
+    pub status: Status,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct ContextParent {
+    pub id: String,
+    pub name: String,
+    pub node: ParentNode,
+}
+
+/// Who a Message for help goes to: a Door's id, or the user's Actor id.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct ContextAsk {
+    pub to: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct ContextPeer {
+    pub id: String,
+    pub name: String,
+    pub status: Status,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct ContextTodo {
+    pub id: u32,
+    pub title: String,
+    pub blocked: bool,
+}
+
+/// What `agent.context` returns (E2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Context {
+    #[serde(rename = "self")]
+    #[ts(rename = "self")]
+    pub this: ContextSelf,
+    pub parent: Option<ContextParent>,
+    pub ask: ContextAsk,
+    pub peers: Vec<ContextPeer>,
+    pub todos: Vec<ContextTodo>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
