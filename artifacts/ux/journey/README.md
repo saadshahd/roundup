@@ -33,3 +33,19 @@ Main: `4649c5f` (holds U83, H18, U143; open PRs #393 U113, #396 B1–B18, #349 U
 Enter, Request and Review share one missing observer: the App cannot be rendered on a real Daemon outside the native App. Specified as **U144** (`scenarios/ui-first-journey.md`), After U143 (done), so ready. Intervene stays with U113 and the Meta-agent spike with #330; neither is duplicated. **J3** waits on U144 and repeats this audit through `just harness-real`.
 
 Loop note, not changed here: `loop/rules.sh ready` marks a policy row done only by a `j<n>_` test, so J1 and J2 print `ready` after merging.
+
+# J3 journey audit
+
+Main: `caf5589` (holds U144; open PRs #461 and #468 are loop machinery only). Method: `rupd <tmp project> --attached` with the fake `claude` and `RUPD_SOCKET`, then `just harness-real <project> 5199`, agent-browser (Chromium, light) at 1280×800 and 700×800, `window.__checks()` read after each step. Captures: `j3-enter-room-1280`, `j3-request-1280.png`, `j3-daemon-gone-1280.png`, `j3-review-reopen-*` (`.png`, with `.checks.json` where a Check ran). Nothing here ran a real `claude` or the native App.
+
+| Stage | Observed | Verdict |
+|---|---|---|
+| Enter | From the empty Project, `start a Room` created a Room and started its Door on the real Daemon; the Rail row and a Terminal came from it. D1 and D10 fail on the empty screen; with the Room, D5 (`span.live-label`, 4.18:1), D6 and D7 (`textarea.xterm-helper-textarea`) fail too at 1280. The Thread input sits flush with the window's bottom edge (y 776 to 800), also with no Room (U145, #440). The native chooser, the keyboard path and failure states were not re-run. | Unproved as a stage; the pointer path reaches a Thread on a real Daemon. |
+| Request | `ship j3` typed in the Thread reached the Daemon and showed as `you → room note …`. After 15 s the Room still read `starting`, the Thread showed no delivery state, and `todos` read `no todos yet`: the fake `claude` is scripted only by its start-up environment and never reads typed text. | Unproved: no Door action, Todo or outcome is observable. |
+| Understand | Not driven: the real Daemon holds one Room. `agents-10` is unchanged from J2. | Unproved. |
+| Intervene | Not driven; U113 owns the Decision Card. | Unproved. |
+| Review | Killing `rupd` showed `daemon exited by signal` with `reopen`. After a restart and reload the Room and the Thread's Message were found again; the Room read `Door stopped` with `start Door`. D6 and D7 pass at both widths (D1, D5, D10 fail). No Todo or result existed to find. | Reopen of a Room and its Thread proved on the real Daemon; result inspection unproved for want of a Request outcome. |
+
+## Gap selected
+
+The first unproved behavior is Request: nothing makes a Door act on a Thread message. Specified as **U146** (`scenarios/ui-first-journey.md`): `FAKE_CLAUDE_ON_PROMPT` in the fake `claude`, the Message's `delivered` status in the Thread, and the Todo in the Shelf, observed by `u146_` tests on the real Daemon. U145 (#440) and U113 keep their owners. **J4** repeats this audit once U146 is on main.
