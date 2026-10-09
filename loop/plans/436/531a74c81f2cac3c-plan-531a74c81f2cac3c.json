@@ -1,0 +1,41 @@
+{
+  "source": {
+    "number": 436,
+    "title": "L88: hand completed repairs back to independent review",
+    "body": "## Outcome\nA completed repair reaches an independent reviewer instead of repeatedly spending repair runs on an unchanged reject. PR425 exposed this when main absorbed its rejected workflow changes.\n\n## Scope\nloop/dispatch.py, loop/runs.sh and repair workflow handoff.\n\n## Acceptance\nA successful owned repair of a ready head requests review of the exact blocking verdict; no new commit is required. Changed heads, new/edited rejects, failed runs, stale owners and drafts cannot reuse that request. CI and independent approval remain required. Reviewer setup retries retain the handoff and the shared Claim prevents concurrent owners.\n\nObserver: controller lifecycle and real shell regression tests; an independent review unblocks PR425.\n\n## Preserve\nRepair budget, exact-head gates, non-force Claim ownership, existing independent rejection until superseded by approval.\n\nScenarios: L88\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nKey: repair-review-handoff\nPriority: 0\nMode: implement\nProvider: codex\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/436",
+    "kind": "work",
+    "revision": "531a74c81f2cac3cb07cc1300fdb09bd662e76731f2c3789f6cc86e78c474e90"
+  },
+  "phase": "plan",
+  "trigger": "531a74c81f2cac3cb07cc1300fdb09bd662e76731f2c3789f6cc86e78c474e90",
+  "main": "705875d727c640e58ab21ed072c40733ab69305e",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "When an owned repair run succeeds and leaves a ready (non-draft) PR at an unchanged head, it requests independent review of that exact head and the exact blocking verdict, without needing a new commit, so the loop does not keep spending repair runs on the same reject.",
+        "observer": "Controller lifecycle tests in loop/dispatch.test.py and real shell regression tests in loop/runs.test.sh, checked on main"
+      },
+      {
+        "statement": "That review request cannot be reused by a changed head, a new or edited reject, a failed or interrupted model run, a stale owner, or a draft.",
+        "observer": "Negative cases in loop/dispatch.test.py and loop/runs.test.sh (`runs.sh review-due` exits 1 for each), checked on main"
+      },
+      {
+        "statement": "Required CI and independent approval still gate merge, and the old reject still blocks until an approval supersedes it. Reviewer setup retries keep the request, and the shared per-PR Claim (non-force ref update) admits only one owner. The repair budget and exact-head gates stay unchanged.",
+        "observer": "loop/dispatch.test.py Claim and CI-wait cases plus `loop/rules.sh merge-ready` behaviour on main; a real PR whose repair needed no commit is handed to review and unblocked by an independent approve (PR425 has since merged after a manual review, so a new real occurrence or a reconciliation observation is needed)"
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 436,
+        "title": "L88: hand completed repairs back to independent review",
+        "body": "## Outcome\nA completed repair reaches an independent reviewer instead of repeatedly spending repair runs on an unchanged reject. PR425 exposed this when main absorbed its rejected workflow changes.\n\n## Scope\nloop/dispatch.py, loop/runs.sh and repair workflow handoff.\n\n## Acceptance\nA successful owned repair of a ready head requests review of the exact blocking verdict; no new commit is required. Changed heads, new/edited rejects, failed runs, stale owners and drafts cannot reuse that request. CI and independent approval remain required. Reviewer setup retries retain the handoff and the shared Claim prevents concurrent owners.\n\nObserver: controller lifecycle and real shell regression tests; an independent review unblocks PR425.\n\n## Preserve\nRepair budget, exact-head gates, non-force Claim ownership, existing independent rejection until superseded by approval.\n\nScenarios: L88\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nKey: repair-review-handoff\nPriority: 0\nMode: implement\nProvider: codex\n",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [],
+    "rules": [],
+    "question": ""
+  }
+}
