@@ -103,7 +103,7 @@ jobs:
           PR: ${{ inputs.pr }}
           HEAD: ${{ inputs.head }}
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
-        run: python3 loop/dispatch.py start "$PR" fix "$HEAD"
+        run: python3 loop/outcome.py report python3 loop/dispatch.py start "$PR" fix "$HEAD"
 
   fix:
     needs: repair-due
@@ -219,3 +219,13 @@ jobs:
           loop/runs.sh stopped "$BRANCH"
           python3 loop/outcome.py observe "$BRANCH" "$PR"
           python3 loop/dispatch.py repaired "$PR"
+
+  summary:
+    needs: [queue, build, repair-due, fix, after-fix]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Build or repair work Issues
+      next: Reconciliation selects the next eligible work or repair after this run ends.
