@@ -1,0 +1,74 @@
+{
+  "source": {
+    "number": 470,
+    "title": "J4: repeat J1's audit once U146 is on main: observe Request on a real Daemon",
+    "body": "<!-- work-order:scenarios/journey.md:J4 -->\n## Outcome\nrepeat J1's audit once U146 is on main: observe Request and the Review of its result, specify the next uncovered behavior\n\n## Acceptance\nScenarios: J4\nSpecification: [scenarios/journey.md](https://github.com/saadshahd/roundup/blob/main/scenarios/journey.md)\n\n## Scope\n`.agents/data/journey.md` for evidence; `scenarios/**` only for the selected gap; GitHub Issues; evidence under `artifacts/ux/journey/`\n\n## Preserve\nexisting scenario acceptance; no product code\n\n## Dependencies\nhttps://github.com/saadshahd/roundup/issues/469\n\n## Queue\nKey: J4\nPriority: 8\nMode: specify",
+    "html_url": "https://github.com/saadshahd/roundup/issues/470",
+    "kind": "work",
+    "revision": "89fa4857e7f7c8fb967ada8687a1ac6a79d410b03336ca6c2ce4adb3604c9d02"
+  },
+  "phase": "plan",
+  "trigger": "dd54e6facb1ebb980537c2b166860a5e68bef886e3f35c99d2778ba965536b40",
+  "main": "4597df41ed56b5fefd37f7df5d05b08372867f06",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "On a main that holds U146, the J4 audit drives the Request stage through `just harness-real` on a real `rupd`: a Message sent by pointer to a started Room's Door is acted on and its result (a Todo or outcome) shows in the App. The main SHA, commands and artifact paths or run links go under `artifacts/ux/journey/` and `.agents/data/journey.md`.",
+        "observer": "Independent review compares the cited harness-real output and the 1280x800 and 700x800 captures under `artifacts/ux/journey/` with the Request acceptance in `.agents/data/journey.md` on the cited main SHA."
+      },
+      {
+        "statement": "The same audit observes the Review of that Request's result on the real Daemon at both journey viewports, or records Review as unproved and names the exact missing implementation or observer.",
+        "observer": "Independent review checks the cited Review evidence, or the stated gap, against `.agents/data/journey.md`. A test name, declared RPC or seeded screenshot does not count."
+      },
+      {
+        "statement": "Following J1's policy, the audit specifies at most one bounded next uncovered behavior: a scenario in its owning file, plus one implementation work Issue with correct native blocked-by dependencies. It reuses existing owners such as U113 and U145 (#440) and leaves exactly one waiting successor audit with the next J id. If all five stages are proved on one main, it leaves no successor.",
+        "observer": "`loop/rules.sh ready` prints the new implementation Issue's correct ready, waiting or in-flight state, and prints the successor audit as waiting. Independent review checks that no owned work is duplicated."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 0,
+        "title": "U145: the Thread's input shows only where it has a Door, with an inset composer and a `send` button",
+        "body": "<!-- work-order:scenarios/ui-first-journey.md:U145 -->\n## Outcome\nImplement U145 as specified on main: no Thread without a Room, an inset composer on Token surfaces, a native `send` button that sends by pointer, Enter or Space, no focus taken unasked, and no `select a Room to talk to its Door` line.\n\nFound by #440; the scenario merged from its plan (2f86879a). It has no implementation work Issue yet. On main 4597df41, `apps/desktop/src/thread/Thread.tsx` still produces `select a Room to talk to its Door`, and there is no `send` button. That missing button keeps U146 (#469) open for its by-pointer clause (PR #480), and J4 (#470) waits on #469.\n\n## Scope\n`apps/desktop/src/thread/**`, the `<Thread>` mount in `apps/desktop/src/App.tsx`, `artifacts/ux/U145/`. No contract, App seam command or Token change.\n\n## Acceptance\nScenarios: U145\nSpecification: [scenarios/ui-first-journey.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-first-journey.md)\nObserver: the `u145_\u2026` tests in `apps/desktop/src/thread/` named by U145, against the fake App seam, plus the U26 harness at 1280 by 800 and 700 by 800 with `?seed=empty-project` and `?seed=door-stopped`. The harness checks that no Thread is in the DOM, the composer's insets from `getBoundingClientRect`, its computed surface, and `document.activeElement`. Captures go to `artifacts/ux/U145/`.\n\n## Preserve\nU143, U144, U146, U105\u2013U110 (#379 keeps its scenarios), U80's one failure line, D1, D2, D6, D7 and D8 not regressing against `main` in `window.__checks()`.\n\n## Dependencies\nNone open: the U145 specification and U143 are on main.\n\n## Queue\nKey: U145\nPriority: 7\nMode: implement\nProvider: any",
+        "blocked_by": []
+      },
+      {
+        "issue": 470,
+        "title": "J4: repeat J1's audit once U146 is on main: observe Request on a real Daemon",
+        "body": "<!-- work-order:scenarios/journey.md:J4 -->\n## Outcome\nrepeat J1's audit once U146 is on main: observe Request and the Review of its result, specify the next uncovered behavior\n\n## Acceptance\nScenarios: J4\nSpecification: [scenarios/journey.md](https://github.com/saadshahd/roundup/blob/main/scenarios/journey.md)\n\n## Scope\n`.agents/data/journey.md` for evidence; `scenarios/**` only for the selected gap; GitHub Issues; evidence under `artifacts/ux/journey/`\n\n## Preserve\nexisting scenario acceptance; no product code\n\n## Dependencies\nhttps://github.com/saadshahd/roundup/issues/469\n\n## Queue\nKey: J4\nPriority: 8\nMode: specify",
+        "blocked_by": [
+          "#469"
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "gh pr view 475 --json reviews,files; git log -1 origin/main; gh pr view 480 --json body,mergedAt,closingIssuesReferences; gh issue view 469 --json state; gh api repos/saadshahd/roundup/issues/470/dependencies/blocked_by; gh issue list --state all --search 'U145 in:title,body'; grep -rln 'select a Room to talk' apps/desktop/src",
+        "output": "Recovery: PR #475 merged without reviews. It added only loop/plans/470/89fa4857e7f7c8fb-plan-89fa4857e7f7c8fb.json, with no scenario changes, so this plan has nothing to revert. Main is 4597df41, the merge of PR #480 (U146, merged 2026-10-09T19:42:30Z, 'Refs #469' and no closing reference). The PR body says: 'the observer sends with Enter, not the send button, because that button is U145 and is not on main. So the issue stays open for the by-pointer clause.' #469 is OPEN, labelled ready-for-agent, and natively blocked only by #407 (closed, completed). #470 is natively blocked by #469 (open). U145 exists only in the scenario file and in feedback #440 (bug); no loop:work Issue, branch or Claim owns its implementation. apps/desktop/src/thread/Thread.tsx still contains 'select a Room to talk'.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37982025914",
+        "proved": false,
+        "remaining": "Nobody has run the J4 audit. The Door acting on a typed Message is on main (U146), but #470 stays waiting on #469. #469 waits on an unowned U145 implementation, which this batch proposes. Once U145 merges, a U146 Builder run can prove the by-pointer send and close #469, and then J4 runs."
+      },
+      {
+        "goal": 2,
+        "command": "same as goal 1",
+        "output": "Review depends on the observed Request result, and no audit has run on 4597df41.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37982025914",
+        "proved": false,
+        "remaining": "The whole goal, which the J4 audit produces after #469 closes."
+      },
+      {
+        "goal": 3,
+        "command": "same as goal 1",
+        "output": "No J4 audit has run. U113 (#380) owns Intervene. U145, the #440 owner named in this goal, has a scenario but no implementation Issue; this batch proposes the one bounded U145 implementation Issue (Key U145). It duplicates no owner: #379 owns U105\u2013U110, not U145.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37982025914",
+        "proved": false,
+        "remaining": "The whole goal, which the J4 audit produces. After U145 merges, #469 should also be closed as completed. Its native dependencies list only #407, so U145 \u2192 #469 ordering is recorded in the U145 body, not as a native link on the reused #469."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}
