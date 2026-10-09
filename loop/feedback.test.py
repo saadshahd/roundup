@@ -331,6 +331,7 @@ class Lifecycle(unittest.TestCase):
                             patch.object(f.d, 'gh', side_effect=self.hub.gh),
                             patch.object(f.d, 'run', side_effect=self.hub.run),
                             patch.object(f.orders, 'gh', side_effect=self.hub.gh),
+                            patch.object(f.orders.trail, 'gh', side_effect=self.hub.gh),
                             patch.dict(os.environ, GITHUB_REPOSITORY='o/r', GITHUB_RUN_ID='42', GITHUB_OUTPUT=output.name, LOOP_DAILY_TOKENS='1000')):
             replacement.start()
             self.addCleanup(replacement.stop)

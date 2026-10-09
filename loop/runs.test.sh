@@ -13,7 +13,7 @@ git -C "$dir" init -q
 git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U105-U107-U109
-cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/feedback.md" "$dir/loop/"
+cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/trail.py" "$root/loop/feedback.md" "$dir/loop/"
 printf '# Builder\n\nFixed text.\n' >"$dir/.agents/builder.md"
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
@@ -259,6 +259,7 @@ printf '{"check_runs":[{"name":"check","status":"in_progress","conclusion":null,
 check 'L24 a Code PR with running and failed CI is still due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 running and failed CI are reported as they stand' grep -q 'CI at this head when the review started: check: in_progress, rules: failure\.' "$FIXTURES/out"
 holds 'L24 the task leaves out the rest of the body' bash -c '! grep -q "because" "$FIXTURES/out"'
+holds 'L92 l92_review_task_excludes_trail: a review task never holds a Trail' bash -c '! grep -qi "trail" "$FIXTURES/out"'
 holds 'L24 no Percy step outside apps/desktop/src' bash -c '! grep -q percy-review "$FIXTURES/out"'
 printf 'apps/desktop/src/a.tsx\n' >"$FIXTURES/paths"
 check 'L24 a ui PR is due' 0 loop/runs.sh review-due 7 "$head"
