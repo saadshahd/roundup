@@ -141,29 +141,29 @@ class Pick(unittest.TestCase):
 class Built(unittest.TestCase):
     def test_l23_a_run_that_made_no_tool_call_records_nothing(self):
         with GitHub() as github:
-            builder.built(1, 'U1', IDLE_RUN, 'https://run/1')
+            builder.built(1, 'U1', False, 'https://run/1')
         self.assertEqual(github.writes, [])
 
     def test_l81_a_draft_with_a_stopped_line_waits_on_the_user_and_another_draft_gets_a_fix_run(self):
         with GitHub(prs=[pr(isDraft=True, body='Stopped: which colour?')]) as github:
-            builder.built(1, 'U1', WORKED, 'https://run/1')
+            builder.built(1, 'U1', True, 'https://run/1')
         self.assertTrue(github.flagged())
         self.assertEqual(github.fixes(), [])
         with GitHub(prs=[pr(isDraft=True)]) as github:
-            builder.built(1, 'U1', WORKED, 'https://run/1')
+            builder.built(1, 'U1', True, 'https://run/1')
         self.assertEqual(github.fixes(), [('-f', 'pr=9', '-f', f'head={HEAD}', '-f', 'cause=unfinished')])
         with GitHub(prs=[pr()]) as github:
-            builder.built(1, 'U1', WORKED, 'https://run/1')
+            builder.built(1, 'U1', True, 'https://run/1')
         self.assertEqual(github.writes, [])
 
     def test_l23_the_third_strike_in_a_day_stops_the_queue_building_the_issue(self):
         old = [note('<!-- strike -->\nold', ago=builder.DAY + 60), note('<!-- strike -->\nforged', login='someone')]
         with GitHub(notes=old + [note('<!-- strike -->\nfirst')]) as github:
-            builder.built(1, 'U1', WORKED, 'https://run/1')
+            builder.built(1, 'U1', True, 'https://run/1')
         self.assertIn('<!-- strike -->\nThe build run https://run/1 ended without a PR.', github.bodies())
         self.assertFalse(github.flagged())
         with GitHub(notes=old + [note('<!-- strike -->\nfirst'), note('<!-- strike -->\nsecond')]) as github:
-            builder.built(1, 'U1', WORKED, 'https://run/1')
+            builder.built(1, 'U1', True, 'https://run/1')
         self.assertTrue(github.flagged())
         self.assertIn(('api', '-X', 'DELETE', 'repos/{owner}/{repo}/issues/1/labels/ready-for-agent'), github.writes)
 
@@ -192,10 +192,10 @@ class Fix(unittest.TestCase):
 
     def test_l81_only_a_fix_run_that_worked_counts_as_an_attempt(self):
         with GitHub(view=pr()) as github:
-            builder.fixed(9, 'check', IDLE_RUN, 'https://run/2')
+            builder.fixed(9, 'check', False, 'https://run/2')
         self.assertEqual(github.writes, [])
         with GitHub(view=pr()) as github:
-            builder.fixed(9, 'check', WORKED, 'https://run/2')
+            builder.fixed(9, 'check', True, 'https://run/2')
         self.assertEqual(github.bodies(), ['<!-- fix-attempt -->\nFix run https://run/2 answered `check`.'])
 
 

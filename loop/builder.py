@@ -144,9 +144,10 @@ def ended(pr):
         dispatch_fix(pr['number'], pr['headRefOid'], 'unfinished')
 
 
-def built(issue, slug, path, run_url):
-    """After a build run that worked: hand its PR on, or strike the Issue; STRIKES in a day wait on the user."""
-    if not worked(path):
+def built(issue, slug, ran, run_url):
+    """After a build run: hand its PR on, or strike the Issue; STRIKES in a day wait on the user. A run that made no
+    tool call (`ran` false) records nothing."""
+    if not ran:
         print('the run made no tool call; nothing to record')
         return
     prs = orders.gh('pr', 'list', '--head', f'build/{slug}', '--state', 'open', '--json', 'number,headRefOid,isDraft,body')
@@ -179,9 +180,9 @@ def fix_task(pr, head, cause):
                         'draft with a `Stopped:` line.'])
 
 
-def fixed(pr, cause, path, run_url):
-    """After a fix run that worked: count the attempt on the PR, then hand the PR on."""
-    if not worked(path):
+def fixed(pr, cause, ran, run_url):
+    """After a fix run that worked (`ran`): count the attempt on the PR, then hand the PR on."""
+    if not ran:
         print('the run made no tool call; it counts as no attempt')
         return
     comment(pr, f'<!-- fix-attempt -->\nFix run {run_url} answered `{cause}`.')
@@ -257,19 +258,19 @@ def main(args):
             return 0 if worked(path) else 1
         case ['pick', most] if most.isdigit():
             pick(int(most))
-        case ['built', issue, slug, path] if issue.isdigit():
-            built(int(issue), slug, path, run_url)
+        case ['built', issue, slug, ran] if issue.isdigit() and ran in ('true', 'false'):
+            built(int(issue), slug, ran == 'true', run_url)
         case ['fix-task', pr, head, cause] if pr.isdigit() and cause in CAUSES:
             return task_or_nothing(fix_task(int(pr), head, cause))
-        case ['fixed', pr, cause, path] if pr.isdigit():
-            fixed(int(pr), cause, path, run_url)
+        case ['fixed', pr, cause, ran] if pr.isdigit() and ran in ('true', 'false'):
+            fixed(int(pr), cause, ran == 'true', run_url)
         case ['review-task', pr, head] if pr.isdigit():
             return task_or_nothing(review_task(int(pr), head))
         case ['review-post', pr, head, reviewer] if pr.isdigit():
             return 0 if review_post(int(pr), head, reviewer, sys.stdin.read(), run_url) else 1
         case _:
-            print('usage: builder.py prompt | worked <file> | pick <most> | built <issue> <slug> <file> | '
-                  'fix-task <pr> <head> <cause> | fixed <pr> <cause> <file> | review-task <pr> <head> | '
+            print('usage: builder.py prompt | worked <file> | pick <most> | built <issue> <slug> <ran> | '
+                  'fix-task <pr> <head> <cause> | fixed <pr> <cause> <ran> | review-task <pr> <head> | '
                   'review-post <pr> <head> <reviewer>', file=sys.stderr)
             return 2
     return 0
