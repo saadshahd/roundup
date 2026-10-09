@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""L29/L81: retained model claims and independently observed PR delivery."""
+"""L29/L81/L92: model claims for the Trail and independently observed PR delivery."""
 import html
 import json
 import os
@@ -51,21 +51,17 @@ def delivery(prs):
     return {**fields, 'state': 'ready', 'message': 'Ready PR observed; independent review and required gates still apply.'}
 
 
-def retain(file, destination):
-    events = json.loads(Path(file).read_text()) if file and Path(file).is_file() else []
-    report = model_outcome(events, os.environ)
-    report.update({key: os.environ.get(name, '') for key, name in (
-        ('run', 'GITHUB_RUN_ID'), ('attempt', 'GITHUB_RUN_ATTEMPT'), ('role', 'ROLE'), ('subject', 'SUBJECT'))})
-    Path(destination).write_text(json.dumps(report) + '\n')
-
-
-def observe(branch, number=None):
+def observation(branch, number=None):
     fields = 'number,state,isDraft,headRefOid,url'
     # Only an explicitly identified repair PR may use a merged state. Old merged PRs
     # on a reused Builder branch cannot make a new empty run look delivered.
     prs = [gh('pr', 'view', number, '--json', fields)] if number else gh(
         'pr', 'list', '--head', branch, '--state', 'open', '--limit', '100', '--json', fields)
-    report = delivery(prs)
+    return delivery(prs)
+
+
+def observe(branch, number=None):
+    report = observation(branch, number)
     # This is an observation, never a verdict, approval, or attribution of a concurrent push.
     text = 'Delivery observation: ' + json.dumps(report)
     print(text)
@@ -77,12 +73,13 @@ def observe(branch, number=None):
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) == 4 and sys.argv[1] == 'retain':
-            retain(sys.argv[2], sys.argv[3])
+        if len(sys.argv) == 3 and sys.argv[1] == 'explain':
+            events = json.loads(Path(sys.argv[2]).read_text()) if sys.argv[2] and Path(sys.argv[2]).is_file() else []
+            print(json.dumps(model_outcome(events, os.environ)))
         elif len(sys.argv) in (3, 4) and sys.argv[1] == 'observe':
             sys.exit(observe(sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else None))
         else:
-            sys.exit('usage: outcome.py retain <execution-file> <destination> | observe <branch> [pr]')
+            sys.exit('usage: outcome.py explain <execution-file> | observe <branch> [pr]')
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         # Never echo malformed execution data or subprocess output, which may hold credentials.
         print('Outcome evidence unavailable: extraction or GitHub observation failed.', file=sys.stderr)
