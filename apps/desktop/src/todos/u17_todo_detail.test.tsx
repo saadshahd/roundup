@@ -168,6 +168,7 @@ describe("u17 Todo detail", () => {
     app.handlers["todo.delete"] = () => null;
 
     fireEvent.click(within(drawer()).getByText("delete"));
+    fireEvent.click(within(drawer()).getAllByText("delete")[0]!);
 
     await waitFor(() => expect(connected.drawer.content()).toBeNull());
     expect(callsTo(app, "todo.delete")).toEqual([{ method: "todo.delete", params: { id: 5 } }]);
@@ -178,6 +179,7 @@ describe("u17 Todo detail", () => {
     app.handlers["todo.delete"] = () => Promise.reject(new RpcError(-32001, "not found"));
 
     fireEvent.click(within(drawer()).getByText("delete"));
+    fireEvent.click(within(drawer()).getAllByText("delete")[0]!);
 
     expect([(await within(drawer()).findByText(/not found/)).textContent, connected.drawer.content() === null]).toEqual([
       "not found",
@@ -343,6 +345,7 @@ describe("u17 Todo detail", () => {
     };
 
     fireEvent.click(within(drawer()).getByText("delete"));
+    fireEvent.click(within(drawer()).getAllByText("delete")[0]!);
     app.emit({ actor: USER, name: "todo.deleted", data: { id: 5 } });
     await waitFor(() => expect(screen.queryByRole("button", { name: /#5/ })).toBeNull());
 

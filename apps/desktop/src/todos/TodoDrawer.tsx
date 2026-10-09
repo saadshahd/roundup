@@ -29,6 +29,8 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
   const [offering, setOffering] = createSignal(false);
   const [read, setRead] = createSignal(false);
   const [removedByMe, setRemovedByMe] = createSignal(false);
+  const [asking, setAsking] = createSignal(false);
+  let deleteButton: HTMLButtonElement | undefined;
 
   const attempt = async <Result,>(call: () => Promise<Result>) => {
     const message = await failureOf(call);
@@ -137,24 +139,55 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
         )}
       </ItemDrawer>
       <Show when={read() && todo()}>
-        <p>
-          <button type="button" class="word" onClick={() => void attempt(() => app.rpc("todo.complete", { id: props.id }))}>
-            complete
-          </button>{" "}
-          <button
-            type="button"
-            class="word"
-            onClick={() =>
-              void attempt(async () => {
-                await app.rpc("todo.delete", { id: props.id });
-                setRemovedByMe(true);
-                drawer.close();
-              })
-            }
-          >
-            delete
-          </button>
-        </p>
+        <Show
+          when={asking()}
+          fallback={
+            <p>
+              <button type="button" class="word light" onClick={() => void attempt(() => app.rpc("todo.complete", { id: props.id }))}>
+                complete
+              </button>{" "}
+              <button
+                type="button"
+                class="word light"
+                ref={(button) => (deleteButton = button)}
+                onClick={() => {
+                  setFailure(null);
+                  setAsking(true);
+                }}
+              >
+                delete
+              </button>
+            </p>
+          }
+        >
+          <p class="light">
+            {`delete #${props.id}?  `}
+            <button
+              type="button"
+              class="word light"
+              onClick={() =>
+                void attempt(async () => {
+                  await app.rpc("todo.delete", { id: props.id });
+                  setRemovedByMe(true);
+                  drawer.close();
+                })
+              }
+            >
+              delete
+            </button>{" "}
+            <button
+              type="button"
+              class="word light"
+              ref={(button) => queueMicrotask(() => button.focus())}
+              onClick={() => {
+                setAsking(false);
+                queueMicrotask(() => deleteButton?.focus());
+              }}
+            >
+              keep
+            </button>
+          </p>
+        </Show>
       </Show>
       <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>
     </>
