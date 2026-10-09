@@ -135,6 +135,9 @@ jobs:
           ran=false
           if python3 "$RUNNER_TEMP/main/loop/builder.py" worked "$EXECUTION_FILE"; then ran=true; fi
           echo "ran=$ran" >>"$GITHUB_OUTPUT"
+      # The setup action's post steps (cache saves) run from .loop-main after the last step.
+      - if: always()
+        run: if [ -d "$RUNNER_TEMP/main" ]; then mv "$RUNNER_TEMP/main" .loop-main; fi
 
   after:
     needs: [task, fix-run]
