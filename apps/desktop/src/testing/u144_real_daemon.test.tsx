@@ -125,6 +125,35 @@ describe("u144 the harness serves the App on a real Daemon", () => {
     expect([failure instanceof RpcError, failure?.message]).toEqual([true, expect.stringContaining("nowhere")]);
   });
 
+  it("u144_a_method_the_daemon_rejects_shows_its_message_in_the_mounted_app", async () => {
+    const served = createServedApp(base);
+    let held = false;
+    const app: AppSeam = { ...served, subscribe: (onEvent) => served.subscribe((event) => (held ? undefined : onEvent(event))) };
+    const room = await served.rpc("rail.createRoom", { name: "doomed", parent: null });
+
+    render(() => <App app={app} reducedMotion={() => false} clock={Date.now} createEmulator={fakeEmulators().factory} />);
+
+    const rail = await screen.findByRole("region", { name: "rail" });
+
+    fireEvent.dblClick(await within(rail).findByText("doomed"));
+
+    const field = await within(rail).findByRole("textbox");
+
+    held = true;
+    await served.rpc("rail.remove", { id: room.id });
+
+    const rejected = await served.rpc("rail.rename", { id: room.id, name: "renamed" }).then(
+      () => null,
+      (error: RpcError) => error,
+    );
+
+    fireEvent.input(field, { target: { value: "renamed" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect(rejected).toBeInstanceOf(RpcError);
+    expect((await within(rail).findByRole("alert")).textContent).toContain(rejected!.message);
+  }, 60_000);
+
   it("u144_closing_the_socket_fires_daemon_exited_and_the_header_says_so", async () => {
     await mount();
     await screen.findByRole("banner");

@@ -1,0 +1,84 @@
+{
+  "source": {
+    "number": 397,
+    "title": "Pad is one live-preview editor, rich, with drawings agents and the lead share",
+    "body": "User report, two parts.\n\n1. No edit, preview or source modes. A Pad is one editable live-preview surface by default.\n2. The editor is rich. A Pad lets Agents and the human lead draw and build small visuals (tldraw or similar playground variants) to talk to each other and, above all, to the lead.\n\nExpected:\n- Opening a Pad shows rendered Markdown the user types in directly; no mode switch or toggle.\n- A Pad holds drawings and diagrams inline, and an Agent can write them as well as the user.\n\nGlossary: **Editor** (\"formatted Markdown editing surface\") and **Source** (\"syntax-highlighted Markdown field\") describe a mode split. This work removes or redefines them. **Sketch** (rich Markdown with Mermaid or tldraw visuals, storage and ownership open) overlaps the drawing part; the build run decides whether Sketch folds into Pad.\n\nOpen (design call for the build run):\n- Does Source survive as an escape hatch, or go?\n- Whether Sketch merges into Pad.\n- Which visual kinds Agents get first: tldraw, Mermaid or others.\n\nRelated: #389 (the Door's work orders may live in a Pad).\nReport only; no code change performed.",
+    "html_url": "https://github.com/saadshahd/roundup/issues/397",
+    "kind": "feedback",
+    "revision": "c513616b34ae134c0aebe916d3e68b8547d2c649369574f3f6a6234f8e8f1807"
+  },
+  "phase": "plan",
+  "trigger": "c513616b34ae134c0aebe916d3e68b8547d2c649369574f3f6a6234f8e8f1807",
+  "main": "e523b9329cf5ac8cb8319a338f81861eebe8f2b4",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "Opening any Pad shows one rendered Markdown surface. On a user-owned Pad the user places a caret in the rendered text and types without choosing a control first. The Pad Drawer has no `edit`, `Preview`, `done`, Source or other control that switches the body between views. GLOSSARY.md no longer defines a Pad mode split: **Source** and **Preview** are gone and **Editor** names the single surface.",
+        "observer": "`u145_` Vitest cases in `apps/desktop/src/pads/`. Plus an isolated agent-browser capture at 1280\u00d7800 on main, against the fake App, of a user-owned Pad typed into directly; no view-switch control may exist. Plus `grep` of GLOSSARY.md."
+      },
+      {
+        "statement": "A Pad holds Mermaid diagrams inline. Both the user (typing into the surface) and an Agent (through `rup mcp` `pad_create`/`pad_write`/`pad_append`) can add one. The diagram renders in place, and its fenced text survives reopening, a Daemon restart and `export .md`.",
+        "observer": "`u146_` Vitest cases. Plus a real-Daemon run: a fake Agent writes a ```mermaid block through `rup mcp`, and an isolated agent-browser at 1280\u00d7800 shows the rendered diagram before and after reopening."
+      },
+      {
+        "statement": "A Pad holds drawings inline (tldraw or a similar canvas). The user draws in place in a Pad they own, and an Agent writes a drawing through the Pad MCP tools. The drawing survives reopening, a Daemon restart and `export .md`.",
+        "observer": "`u147_` Vitest cases. Plus a real-Daemon run: a fake Agent writes a drawing block through `rup mcp` and the user adds a shape in an isolated agent-browser at 1280\u00d7800; the drawing reloads intact after reopening."
+      },
+      {
+        "statement": "Existing Pad guarantees still hold. P2 ownership: an Agent-owned Pad is not editable by the user and keeps `append`. Opening and leaving without a change writes nothing and keeps the source byte-for-byte. One `pad.write` follows a change. U36 conflict and handover, U141 scroll, and unsafe-content neutralization still apply. Rule 7: cold start < 300 ms and keystroke-to-render < 16 ms p95, with editor, Mermaid and drawing code loaded lazily.",
+        "observer": "The existing `u20_`, `u36_`, `u141_` and `p2_` tests stay green with the new `u145_`\u2013`u147_` cases, and `just perf` on main passes without a regression above 10%."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 0,
+        "title": "U145, U146: specify one live Pad surface with inline Mermaid",
+        "body": "## Outcome\nSpecify the Pad as one live-preview surface, with no edit/Preview/Source modes, plus inline Mermaid diagrams that the user and Agents both write (source feedback #397, parts 1 and 2). After this, an implementation Issue can build it.\n\n## Scope\n`scenarios/ui-rail.md` (new U145 and U146; mark U66's view switching and U67's `edit`-gated editor as superseded by U145), `scenarios/ui.md` (U20 names U145's surface instead of \"U66's Editor\"), `GLOSSARY.md` and `docs/wireframes.md`'s Markdown Sketch row. No code.\n\nDesign calls (recorded direction: `docs/wireframes.md` \"Sketches replace Pads\", Mermaid or tldraw):\n- Source goes. P5 file storage and P6 `export .md` stay the raw-Markdown escape hatches. A focused Mermaid block may show its text in place; that is block editing, not a Pad view switch.\n- Sketch folds into Pad as capability. A Pad with Mermaid or drawing blocks is the current form of a Sketch. The Pad contract name stays until a separate rename scenario changes every caller (rule 4).\n- Mermaid is the first visual kind. It is a fenced ```mermaid block, so Agents can write it through the existing `pad_*` MCP tools with no contract change. Drawings follow in the drawing specification.\n\nGlossary: **Editor** becomes \"A Pad's single formatted Markdown surface the user reads and types in\". Remove **Source** and **Preview**. **Sketch** is redefined as a Pad holding Mermaid or drawing blocks, with Room-scoped storage still open.\n\nU145 must state:\n- The body is one formatted, editable document filling U50's height. Markdown input rules apply as typed.\n- No control switches views.\n- Blurring outside the Drawer, or closing it, calls `pad.write` once only if the document changed. There is no timed write, and a no-op keeps the source byte-for-byte.\n- An Agent-owned Pad renders the same surface read-only and keeps `append` (P2).\n- U36 and U141 still apply, unsafe content never executes, and the editor loads only when a Pad Drawer opens.\n\nU146 must state:\n- A ```mermaid block renders inline as SVG in Tokens colours, using strict security level.\n- Invalid Mermaid shows its text and one error line.\n- The stored block stays byte-exact, and the block survives P5, P6 and P7.\n- An Agent's `pad_write`/`pad_append` block appears after `pad.changed`.\n- Mermaid loads only when a block is present.\n\n## Acceptance\nScenarios: U145, U146\nSpecification: [scenarios/ui-rail.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-rail.md)\nObserver: the specification PR merges after independent review. U145 and U146 each name `u145_`/`u146_` Vitest cases, a real-Daemon `rup mcp` writer for U146, and isolated agent-browser captures at 1280\u00d7800.\n\n## Preserve\nP1\u2013P10 Pad contracts and permissions; M1 tool list; U20 single `pad.read` Touch; U36 conflict and handover; U141 scroll; rule 7 budgets; no change under `contracts/`.\n\nKey: U145-spec\nPriority: 1\nMode: specify\nProvider: any",
+        "blocked_by": []
+      },
+      {
+        "issue": 0,
+        "title": "U147: specify drawings inside a Pad that Agents and the user share",
+        "body": "## Outcome\nSpecify inline drawings in a Pad (source feedback #397, part 2). The user draws in place and an Agent writes a drawing through the Pad MCP tools, so drawn and written thinking stay together.\n\n## Scope\n`scenarios/ui-rail.md` (new U147, building on U145's surface), the drawing entry in `GLOSSARY.md`, and the tldraw row in `docs/wireframes.md`. No code.\n\nU147 must decide and state:\n- **Canvas.** tldraw per the accepted direction, or a similar canvas if the specification records that tldraw's licence (key or watermark terms) does not fit a distributed desktop App. Excalidraw (MIT) is the named alternative. Record the licence finding in the PR.\n- **Representation.** One fenced block whose info string names the kind, with a JSON body inside the Pad text. P5 file storage, P6 export and P7 persistence then carry it with no contract change. Give one minimal body an Agent can write by hand (a rectangle, a text label and an arrow) as a fixture.\n- **Editing.** In a user-owned Pad the drawing is editable in place, and leaving it follows U145's single-write rule. A no-op keeps the block byte-for-byte. In an Agent-owned Pad it is visible and read-only. A body the canvas cannot load shows its text and one error line, and the rest of the Pad still edits.\n- **Agents.** `pad_create`/`pad_write`/`pad_append` with that block render after `pad.changed`.\n- **Loading.** The canvas loads only when a Pad containing a drawing block opens or the user inserts one. Cold start and keystroke-to-render stay within rule 7.\n\n## Acceptance\nScenarios: U147\nSpecification: [scenarios/ui-rail.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-rail.md)\nObserver: the specification PR merges after independent review. U147 names `u147_` Vitest cases, a real-Daemon fake Agent writing the fixture through `rup mcp`, and an isolated agent-browser capture at 1280\u00d7800 of the user adding a shape and the drawing reloading intact.\n\n## Preserve\nU145/U146 as merged; P1\u2013P10; M1; rule 7; no change under `contracts/`.\n\nKey: U147-spec\nPriority: 2\nMode: specify\nProvider: any",
+        "blocked_by": [
+          "U145-spec"
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "grep -n -E 'setMode\\(\"edit\"\\)|>Preview<|onClick=\\{done\\}' apps/desktop/src/pads/PadDrawer.tsx  (at main e523b9329cf5ac8cb8319a338f81861eebe8f2b4)",
+        "output": "242: <button type=\"button\" onClick={() => setMode(\"edit\")}>edit</button>\n255: <button type=\"button\" onClick={() => showDraft(\"preview\")}>Preview</button>\n258: <button type=\"button\" onClick={() => setMode(\"edit\")}>edit</button>\n261: <button type=\"button\" onClick={done}>done</button>",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37957697127",
+        "proved": false,
+        "remaining": "The Pad Drawer still switches between reading, edit and Preview views (U66/U67), and GLOSSARY.md still defines Source and Preview. Not yet specified (U145) or built."
+      },
+      {
+        "goal": 2,
+        "command": "grep -n -E 'mermaid|tldraw' apps/desktop/package.json  (at main e523b9329cf5ac8cb8319a338f81861eebe8f2b4)",
+        "output": "(no output; the dependencies are codemirror and milkdown only)",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37957697127",
+        "proved": false,
+        "remaining": "Mermaid rendering is not specified (U146) or built."
+      },
+      {
+        "goal": 3,
+        "command": "grep -n -E 'mermaid|tldraw' apps/desktop/package.json  (at main e523b9329cf5ac8cb8319a338f81861eebe8f2b4)",
+        "output": "(no output; the App has no drawing canvas)",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37957697127",
+        "proved": false,
+        "remaining": "Drawing representation, canvas choice and licence are not specified (U147) or built."
+      }
+    ],
+    "rules": [
+      {
+        "path": "scenarios/ui-rail.md",
+        "content": "A Pad has exactly one surface. What the user reads is where the user types. No Pad-level control switches the body between a reading, editing, preview or raw-source view. Visual blocks (Mermaid, drawings) render in place in that same surface. A focused block may expose its own text for in-place editing without changing the rest of the Pad. Whether the surface accepts typing is decided only by ownership (P2), never by a mode the user selects.",
+        "cases": "Cases from the context:\n- U66 `edit`/`Preview`/`done` buttons. Wrong: the user must choose `edit` before typing. Right: a caret goes into the rendered text directly; no such buttons.\n- U67 formatted editor only after `edit`. Wrong: formatting appears behind a mode. Right: the formatted document is the default and only surface.\n- GLOSSARY **Source** (syntax-highlighted Markdown field). Wrong: a separate raw view. Right: removed; P5 files and P6 export give raw Markdown outside the Drawer.\n- GLOSSARY **Preview**. Wrong: a separate rendered draft view. Right: removed, because the surface is the preview.\n- An Agent writes a ```mermaid block via `pad_write`. Wrong: shown as code text only. Right: the diagram renders in place.\n- The user draws in a Pad. Wrong: no canvas exists. Right: a drawing block is edited in place.\n\nSituations outside the set:\n1. Agent-owned Pad opened by the user: same rendered surface, not typeable, `append` field stays. Allowed: an ownership decision, not a mode.\n2. U36 conflict line with `keep mine`/`use theirs`: allowed. It resolves a write and does not switch views.\n3. `export .md` button: allowed. It writes a file and does not switch the body.\n4. A caret inside a Mermaid block showing its text beside the diagram: allowed. It is block-scoped.\n5. A Pad-wide \"show Markdown\" toggle: forbidden.\n6. A formatting toolbar: allowed. It changes content, not the view.\n7. A read-only reader view of a user-owned Pad before the first click: forbidden. The surface is typeable at once.\n8. A full-screen Drawer: allowed. Size is not a view of different content.\n9. A drawing block opening a modal canvas that hides the Pad: forbidden. Drawings edit in place.\n10. A Pad with invalid Mermaid: the block's text plus one error line in place. No mode switch and no blank.\n\nCounterexample hunt: an empty Pad needs some affordance to start typing. The rule forces the empty surface itself to take the caret, which is correct, so no narrowing was needed."
+      }
+    ],
+    "question": ""
+  }
+}
