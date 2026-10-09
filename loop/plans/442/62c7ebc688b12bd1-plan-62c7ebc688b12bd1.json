@@ -1,0 +1,42 @@
+{
+  "source": {
+    "number": 442,
+    "title": "L88: reduce API polling and defer scans near quota exhaustion",
+    "body": "GitHub installation API exhaustion stopped reconciliation and merge-gate updates for #441 even though product CI passed.\n\nDeliver L88:\n- Exclude ineligible unclaimed feedback before per-Issue ownership reads.\n- Skip order/history reads when all Builder slots are occupied.\n- Defer periodic full scans below 100 remaining REST calls or GraphQL points; show the reset time in the run summary.\n- Keep budget-read errors visible and daily reports outside periodic deferral.\n\nLocally owned by Codex; implementation and regression tests are under review.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/442",
+    "kind": "feedback",
+    "revision": "62c7ebc688b12bd147732521d46e7f4c55708d8e78b878b76af1a9db43abd664"
+  },
+  "phase": "plan",
+  "trigger": "62c7ebc688b12bd147732521d46e7f4c55708d8e78b878b76af1a9db43abd664",
+  "main": "77ced380f39721d29d1fd081d421c9af739ee51c",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "When a feedback sweep runs, ready (unclaimed) Issues and bot-only Issues are excluded before any per-Issue ownership (`loop-feedback/<n>` Claim) read, so those Issues cost no ownership API calls.",
+        "observer": "On main: `loop/feedback.test.py` contains a case where an excluded unclaimed Issue gets no ownership read, and it passes. A real reconcile run log shows no ownership lookups for excluded Issue numbers."
+      },
+      {
+        "statement": "When all Builder slots are taken (running Builders >= max), `runs.sh queue` prints `[]` before it reads orders (`rules.sh ready`), build/loop-row refs or merged-PR history.",
+        "observer": "On main: `loop/runs.test.sh` stubs the queue with `max` running Builders, then asserts `[]` comes back and that no `rules.sh ready`, `git ls-remote` or merged-heads read happened. The suite passes."
+      },
+      {
+        "statement": "Periodic reconciliation and regular Status refreshes check REST and GraphQL budgets before a full scan. If either has fewer than 100 calls/points left, the scan is skipped and the workflow run summary shows the remaining budget and the reset time.",
+        "observer": "On main: `loop/dispatch.test.py` covers `dispatch.py budget` at 99 and 100 remaining for both REST and GraphQL, and checks `available` plus a summary line that names the remaining budget and reset time. A real reconcile.yml run on main shows the budget step, and its job summary when deferred."
+      },
+      {
+        "statement": "A failed budget read fails the workflow step and is never treated as an empty queue, a deferral or an approval. Daily Status reports skip the budget deferral and fail visibly when the API is unavailable.",
+        "observer": "On main: a dispatch test where the budget read errors makes `dispatch.py budget` exit nonzero with no `available=true` output. `status.yml` runs the report step on the daily schedule (`3 8 * * *`) and on `inputs.daily` no matter what the budget step says. A daily status.yml run on main is green or fails visibly."
+      },
+      {
+        "statement": "Once this is on main, reconciliation and merge-gate updates keep running without exhausting the installation API budget, unlike the stall that hit #441.",
+        "observer": "GitHub Actions history for reconcile.yml and status.yml on main after the change merges: no run fails from API rate-limit exhaustion over a 24-hour window, and any deferred run's summary shows a reset time and is followed by a successful scan."
+      }
+    ],
+    "deliveries": [],
+    "evidence": [],
+    "rules": [],
+    "question": ""
+  }
+}
