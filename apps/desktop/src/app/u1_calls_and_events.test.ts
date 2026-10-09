@@ -188,6 +188,32 @@ describe("u1 calls and events", () => {
     expect(calls).toEqual([{ label: "main", value: 3 }]);
   });
 
+  it("h18_daemon_proof_invokes_daemon_proof_with_no_arguments_and_returns_the_string", async () => {
+    mockIPC((command, args) => {
+      calls.push({ command, args });
+
+      return "ab".repeat(32);
+    });
+
+    const proof = await createTauriApp().daemonProof();
+
+    expect(proof).toBe("ab".repeat(32));
+    expect(calls).toEqual([{ command: "daemon_proof", args: {} }]);
+  });
+
+  it("h18_daemon_proof_rejects_with_the_apps_error_and_with_a_malformed_answer", async () => {
+    mockIPC(() => {
+      throw { code: -32603, message: "the Daemon has exited" };
+    });
+    await expect(createTauriApp().daemonProof()).rejects.toMatchObject({
+      code: -32603,
+      message: "the Daemon has exited",
+    });
+
+    mockIPC(() => 7);
+    await expect(createTauriApp().daemonProof()).rejects.toBeInstanceOf(RpcError);
+  });
+
   it("u1_a_dock_badge_count_of_zero_clears_the_badge", async () => {
     mockWindows("main");
     mockIPC((command, args) => {

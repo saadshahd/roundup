@@ -18,7 +18,7 @@ const NOT_FOUND = -32001;
 
 const KINDS: Kind[] = ["error", "needs-you", "blocked", "working", "idle", "done"];
 
-export const SEEDS = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped"] as const;
+export const SEEDS = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped", "earlier-run"] as const;
 
 export type SeedName = (typeof SEEDS)[number];
 
@@ -287,7 +287,9 @@ export const seedApp = (name: SeedName, now: number): Controls => {
 
   const nodes = name === "first-run" || name === "empty-project"
     ? []
-    : name === "door-stopped"
+    : name === "earlier-run"
+      ? [agent("earlier-agent", "done", "finished", { name: "earlier agent", terminal_id: null, status: statusAt(now, "done", "finished", 0) })]
+      : name === "door-stopped"
       ? [door("first-room", "done", "finished", { name: "first room", status: statusAt(now, "done", "finished", 0) })]
       : tree;
 

@@ -23,11 +23,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - run: loop/rules.sh vocab
+      - run: python3 loop/orders.py lint
+      - run: python3 loop/orders.test.py
       - run: loop/rules.test.sh
       - run: loop/merge-ready.test.sh
       - run: loop/percy.test.sh
       - run: loop/qa-sweep.test.sh
       - run: python3 loop/dispatch.test.py
+      - run: python3 loop/outcome.test.py
       - run: loop/runs.test.sh
       - run: loop/codex.test.sh
       - run: loop/retro.test.sh

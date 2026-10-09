@@ -9,6 +9,7 @@ Data for the QA sweep, the Design critic and the Percy build: `loop/percy.sh` (L
 | `first-run` | no open Project |
 | `empty-project` | open Project with no rows; U143’s first Room action |
 | `door-stopped` | selected Room whose Door exited 0; U143’s state and restart action |
+| `earlier-run` | selected `done` Agent with no Terminal; U83’s `no output kept from an earlier run` |
 | `agents-10` | ten Agents, one per Kind in turn |
 | `tree-40` | forty nodes (nested Rooms, a Door, Terminals), eight Todos, four Pads |
 | `daemon-exits` | `agents-10`, then `daemon-exited` with code 1 |

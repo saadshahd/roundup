@@ -2,6 +2,9 @@
 //! It owns the connection loop, the module router, the event bus and the Provenance log.
 
 mod builtin;
+mod handshake;
+
+pub use handshake::{HANDSHAKE_BOUND, Handshake, HandshakeError, read_handshake};
 
 use std::collections::HashMap;
 use std::io;
@@ -35,6 +38,12 @@ pub struct Conn {
 impl Daemon {
     /// `dir` is the Project's `.roundup/` directory; it is created if missing.
     pub fn open(dir: &Path) -> Result<Self, OpenError> {
+        Self::open_with_proof(dir, None)
+    }
+
+    /// Like `open`, with the `proof` an attached App handed over (H4, H18); without one every
+    /// `decision.answer` is `FORBIDDEN`.
+    pub fn open_with_proof(dir: &Path, proof: Option<String>) -> Result<Self, OpenError> {
         std::fs::create_dir_all(dir)?;
         let bus = Bus::new();
         let terminals = Arc::new(terminal::Terminals::open_with(
@@ -42,11 +51,9 @@ impl Daemon {
             bus.clone(),
             &agents::claude_code::MARKERS,
         )?);
-        let agents = Arc::new(agents::Agents::open(
-            dir,
-            bus.clone(),
-            Arc::clone(&terminals),
-        )?);
+        let agents = Arc::new(
+            agents::Agents::open(dir, bus.clone(), Arc::clone(&terminals))?.with_proof(proof),
+        );
         let agents_module: Arc<dyn Module> = agents.clone();
         let mut daemon = Self {
             modules: HashMap::new(),
@@ -55,14 +62,27 @@ impl Daemon {
         };
         daemon.register(Arc::new(todos::Todos::open(dir, bus.clone())?));
         daemon.register(Arc::new(pads::Pads::open(dir, bus.clone())?));
-        // Slice 3 maps `Agents::prompt` onto this; it does not exist yet, so nothing is typed.
-        let deliver: messages::Deliver =
-            Arc::new(|_, _| Box::pin(async { Err(messages::Refusal::NotFound) }));
-        daemon.register(Arc::new(messages::Messages::open(
+        // B2: the one function that types a Message is `Agents::prompt` (H11).
+        let typist = Arc::clone(&agents);
+        let deliver: messages::Deliver = Arc::new(move |id, text| {
+            let typist = Arc::clone(&typist);
+            Box::pin(async move {
+                typist
+                    .prompt(&id, &text)
+                    .await
+                    .map_err(|refused| match refused {
+                        agents::PromptError::Busy { .. } => messages::Refusal::Busy,
+                        agents::PromptError::NotAccepted { .. } => messages::Refusal::NotAccepted,
+                        agents::PromptError::NotFound { .. } => messages::Refusal::NotFound,
+                    })
+            })
+        });
+        daemon.register(Arc::new(messages::Messages::open_with(
             dir,
             bus,
             agents_module,
             deliver,
+            messages::Env::system(Arc::clone(&daemon.touches)),
         )?));
         daemon.register(agents);
         daemon.register(terminals);

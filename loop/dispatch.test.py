@@ -228,15 +228,45 @@ class L88(unittest.TestCase):
         self.assertIsNone(d.decision(other, [], [], ['code']))
 
     def test_l88_missed_event_dispatches_and_empty_queue_stops(self):
-        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'available', return_value=True), patch.object(d, 'run', side_effect=['', '[]']) as run:
+        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'available', return_value=True), patch.object(d, 'run', side_effect=['', '', '[]']) as run:
             d.reconcile()
-            self.assertEqual(run.call_args_list[0].args, ('gh', 'workflow', 'run', 'review.yml', '-f', 'pr=1', '-f', 'head=' + HEAD))
-            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[1].args, ('gh', 'workflow', 'run', 'review.yml', '-f', 'pr=1', '-f', 'head=' + HEAD))
+            self.assertEqual(run.call_count, 3)
 
     def test_l88_claimed_pr_is_not_redispatched(self):
         with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=('old', {})), patch.object(d, 'available', return_value=False), patch.object(d, 'run', return_value='[]') as run:
             d.reconcile()
-            run.assert_called_once_with('bash', 'loop/runs.sh', 'queue', '4')
+            self.assertEqual([c.args for c in run.call_args_list], [('bash', 'loop/runs.sh', 'recover'), ('bash', 'loop/runs.sh', 'queue', '4')])
+
+    def test_l88_failed_owner_recovery_cannot_dispatch_new_work(self):
+        with patch.object(d, 'run', side_effect=subprocess.CalledProcessError(4, ['recover'])), patch.object(d, 'gh') as gh:
+            with self.assertRaises(subprocess.CalledProcessError):
+                d.reconcile()
+            gh.assert_not_called()
+
+
+class PublicationPermissions(unittest.TestCase):
+    def test_l23_writing_roles_request_workflow_changes_and_read_only_ci_evidence(self):
+        for name in ('build', 'build-row', 'retro'):
+            source = (ROOT / f'.github/workflows/{name}.yml').read_text()
+            action = source.split('uses: anthropics/claude-code-action@v1', 1)[1]
+            inputs = action.split('      - ', 1)[0]
+            block = inputs.split('additional_permissions: |\n', 1)[1]
+            granted = []
+            for line in block.splitlines():
+                if not line.startswith('            '):
+                    break
+                granted.append(line.strip())
+            self.assertEqual(set(granted), {'actions: read', 'checks: read', 'workflows: write'}, name)
+            self.assertNotIn('github_token:', inputs, name)
+
+    def test_l24_reviewer_keeps_the_read_only_workflow_token(self):
+        source = (ROOT / '.github/workflows/review.yml').read_text()
+        action = source.split('uses: anthropics/claude-code-action@v1', 1)[1].split('      - ', 1)[0]
+        self.assertIn('github_token: ${{ github.token }}', action)
+        self.assertNotIn('additional_permissions:', action)
+        job = source.split('  review:', 1)[1].split('    steps:', 1)[0]
+        self.assertNotIn(': write', job)
 
 
 class L89(unittest.TestCase):

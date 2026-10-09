@@ -219,6 +219,7 @@ def start(number, role, head):
 
 
 def reconcile():
+    run('bash', 'loop/runs.sh', 'recover')
     prs = gh('pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,isDraft')
     busy = {'build/' + s for s in active_builds()} | {local_branch()}
     for pr in prs:

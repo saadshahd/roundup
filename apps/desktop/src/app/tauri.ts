@@ -44,6 +44,7 @@ const parsedCommand = <Schema extends v.GenericSchema>(
 export const createTauriApp = (): AppSeam => ({
   project: () => parsedCommand(v.nullable(projectSchema), "project", {}),
   openProject: (path) => parsedCommand(projectSchema, "open_project", { path }),
+  daemonProof: () => parsedCommand(v.string(), "daemon_proof", {}),
   chooseProjectPath: () => guarded(() => open({ directory: true, multiple: false })),
   chooseSavePath: (suggestedName) => guarded(() => save({ defaultPath: suggestedName })),
   setDockBadge: (count) => guarded(() => getCurrentWindow().setBadgeCount(count === 0 ? undefined : count)),

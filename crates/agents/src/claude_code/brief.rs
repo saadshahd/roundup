@@ -1,8 +1,8 @@
 //! E1: the Brief, the text file Claude Code appends to its system prompt. It holds only what never
 //! changes for an Agent id: who it is, that roundup supervises it, the tools `rup mcp` offers and,
 //! for a Door, B24's role guidance. A name, Terminal id, parent, peer or Todo changes, so none is
-//! written here. A tool is described only once `crates/rup` offers it: landing `agent_context`,
-//! `message_send` or `agent_spawn` updates this list and its test together.
+//! written here. A tool is described only once `crates/rup` offers it: landing `agent_context`
+//! or `agent_spawn` updates this list and its test together.
 
 /// What an Agent is to roundup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub enum Role {
 }
 
 /// The tools `rup mcp` offers, with when to use each.
-const TOOLS: [(&str, &str); 14] = [
+const TOOLS: [(&str, &str); 18] = [
     ("todo_create", "record a piece of work that is not done yet"),
     ("todo_get", "read one Todo before changing it"),
     ("todo_list", "see all the work already recorded"),
@@ -37,6 +37,16 @@ const TOOLS: [(&str, &str); 14] = [
     ("pad_append", "add text to the end of any Pad"),
     ("pad_setOwner", "give a Pad to another Actor"),
     ("pad_delete", "delete a Pad you no longer need"),
+    (
+        "message_send",
+        "send a note, question or request to another Agent or the user; it is delivered when the receiver is next idle",
+    ),
+    ("message_get", "read one Message you sent or received"),
+    ("message_list", "see the Messages you sent or received"),
+    (
+        "message_pass",
+        "hand a question you received on to the next Agent above, when it is not yours to answer",
+    ),
     (
         "ask_user",
         "put a question to the user with one to four short answers to pick from, and wait for the one they pick",
