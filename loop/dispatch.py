@@ -290,11 +290,13 @@ def issued(number):
 def start(number, role, head):
     task = due(number)
     if not task or task['role'] != role or (head and task['head'] != head):
+        print(f'PR #{number}: no eligible {role} for requested head {head or "current"}; no agent started.')
         return
     if role == 'fix' and task.get('planning'):
         run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'pr={number}', '-f', f"head={task['head']}")
         return
     if not acquire(task):
+        print(f'PR #{number}: active owner or retry wait; no agent started.')
         return
     fresh = due(number)
     if not fresh or key(fresh) != key(task):
@@ -304,7 +306,7 @@ def start(number, role, head):
         prompt = ('Review ' + prompt + '\nIf an earlier independent approval names an ancestor, focus on the changes since that approved head, including conflict resolutions and their effects. Your verdict must still cover the current head; do not repeat unchanged findings.')
     else:
         evidence = {'ci': 'Two controller CI reruns did not recover this head. Diagnose runner, concurrency and workflow failures before changing product code.',
-                    'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
+                    'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Read the independent verdicts and address every unresolved reject before marking ready; a base merge alone does not resolve a finding. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
                     'check': 'Inspect the failed required CI check on this exact head, read its failing job logs, and fix the cause.',
                     'rules': 'Inspect the failed rules job and repair its concrete finding. For a missing Author-Agent trailer on your latest commit only, amend its metadata, prove git diff between old and amended commits is empty, and push with an explicit force-with-lease matching the expected head; never rewrite code under that exception.',
                     'reject': 'Read the independent reject findings with loop/rules.sh verdicts and address each one.',
@@ -320,6 +322,7 @@ def start(number, role, head):
             prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
                        + trail.DIAGNOSTIC + " CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
         prompt += trail.pr_section(number)
+    print(f'PR #{number}: starting {role} for {task["cause"]} at {task["head"][:7]}.')
     issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
@@ -334,6 +337,7 @@ def reconcile():
     for pr in prs:
         task = due(pr['number'], busy)
         if not task:
+            print(f'PR #{pr["number"]}: no eligible review or repair on this sweep.')
             continue
         _, record = claim_record(task['pr'])
         if not available(task, record):
@@ -354,6 +358,9 @@ def reconcile():
     # Queue entry is serialized and row Claims are atomic; an empty queue does not dispatch again.
     if json.loads(run('bash', 'loop/runs.sh', 'queue', '4')):
         run('gh', 'workflow', 'run', 'build.yml')
+        print('Queued Builder work; next: build run claims eligible Issues.')
+    else:
+        print('No Builder work eligible; active Claims, dependencies and retry waits remain in force.')
 
 
 def budget():
