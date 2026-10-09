@@ -41,9 +41,15 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/loop-ledger-cache
+          key: loop-ledger-v1-${{ github.run_id }}
+          restore-keys: loop-ledger-v1-
       - env:
           GH_TOKEN: ${{ github.token }}
           LOOP_DAILY_TOKENS: ${{ vars.LOOP_DAILY_TOKENS }}
+          LOOP_LEDGER_CACHE: ${{ runner.temp }}/loop-ledger-cache
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
         run: |
           gh auth setup-git

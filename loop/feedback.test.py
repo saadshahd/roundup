@@ -238,6 +238,12 @@ class Feedback(unittest.TestCase):
             self.assertIsNone(f.intake(item, True, None))
         self.assertIsNotNone(f.intake(source(body='No implementation was performed.'), True, None))
 
+    def test_l90_partial_publication_child_keeps_its_parent_owner(self):
+        child = source(number=356, labels=[dict(name='loop:work')],
+                       body=answer()['deliveries'][0]['body'] + '\n<!-- feedback-delivery 355 observe-feedback -->')
+        self.assertIsNone(f.intake(child, False, None))
+        self.assertIsNone(f.intake(child, True, None))
+
     def test_l90_bot_update(self):
         original = f.intake(source(), True, None)
         self.assertEqual(f.intake(source(body='Bot progress'), False, original), original)
@@ -608,7 +614,10 @@ class Lifecycle(unittest.TestCase):
         with self.assertRaises(subprocess.TimeoutExpired):
             f.publish(355)
         self.assertNotIn(dict(name='ready-for-agent'), self.hub.issues[356]['labels'])
+        f.start(356)
+        self.assertIsNone(f.read_claim(356)[1])
         f.publish(355)
+        self.assertIn('<!-- feedback-delivery 355 observe-feedback -->', self.hub.issues[356]['body'])
         self.assertEqual(sorted(self.hub.issues), [355, 356])
         self.assertEqual(f.read_claim(355)[1]['children'], [356])
 

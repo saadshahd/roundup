@@ -47,6 +47,11 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/loop-ledger-cache
+          key: loop-ledger-v1-${{ github.run_id }}
+          restore-keys: loop-ledger-v1-
       - id: due
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,6 +59,7 @@ jobs:
           PR: ${{ inputs.pr }}
           HEAD: ${{ inputs.head }}
           LOOP_DAILY_TOKENS: ${{ vars.LOOP_DAILY_TOKENS }}
+          LOOP_LEDGER_CACHE: ${{ runner.temp }}/loop-ledger-cache
         run: |
           if [ -n "$PR" ]; then
             python3 loop/feedback.py repair "$PR" "$HEAD"
@@ -102,6 +108,8 @@ jobs:
           role: feedback
           subject: ${{ needs.due.outputs.issue }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   propose:

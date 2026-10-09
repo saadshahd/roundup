@@ -20,6 +20,9 @@ def digest(value):
 
 def intake(issue, trusted, previous):
     labels = {label['name'] for label in issue['labels']}
+    # A partially published child is still owned by its reviewed parent proposal.
+    if previous is None and re.search(r'(?m)^<!-- feedback-delivery [1-9][0-9]* [A-Za-z0-9-]+ -->$', issue['body'] or ''):
+        return None
     revision = digest([issue['title'].strip(), (issue['body'] or '').strip()])
     # #401 explicitly preserves the existing report-only #351, including before labelling.
     if issue['number'] == 351 or 'loop:status' in labels or 'loop:report-only' in labels:
@@ -476,17 +479,20 @@ def publish_deliveries(proposal, record):
     for item in prepared:
         assert_current(record)
         delivery, existing = item['delivery'], item['existing']
+        marker = f"<!-- feedback-delivery {number} {item['row']['slug']} -->"
+        body = delivery['body']
+        if not existing or marker in existing['body']:
+            body = body.rstrip() + '\n' + marker + f'\nParent goal: #{number}\nPlan: #{record["pr"]}\n'
         if not existing:
-            marker = f"<!-- feedback-delivery {number} {item['row']['slug']} -->"
-            existing = d.api('issues', dict(title=delivery['title'], body=delivery['body'].rstrip() + '\n' + marker + f'\nParent goal: #{number}\nPlan: #{record["pr"]}\n', labels=['loop:work']))
+            existing = d.api('issues', dict(title=delivery['title'], body=body, labels=['loop:work']))
             item['existing'] = existing
         else:
             labels = {label['name'] for label in existing['labels']}
             if existing['state'] == 'open' and 'ready-for-agent' not in labels and not item['active']:
                 # The original feedback Issue is never rewritten, including a work Issue being triaged.
                 require(existing['number'] != number or existing['body'] == delivery['body'], 'source work Issue needs a separate reviewed specification; preserve its text')
-                if existing['body'] != delivery['body']:
-                    d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{existing["number"]}', '--input', '-', data=json.dumps(dict(title=delivery['title'], body=delivery['body'])))
+                if existing['body'] != body:
+                    d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{existing["number"]}', '--input', '-', data=json.dumps(dict(title=delivery['title'], body=body)))
         by_key[item['row']['slug']] = existing
     # Create every dependency before adding any intake label. A partial publication stays unready.
     for item in prepared:
