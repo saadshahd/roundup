@@ -2,6 +2,7 @@
 """L90: reviewed proposals publish native Issues; source Issues retain human feedback."""
 import argparse
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -13,6 +14,8 @@ import orders
 from outcome import describe, redact
 
 NAMESPACE = 'loop-feedback'
+# PR changes and finished runs touch no feedback Issue; each feedback run dispatches its own sweep (L88).
+UNSWEPT_EVENTS = ('workflow_run', 'pull_request_target')
 
 
 def digest(value):
@@ -142,11 +145,14 @@ def read_source(number, previous=None, closed=False):
                  state=node['state'].lower(), labels=node['labels']['nodes'])
     actor = node['editor'] or node['author']
     login = actor['login'] if actor else ''
-    trusted = False
-    if login and not login.endswith('[bot]'):
-        permission = d.api(f'collaborators/{login}/permission')['permission']
-        trusted = permission in ('admin', 'maintain', 'write')
+    trusted = bool(login) and not login.endswith('[bot]') and permission(login) in ('admin', 'maintain', 'write')
     return intake({**issue, 'state': 'open'} if closed else issue, trusted, previous)
+
+
+@functools.cache
+def permission(login):
+    # One process is one sweep or one run; a collaborator's role does not change within it.
+    return d.api(f'collaborators/{login}/permission')['permission']
 
 
 def read_claim(number):
@@ -617,6 +623,10 @@ def publish(number):
 
 def reconcile():
     # One sweep is serialized by reconcile.yml. Native Issues, never proposal files, own the queue.
+    event = os.environ.get('GITHUB_EVENT_NAME', '')
+    if event in UNSWEPT_EVENTS:
+        print(f'feedback: {event} changes no feedback Issue; the next Issue event, main push, dispatch or five-minute sweep reconciles', file=sys.stderr)
+        return
     issues = [item for item in listing('issues?state=open&per_page=100') if 'pull_request' not in item]
     refs = d.api('git/matching-refs/heads/' + NAMESPACE + '/')
     claimed = {int(ref['ref'].rsplit('/', 1)[1]) for ref in refs}
