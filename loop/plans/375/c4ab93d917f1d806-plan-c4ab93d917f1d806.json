@@ -1,0 +1,61 @@
+{
+  "source": {
+    "number": 375,
+    "title": "V5: spike: prove M1 to M3, then M10, then the rest of the Messages laws in Bend 2.0.34, or record exactly what Bend rejects (prompt `.work/prompts/proofs-spike.md`; the laws, `model.bend` and `spec.bend` are human-owned and already in `proo",
+    "body": "<!-- work-order:scenarios/proofs.md:V5 -->\n## Outcome\nspike: prove M1 to M3, then M10, then the rest of the Messages laws in Bend 2.0.34, or record exactly what Bend rejects (prompt `.work/prompts/proofs-spike.md`; the laws, `model.bend` and `spec.bend` are human-owned and already in `proofs/messages/`)\n\n## Acceptance\nScenarios: V5\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\n\n## Scope\n`proofs/messages/PROOF.bend` and `proofs/messages/mutants/**` only; never `LAWS.bend`, `model.bend` or `spec.bend`\n\n## Preserve\n`bend proofs/messages/PROOF.bend` prints `ALL PROOFS CHECK` or the report names each law Bend rejects\n\n## Dependencies\nBend 2.0.34 installed in `/tmp` per V1; (B6's rulings that `model.bend` encodes) merged; M3 is proved for the model's atomic record-and-type step, and the Rust's cut rests on's `b6_` tests\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: V5\nPriority: 100\nMigration state: waiting\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/375",
+    "kind": "work",
+    "revision": "c4ab93d917f1d8066b01540f76307714a12136a7fbacc2d85296e9bad635b0d7"
+  },
+  "phase": "plan",
+  "trigger": "c4ab93d917f1d8066b01540f76307714a12136a7fbacc2d85296e9bad635b0d7",
+  "main": "b19c144ffbce99c0b8db795fa553de3bad0f435b",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "On main, `bend proofs/messages/PROOF.bend` (Bend 2.0.34) checks a `def Laws.<name>` for M1, M2, M3 and M10, then M4 to M7 as stated in LAWS.bend, with no `@unsafe` or `?TODO`, and prints `ALL PROOFS CHECK`; or a committed written record names each law Bend rejects with the checker's `expected` and `observed`, where it stalled, what would unblock it and a rough cost.",
+        "observer": "A reviewer runs Bend 2.0.34 (installed under /tmp with BEND_NO_TELEMETRY=1) on `proofs/messages/PROOF.bend` at main and greps it for `@unsafe`/`?TODO` and for one `def Laws.` per law in LAWS.bend; for each law not proved, reads the committed rejection record."
+      },
+      {
+        "statement": "For every law PROOF.bend proves, one mutant of `model.bend` in `proofs/messages/mutants/` drops that law's guard and makes `bend` print `SOME PROOFS FAIL` naming that law.",
+        "observer": "A reviewer runs Bend on PROOF.bend against each mutant under `proofs/messages/mutants/` and confirms the output names the expected law."
+      },
+      {
+        "statement": "The spike's outcome is written down: per law PASS (with its mutant failing and the measured proof-check wall time) or FAIL (expected, observed, stall point, unblock, cost), so V6 knows which laws, if any, go to Quint.",
+        "observer": "A reviewer reads the merged V5 PR body or its committed report and finds one entry per LAWS.bend law with those fields."
+      },
+      {
+        "statement": "`LAWS.bend`, `model.bend` and `spec.bend` are unchanged by the spike and no law is weakened.",
+        "observer": "`git diff <pre-spike main> <post-spike main> -- proofs/messages/LAWS.bend proofs/messages/model.bend proofs/messages/spec.bend` is empty for the V5 PR."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 375,
+        "title": "V5: spike: prove M1 to M3, then M10, then the rest of the Messages laws in Bend 2.0.34, or record exactly what Bend rejects (prompt `.work/prompts/proofs-spike.md`; the laws, `model.bend` and `spec.bend` are human-owned and already in `proo",
+        "body": "<!-- work-order:scenarios/proofs.md:V5 -->\n## Outcome\nspike: prove M1 to M3, then M10, then the rest of the Messages laws in Bend 2.0.34, or record exactly what Bend rejects (prompt `.work/prompts/proofs-spike.md`; the laws, `model.bend` and `spec.bend` are human-owned and already in `proofs/messages/`)\n\n## Acceptance\nScenarios: V5\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\n\n## Scope\n`proofs/messages/PROOF.bend` and `proofs/messages/mutants/**` only; never `LAWS.bend`, `model.bend` or `spec.bend`\n\n## Preserve\n`bend proofs/messages/PROOF.bend` prints `ALL PROOFS CHECK` or the report names each law Bend rejects\n\n## Dependencies\nBend 2.0.34 installed in `/tmp` per V1; (B6's rulings that `model.bend` encodes) merged; M3 is proved for the model's atomic record-and-type step, and the Rust's cut rests on's `b6_` tests\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: V5\nPriority: 100\nMigration state: waiting\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+        "blocked_by": [
+          "#372"
+        ]
+      },
+      {
+        "issue": 0,
+        "title": "V1: pin Bend 2.0.34 and install it with `just proofs-setup`",
+        "body": "## Outcome\nThe proofs toolchain is pinned: `proofs/BEND_VERSION` holds `2.0.34`, and `just proofs-setup` installs that version into `proofs/.tools/` (git-ignored) from a checksum-verified download with `BEND_NO_TELEMETRY=1`, failing loudly naming the tool when the installed version is not the pin. No `sudo`, no shell file edited. Quint's pin (`proofs/QUINT_VERSION`) is out of scope until V6 is needed.\n\n## Scope\n`proofs/BEND_VERSION`, the `proofs-setup` recipe in `justfile`, its install script and shell tests, `.gitignore` for `proofs/.tools/`. Never `proofs/messages/**`.\n\n## Acceptance\nScenarios: V1\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\nObserver: `loop/rules.sh`-style shell tests with a fake download: a matching version passes, a version mismatch exits 1 naming `bend`, a missing `curl` exits 1; and on a fresh checkout `just proofs-setup` leaves `proofs/.tools/` holding Bend 2.0.34.\n\n## Preserve\n`just check` stays green and needs no network for its existing steps; no floating `latest` anywhere; `proofs/messages/LAWS.bend`, `model.bend`, `spec.bend` and `PROOF.bend` unchanged.\n\n## Queue\nKey: V1\nPriority: 90\nMode: implement\nProvider: any\n",
+        "blocked_by": []
+      },
+      {
+        "issue": 0,
+        "title": "V2: `just proofs` runs Bend on the Messages proofs and fails on anything but `ALL PROOFS CHECK`",
+        "body": "## Outcome\n`just proofs` is the proofs observer V5 names: it runs the pinned Bend on `proofs/messages/PROOF.bend` and exits 0 only when Bend prints `ALL PROOFS CHECK`; any other output, a missing file, a `PROOF.bend` holding `@unsafe` or `?TODO`, or a `LAWS.bend` law with no `def Laws.<name>` exits non-zero naming it. `just check` runs it once V5 has an outcome that checks (until then the recipe exists and its own tests run in `just check`). Quint handling is out of scope until V6 exists.\n\n## Scope\nThe `proofs` recipe in `justfile`, its script and shell tests, and the `just check` wiring. Never `proofs/messages/**`.\n\n## Acceptance\nScenarios: V2\nSpecification: [scenarios/proofs.md](https://github.com/saadshahd/roundup/blob/main/scenarios/proofs.md)\nObserver: shell tests on a temporary copy of the `proofs/messages/` layout with a fake `bend`: a passing copy exits 0; copies with a missing file, `@unsafe`, `?TODO`, a law with no `def Laws.`, and a law deleted from `PROOF.bend` each exit non-zero naming the defect.\n\n## Preserve\n`just check` stays green on main and its runtime stays within its current budget plus the Bend run; `proofs/messages/LAWS.bend`, `model.bend` and `spec.bend` unchanged.\n\n## Queue\nKey: V2\nPriority: 90\nMode: implement\nProvider: any\n",
+        "blocked_by": [
+          "V1"
+        ]
+      }
+    ],
+    "evidence": [],
+    "rules": [],
+    "question": ""
+  }
+}
