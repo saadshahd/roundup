@@ -60,7 +60,7 @@ export function lookLiterals(css: string): string[] {
   const uncommented = css.replace(/\/\*[\s\S]*?\*\//g, "");
 
   return [...uncommented.matchAll(DECLARATION)].flatMap(([, property = "", value = ""]) =>
-    isLiteral(property.toLowerCase(), value.trim()) ? [`${property}: ${value.trim()}`] : [],
+    isLiteral(property.toLowerCase(), value.trim().replace(/\s*!important$/i, "")) ? [`${property}: ${value.trim()}`] : [],
   );
 }
 

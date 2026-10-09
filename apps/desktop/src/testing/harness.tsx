@@ -5,8 +5,10 @@ import { railStorage } from "../rail/persist/storage";
 import { createReducedMotion } from "../app/reducedMotion";
 import { runChecks } from "./checks";
 import type { Checks } from "./checks";
+import { createServedApp } from "./realSeam";
 import { isSeedName, SEEDS, seedApp } from "./seeds";
 import type { Controls } from "./seeds";
+import type { AppSeam } from "../app/seam";
 import "../tokens.css";
 import "../styles.css";
 
@@ -21,22 +23,33 @@ const root = document.getElementById("root");
 
 if (!root) throw new Error("harness.html has no #root element");
 
-const seed = new URLSearchParams(location.search).get("seed") ?? "tree-40";
+const query = new URLSearchParams(location.search);
 
-if (!isSeedName(seed)) throw new Error(`unknown seed "${seed}"; one of ${SEEDS.join(", ")}`);
+const mount = (app: AppSeam) => {
+  const reducedMotion = createRoot(() => createReducedMotion((media) => window.matchMedia(media)));
 
-const controls = seedApp(seed, Date.now());
-
-if (seed === "door-stopped" || seed === "earlier-run") {
-  const failure = railStorage(controls.app.opened.project!.path).write({ selected: seed === "earlier-run" ? "earlier-agent" : "first-room", collapsed: [] });
-
-  if (failure !== null) throw new Error(failure);
-}
-
-window.__fake = controls;
+  render(() => <App app={app} reducedMotion={reducedMotion} clock={Date.now} />, root);
+};
 
 window.__checks = () => runChecks();
 
-const reducedMotion = createRoot(() => createReducedMotion((query) => window.matchMedia(query)));
+if (query.get("daemon") === "1") {
+  // `just harness-real` (U144): the same App on a running `rupd`, so there is no `window.__fake`.
+  mount(createServedApp(location.origin));
+} else {
+  const seed = query.get("seed") ?? "tree-40";
 
-render(() => <App app={controls.app} reducedMotion={reducedMotion} clock={Date.now} />, root);
+  if (!isSeedName(seed)) throw new Error(`unknown seed "${seed}"; one of ${SEEDS.join(", ")}`);
+
+  const controls = seedApp(seed, Date.now());
+
+  if (seed === "door-stopped" || seed === "earlier-run") {
+    const failure = railStorage(controls.app.opened.project!.path).write({ selected: seed === "earlier-run" ? "earlier-agent" : "first-room", collapsed: [] });
+
+    if (failure !== null) throw new Error(failure);
+  }
+
+  window.__fake = controls;
+  mount(controls.app);
+}
+

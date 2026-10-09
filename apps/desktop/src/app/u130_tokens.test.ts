@@ -102,8 +102,15 @@ describe("u130 tokens", () => {
     expect(positions.map(([tokens = -1, styles = -1]) => tokens >= 0 && tokens < styles)).toEqual([true, true]);
   });
 
-  // Slice 3 of U130 gives every Token a dark value and turns this into a test.
-  it.todo("u130_every_token_has_a_dark_value");
+  it("u130_every_token_has_a_dark_value", () => {
+    const css = Object.values(import.meta.glob<string>("../tokens.css", { query: "?raw", import: "default", eager: true }))[0] ?? "";
+    const dark = /@media \(prefers-color-scheme: dark\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    // A Token whose table cell reads the same in both columns is defined once, in the light block.
+    const differing = rows.filter((row) => row.split("|")[3]?.trim() !== "same").flatMap((row) => row.split("|")[1]?.match(/--[\w-]+/g) ?? []);
+
+    expect(differing).toEqual(expect.arrayContaining(["--ground", "--shadow-drawer"]));
+    expect(differing.filter((token) => !valueOf(dark, token)), "Tokens missing a dark value").toEqual([]);
+  });
 
   it("u130_styles_css_does_not_shadow_a_shared_token", () => {
     const files = import.meta.glob<string>("../styles.css", {
@@ -160,17 +167,5 @@ describe("u130 tokens", () => {
     expect(Object.keys(sources)).toEqual(expect.arrayContaining(["../drawer/DrawerHost.tsx", "../pads/PadDrawer.tsx", "../todos/Todos.tsx"]));
     expect(Object.keys(sources).filter((path) => /\.test\./.test(path)), "test files are not scanned").toEqual([]);
     expect(Object.entries(sources).flatMap(([path, source]) => lookLiterals(inlineStyleCss(source)).map((literal) => `${path}: ${literal}`))).toEqual([]);
-  });
-
-  // Slice 1 keeps the App light by setting no scheme at all; slice 3 deletes this test with the dark block.
-  it("u130_no_stylesheet_sets_a_dark_scheme_before_slice_3", () => {
-    const sheets = import.meta.glob<string>("../**/*.css", { query: "?raw", import: "default", eager: true });
-
-    const dark = Object.entries(sheets)
-      .filter(([, css]) => /prefers-color-scheme|color-scheme/.test(css))
-      .map(([path]) => path);
-
-    expect(Object.keys(sheets).length, "stylesheets are read").toBeGreaterThan(1);
-    expect(dark).toEqual([]);
   });
 });
