@@ -34,7 +34,7 @@ jobs:
   reconcile:
     if: github.event_name != 'issues' || !contains(github.event.issue.labels.*.name, 'loop:status')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,8 +72,7 @@ jobs:
   summary:
     needs: [reconcile]
     if: always()
-    permissions:
-      actions: read
+    permissions: {}
     uses: ./.github/workflows/summary.yml
     with:
       results: ${{ toJSON(needs) }}

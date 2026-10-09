@@ -162,8 +162,7 @@ jobs:
   summary:
     needs: [due, observe, propose, after]
     if: always()
-    permissions:
-      actions: read
+    permissions: {}
     uses: ./.github/workflows/summary.yml
     with:
       results: ${{ toJSON(needs) }}

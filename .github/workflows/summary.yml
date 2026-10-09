@@ -13,8 +13,7 @@ on:
         type: string
         required: true
 
-permissions:
-  actions: read
+permissions: {}
 
 defaults:
   run:
@@ -25,49 +24,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Explain this run
-        uses: actions/github-script@v7
         env:
           RESULTS: ${{ inputs.results }}
           PURPOSE: ${{ inputs.purpose }}
           NEXT: ${{ inputs.next }}
-        with:
-          script: |
-            const results = JSON.parse(process.env.RESULTS);
-            const entries = Object.entries(results);
-            const failed = entries.filter(([, job]) => ['failure', 'cancelled'].includes(job.result));
-            const ran = entries.filter(([, job]) => job.result !== 'skipped');
-            const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
-            const summary = core.summary.addHeading(process.env.PURPOSE, 2);
-            summary.addRaw(`<p><b>Result:</b> ${failed.length ? 'Needs repair — failed or cancelled work below.' : ran.length ? 'Jobs completed; delivery and approval are reported separately.' : 'No work ran — all jobs were skipped.'}</p>`);
-            summary.addRaw(`<p><b>Trigger:</b> ${escape(context.eventName)} · <b>Workflow commit:</b> <code>${escape(context.sha.slice(0, 7))}</code> · <b>Attempt:</b> ${escape(process.env.GITHUB_RUN_ATTEMPT)}</p>`);
-            for (const [, job] of entries) {
-              const output = job.outputs || {};
-              for (const field of ['pr', 'issue']) {
-                if (/^[1-9][0-9]*$/.test(output[field] || '')) {
-                  summary.addRaw(`<p><b>${field === 'pr' ? 'PR' : 'Issue'}:</b> <a href="https://github.com/${context.repo.owner}/${context.repo.repo}/${field === 'pr' ? 'pull' : 'issues'}/${output[field]}">#${output[field]}</a>${/^[0-9a-f]{40}$/.test(output.head || '') ? ' at <code>' + output.head + '</code>' : ''}</p>`);
-                }
-              }
-            }
-            summary.addTable([[{data:'Job', header:true}, {data:'Result', header:true}], ...entries.map(([name, job]) => [escape(name), escape(job.result)])]);
-            try {
-              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
-                ...context.repo, run_id: context.runId,
-                attempt_number: Number(process.env.GITHUB_RUN_ATTEMPT), per_page: 100
-              });
-              const agentSteps = jobs.flatMap(job => job.steps || []).filter(step => step.name.includes('anthropics/claude-code-action'));
-              if (agentSteps.length && agentSteps.every(step => step.conclusion === 'skipped')) {
-                summary.addRaw('<p><b>No agent ran.</b> Eligibility or Claim checks skipped model work; see their explanations on this page.</p>');
-              } else if (entries.some(([name]) => ['due', 'repair-due', 'queue'].includes(name)) && !agentSteps.length) {
-                summary.addRaw('<p><b>No agent work observed in this attempt.</b> Controller checks can succeed while downstream work is skipped.</p>');
-              }
-              for (const job of jobs.filter(job => job.status === 'completed')) {
-                const steps = (job.steps || []).filter(step => ['failure', 'cancelled'].includes(step.conclusion));
-                summary.addRaw(`<p><a href="${escape(job.html_url)}">${escape(job.name)}</a>: ${escape(job.conclusion)}${steps.length ? ' — ' + steps.map(step => escape(step.name)).join('; ') : ''}</p>`);
-              }
-            } catch (error) {
-              summary.addRaw('<p>Job details unavailable. Open the jobs above; this report is incomplete.</p>');
-              core.setFailed('Could not read job details for the run explanation.');
-            }
-            summary.addRaw(`<p><b>Next:</b> ${escape(process.env.NEXT)}</p>`);
-            summary.addRaw('<p>Agent explanations and reconciliation decisions, when present, appear in their job summaries on this page. A model’s success claim is not proof of delivery.</p>');
-            await summary.write();
+        shell: python
+        run: |
+          import html
+          import json
+          import os
+          import re
+
+          results = json.loads(os.environ['RESULTS'])
+          failed = any(job['result'] in ('failure', 'cancelled') for job in results.values())
+          ran = any(job['result'] != 'skipped' for job in results.values())
+          escape = html.escape
+          result = ('Needs repair — failed or cancelled work below.' if failed else
+                    'Jobs completed; delivery and approval are reported separately.' if ran else
+                    'No work ran — all jobs were skipped.')
+          run = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          lines = [f"## {escape(os.environ['PURPOSE'])}", f'**Result:** {result}',
+                   f"**Trigger:** {escape(os.environ['GITHUB_EVENT_NAME'])} · **Attempt:** {os.environ['GITHUB_RUN_ATTEMPT']}",
+                   f'[Open jobs and failure details]({run})', '| Job | Result |', '| --- | --- |']
+          lines.extend(f"| {escape(name)} | {escape(job['result'])} |" for name, job in results.items())
+          for job in results.values():
+              output = job.get('outputs', {})
+              for field, path in (('pr', 'pull'), ('issue', 'issues')):
+                  number = output.get(field, '')
+                  if re.fullmatch(r'[1-9][0-9]*', str(number)):
+                      lines.append(f"\n{field.upper()}: [#{number}]({os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/{path}/{number})")
+              if re.fullmatch(r'[0-9a-f]{40}', output.get('head', '')):
+                  lines.append(f"Head: `{output['head']}`")
+          agents = [job for name, job in results.items() if name in ('build', 'fix', 'observe', 'review', 'sweep')]
+          if agents and all(job['result'] == 'skipped' for job in agents):
+              lines.append('\n**No agent work ran.** Eligibility or Claim checks skipped the model work.')
+          lines.extend([f"\n**Next:** {escape(os.environ['NEXT'])}",
+                        '\nAgent explanations and reconciliation decisions appear in their job summaries on this page. A model’s success claim is not proof of delivery.'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('\n\n'.join(lines[:4]) + '\n\n' + '\n'.join(lines[4:]) + '\n')

@@ -76,7 +76,7 @@ def summary(title, text):
 
 
 def report(command):
-    result = subprocess.run(command, text=True, capture_output=True, timeout=1800)
+    result = subprocess.run(command, text=True, capture_output=True, timeout=600)
     text = redact(result.stdout + result.stderr, os.environ)
     print(text, end='')
     summary(' '.join(command[1:]), '<pre>' + html.escape(text[:10000] or 'No work selected.') + '</pre>')

@@ -223,8 +223,7 @@ jobs:
   summary:
     needs: [queue, build, repair-due, fix, after-fix]
     if: always()
-    permissions:
-      actions: read
+    permissions: {}
     uses: ./.github/workflows/summary.yml
     with:
       results: ${{ toJSON(needs) }}

@@ -117,8 +117,7 @@ jobs:
   summary:
     needs: [compute]
     if: always()
-    permissions:
-      actions: read
+    permissions: {}
     uses: ./.github/workflows/summary.yml
     with:
       results: ${{ toJSON(needs) }}
