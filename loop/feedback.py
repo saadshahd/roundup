@@ -194,7 +194,7 @@ def start(number):
     task = next_task(source, record)
     if not task or not d.available(task, record):
         return
-    require(int(d.run('bash', 'loop/retro.sh', 'spent')) < int(os.environ['LOOP_DAILY_TOKENS']), 'spend cap reached')
+    require(int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS']), 'spend cap reached')
     # Immutable Claim commits retain every accepted human revision, including earlier bodies.
     attempt = d.consumed(record) + 1 if record and record['key'] == d.key(task) else 1
     previous = (record.get('plan') or record.get('previous')) if record and task['role'] == 'verify' else None
@@ -597,7 +597,7 @@ def reconcile():
         task = next_task(source, record)
         if task and d.available(task, record) and queued < 4:
             if within_budget is None:
-                within_budget = int(d.run('bash', 'loop/retro.sh', 'spent')) < int(os.environ['LOOP_DAILY_TOKENS'])
+                within_budget = int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
             if not within_budget:
                 print('feedback: spend cap reached', file=sys.stderr)
                 continue
