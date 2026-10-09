@@ -9,6 +9,7 @@ import json
 import os
 import tempfile
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 import feedback as f
 
@@ -55,6 +56,8 @@ class GitHub:
         self.main_changes = []
         self.competition = False
         self.lost_issue_response = False
+        self.pull_error = None
+        self.lost_pull_response = False
 
     def sha(self):
         self.counter += 1
@@ -151,11 +154,16 @@ class GitHub:
                 self.issues[number]['labels'] += [dict(name=l) for l in payload['labels']]
                 return self.issues[number]['labels']
         if path == 'pulls':
+            if self.pull_error:
+                raise self.pull_error
             number = max(self.prs, default=0) + 1
             sha = self.refs['refs/heads/' + payload['head']]
             self.prs[number] = dict(number=number, title=payload['title'], body=payload['body'], state='open', merged=False, mergeable=True, draft=False,
                                     head=dict(sha=sha, ref=payload['head'], repo=dict(full_name='o/r')),
                                     base=dict(ref='main', sha=self.refs['refs/heads/main'], repo=dict(full_name='o/r')))
+            if self.lost_pull_response:
+                self.lost_pull_response = False
+                raise subprocess.TimeoutExpired('gh', 120)
             return self.prs[number]
         if path.startswith('pulls/'):
             parts = path.split('/')
@@ -295,6 +303,19 @@ class Feedback(unittest.TestCase):
             result = subprocess.run([sys.executable, 'loop/feedback.py', *args], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
 
+    def test_l90_github_failure_reports_redacted_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            gh = Path(directory) / 'gh'
+            gh.write_text('#!/bin/sh\nprintf "PR creation disabled (HTTP 403), credential %s\\n" "$GH_TOKEN" >&2\nexit 1\n')
+            gh.chmod(0o755)
+            result = subprocess.run([sys.executable, 'loop/feedback.py', 'publish', '355'],
+                                    env={**os.environ, 'PATH': directory + os.pathsep + os.environ['PATH'], 'GH_TOKEN': 'private-test-credential'},
+                                    text=True, capture_output=True)
+        self.assertEqual(result.returncode, 4)
+        self.assertIn('PR creation disabled (HTTP 403)', result.stderr)
+        self.assertIn('[redacted]', result.stderr)
+        self.assertNotIn('private-test-credential', result.stderr)
+
     def test_l90_collaborator_feedback(self):
         item = source()
         self.assertEqual(f.intake(item, True, None)['body'], item['body'])
@@ -323,6 +344,13 @@ class Lifecycle(unittest.TestCase):
         pr = self.plan(result)
         self.hub.merge(pr)
         f.publish(355)
+        return f.read_claim(355)[1]
+
+    def unpublished(self):
+        self.hub.pull_error = subprocess.CalledProcessError(1, ['gh'], stderr='PR creation is disabled (HTTP 403)')
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.plan()
+        self.hub.pull_error = None
         return f.read_claim(355)[1]
 
     def test_l90_reviewed_plan_publication(self):
@@ -569,6 +597,91 @@ class Lifecycle(unittest.TestCase):
         dispatches = [write[0] for write in self.hub.writes[before:] if isinstance(write[0], tuple)]
         self.assertIn(('gh', 'workflow', 'run', 'check.yml', '--ref', self.hub.prs[number]['head']['ref']), dispatches)
         self.assertEqual(f.read_claim(355)[1]['attempt'], 1)
+
+    def test_l90_publication_failure_resumes_without_another_planner(self):
+        self.unpublished()
+        branch = next(ref for ref in self.hub.refs if ref.startswith('refs/heads/build/'))
+        head = self.hub.refs[branch]
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.reconcile()
+        record = f.read_claim(355)[1]
+        self.assertEqual(record['phase'], 'proposed')
+        self.assertEqual(self.hub.prs[record['pr']]['head']['sha'], head)
+        self.assertEqual(record['attempt'], 1)
+        self.assertEqual(record['run'], 43)
+        self.assertIn('Author-Agent: feedback-42', self.hub.commits[head]['message'])
+        self.assertNotIn((('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=355'), None), self.hub.writes)
+        self.assertEqual(list(self.hub.issues), [355])
+
+    def test_l90_publication_recovery_waits_for_the_live_owner(self):
+        self.hub.lost_pull_response = True
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.plan()
+        self.hub.runs[42] = dict(status='in_progress')
+        os.environ['GITHUB_RUN_ID'] = '43'
+        before = copy.deepcopy(self.hub.writes)
+        f.reconcile()
+        self.assertEqual(self.hub.writes, before)
+
+    def test_l90_queued_start_keeps_a_saved_proposal_for_publication(self):
+        self.unpublished()
+        os.environ['GITHUB_RUN_ID'] = '43'
+        before = copy.deepcopy(self.hub.writes)
+        f.start(355)
+        self.assertEqual(self.hub.writes, before)
+
+    def test_l90_lost_pull_response_reuses_the_existing_pr(self):
+        self.hub.lost_pull_response = True
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.plan()
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.reconcile()
+        self.assertEqual(list(self.hub.prs), [1])
+        self.assertEqual(f.read_claim(355)[1]['pr'], 1)
+        self.assertEqual(list(self.hub.issues), [355])
+
+    def test_l90_interrupted_publication_recovery_keeps_the_proposal(self):
+        self.unpublished()
+        self.hub.pull_error = subprocess.CalledProcessError(1, ['gh'])
+        os.environ['GITHUB_RUN_ID'] = '43'
+        with self.assertRaises(subprocess.CalledProcessError):
+            f.reconcile()
+        self.assertEqual(f.read_claim(355)[1]['phase'], 'publishing')
+        self.hub.pull_error = None
+        os.environ['GITHUB_RUN_ID'] = '44'
+        f.reconcile()
+        record = f.read_claim(355)[1]
+        self.assertEqual(record['phase'], 'proposed')
+        self.assertEqual(record['attempt'], 1)
+        self.assertEqual(list(self.hub.prs), [1])
+
+    def test_l90_changed_feedback_does_not_publish_the_saved_proposal(self):
+        self.unpublished()
+        self.hub.issues[355]['body'] = 'Observe a different result.'
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.reconcile()
+        self.assertEqual(self.hub.prs, {})
+        self.assertIn((('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=355'), None), self.hub.writes)
+
+    def test_l90_saved_proposal_cannot_replace_controller_context(self):
+        record = self.unpublished()
+        head = self.hub.refs['refs/heads/' + f.proposal_branch(record)]
+        files = self.hub.trees[self.hub.commits[head]['tree']['sha']]
+        proposal = json.loads(files[f.proposal_path(record)])
+        proposal['source']['body'] = 'Forged source feedback'
+        files[f.proposal_path(record)] = json.dumps(proposal)
+        os.environ['GITHUB_RUN_ID'] = '43'
+        with self.assertRaisesRegex(ValueError, 'controller-owned context'):
+            f.reconcile()
+        self.assertEqual(self.hub.prs, {})
+
+    def test_l88_excluded_unclaimed_issues_need_no_ownership_reads(self):
+        for labels, author in ((['loop:work', 'ready-for-agent'], 'User'), ([], 'Bot')):
+            self.hub.issues[355].update(labels=[dict(name=name) for name in labels], user=dict(login='author', type=author))
+            with patch.object(f, 'read_claim') as read:
+                f.reconcile()
+                read.assert_not_called()
+            self.assertEqual(self.hub.writes, [])
 
     def test_l90_intake_dispatches_without_a_user_label(self):
         f.reconcile()
