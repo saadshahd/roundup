@@ -1,0 +1,98 @@
+{
+  "source": {
+    "number": 379,
+    "title": "U105\u2013U107, U109, U110: the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3)",
+    "body": "<!-- work-order:scenarios/ui-attention.md:U105-U107-U109-U110 -->\n## Outcome\nthe Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3)\n\n## Acceptance\nScenarios: U105\u2013U107, U109, U110\nSpecification: [scenarios/ui-attention.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-attention.md)\n\n## Scope\n`apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns\n\n## Preserve\nafter the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107\n\n## Dependencies\nB1-B18\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: U105-U107-U109-U110\nPriority: 100\nMigration state: waiting\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/379",
+    "kind": "work",
+    "revision": "9c91815effe81df3256fe5296157d5d346f0819a719e98b3a3733d9ce600e0cf"
+  },
+  "phase": "plan",
+  "trigger": "9c91815effe81df3256fe5296157d5d346f0819a719e98b3a3733d9ce600e0cf",
+  "main": "4fa363556ac1e0c05b907c214892431e0b4ac59a",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "U105: while the Thread's input has focus and the user types a character, within 120 ms every Rail row except a `needs-you` row, every Shelf row and every Live line reaches an effective opacity of 0.35; Enter or blur brings them back to 1.0 in the same time; reduced motion changes both at once; dimmed rows still take clicks; U4's 4.5:1 and U130\u2013U137 run with the input unfocused.",
+        "observer": "Vitest `u105_` tests on the fake App with a fake clock (both ends of the clock, a needs-you row among others, Enter, blur, reduced motion), plus the U26 harness reading effective opacity."
+      },
+      {
+        "statement": "U106: Messages between Agents show in the Thread's feed as one line `<from> \u2192 <to> <kind> <first 60 characters>\u2026` with no body; `\u2303O` with focus in the Thread's input or feed expands every such line and `\u2303O` again folds them; a Message to or from the user is not folded; `\u2303O` in a Terminal pane reaches `terminal.write` and does not toggle; the chord is not saved in U100's storage and appears in U54's Help.",
+        "observer": "Vitest `u106_` tests (three Messages, toggle both ways, long body, Message to the user, `\u2303O` in the pane) plus U54's Help listing `\u2303O` once U54 is on main."
+      },
+      {
+        "statement": "U107: `\u23251`\u2013`\u23259` (by key position, wherever focus is) select the n-th shown Agent row (Meta-agent counts; Groups, Terminals and collapsed Groups' Agents skipped), focus its Terminal and call `takeover.begin {agent}`; a second jump ends the first Takeover before the next begins; `\u23250` calls `takeover.end` and focuses the Thread's input; a number with no Agent does nothing; `CONFLICT` still moves the selection and shows U80's one failure line; after a Daemon restart no `takeover.end` is called for a Takeover B8 says is gone; the narrowed U12 test is named; the chords appear in U54's Help.",
+        "observer": "Vitest `u107_` tests on the fake App recording call order, plus U54's Help listing `\u23251`\u2013`\u23259` and `\u23250` once U54 is on main."
+      },
+      {
+        "statement": "U109: pasting or dropping an image in the Thread's input puts a compact Attachment (name and size) inline at the caret; hovering it shows a floating preview at its own size up to 480 px wide, hidden on pointer leave or `Esc`; the Attachment shows in the feed and nothing is typed into a Terminal; a non-image file is refused with U80's one line.",
+        "observer": "Vitest `u109_` tests with a stubbed clipboard and drop event, two Attachments, hover and `Esc`, a non-image file, asserting the Attachment's position at the caret."
+      },
+      {
+        "statement": "U110: with text selected in the Thread's feed or a Terminal's output, the next printable character typed in the Thread's input attaches one Quote block before the typed text and uses the selection up (a second character adds none); the block holds up to 2000 characters (longer is cut and marked `[cut]`) and its source (the Rail name of the Agent or Terminal, or the Message id); an empty selection or one in the input adds nothing.",
+        "observer": "Vitest `u110_` tests with the injected emulator selection and the harness: first and second character, long selection, plain Terminal, empty selection."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 379,
+        "title": "U105\u2013U107, U109, U110: the Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3)",
+        "body": "<!-- work-order:scenarios/ui-attention.md:U105-U107-U109-U110 -->\n## Outcome\nthe Thread's input and feed: dim, folded lines, jump, Attachment, Quote (Moves: D3)\n\n## Acceptance\nScenarios: U105\u2013U107, U109, U110\nSpecification: [scenarios/ui-attention.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-attention.md)\n\n## Scope\n`apps/desktop/src/thread/**` (new); U107 also `apps/desktop/src/rail/**`; U106 and U107 add chords to U54's help, which ui-surfaces owns\n\n## Preserve\nafter the Door scenarios (not yet written); U107 after B6's `takeover.begin` Builder PR; narrows U12 for U107\n\n## Dependencies\nB1-B18\n\n## Delivery\nNo implementation PR linked yet.\n\n## Queue\nKey: U105-U107-U109-U110\nPriority: 100\nMigration state: waiting\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+        "blocked_by": [
+          "#372"
+        ]
+      },
+      {
+        "issue": 0,
+        "title": "U54: specify Help, the panel `?` opens listing each chord",
+        "body": "## Outcome\nU54, which U106 and U107 cite (\"the chord appears in U54's help\"), is not on main: no scenario file has a U54 heading and the webview has no Help panel. `GLOSSARY.md` already defines Help: \"The panel `?` opens over the centre pane, listing each chord and what it does.\" This delivery writes U54 as a scenario so U106's `\u2303O` and U107's `\u23251`\u2013`\u23259`/`\u23250` rows have somewhere to appear and a later implementation Issue has acceptance. Specification only; no code.\n\n## Scope\n`scenarios/ui-surfaces.md` (add a `**U54 \u2026**` heading and widen the file's `Ids:` line); `GLOSSARY.md` only if a new term is needed. Proposed content to anchor: `?`, with focus outside a Terminal pane and the Thread's input, opens Help over the centre pane; it lists every chord the webview takes, each with what it does, read from the same keymap the handlers use so a chord cannot be bound and missing from Help; at least `\u2318K` (Switcher), `\u2303O` (U106) and `\u23251`\u2013`\u23259`, `\u23250` (U107); `Esc` or `?` closes it and returns focus to where it was; Help is not saved (U100's storage never holds it); only Tokens; named `u54_` tests and a U26 harness observer.\n\n## Acceptance\nScenarios: U54\nSpecification: [scenarios/ui-surfaces.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-surfaces.md)\nA merged PR adds U54 to `scenarios/ui-surfaces.md` with a rule each test can read (the open key, where focus must be, the listed chords and their source, close and focus return, an Observer line), and closes this Issue from that specification PR. The implementation Issue for U54 is proposed separately and is blocked by this one.\n\nObserver: a reviewer reads `scenarios/ui-surfaces.md` on main and finds a `**U54` heading whose clause names `\u2303O` and `\u23251`\u2013`\u23259`/`\u23250` as listed chords, an Observer line and `u54_` test names; `grep -n '\\*\\*U54' scenarios/ui-surfaces.md` returns one line.\n\n## Preserve\nU80\u2013U86 text is unchanged; U12's pane keystroke rule and U107's narrowing of it are unchanged (`?` typed in a Terminal pane or the Thread's input still reaches them); U106 and U107 wording is unchanged; no contract, RPC method, App seam command or Token changes.\n\nKey: U54\nPriority: 60\nMode: specify\nProvider: any\n",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "cd apps/desktop && npx vitest run src/thread src/rail/u107_jump.test.tsx  (main 4fa36355)",
+        "output": "Test Files  5 passed (5)\n      Tests  32 passed (32)",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979316074",
+        "proved": false,
+        "remaining": "Only the `u105_` tests pass. Nobody has yet observed the 0.35 effective opacity, the 120 ms timing and clickable dimmed rows in the U26 harness on main."
+      },
+      {
+        "goal": 2,
+        "command": "same run; `grep -rn U54 scenarios/` on main",
+        "output": "u106_folded.test.tsx passes. The grep finds U54 only inside ui-attention.md's citations, and no Help panel exists in apps/desktop/src. PR #411's body says: \"U54's Help is not on `main`, so U106 and U107 add no chord line yet.\"",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979316074",
+        "proved": false,
+        "remaining": "`\u2303O` is not shown in U54's Help because U54 has no scenario and no implementation. The fold/toggle behavior has not been observed outside Vitest."
+      },
+      {
+        "goal": 3,
+        "command": "same run",
+        "output": "src/rail/u107_jump.test.tsx passes. Same Help gap as goal 2. #379 is still natively blocked by #372 (B1-B18), which is open.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979316074",
+        "proved": false,
+        "remaining": "The `\u2325n` and `\u23250` chords are not in U54's Help. Independent checks are still needed for CONFLICT \u2192 U80 line, no `takeover.end` after a Daemon restart, and the named narrowed U12 test."
+      },
+      {
+        "goal": 4,
+        "command": "same run; `grep -n caret apps/desktop/src/thread/Thread.tsx`",
+        "output": "u109_attachment.test.tsx passes. The grep finds no caret handling. PR #411's body says: \"Attachments and Quotes sit before the text field, not at the caret.\"",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979316074",
+        "proved": false,
+        "remaining": "The Attachment sits before the text field, not inline at the caret, so U109 is not met. #379 owns the fix."
+      },
+      {
+        "goal": 5,
+        "command": "same run",
+        "output": "u110_quote.test.tsx passes.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37979316074",
+        "proved": false,
+        "remaining": "Only the `u110_` tests pass. Nobody has independently observed the Quote block, `[cut]` and source name in the U26 harness."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}
