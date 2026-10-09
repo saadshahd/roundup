@@ -7,6 +7,8 @@ dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir -p "$dir/bin" "$dir/loop"
 cp "$root/loop/retro.sh" "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/outcome.py" "$root/loop/dispatch.py" "$dir/loop/"
+# The Trail reader has its own tests (loop/trail.test.py); here it answers from a fixture.
+printf 'import os, sys\nif __name__ == "__main__":\n    sys.exit(4 if os.path.exists(os.environ["FIXTURES"] + "/trail-fail") else print(open(os.environ["FIXTURES"] + "/repeats").read()))\n' >"$dir/loop/trail.py"
 git -C "$dir" init -q
 git -C "$dir" add loop
 GIT_COMMITTER_DATE='2026-10-08T09:00:00+02:00' git -C "$dir" -c user.name=t -c user.email=t@t commit -q -m retro
@@ -115,8 +117,8 @@ check 'L29 the action extracts every dependency needed for a Ledger row' 0 env \
 holds 'L29 the extracted action writes its row and artifact slug' bash -c \
   'jq -e '\''.subject == "A23" and .exit == "success" and .turns == 3'\'' "$1/runner/ledger/ledger.json" && grep -qx "slug=A23" "$1/outputs"' _ "$dir"
 
-holds 'L29 the action retains an explicit unavailable explanation without raw events' bash -c \
-  'jq -e '\''.kind == "model-claim" and .explanation == "unavailable" and .subject == "A23" and (has("events") | not)'\'' "$1/runner/ledger/outcome.json"' _ "$dir"
+holds 'L92 the action outputs an explicit explanation without raw events and keeps no outcome.json' bash -c \
+  'sed -n "s/^explanation=//p" "$1/outputs" | jq -e '\''.kind == "model-claim" and (has("events") | not)'\'' && test ! -e "$1/runner/ledger/outcome.json"' _ "$dir"
 
 # An old or modified PR checkout cannot select the extraction scripts.
 mkdir -p "$dir/pr/loop"
@@ -173,7 +175,9 @@ printf '{"role":"builder","subject":"U3","run":"50","model":"claude-sonnet-5-5",
 printf '{"role":"reviewer","subject":"1","run":"51","model":"claude-opus-5-5","turns":9,"exit":"error_max_turns","input":100000,"output":20000,"cache_write":0,"cache_read":1000000}\n' >"$FIXTURES/ledger-51-reviewer-1"
 printf '{"verdict":"reject","at":"2026-10-09T00:45:00Z","body":"VERDICT: reject\\nrule 2: dead code"}\n{"verdict":"approve","at":"2026-10-09T00:55:00Z","body":"VERDICT: approve"}\n' >"$FIXTURES/verdicts-1"
 printf 'merge-ready: no Author-Agent trailers\n' >"$FIXTURES/verdicts-4"; echo 1 >"$FIXTURES/verdicts-4.code"
+echo '[{"issue":372,"title":"B1 to B18","count":2,"url":"https://example/c1"}]' >"$FIXTURES/repeats"
 check 'L27 report reads the Ledger, PRs and rejects' 0 loop/retro.sh report
+holds 'L92 report lists each Trail that ended the same way twice' grep -qx -- '- #372 B1 to B18: 2 runs ended the same way with no new head, \[last entry\](https://example/c1)' "$FIXTURES/out"
 holds 'L27 report counts PRs merged since the last Retro' grep -qx '# Retro: 4 PRs merged since 2026-10-08T23:00:00Z' "$FIXTURES/out"
 holds 'L27 report counts each kind' bash -c 'grep -qx "| product | 2 |" "$FIXTURES/out" && grep -qx "| loop | 1 |" "$FIXTURES/out" && grep -qx "| spec | 1 |" "$FIXTURES/out"'
 holds 'L27 report sums the Ledger by role and model, weighted' bash -c 'grep -qx "| builder | claude-sonnet-5-5 | 1 | 0 | 40 | 3.5M |" "$FIXTURES/out" && grep -qx "| reviewer | claude-opus-5-5 | 1 | 1 | 9 | 300K |" "$FIXTURES/out"'
@@ -182,6 +186,10 @@ holds 'L27 report divides by merged product PRs' grep -qx 'Weighted tokens per m
 holds 'L27 report classifies each reject, not each approve' bash -c 'grep -qx "| real-defect | behaviour | 90%, 80% | #1 2026-10-09T00:45:00Z |" "$FIXTURES/out" && test "$(wc -l <"$FIXTURES/jev-requests")" -eq 1'
 holds 'L27 report names a PR whose verdicts it could not read' grep -qx 'Verdicts unread on PR #4: merge-ready: no Author-Agent trailers' "$FIXTURES/out"
 holds 'L27 report lists the costliest run first' bash -c 'grep -A4 "^## Costliest runs" "$FIXTURES/out" | tail -n1 | grep -qx "| 50 | builder | U3 | 3.5M | success |"'
+
+touch "$FIXTURES/trail-fail"
+check 'L92 an unreadable Trail makes the report exit 4' 4 loop/retro.sh report
+rm "$FIXTURES/trail-fail"
 
 # L80 cost, on the report's PRs and Ledger
 check 'L80 cost reads merged PRs and the Ledger after since' 0 loop/retro.sh cost 2026-10-08T23:00:00Z
