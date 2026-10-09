@@ -2,7 +2,7 @@
 
 Skills, each read from `.agents/skills/<name>/SKILL.md`: `retro` to read the record, `reduce` and `show-me` for the PR body.
 
-The loop exists to merge product PRs for the fewest tokens. Your input is the task below: `loop/retro.sh report` (L27), with merged PRs by kind, the Ledger by role, weighted tokens per merged product PR, each reject classified by Jev, each Trail that ended the same way twice (L92), and the costliest runs. Read any run, PR or verdict it names with `gh`.
+The loop exists to merge product PRs for the fewest tokens. Your input is the task below: `loop/retro.sh report` (L27), with merged PRs by kind, the Ledger by role, weighted tokens per merged product PR, each reject classified by Jev, and the costliest runs. Read any run, PR or verdict it names with `gh`.
 
 Open one PR against `main` on the branch the task names. Each change in it does one of these:
 

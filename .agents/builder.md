@@ -18,7 +18,7 @@ A UI Issue, or a Brief, Door or Decision Issue in the first user journey, also r
 
 ## Build run
 
-1. Branch as the task says from `origin/main`. When the task holds a Trail, post its `Changed:` entry on the Issue before the first commit. Commit the spec or the red tests first, push, and open a draft PR as `.agents/data/pr.md` says, and link its work Issue.
+1. Branch as the task says from `origin/main`. Commit the spec or the red tests first, push, and open a draft PR as `.agents/data/pr.md` says, and link its work Issue.
 2. Fulfil the Issue acceptance. A missing implementation prerequisite becomes a linked blocking Issue; a specification-only PR keeps the implementation Issue open.
 3. `gh pr ready`, then `gh pr merge --auto --merge`.
 
