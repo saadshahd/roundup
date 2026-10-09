@@ -675,6 +675,14 @@ class Lifecycle(unittest.TestCase):
             f.reconcile()
         self.assertEqual(self.hub.prs, {})
 
+    def test_l88_excluded_unclaimed_issues_need_no_ownership_reads(self):
+        for labels, author in ((['loop:work', 'ready-for-agent'], 'User'), ([], 'Bot')):
+            self.hub.issues[355].update(labels=[dict(name=name) for name in labels], user=dict(login='author', type=author))
+            with patch.object(f, 'read_claim') as read:
+                f.reconcile()
+                read.assert_not_called()
+            self.assertEqual(self.hub.writes, [])
+
     def test_l90_intake_dispatches_without_a_user_label(self):
         f.reconcile()
         self.assertIn((('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=355'), None), self.hub.writes)
