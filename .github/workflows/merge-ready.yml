@@ -25,6 +25,8 @@ permissions:
   statuses: write
   pull-requests: write
   checks: read
+  issues: read
+  actions: read
 
 concurrency:
   group: merge-ready-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || github.event.workflow_run.head_sha }}
