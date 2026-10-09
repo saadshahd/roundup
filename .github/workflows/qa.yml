@@ -72,3 +72,13 @@ jobs:
           name: qa-sweep-${{ github.run_id }}
           path: loop/out/qa/
           if-no-files-found: error
+
+  summary:
+    needs: [due, sweep]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Observe main for regressions
+      next: Observed defects become work for the loop; the next scheduled sweep observes main again.
