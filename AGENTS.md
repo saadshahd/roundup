@@ -37,4 +37,4 @@ Builder and QA runs are one-shot GitHub Actions jobs, and an event ends every wa
 - Red `main`: revert, never fix forward.
 - Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
 - No run pushes to `main`; every change merges through a PR.
-- What the user reads (the Status issue, a needs-you comment, a PR body, a report): `reduce`, then the `show-me` layout. A verdict is for agents.
+- What the user reads (a needs-you comment, a PR body, a report): `reduce`, then the `show-me` layout. A verdict is for agents.
