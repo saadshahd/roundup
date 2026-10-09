@@ -1,0 +1,187 @@
+import { render } from "@solidjs/testing-library";
+import type { Accessor } from "solid-js";
+import type { DaemonExit } from "../app/seam";
+import type { Event as DaemonEvent } from "@contracts/Event";
+import type { RailNode } from "@contracts/agent/RailNode";
+import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
+import { createFakeApp } from "../testing/fakeApp";
+import { USER } from "../testing/nodes";
+import type { FakeApp } from "../testing/fakeApp";
+import { connectProject, ConnectedProjectContext } from "../state/connectedProject";
+import type { ConnectedProject } from "../state/connectedProject";
+import { Rail } from "../rail/Rail";
+import { Pane } from "./Pane";
+import type { Emulator, EmulatorFactory, Size } from "./emulator";
+import { toBase64 } from "./base64";
+
+type FakeEmulator = Emulator & {
+  written: Uint8Array[];
+  host: HTMLElement | null;
+  /** What `show` and `fit` answer. */
+  size: Size;
+  fits: number;
+  fontSize: number;
+  disposed: boolean;
+  type(bytes: Uint8Array): void;
+  selectedText: string;
+  pasted: string[];
+  scrollsToBottom: number;
+  /** Simulates the user scrolling the view, as a wheel or drag would. */
+  scroll(atBottom: boolean): void;
+};
+
+export const fakeEmulators = () => {
+  const made = new Map<string, FakeEmulator>();
+
+  const factory: EmulatorFactory = (id) => {
+    let inputListener: (bytes: Uint8Array) => void = () => {};
+
+    let scrollListener: () => void = () => {};
+
+    let bottom = true;
+
+    const emulator: FakeEmulator = {
+      written: [],
+      host: null,
+      size: { cols: 100, rows: 30 },
+      fits: 0,
+      fontSize: 13,
+      setFontSize: (size: number) => { emulator.fontSize = size; },
+      disposed: false,
+      selectedText: "",
+      pasted: [],
+      scrollsToBottom: 0,
+      write: (bytes, parsed) => {
+        if (bytes.length > 0) emulator.written.push(bytes);
+        parsed?.();
+      },
+      setSize: (size) => { emulator.size = size; },
+      reset: () => { emulator.written = []; },
+      onInput: (next) => {
+        inputListener = next;
+      },
+      selection: () => emulator.selectedText,
+      paste: (text) => {
+        emulator.pasted.push(text);
+        inputListener(new TextEncoder().encode(text));
+      },
+      onScroll: (next) => {
+        scrollListener = next;
+      },
+      show: (host) => {
+        emulator.host = host;
+
+        const screenEl = document.createElement("div");
+
+        screenEl.textContent = id;
+        screenEl.tabIndex = 0;
+        screenEl.dataset.terminal = id;
+        host.replaceChildren(screenEl);
+        screenEl.focus();
+
+        return emulator.size;
+      },
+      fit: () => {
+        emulator.fits += 1;
+
+        return emulator.size;
+      },
+      focus: () => {},
+      isAtBottom: () => bottom,
+      scrollToBottom: () => {
+        emulator.scrollsToBottom += 1;
+        bottom = true;
+      },
+      dispose: () => {
+        emulator.disposed = true;
+      },
+      type: (bytes) => inputListener(bytes),
+      scroll: (atBottom) => {
+        bottom = atBottom;
+        scrollListener();
+      },
+    };
+
+    made.set(id, emulator);
+
+    return emulator;
+  };
+
+  return { factory, made };
+};
+
+let offsets = new Map<string, number>();
+
+export const output = (id: string, text: string, offset?: number): DaemonEvent => {
+  const bytes = new TextEncoder().encode(text);
+  const start = offset ?? offsets.get(id) ?? 0;
+
+  offsets.set(id, start + bytes.length);
+
+  return { actor: USER, name: "terminal.output", data: { id, offset: start, data: toBase64(bytes) } };
+};
+
+type Mounted = {
+  app: FakeApp;
+  connected: ConnectedProject;
+  emulators: ReturnType<typeof fakeEmulators>["made"];
+  container: HTMLElement;
+};
+
+/** A ConnectedProject whose Rail holds `tree` and whose Daemon lists `terminals`, with no Pane rendered. */
+export const connectFakeProject = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  now = 0,
+  daemonExit: Accessor<DaemonExit | null> = () => null,
+): Promise<{ app: FakeApp; connected: ConnectedProject }> => {
+  offsets = new Map();
+  const app = createFakeApp();
+
+  app.handlers["rail.tree"] = () => tree;
+  app.handlers["terminal.list"] = () => terminals;
+  app.handlers["terminal.write"] = () => null;
+  app.handlers["terminal.resize"] = () => null;
+  app.handlers["terminal.snapshot"] = () => ({ cols: 100, rows: 30, after: 0, data: "" });
+
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => now, daemonExit);
+
+  return { app, connected };
+};
+
+/** A Pane inside an open Project whose Rail holds `tree` and whose Daemon lists `terminals`. */
+export const mountPane = async (
+  tree: RailNode[],
+  terminals: TerminalInfo[] = [],
+  now = 0,
+  daemonExit: Accessor<DaemonExit | null> = () => null,
+): Promise<Mounted> => {
+  const { app, connected } = await connectFakeProject(tree, terminals, now, daemonExit);
+  const { factory, made } = fakeEmulators();
+
+  const { container } = render(() => (
+    <ConnectedProjectContext.Provider value={connected}>
+      <Pane createEmulator={factory} />
+    </ConnectedProjectContext.Provider>
+  ));
+
+  return { app, connected, emulators: made, container };
+};
+
+/** A Rail above a Pane in one open Project, so a spawn's new row can be watched handing focus to its Terminal (U33). */
+export const mountRailAndPane = async (tree: RailNode[]): Promise<Mounted> => {
+  const { app, connected } = await connectFakeProject(tree);
+  const { factory, made } = fakeEmulators();
+
+  const { container } = render(() => (
+    <ConnectedProjectContext.Provider value={connected}>
+      <Rail />
+      <Pane createEmulator={factory} />
+    </ConnectedProjectContext.Provider>
+  ));
+
+  return { app, connected, emulators: made, container };
+};
+
+export const callsTo = (app: FakeApp, method: "terminal.write" | "terminal.resize") =>
+  app.calls.filter((call) => call.method === method).map((call) => call.params);

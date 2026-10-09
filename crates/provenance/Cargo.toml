@@ -1,0 +1,12 @@
+[package]
+name = "provenance"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+contracts = { path = "../contracts" }
+rusqlite.workspace = true
+
+[lints]
+workspace = true

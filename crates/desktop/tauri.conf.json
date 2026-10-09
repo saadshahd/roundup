@@ -1,0 +1,9 @@
+{
+  "productName": "roundup",
+  "identifier": "dev.roundup.app",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../apps/desktop/dist"
+  },
+  "app": { "windows": [{ "title": "roundup" }] }
+}

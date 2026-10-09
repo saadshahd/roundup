@@ -1,0 +1,55 @@
+name: loop
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Planning PR needing the same rules gate
+        required: true
+  pull_request:
+
+concurrency:
+  group: loop-${{ github.ref }}
+  cancel-in-progress: true
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: loop/rules.sh ci-trailers "$PR"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
+      - run: loop/rules.sh vocab
+      - run: python3 loop/orders.py lint
+      - run: python3 loop/orders.test.py
+      - run: loop/rules.test.sh
+      - run: loop/merge-ready.test.sh
+      - run: loop/percy.test.sh
+      - run: loop/qa-sweep.test.sh
+      - run: python3 loop/dispatch.test.py
+      - run: python3 loop/feedback.test.py
+      - run: python3 loop/outcome.test.py
+      - run: python3 loop/trail.test.py
+      - run: loop/runs.test.sh
+      - run: loop/codex.test.sh
+      - run: loop/retro.test.sh
+      - run: loop/status.test.sh
+
+  summary:
+    needs: [rules]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check loop rules and regressions
+      next: Review and reconciliation inspect this head; failures block merge and eligible Builder PRs receive repair.

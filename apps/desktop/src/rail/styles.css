@@ -1,0 +1,182 @@
+.rail-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: var(--rail-actions-height);
+  box-sizing: border-box;
+  background: var(--sunken);
+}
+
+.rail-row {
+  min-height: 28px;
+  padding-right: 8px;
+  cursor: pointer;
+  scroll-margin-bottom: var(--rail-actions-height);
+}
+
+.rail-fold {
+  min-height: 28px;
+}
+
+.rail-row[data-selected="true"] {
+  background: var(--selected);
+}
+
+.rail-row .line {
+  min-height: inherit;
+  display: flex;
+  align-items: center;
+  white-space: pre;
+}
+
+.rail-row .line > * + * {
+  margin-left: 8px;
+}
+
+.rail-row .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Live has no margin and the 2ch spacing before the label sits in the label's text, so a Live line given no width takes none of the name's (U46). */
+.rail-row .line > .live {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 0;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Shrinks and ellipsizes first, so the age at the row's right edge is always whole (U7). */
+.rail-row .line > .live > .live-label {
+  flex: 1 1 0;
+  min-width: 0;
+  text-indent: 2ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-row .line > .live > .live-age {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.rail-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+}
+
+.spawn-prompt-field {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  padding: 4px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--hairline);
+}
+
+.spawn-prompt-field:hover {
+  background-color: var(--hover);
+}
+
+.spawn-prompt-field:active {
+  background-color: var(--selected);
+  transition-duration: 0s;
+}
+
+.rail-tree {
+  position: relative;
+  font-family: var(--font-ui);
+  /* The one value the pinned bar's own height and every row's scroll reservation both read (U44). */
+  --rail-actions-height: 40px;
+}
+
+.rail-tree > .ink {
+  position: sticky;
+  bottom: var(--rail-actions-height);
+  z-index: 1;
+  background: var(--sunken);
+}
+
+.rail-row {
+  user-select: none;
+}
+
+/* U142: the whole Rail (rows, done summary, pinned bar and the gaps between) selects rows, never text; a field the user types in, the error line and the menu keep theirs. */
+.rail-tree {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.rail-tree :is(input, textarea, [role="alert"], .rail-menu) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.rail-row[data-lifted="true"] {
+  opacity: 0.4;
+  transform: translateY(var(--lift));
+  pointer-events: none;
+}
+
+.rail-row[data-shift="1"] {
+  transform: translateY(var(--room));
+  transition: transform var(--shift-ms) ease-out;
+}
+
+.rail-row[data-shift="-1"] {
+  transform: translateY(calc(-1 * var(--room)));
+  transition: transform var(--shift-ms) ease-out;
+}
+
+.drop-line {
+  position: absolute;
+  left: calc(var(--depth) * 2ch);
+  right: 0;
+  height: 2px;
+  background: var(--grey);
+  pointer-events: none;
+}
+
+/* Greyed, not faded: opacity would sink the Live lines under the 4.5:1 contrast U25 keeps; grayscale holds it (rail/u25_daemon_gone.test.tsx). */
+.rail-tree [role="tree"][aria-disabled="true"] {
+  filter: grayscale(1);
+}
+
+.rail-menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  max-width: 252px;
+  padding: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-row);
+}
+
+.rail-menu button {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-row);
+}
+
+.rail-menu-question {
+  padding: var(--space-2);
+}

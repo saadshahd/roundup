@@ -1,0 +1,47 @@
+.icon {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex: none;
+  vertical-align: middle;
+}
+
+.glyph {
+  display: inline-flex;
+  width: var(--space-4);
+  height: var(--space-4);
+  flex: none;
+  vertical-align: middle;
+}
+
+.glyph[data-tone="accent"] {
+  color: var(--accent);
+}
+
+p.ink > .icon {
+  margin-right: var(--space-1);
+}
+
+.word:has(.icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: var(--space-5);
+  min-height: var(--space-5);
+  border-radius: var(--radius-control);
+}
+
+.rail-row .line {
+  min-height: var(--space-5);
+}
+
+.rail-row .line > .glyph {
+  width: var(--space-5);
+  justify-content: center;
+}
+
+p.ink[role="alert"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,18 @@
+ ▐▛███▛█   Claude Code v2.1.283
+▝▜██████▀  Haiku 4.5 · Claude API
+ ▝▝   ▝▝   /tmp/sbi/w1
+  Get to finished work sooner with Opus 5.5. Switch anytime with /model.
+❯ Run the bash command: echo hi-int . Reply with its output, or the word CANNOT if you have no way to run it.
+● CANNOT
+  I don't have a tool available to execute bash commands directly. My available tools are for reading files (Read), searching text (Grep), and pattern matching (Glob).
+  If you'd like to run this command, you can type ! echo hi-int in the prompt to execute it in this session.
+✻ Brewed for 3s · done 7:31 PM
+❯ Call the Agent tool now with the prompt: say hi. Reply with the tool result, or the words NO SUCH TOOL.
+● NO SUCH TOOL
+  The Agent tool is not available in my current tool set. I only have access to Glob, Grep, and Read tools.
+✻ Churned for 2s · done 7:32 PM
+                                                                                                                                            ✔ Update installed · Restart to update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

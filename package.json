@@ -1,0 +1,19 @@
+{
+  "name": "roundup",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "lint": "oxlint",
+    "typecheck": "tsc",
+    "slop": "fallow dead-code && fallow dupes"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.86.0",
+    "@percy/cli": "1.32.11",
+    "fallow": "^3.31.0",
+    "oxlint": "1.86.0",
+    "typescript": "^7.0.2"
+  }
+}

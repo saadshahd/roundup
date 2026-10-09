@@ -1,0 +1,13 @@
+{"ts": 1790861127.152439, "payload": {"hook_event_name": "SessionStart"}}
+{"ts": 1790861133.6487942, "payload": {"hook_event_name": "UserPromptSubmit"}}
+{"ts": 1790861134.8510358, "payload": {"hook_event_name": "MessageDisplay"}}
+{"ts": 1790861134.8512142, "payload": {"hook_event_name": "Stop"}}
+{"ts": 1790861195.0722492, "payload": {"hook_event_name": "Notification", "notification_type": "idle_prompt"}}
+{"ts": 1790861226.945058, "payload": {"hook_event_name": "UserPromptSubmit"}}
+{"ts": 1790861228.395047, "payload": {"hook_event_name": "PreToolUse", "tool_name": "Bash"}}
+{"ts": 1790861228.4626958, "payload": {"hook_event_name": "PermissionRequest", "tool_name": "Bash"}}
+{"ts": 1790861234.481226, "payload": {"hook_event_name": "Notification", "notification_type": "permission_prompt"}}
+{"ts": 1790861260.577179, "payload": {"hook_event_name": "UserPromptSubmit"}}
+{"ts": 1790861261.730737, "payload": {"hook_event_name": "PreToolUse", "tool_name": "Bash"}}
+{"ts": 1790861261.841784, "payload": {"hook_event_name": "PermissionRequest", "tool_name": "Bash"}}
+{"ts": 1790861267.86013, "payload": {"hook_event_name": "Notification", "notification_type": "permission_prompt"}}

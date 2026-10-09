@@ -1,0 +1,231 @@
+name: build
+run-name: "${{ inputs.pr && format('Repair PR #{0}', inputs.pr) || 'Build ready rows' }}"
+
+# L23: one-shot Builder runs. GitHub does the waiting: a tick claims ready Work rows while up to four Builders run
+# across all ticks. A PR dispatch checks current evidence and claims one bounded repair (L88).
+# Each row refills independently when its Builder ends.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: A PR to repair or diagnose; empty builds ready rows
+        required: false
+        default: ''
+      head:
+        description: Expected PR head; stale dispatches do no work
+        required: false
+      max:
+        description: Builder runs at most
+        required: false
+        default: '4'
+
+permissions:
+  contents: read
+  issues: write
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # One queue job at a time, so two ticks never claim one row; Builders of earlier ticks keep running meanwhile.
+  # Its checkout keeps the token that pushes the Claims; it runs main's scripts only.
+  queue:
+    if: ${{ !inputs.pr }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: build-queue
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      issues: write
+      contents: write
+      pull-requests: read
+    outputs:
+      rows: ${{ steps.queue.outputs.rows }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAX: ${{ inputs.max || '4' }}
+        run: |
+          loop/runs.sh recover
+          rows=$(loop/runs.sh queue "$MAX" | loop/runs.sh claim)
+          echo "rows=$rows" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: queue
+    if: needs.queue.outputs.rows != '[]'
+    name: build (${{ matrix.row.ids }}, ${{ matrix.row.file }}, ${{ matrix.row.slug }})
+    strategy:
+      fail-fast: false
+      matrix:
+        row: ${{ fromJSON(needs.queue.outputs.rows) }}
+    uses: ./.github/workflows/build-row.yml
+    with:
+      row: ${{ toJSON(matrix.row) }}
+    secrets: inherit
+    # The reusable workflow narrows the agent job to read; only its after job can dispatch/write.
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+      id-token: write
+
+  # Trusted main owns the Claim and constructs the task before PR code is checked out.
+  repair-due:
+    if: ${{ inputs.pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: read
+      checks: read
+    outputs:
+      branch: ${{ steps.due.outputs.branch }}
+      head: ${{ steps.due.outputs.head }}
+      cause: ${{ steps.due.outputs.cause }}
+      prompt: ${{ steps.due.outputs.prompt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          HEAD: ${{ inputs.head }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
+        run: python3 loop/outcome.py report python3 loop/dispatch.py start "$PR" fix "$HEAD"
+
+  fix:
+    needs: repair-due
+    if: needs.repair-due.outputs.branch != ''
+    concurrency:
+      group: build-${{ inputs.pr }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    outputs:
+      branch: ${{ steps.current.outputs.ok == 'true' && needs.repair-due.outputs.branch || '' }}
+      explanation: ${{ steps.ledger.outputs.explanation }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.repair-due.outputs.branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      # Old PR branches may still contain macOS-only setup; main selects the runner.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-setup
+          sparse-checkout: .github/actions/setup
+          persist-credentials: false
+      - uses: ./.loop-setup/.github/actions/setup
+        with:
+          browser: 'true'
+      - name: Stamp Builder commits
+        run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
+      - id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          HEAD: ${{ needs.repair-due.outputs.head }}
+        run: |
+          current=$(gh pr view "$PR" --json state,headRefOid --jq 'select(.state == "OPEN") | .headRefOid')
+          if [ "$current" = "$HEAD" ]; then echo 'ok=true' >>"$GITHUB_OUTPUT"; fi
+      - id: claude
+        if: steps.current.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@v1
+        # Isolated CLI observers use a fresh config and cannot inherit the action's stored login.
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        with:
+          prompt: ${{ needs.repair-due.outputs.prompt }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: claude,github-actions
+          # The App's default token omits workflows; writers need to publish proposed workflow changes.
+          additional_permissions: |
+            actions: read
+            checks: read
+            workflows: write
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 100
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
+      - if: always()
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        id: ledger
+        uses: ./.loop-ledger/.github/actions/ledger
+        with:
+          role: builder
+          subject: ${{ inputs.pr }}
+          execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          conclusion: ${{ steps.claude.outcome }}
+
+  # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
+  after-fix:
+    needs: [repair-due, fix]
+    if: always() && needs.fix.outputs.branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      # L92: the end entry goes on the Issue the PR links; a post failure still lets the draft check run.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ needs.fix.outputs.branch }}
+          PR: ${{ inputs.pr }}
+          CAUSE: ${{ needs.repair-due.outputs.cause }}
+          START: ${{ needs.repair-due.outputs.head }}
+          RESULT: ${{ needs.fix.outputs.explanation }}
+        run: python3 loop/trail.py end-pr "$PR" builder "$CAUSE" "$BRANCH" "$START"
+      - if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ needs.fix.outputs.branch }}
+          PR: ${{ inputs.pr }}
+        run: |
+          loop/runs.sh stopped "$BRANCH"
+          python3 loop/outcome.py observe "$BRANCH" "$PR"
+          python3 loop/dispatch.py repaired "$PR"
+
+  summary:
+    needs: [queue, build, repair-due, fix, after-fix]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Build or repair work Issues
+      next: Reconciliation selects the next eligible work or repair after this run ends.

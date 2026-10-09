@@ -1,0 +1,21 @@
+[package]
+name = "messages"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+contracts = { path = "../contracts" }
+provenance = { path = "../provenance" }
+rpc = { path = "../rpc" }
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

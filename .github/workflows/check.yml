@@ -1,0 +1,81 @@
+name: check
+
+on:
+  workflow_dispatch:
+  # A draft's head is skipped: its Builder is still pushing red tests. ready_for_review runs check on the finished
+  # head, which starts its review (L24).
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  rust:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: just check-rust
+      - name: hello-world round trip (rup ping through rupd)
+        run: |
+          export RUPD_SOCKET="$RUNNER_TEMP/rupd.sock"
+          cargo build -p rupd -p rup
+          ./target/debug/rupd & 
+          for _ in $(seq 20); do [ -S "$RUPD_SOCKET" ] && break; sleep 0.25; done
+          [[ $(./target/debug/rup ping) == *pong* ]]
+          kill %1
+
+  web:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          rust: 'false'
+      - run: just check-web
+
+  # L84: main's proof that Builders' runner can run full `just check`; it also saves the Linux cache. A PR never runs
+  # it and no `needs` reads it, so no Linux green merges alone.
+  linux:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: just check
+
+  # Keep the required check name; neither a skipped nor failed lane can turn it green.
+  check:
+    needs: [rust, web]
+    if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RUST: ${{ needs.rust.result }}
+          WEB: ${{ needs.web.result }}
+        run: test "$RUST" = success && test "$WEB" = success
+
+  summary:
+    needs: [rust, web, linux, check]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check Rust and web behavior
+      next: Review and reconciliation inspect this head; failures block merge and eligible Builder PRs receive repair.
