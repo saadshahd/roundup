@@ -8,8 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, PromptParams, RailNode, RenameParams,
-    SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent, WorktreeState,
+    Channel, ChannelEvent, CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, PromptParams,
+    RailNode, RenameParams, SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent,
+    WorktreeState,
 };
 use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
@@ -98,6 +99,11 @@ struct Shared {
     steer_bound: Duration,
     /// H13: how long an Interrupt waits for the title to change.
     interrupt_bound: Duration,
+    /// E6: the Channel of each Agent's current Attempt that has left `pending`, as
+    /// `(attempt, channel)`; an entry of an earlier Attempt reads as `pending`.
+    channels: Mutex<HashMap<String, (String, Channel)>>,
+    /// E6: how long after a start `agent.channelUp` may take before the Channel is `missing`.
+    channel_deadline: Duration,
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -179,6 +185,10 @@ pub const STEER_BOUND: Duration = Duration::from_secs(10);
 
 /// H13: how long an Interrupt waits for the title to change before `NOT_ACKED`.
 pub const INTERRUPT_BOUND: Duration = Duration::from_secs(5);
+
+/// E6: how long after a start the Channel may stay `pending`. `ROUNDUP_CHANNEL_DEADLINE_MS`
+/// shortens it for a test.
+pub const CHANNEL_DEADLINE: Duration = Duration::from_secs(15);
 
 /// Why a Steer (`Agents::prompt`) did not land (H11).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -465,8 +475,67 @@ impl Shared {
                 None => true,
             };
             node.can_resume = exited && rail.has_conversation(&node.id).unwrap_or(false);
+            let channels = self.channels.lock().expect("channels lock");
+            node.channel = channel_in(&channels, &node.id, runs.get(&node.id));
         }
         node
+    }
+
+    /// E6: `agent.channelUp` from Agent `id`. Nothing to report when no program of the Agent
+    /// runs, and a second call while the Channel is `up` emits nothing.
+    fn channel_up(&self, actor: &Actor, id: &str) -> Result<(), RpcError> {
+        let node = self.rail().node(id)?;
+        if node.kind == NodeKind::Terminal {
+            return Err(RpcError::not_found(format!("agent {id}")));
+        }
+        if actor.kind != ActorKind::Agent || actor.id != id {
+            return Err(RpcError::forbidden(format!(
+                "only agent {id} may report its Channel"
+            )));
+        }
+        let attempt = self.runs().get(id).map(|slot| slot.attempt().to_owned());
+        if let Some(attempt) = attempt {
+            self.set_channel(actor.clone(), id, &attempt, Channel::Up);
+        }
+        Ok(())
+    }
+
+    /// E6: move the Channel of `attempt` to `channel` and say so, unless it is there already or
+    /// the Attempt is no longer the live one.
+    fn set_channel(&self, by: Actor, id: &str, attempt: &str, channel: Channel) {
+        let changed = {
+            let runs = self.runs();
+            let slot = runs.get(id).filter(|slot| slot.attempt() == attempt);
+            let mut channels = self.channels.lock().expect("channels lock");
+            let current = channel_in(&channels, id, slot);
+            // `up` is final for an Attempt; `missing` never replaces it.
+            let moves = match (current, channel) {
+                (None, _) | (Some(Channel::Up), _) => false,
+                (Some(now), next) => now != next,
+            };
+            if moves {
+                channels.insert(id.to_owned(), (attempt.to_owned(), channel));
+            }
+            moves
+        };
+        if changed {
+            self.bus.emit(
+                by,
+                EventData::AgentChannel(ChannelEvent {
+                    id: id.to_owned(),
+                    channel,
+                }),
+            );
+        }
+    }
+
+    /// E6: after `channel_deadline`, an Attempt still `pending` is `missing`.
+    fn watch_channel(self: &Arc<Self>, id: &str, attempt: &str) {
+        let (shared, id, attempt) = (Arc::clone(self), id.to_owned(), attempt.to_owned());
+        tokio::spawn(async move {
+            tokio::time::sleep(shared.channel_deadline).await;
+            shared.set_channel(Actor::daemon(), &id, &attempt, Channel::Missing);
+        });
     }
 
     fn node(&self, id: &str) -> Result<RailNode, RpcError> {
@@ -1157,6 +1226,37 @@ impl Shared {
     }
 }
 
+/// E6: the Channel of the live Attempt in `slot`; `None` when no program runs (a Room whose Door
+/// never started, an Agent with no live Terminal). An entry of an earlier Attempt reads `pending`.
+fn channel_in(
+    channels: &HashMap<String, (String, Channel)>,
+    id: &str,
+    slot: Option<&Slot>,
+) -> Option<Channel> {
+    let slot = slot?;
+    let live = match slot {
+        Slot::Running(run) => !run.ended && !run.closing,
+        Slot::Starting { .. } | Slot::Resuming { .. } => true,
+        Slot::Closing => false,
+    };
+    live.then(|| match channels.get(id) {
+        Some((attempt, channel)) if attempt == slot.attempt() => *channel,
+        _ => Channel::Pending,
+    })
+}
+
+/// E6: `ROUNDUP_CHANNEL_DEADLINE_MS` when it is a whole number of milliseconds, else
+/// `CHANNEL_DEADLINE`.
+fn channel_deadline_from_env() -> Duration {
+    match std::env::var("ROUNDUP_CHANNEL_DEADLINE_MS") {
+        Ok(ms) => ms.parse().map(Duration::from_millis).unwrap_or_else(|_| {
+            eprintln!("agents: ROUNDUP_CHANNEL_DEADLINE_MS={ms:?} is not milliseconds; ignored");
+            CHANNEL_DEADLINE
+        }),
+        Err(_) => CHANNEL_DEADLINE,
+    }
+}
+
 /// A node's place in `Shared::runs`.
 enum Slot {
     /// Its Terminal is starting; `since` is when, on `clock`, it was marked.
@@ -1382,6 +1482,8 @@ impl Agents {
                 me: me.clone(),
                 steer_bound: STEER_BOUND,
                 interrupt_bound: INTERRUPT_BOUND,
+                channels: Mutex::new(HashMap::new()),
+                channel_deadline: channel_deadline_from_env(),
             }),
             dir: dir.to_owned(),
             launcher,
@@ -1953,6 +2055,7 @@ impl Agents {
             NodeKind::Room => Role::Door,
             _ => Role::Agent,
         };
+        let started = attempt.to_owned();
         // Waiting for Claude's config lock can take seconds; it must not hold a runtime thread.
         let (launcher, dir, node, folder, attempt, resume) = (
             self.launcher.clone(),
@@ -1982,7 +2085,9 @@ impl Agents {
             self.shared.git.finish(self.project_dir(), &plan)?;
             self.shared.rail().clear_provisioning_owner(id)?;
         }
-        self.spawn_behind(id, cwd, Some(argv), attach).await
+        let spawned = self.spawn_behind(id, cwd, Some(argv), attach).await?;
+        self.shared.watch_channel(id, &started);
+        Ok(spawned)
     }
 
     /// Start `command` (the login shell when `None`) in a Terminal and, when `attach`, record it
@@ -2112,6 +2217,11 @@ impl Module for Agents {
             "agent.resume" => {
                 let NodeId { id } = params(value)?;
                 reply(&self.resume(ctx, &id).await?)
+            }
+            "agent.channelUp" => {
+                let NodeId { id } = params(value)?;
+                shared.channel_up(&ctx.actor, &id)?;
+                reply(&())
             }
             "agent.signal" => {
                 let SignalParams {
@@ -2249,6 +2359,8 @@ mod tests {
             me: std::sync::Weak::new(),
             steer_bound: super::STEER_BOUND,
             interrupt_bound: super::INTERRUPT_BOUND,
+            channels: Mutex::new(HashMap::new()),
+            channel_deadline: super::CHANNEL_DEADLINE,
         });
         (dir, bus, shared)
     }
@@ -2654,6 +2766,8 @@ mod tests {
             me: std::sync::Weak::new(),
             steer_bound: super::STEER_BOUND,
             interrupt_bound: super::INTERRUPT_BOUND,
+            channels: Mutex::new(HashMap::new()),
+            channel_deadline: super::CHANNEL_DEADLINE,
         })
     }
 
@@ -2863,6 +2977,8 @@ mod tests {
             me: std::sync::Weak::new(),
             steer_bound: super::STEER_BOUND,
             interrupt_bound: super::INTERRUPT_BOUND,
+            channels: Mutex::new(HashMap::new()),
+            channel_deadline: super::CHANNEL_DEADLINE,
         });
         (dir, shared)
     }

@@ -2,6 +2,7 @@
 //! It owns the connection loop, the module router, the event bus and the Provenance log.
 
 mod builtin;
+mod context;
 mod handshake;
 
 pub use handshake::{HANDSHAKE_BOUND, Handshake, HandshakeError, read_handshake};
@@ -11,8 +12,9 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
-use contracts::Actor;
+use contracts::agent::NodeId;
 use contracts::terminal::TerminalInfo;
+use contracts::{Actor, ActorKind};
 use provenance::Touches;
 use rpc::{Bus, Ctx, Module, OpenError, RpcError, code};
 use serde_json::{Value, json};
@@ -116,6 +118,9 @@ impl Daemon {
 
     async fn route(&self, conn: &mut Conn, method: &str, params: Value) -> Result<Value, RpcError> {
         let namespace = method.split('.').next().unwrap_or_default();
+        if matches!(method, "agent.context" | "agent.brief") {
+            return self.awareness(conn, method, params).await;
+        }
         if let Some(outcome) = builtin::call(self, conn, namespace, method, &params) {
             return outcome;
         }
@@ -126,6 +131,40 @@ impl Daemon {
         module
             .call(&self.ctx(conn.actor.clone()), method, params)
             .await
+    }
+
+    /// E2, E3: the Context of an Agent, or its Brief. The Rail and the Todos are read as the
+    /// Daemon, so the call changes nothing and logs no Touch.
+    async fn awareness(&self, conn: &Conn, method: &str, params: Value) -> Result<Value, RpcError> {
+        let NodeId { id } = rpc::params(params)?;
+        let read = |namespace: &'static str, method: &'static str| {
+            let module = self
+                .modules
+                .get(namespace)
+                .ok_or_else(|| RpcError::internal(format!("{namespace} module is not registered")));
+            let ctx = self.ctx(Actor::daemon());
+            async move { module?.call(&ctx, method, Value::Null).await }
+        };
+        let nodes: Vec<contracts::agent::RailNode> =
+            serde_json::from_value(read("rail", "rail.tree").await?).map_err(RpcError::internal)?;
+        let todos: Vec<contracts::todo::Todo> =
+            serde_json::from_value(read("todo", "todo.list").await?).map_err(RpcError::internal)?;
+        let context = context::compose(&nodes, &todos, &id)?;
+        let allowed = match conn.actor.kind {
+            ActorKind::User => true,
+            ActorKind::Agent => conn.actor.id == id,
+            ActorKind::Ext => false,
+        };
+        if !allowed {
+            return Err(RpcError::forbidden(format!(
+                "{} may not read the Context of agent {id}",
+                conn.actor.id
+            )));
+        }
+        match method {
+            "agent.context" => rpc::reply(&context),
+            _ => rpc::reply(&context::brief(&context)),
+        }
     }
 
     fn ctx(&self, actor: Actor) -> Ctx {
