@@ -1,7 +1,7 @@
 //! The real `rupd` and `rup` on a temp Project, with the fake `claude` as every Agent's program.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -54,6 +54,13 @@ fn start_in(dir: tempfile::TempDir, fake: &[(&str, &str)]) -> Project {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // The attached handshake (H18): the proof this Project's App would have created.
+    writeln!(
+        daemon.stdin.as_mut().unwrap(),
+        "roundup-proof 1 {}",
+        "0".repeat(64)
+    )
+    .unwrap();
     let mut stderr = BufReader::new(daemon.stderr.take().unwrap());
     let mut serving = String::new();
     stderr.read_line(&mut serving).unwrap();

@@ -68,16 +68,3 @@ This slice builds A20's Attempt for Doors and plain Agents. Every launch allocat
 A missing or malformed `attempt` is `INVALID_PARAMS`. A Signal, title, Tick or Exit from an earlier Attempt while a later one is starting or running is ignored and logged to stderr by event name, never an error to the caller, and has no state or bus effect (A20). An unknown or removed id, or an Agent with no starting or running launch, is `NOT_FOUND`; a launch that is stopping is `CONFLICT`. Signals of the pending Attempt keep A14's bounded ordering. The same (Agent id, Attempt) pair privately binds Agent-addressed Message acceptance and Takeovers; delayed earlier status events and receiver lookups cannot affect a later Attempt. Reopen keeps the numbering and starts no program. This changes neither Message/Route/Takeover wire contracts nor M3/M5/M7 finality laws and claims no automatic Terminal delivery. A21 to A23 build on this Attempt unchanged.
 
 Status transitions within an Attempt also carry a canonical positive `status_revision`: `1` at Starting, increasing only when Status changes, independent of wall-clock ties. `RailNode.status_revision` is absent after reopening without a live attempt. The Rail snapshot and emitted Status use the same revision. Messages and Takeovers privately bind both ordinals: delayed Error/Done at revision E closes only bindings through E; a genuinely later recovery can accept new work without reviving older final Messages. Idle E consumes only Messages accepted before E. Stale receiver reads and delivery refusals cannot reopen closed bindings. The App ignores older or duplicate revisions. This architect-approved ordering amendment adds no Signal field and no Message/Takeover wire field.
-
-## Work
-
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|
-| A20 | Attempt id on every launch and on `agent.signal` | `crates/contracts/**`, regenerated `contracts/generated/**`, `GLOSSARY.md`, `crates/agents/**`, `crates/rup/src/**` (`rup signal`), `crates/rup/tests/**` | `a4_`, `a5_`, `a7_`, `a14_` tests; `just check` | after the Room/Door structural slice (U62) merges |
-| A21, A22 | save the conversation; `agent.resume` and `can_resume` | `crates/contracts/**`, regenerated `contracts/generated/**`, `GLOSSARY.md`, `crates/agents/**`, `agents.db`'s schema, `crates/rup/tests/**`, every `RailNode` literal including `apps/desktop/src/testing/seeds.ts` | `a3_`, `a8_`, `a9_`, `a12_`, `a16_`, `g_` and `u103_`/`u104_` tests; `just check`; the authenticated smoke | after A20 |
-| A23 | a restarted Door keeps its conversation | `crates/agents/**`, `crates/rup/tests/**` | `a7_`, `a8_`, `a22_` tests | after A22 |
-| audit-todos | coverage audit: T1, T2, T3, T5, T7 | `crates/todos/**` | existing tests | — |
-| audit-pads | coverage audit: P2, P3, P7 | `crates/pads/**` | existing tests | — |
-| sweep-rupd-harness | one shared way for tests to start a `rupd` and wait for `daemon.ping` | tests under `crates/rup/tests/**` and `crates/rupd/tests/**` | every existing test | after D4 merges |

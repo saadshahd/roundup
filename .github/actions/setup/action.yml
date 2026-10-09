@@ -1,5 +1,5 @@
 name: setup
-description: The toolchain `just check` needs on a macOS runner, with the workspace's packages installed.
+description: The toolchain `just check` needs on a macOS or Linux runner, with the workspace's packages installed.
 inputs:
   rust:
     description: Install the Rust toolchain and native build tools
@@ -15,12 +15,12 @@ runs:
       with:
         toolchain: 1.99.0
         components: clippy, rustfmt
-    # One key for every job that builds the workspace. `check` is the check job's own key, so Builders restore the
-    # entries main's check saved. Only a push to main saves: a PR or a Builder branch would store its own 726 MB copy.
+    # One key per OS for every job that builds the workspace. `check-<OS>` is the check job's own key, so Builders
+    # restore the entries main's check saved on their OS (L84). Only a push to main saves: a PR or a Builder branch would store its own 726 MB copy.
     - if: inputs.rust == 'true'
       uses: Swatinem/rust-cache@v2
       with:
-        shared-key: check
+        shared-key: check-${{ runner.os }}
         save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     - if: inputs.rust == 'true'
       uses: taiki-e/install-action@nextest
@@ -31,7 +31,13 @@ runs:
       with:
         node-version: 22
         cache: pnpm
-    - if: inputs.rust == 'true'
+    - if: inputs.rust == 'true' && runner.os == 'Linux'
+      name: Tauri packages
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev jq
+    - if: inputs.rust == 'true' && runner.os == 'macOS'
       name: GNU coreutils and jq
       shell: bash
       run: |
@@ -44,4 +50,4 @@ runs:
       shell: bash
       run: |
         npm install -g agent-browser@0.27.0
-        agent-browser install
+        agent-browser install ${{ runner.os == 'Linux' && '--with-deps' || '' }}

@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 # L82: bash -eo pipefail, so a failure left of a pipe fails the step.
 defaults:
@@ -40,6 +41,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       actions: read
+      issues: write
       contents: write
       pull-requests: read
     outputs:
@@ -51,6 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAX: ${{ inputs.max || '4' }}
         run: |
+          loop/runs.sh recover
           rows=$(loop/runs.sh queue "$MAX" | loop/runs.sh claim)
           echo "rows=$rows" >>"$GITHUB_OUTPUT"
 
@@ -69,6 +72,7 @@ jobs:
     # The reusable workflow narrows the agent job to read; only its after job can dispatch/write.
     permissions:
       contents: write
+      issues: write
       pull-requests: write
       actions: write
       id-token: write
@@ -106,7 +110,7 @@ jobs:
     concurrency:
       group: build-${{ inputs.pr }}
       cancel-in-progress: false
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
       contents: read
@@ -136,20 +140,40 @@ jobs:
       - id: claude
         if: steps.current.outputs.ok == 'true'
         uses: anthropics/claude-code-action@v1
+        # Isolated CLI observers use a fresh config and cannot inherit the action's stored login.
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
           prompt: ${{ needs.repair-due.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: claude,github-actions
+          # The App's default token omits workflows; writers need to publish proposed workflow changes.
+          additional_permissions: |
+            actions: read
+            checks: read
+            workflows: write
           claude_args: >-
             --model claude-sonnet-5-5
             --max-turns 100
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
       - if: always()
-        uses: ./.github/actions/ledger
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-ledger
+          sparse-checkout: |
+            .github/actions/ledger
+            loop
+          persist-credentials: false
+      - if: always()
+        uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: builder
           subject: ${{ inputs.pr }}
           execution-file: ${{ steps.claude.outputs.execution_file }}
+          redact-token: ${{ steps.claude.outputs.github_token }}
+          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           conclusion: ${{ steps.claude.outcome }}
 
   # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
@@ -169,4 +193,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.fix.outputs.branch }}
-        run: loop/runs.sh stopped "$BRANCH"
+          PR: ${{ inputs.pr }}
+        run: |
+          loop/runs.sh stopped "$BRANCH"
+          python3 loop/outcome.py observe "$BRANCH" "$PR"

@@ -17,6 +17,8 @@ export type Unsubscribe = () => void;
 export type AppSeam = {
   project(): Promise<Project | null>;
   openProject(path: string): Promise<Project>;
+  /** The proof the App gave the open Project's Daemon, which `decision.answer` needs (H4); keep it in memory only. Rejects before a Project is open and after its Daemon exits. */
+  daemonProof(): Promise<string>;
   /** Resolves `null` when the user cancels the macOS chooser. */
   chooseProjectPath(): Promise<string | null>;
   /** The macOS save chooser, with `suggestedName` filled in; resolves `null` on cancel. */

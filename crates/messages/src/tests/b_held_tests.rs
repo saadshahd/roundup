@@ -1244,7 +1244,7 @@ async fn b9_queued_error_cannot_drop_work_accepted_after_recovery() {
 #[tokio::test]
 async fn b2_queued_idle_cannot_deliver_work_accepted_after_it_was_published() {
     let dir = tempfile::tempdir().unwrap();
-    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+    let h = Held2::new(dir.path(), vec![agent_node("b", Kind::Working)]);
     h.rail.0.lock().unwrap()[0].status_revision = Some("2".into());
     let new = h.send_as(agent("a"), "b", "new").await;
     super::super::on_status(&h.messages.inner, "b", "1", "2", Kind::Idle).await;

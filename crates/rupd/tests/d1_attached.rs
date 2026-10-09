@@ -1,7 +1,7 @@
 //! D1 attached: the Daemon exits with its stdin, and takes its Terminals' programs with it.
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStderr, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -35,6 +35,11 @@ fn start(extra_args: &[&str], stdin: impl FnOnce(&mut Command)) -> Running {
         .stderr(Stdio::piped());
     stdin(&mut command);
     let mut daemon = command.spawn().unwrap();
+    if extra_args.contains(&"--attached")
+        && let Some(stdin) = daemon.stdin.as_mut()
+    {
+        writeln!(stdin, "roundup-proof 1 {}", "ab".repeat(32)).unwrap();
+    }
     let mut serving = String::new();
     let mut stderr = BufReader::new(daemon.stderr.take().unwrap());
     stderr.read_line(&mut serving).unwrap();
@@ -181,9 +186,9 @@ async fn d1_attached_daemon_exits_cleanly_when_programs_end_by_themselves_during
 
 #[tokio::test]
 async fn d1_attached_daemon_exits_when_stdin_is_already_closed() {
-    let mut running = start(&["--attached"], |command| {
-        command.stdin(Stdio::null());
-    });
+    // The handshake `start` writes is all there is: stdin then ends (a null stdin never completes one, H18).
+    let mut running = start(&["--attached"], piped);
+    drop(running.stdin.take());
 
     assert!(
         wait_for_exit(&mut running.daemon),

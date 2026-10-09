@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tests for loop/runs.sh with a fake `gh`, `loop/rules.sh` (its `touches` is the real one) and `loop/percy.sh`. Usage: loop/runs.test.sh
 set -euo pipefail
+# Claim fixtures choose their own cloud owner; never inherit the test job's identity.
+unset GITHUB_RUN_ID
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
@@ -18,7 +20,7 @@ cat >"$dir/loop/rules.sh" <<'RULES'
 set -euo pipefail
 case $1 in
   touches) exec bash "$ROOT/loop/rules.sh" touches ;;
-  ready) [ ! -e "$FIXTURES/ready-fail" ] || exit 4; cat "$FIXTURES/ready" ;;
+  ready) [ ! -e "$FIXTURES/ready-fail" ] || exit 4; if [ -f "$FIXTURES/orders-json" ]; then cat "$FIXTURES/orders-json"; exit 0; fi; jq -Rn '[inputs | capture("^(?<state>[^ ]+) (?<ids>.+) (?<file>scenarios/[^ ]+)(?: #.*)?$") | .slug = (.ids | gsub("[^A-Za-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-"))]' <"$FIXTURES/ready" ;;
   verdicts) [ ! -e "$FIXTURES/verdicts-fail" ] || exit 4; cat "$FIXTURES/verdicts" ;;
   *) exit 2 ;;
 esac
@@ -36,6 +38,9 @@ set -euo pipefail
 echo "gh $*" >>"$FIXTURES/trace"
 [ ! -e "$FIXTURES/gh-fail" ] || exit 1
 case "$*" in
+  'api repos/{owner}/{repo}/git/commits/'*' --jq .message') git show -s --format=%B "${2##*/}" ;;
+  'run view '*' --json status,jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/owner-run-$3" ;;
+  'api repos/{owner}/{repo}/pulls?state=closed&per_page=100 --paginate --jq '*) jq -r "${@: -1}" "$FIXTURES/closed" ;;
   'pr view '*' --json state,headRefOid,body,isDraft') cat "$FIXTURES/view" ;;
   'pr diff '*' --name-only') cat "$FIXTURES/paths" ;;
   'pr comment '*' --body-file -') cat >"$FIXTURES/comment" ;;
@@ -43,7 +48,7 @@ case "$*" in
   'run list --workflow qa.yml '*) jq -r "${@: -1}" "$FIXTURES/runs" ;;
   'run list --workflow build.yml '*) jq -r "${@: -1}" "$FIXTURES/build-runs" ;;
   'run view '*' --json jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/jobs-$3" ;;
-  'pr list --head build/'*' --state all --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
+  'pr list --head build/'*' --state open --json number --jq length') cat "$FIXTURES/prs-${4#build/}" 2>/dev/null || echo 0 ;;
   'pr list --head '*' --state open --json number,isDraft,body --jq '*) jq -r "${@: -1}" "$FIXTURES/open-${4//\//-}" 2>/dev/null || jq -r "${@: -1}" <<<'[]' ;;
   'pr view '*' --json body --jq '*) jq -r "${@: -1}" "$FIXTURES/view" ;;
   'pr list --state open --json headRefName,isDraft') cat "$FIXTURES/refill-prs" ;;
@@ -63,6 +68,7 @@ head=$(printf 'a%.0s' {1..40})
 fresh() {
   rm -f "$FIXTURES"/*
   : >"$FIXTURES/trace"
+  echo '[]' >"$FIXTURES/closed"
   : >"$FIXTURES/verdicts"
   printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":"Scenarios: U3\\nMoves: D2\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
   printf 'crates/rupd/src/main.rs\nscenarios/ui.md\n' >"$FIXTURES/paths"
@@ -72,28 +78,27 @@ say() { jq -nc --arg v "$1" --argjson current "${2:-false}" '{verdict: $v, head:
 
 # L23 queue
 fresh
-printf 'done U1 scenarios/ui.md\nready U3 scenarios/ui.md\nwaiting U2 scenarios/ui.md\nready U105–U107, U110 scenarios/ui-attention.md\nready F7 re-run scenarios/spawn-boundary.md\nready L999 scenarios/loop-rules.md\nready U4 scenarios/ui.md\nin-flight U6 scenarios/ui.md #3\n' >"$FIXTURES/ready"
+printf 'done U1 scenarios/ui.md\nready U3 scenarios/ui.md\nwaiting U2 scenarios/ui.md\nready U105–U107, U110 scenarios/ui-attention.md\nready F7 re-run scenarios/spawn-boundary.md\nready U4 scenarios/ui.md\nin-flight U6 scenarios/ui.md #3\n' >"$FIXTURES/ready"
 check 'L23 queue lists ready rows' 0 loop/runs.sh queue
-holds 'L23 queue keeps ids, ranges, the file and a slug; it skips loop rows' test "$(cat "$FIXTURES/out")" = '[{"ids":"U3","file":"scenarios/ui.md","slug":"U3"},{"ids":"U105–U107, U110","file":"scenarios/ui-attention.md","slug":"U105-U107-U110"},{"ids":"F7 re-run","file":"scenarios/spawn-boundary.md","slug":"F7-re-run"},{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'
+holds 'L23 queue keeps ids, ranges, the file and a slug; without altering their identity' test "$(cat "$FIXTURES/out")" = '[{"ids":"U3","file":"scenarios/ui.md","slug":"U3"},{"ids":"U105–U107, U110","file":"scenarios/ui-attention.md","slug":"U105-U107-U110"},{"ids":"F7 re-run","file":"scenarios/spawn-boundary.md","slug":"F7-re-run"},{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'
 check 'L23 queue takes at most max rows' 0 loop/runs.sh queue 2
 holds 'L23 queue of two' test "$(jq length "$FIXTURES/out")" = 2
 
-# L86 journey priority orders only eligible rows, without overriding a dependency or a Claim.
-mkdir -p .agents/data
-printf 'Priority: U2 U5 U4 U3\n' >.agents/data/journey.md
-printf 'ready U7 scenarios/ui.md\nwaiting U2 scenarios/ui.md\nready U3 scenarios/ui.md\nready U5 scenarios/ui.md\nready U4 scenarios/ui.md\n' >"$FIXTURES/ready"
-check 'L86 the journey gets the first available slots' 0 loop/runs.sh queue 2
-holds 'L86 waiting and claimed rows cannot outrank eligible work' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U4","U3"]'
-check 'L86 unrelated work still fills remaining slots' 0 loop/runs.sh queue 4
-holds 'L86 fallback rows retain their order after the journey' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U4","U3","U7"]'
-printf 'Priority: U106 U109 U4\n' >.agents/data/journey.md
-printf 'ready U4 scenarios/ui.md\nready U108-U110 scenarios/ui.md\nready U105–U107, U111 scenarios/ui-attention.md\n' >"$FIXTURES/ready"
-check 'L86 ids inside a range rank the whole Work row' 0 loop/runs.sh queue 3
-holds 'L86 grouped ranges follow their earliest priority' test "$(jq -c 'map(.ids)' "$FIXTURES/out")" = '["U105–U107, U111","U108-U110","U4"]'
-printf 'Priority: U4 or U3\n' >.agents/data/journey.md
-touch "$FIXTURES/gh-fail"
-check 'L86 malformed priority fails before network calls' 2 loop/runs.sh queue
-rm .agents/data/journey.md "$FIXTURES/gh-fail"
+# A merged spec does not finish a still-ready row, with or without its old branch.
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U3",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
+check 'L23 a deleted merged spec branch does not suppress ready implementation' 0 loop/runs.sh queue
+holds 'L23 ready work remains eligible after a spec merge' jq -e 'any(.slug == "U3")' "$FIXTURES/out"
+printf 'ready U5 scenarios/ui.md\ndone U3 scenarios/ui.md\n' >"$FIXTURES/ready"
+jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U5",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
+check 'L23 an exact merged head can be reclaimed for ready work' 0 loop/runs.sh queue
+holds 'L23 completion still comes from ready and retirement carries an exact lease' jq -e 'length == 1 and .[0].slug == "U5" and (.[0].reclaim | length == 40)' "$FIXTURES/out"
+jq '.[0].head.sha = "different"' "$FIXTURES/closed" >"$FIXTURES/changed"
+mv "$FIXTURES/changed" "$FIXTURES/closed"
+check 'L23 an unmerged head after an older merge stays claimed' 0 loop/runs.sh queue
+holds 'L23 new work on an old branch stays owned' test "$(cat "$FIXTURES/out")" = '[]'
+echo '[]' >"$FIXTURES/closed"
+
+# L86 Issue priority and dependency ordering is covered by orders.test.py.
 
 # L88 owns the per-row completion/reconciliation tests; refill no longer waits for the matrix.
 fresh
@@ -126,6 +131,15 @@ check 'L23 a max that is no number exits 2' 2 loop/runs.sh queue four
 check 'L23 slug of a range' 0 loop/runs.sh slug 'U105–U107, U109'
 holds 'L23 slug joins words with one dash' test "$(cat "$FIXTURES/out")" = U105-U107-U109
 
+# L87 a reserved Issue is claimed only by its chosen provider.
+fresh
+printf '[{"issue":400,"ids":"L90","file":"scenarios/loop-rules.md","slug":"L90","state":"ready","priority":0,"provider":"codex"}]' >"$FIXTURES/orders-json"
+check 'L87 Claude leaves Codex-reserved work available' 0 loop/runs.sh queue 4
+holds 'L87 no Claude Claim for a Codex Issue' test "$(cat "$FIXTURES/out")" = '[]'
+check 'L87 Codex sees its reserved Issue through the shared queue' 0 loop/runs.sh queue 5 codex
+holds 'L87 the canonical Issue survives dispatch' jq -e 'length == 1 and .[0].issue == 400' "$FIXTURES/out"
+check 'L87 unknown providers fail' 2 loop/runs.sh queue 4 unknown
+
 # L23 claim
 fresh
 base=$(git rev-parse HEAD)
@@ -150,15 +164,59 @@ git remote set-url origin "$dir/missing.git"
 check 'L23 a failed push exits 4' 4 bash -c 'echo '"'"'[{"ids":"U4","file":"scenarios/ui.md","slug":"U4"}]'"'"' | loop/runs.sh claim'
 git remote set-url origin "$dir/origin.git"
 
-# L23 unclaim
+# Retiring a merged head and creating a fresh Claim still has only one winner.
 fresh
-git push -q origin HEAD:refs/heads/build/U10 HEAD:refs/heads/build/U11
+old=$(git rev-parse HEAD)
+git push -q origin HEAD:refs/heads/build/U12
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m next-main
+jq -nc --arg old "$old" '[{ids:"U12",file:"scenarios/ui.md",slug:"U12",reclaim:$old}]' >"$FIXTURES/reclaim"
+check 'L23 reclaim retires only the observed merged head' 0 bash -c 'loop/runs.sh claim <"$FIXTURES/reclaim"'
+holds 'L23 a fresh owner gets the row without stale retirement metadata' jq -e 'length == 1 and .[0].slug == "U12" and (.[0] | has("reclaim") | not)' "$FIXTURES/out"
+check 'L23 a competing stale retirement cannot delete the new Claim' 0 bash -c 'loop/runs.sh claim <"$FIXTURES/reclaim"'
+holds 'L23 the loser starts nothing and preserves the winner' bash -c 'test "$(cat "$FIXTURES/out")" = "[]" && test "$(git ls-remote origin refs/heads/build/U12 | cut -f1)" = "$(git rev-parse HEAD)"'
+
+jq -nc --arg old "$old" '[{ids:"U12",slug:"U12",claim_head:$old}]' >"$FIXTURES/old-owner"
+check 'L23 old cleanup cannot delete a reclaimed branch' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/old-owner"'
+holds 'L23 late old cleanup preserves the new owner' test "$(git ls-remote origin refs/heads/build/U12 | cut -f1)" = "$(git rev-parse HEAD)"
+printf '[{"slug":"U12"}]\n' >"$FIXTURES/legacy-owner"
+check 'L23 cleanup without ownership changes nothing' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/legacy-owner"'
+holds 'L23 legacy cleanup preserves the new owner' git ls-remote --exit-code origin refs/heads/build/U12
+
+# L23 unclaim, including same-main retry ownership.
+fresh
+printf '[{"ids":"U10","slug":"U10"},{"ids":"U11","slug":"U11"}]\n' | loop/runs.sh claim >"$FIXTURES/owners"
 echo 1 >"$FIXTURES/prs-U11"
-check 'L23 unclaim after the Builders end' 0 bash -c 'echo '"'"'[{"ids":"U10","file":"scenarios/ui.md","slug":"U10"},{"ids":"U11","file":"scenarios/ui.md","slug":"U11"}]'"'"' | loop/runs.sh unclaim'
+check 'L23 unclaim after the Builders end' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
 holds 'L23 a Claim with no PR is freed, one with a PR stays' bash -c 'test "$(cat "$FIXTURES/out")" = "freed build/U10" && ! git ls-remote --exit-code origin refs/heads/build/U10 >/dev/null && git ls-remote --exit-code origin refs/heads/build/U11 >/dev/null'
+holds 'L23 completion releases its owner even when its PR stays' bash -c '! git ls-remote --exit-code origin refs/heads/loop-row/U11 >/dev/null'
+printf '[{"ids":"U10","slug":"U10"}]\n' | loop/runs.sh claim >"$FIXTURES/retry-owner"
+holds 'L23 retries on unchanged main have different owners' bash -c 'test "$(jq -r ".[0].claim_owner" "$FIXTURES/owners")" != "$(jq -r ".[0].claim_owner" "$FIXTURES/retry-owner")"'
+check 'L23 stale cleanup on unchanged main cannot delete the retry' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/owners"'
+holds 'L23 the retry keeps its branch and unique owner' bash -c 'git ls-remote --exit-code origin refs/heads/build/U10 >/dev/null && test "$(git ls-remote origin refs/heads/loop-row/U10 | cut -f1)" = "$(jq -r ".[0].claim_owner" "$FIXTURES/retry-owner")"'
+printf '[{"ids":"U14","slug":"U14"}]\n' | loop/runs.sh claim >"$FIXTURES/pushed-owner"
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m partial-implementation
+git push -q origin HEAD:refs/heads/build/U14
+check 'L23 cleanup preserves pushed work without a PR' 0 bash -c 'loop/runs.sh unclaim <"$FIXTURES/pushed-owner"'
+holds 'L23 preserved work releases its old owner for investigation' bash -c 'test "$(git ls-remote origin refs/heads/build/U14 | cut -f1)" = "$(git rev-parse HEAD)" && ! git ls-remote --exit-code origin refs/heads/loop-row/U14 >/dev/null'
+
 touch "$FIXTURES/gh-fail"
-check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'echo '"'"'[{"ids":"U11","file":"scenarios/ui.md","slug":"U11"}]'"'"' | loop/runs.sh unclaim'
-holds 'L23 a failed PR list frees nothing' git ls-remote --exit-code origin refs/heads/build/U11
+check 'L23 unclaim with a failed PR list exits 4' 4 bash -c 'loop/runs.sh unclaim <"$FIXTURES/retry-owner"'
+holds 'L23 a failed PR list frees nothing' git ls-remote --exit-code origin refs/heads/build/U10
+
+# Cloud cleanup recovery handles retained/deleted build branches without disturbing live owners.
+fresh
+export GITHUB_RUN_ID=900
+printf '[{"ids":"U15","slug":"U15"},{"ids":"U16","slug":"U16"},{"ids":"U17","slug":"U17"}]\n' | loop/runs.sh claim >"$FIXTURES/cloud-owners"
+unset GITHUB_RUN_ID
+git push -q origin --delete refs/heads/build/U16
+printf '{"status":"in_progress","jobs":[{"name":"build (U15, scenarios/ui.md, U15) / build","status":"completed"},{"name":"build (U16, scenarios/ui.md, U16) / build","status":"completed"},{"name":"build (U17, scenarios/ui.md, U17) / build","status":"in_progress"}]}\n' >"$FIXTURES/owner-run-900"
+check 'L23 recovery releases completed cloud owners with retained and deleted branches' 0 loop/runs.sh recover
+holds 'L23 completed model jobs no longer suppress work' bash -c '! git ls-remote --exit-code origin refs/heads/loop-row/U15 refs/heads/loop-row/U16 refs/heads/build/U15 >/dev/null'
+holds 'L23 recovery leaves the live sibling owned' git ls-remote --exit-code origin refs/heads/loop-row/U17
+holds 'L23 recovery leaves local ownership to its process observer' git ls-remote --exit-code origin refs/heads/loop-row/U10
+printf '{"status":"completed","jobs":[]}\n' >"$FIXTURES/owner-run-900"
+check 'L23 terminal workflow recovers an owner even with missing jobs' 0 loop/runs.sh recover
+holds 'L23 terminal workflow leaves no owner ref' bash -c '! git ls-remote --exit-code origin refs/heads/loop-row/U17 >/dev/null'
 
 # prompt
 fresh

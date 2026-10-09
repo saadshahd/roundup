@@ -47,7 +47,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
             &dir,
             bus.clone(),
             agents.clone(),
-            Arc::new(|_, _| Box::pin(async { Err(messages::Refusal::NotFound) })),
+            Arc::new(|_, _| Box::pin(async { Err(messages::Refusal::Busy) })),
         )
         .unwrap(),
     ));

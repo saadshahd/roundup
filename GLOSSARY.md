@@ -178,7 +178,13 @@ A sender→receiver pair with a delivery value: `auto | ask-first | drop`.
 A Message waiting on an ask-first Route, the end of a Takeover, or the user's answer to an escalated question.
 
 **Reason**:
-The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone` or `not accepted` (dropped).
+The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone`, `not accepted` or `passed` (dropped).
+
+**Hop**:
+One Message of a bubbling question: sent to a Door, then to the Doors of the Rooms above it, nearest first, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
+
+**Landing**:
+The Message to the user that ends a bubbling question: `held` with the reason `escalated`, never `delivered` until the user answers it.
 
 **Card**:
 Anything the user sees in the app (a permission request, a question, an Inbox Message, a status, a summary); it has a kind.
@@ -200,6 +206,9 @@ The append-only log of Touches.
 
 **Daemon**:
 `rupd`, the local process everything else is a client of.
+
+**Proof**:
+The random secret the App gives its attached Daemon on stdin and the webview reads through `daemon_proof`; `decision.answer` needs it, so only the user can answer a Decision (H4, H18).
 
 **Extension**:
 A directory with a manifest and one module.
@@ -223,8 +232,11 @@ A screen the Design critic runs that no Builder's prompt lists.
 
 ### The loop
 
+**Work Issue**:
+A GitHub Issue labelled `loop:work` that holds a scoped outcome, acceptance references, immutable Key, priority and native dependencies. Its intake label authorizes execution; its delivery evidence determines completion (L34).
+
 **Builder**:
-The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a Work row, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
+The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a GitHub work Issue, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).
 
 **Code PR**:
 A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scenarios:` line (L46).
@@ -233,10 +245,10 @@ A PR touching `apps/`, `crates/`, `contracts/` or a Build file; it needs a `Scen
 What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `rust-toolchain.toml`, `tsconfig.json`, `.oxlintrc.json`, `.fallowrc.json`, `.cargo/` and `tools/` (L46).
 
 **Loop machinery**:
-`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching `.github/` waits for the user's merge (L24, L46).
+`loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching it requires independent review and the required gates (L24, L46).
 
 **Claim**:
-The branch `build/<slug>` the build queue pushes at `main` to hold one Work row for its Builder, whose PR grows from it; a Builder that ends with no PR frees it (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
+The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, created atomically for one Builder. The owner records its run and initial head. Completion releases only its own owner and an unchanged branch without an open PR; reconciliation recovers a cloud owner after its Builder ends, and the local controller recovers a local owner (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
 
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.
