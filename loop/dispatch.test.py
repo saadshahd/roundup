@@ -123,17 +123,99 @@ class L88(unittest.TestCase):
             self.assertFalse(d.available(TASK, {**record, 'attempt': 2}))
             self.assertTrue(d.available({**TASK, 'head': BASE}, {**record, 'attempt': 2}))
 
-    def test_l88_two_fixes_per_pr_survive_new_heads_and_intervening_reviews(self):
+    def test_l82_two_repairs_escalate_without_abandoning_changed_or_unchanged_heads(self):
         repair = {**TASK, 'role': 'fix', 'cause': 'check'}
-        record = dict(run=9, key=d.key(repair), attempt=1, phase='issued', fixes=1)
-        with patch.object(d, 'api', return_value=dict(status='completed')), patch.object(d, 'started', return_value=True):
+        record = dict(run=9, key=d.key(repair), attempt=2, phase='issued', fixes=1)
+        owner = dict(status='completed', conclusion='success', updated_at='2026-10-09T00:00:00Z')
+        with patch.object(d, 'api', return_value=owner), patch.object(d, 'started', return_value=True):
             self.assertEqual(d.fixes(record), 2)
-            self.assertFalse(d.available({**repair, 'head': BASE}, record))
-            self.assertFalse(d.available({**repair, 'cause': 'conflict', 'base': HEAD}, record))
-        # A reviewer preserves the repair total, even if its own head/cause differs.
-        reviewed = {**record, 'key': d.key(TASK), 'fixes': 2}
-        with patch.object(d, 'api', return_value=dict(status='completed')), patch.object(d, 'started', return_value=True):
-            self.assertFalse(d.available(repair, reviewed))
+            self.assertTrue(d.available(repair, record))
+            self.assertTrue(d.available({**repair, 'head': BASE}, record))
+            reviewed = {**record, 'key': d.key(TASK), 'fixes': 2}
+            self.assertTrue(d.available(repair, reviewed))
+
+    def test_l82_rolling_budget_survives_new_heads_and_expires_without_user_reset(self):
+        task = {**TASK, 'role': 'fix', 'cause': 'check'}
+        history = [dict(run=n, head=HEAD, cause='check', at=100 + n) for n in range(6)]
+        self.assertEqual(d.repair_wait(task, history, 1000), 86500)
+        self.assertEqual(d.repair_wait({**task, 'head': BASE}, history, 1000), 86500)
+        self.assertEqual(d.repair_wait(task, history, 90000), 90000)
+        self.assertEqual(d.repair_wait(task, history[:2], 200), 200)
+        self.assertEqual(d.repair_wait(task, history[:3], 200), 1002)
+        self.assertEqual(d.repair_wait({**task, 'head': BASE}, history[:3], 200), 200)
+
+    def test_l82_cancelled_ci_is_not_a_code_repair(self):
+        cancelled = {**CHECK, 'name': 'rust', 'id': 3, 'conclusion': 'cancelled'}
+        failed = {**CHECK, 'conclusion': 'failure'}
+        self.assertEqual(d.decision(PR, [failed, cancelled], [], ['code']), ('ci', 'cancelled-ci'))
+        web = {**cancelled, 'name': 'web', 'id': 4, 'conclusion': 'failure'}
+        self.assertEqual(d.decision(PR, [failed, cancelled, web], [], ['code']), ('fix', 'check'))
+        self.assertIsNone(d.decision(PR, [failed, {**cancelled, 'status': 'in_progress'}], [], ['code']))
+        self.assertEqual(d.decision(PR, [failed, cancelled, {**cancelled, 'id': 5, 'conclusion': 'failure'}], [], ['code']), ('fix', 'check'))
+
+    def test_l82_reviews_and_ci_recovery_preserve_repair_history(self):
+        history = [dict(run=8, head=HEAD, cause='check', at=100)]
+        owner = dict(status='completed', conclusion='success', updated_at='2026-10-09T00:00:00Z')
+        record = dict(run=9, key=d.key(TASK), attempt=1, phase='issued', fixes=1, repairs=history)
+        with patch.object(d, 'started', return_value=True):
+            self.assertEqual(d.repair_history(record, owner), history)
+            repaired = {**record, 'key': ['fix', 'check', HEAD, '']}
+            self.assertEqual(len(d.repair_history(repaired, owner)), 2)
+        with patch.object(d, 'started', return_value=False):
+            self.assertEqual(d.repair_history(repaired, owner), history)
+        with patch.object(d, 'api', return_value=owner):
+            self.assertFalse(d.available({**TASK, 'role': 'ci'}, {**record, 'ci_head': HEAD, 'ci_attempts': 2}))
+
+    def test_l82_repeated_setup_failure_waits_even_after_head_changes(self):
+        record = dict(run=9, key=d.key(TASK), attempt=1, phase='claimed')
+        owner = dict(status='completed', conclusion='failure', updated_at='2026-10-09T00:00:00Z')
+        with patch.object(d, 'api', return_value=owner), patch.object(d.time, 'time', return_value=1791504001):
+            self.assertFalse(d.available({**TASK, 'head': BASE}, record))
+
+    def test_l82_second_ci_reservation_runs_before_escalating(self):
+        task = {**TASK, 'role': 'ci', 'cause': 'cancelled-ci', 'ci_run': 12}
+        record = dict(run=9, key=d.key(task), attempt=1, phase='issued', fixes=0, repairs=[], ci_head=HEAD, ci_attempts=1)
+        owner = dict(status='completed', conclusion='success', updated_at='2026-10-09T00:00:00Z')
+        check = {**CHECK, 'conclusion': 'failure', 'details_url': 'https://github.com/o/r/actions/runs/12/job/1'}
+        cancelled = {**CHECK, 'name': 'rust', 'id': 3, 'conclusion': 'cancelled'}
+        commands = []
+        def api(path, payload=None):
+            if path == 'pulls/1':
+                return PR
+            if path.startswith('actions/runs/'):
+                return owner
+            raise AssertionError(path)
+        def gh(*args, **kwargs):
+            if args[:2] == ('pr', 'list'):
+                return [dict(number=1)]
+            return [dict(check_runs=[check, cancelled])]
+        def run(*args, **kwargs):
+            commands.append(args)
+            if args[0:3] == ('bash', 'loop/runs.sh', 'queue'):
+                return '[]'
+            if args[0:3] == ('bash', 'loop/rules.sh', 'touches'):
+                return 'code'
+            return ''
+        def write(number, old, replacement):
+            record.clear(); record.update(replacement)
+            return True
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'gh', side_effect=gh), patch.object(d, 'run', side_effect=run), patch.object(d, 'claim_record', side_effect=lambda n: ('old', dict(record))), patch.object(d, 'write_claim', side_effect=write), patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.dict(os.environ, GITHUB_RUN_ID='42'):
+            d.reconcile()
+            self.assertIn(('gh', 'run', 'rerun', '12'), commands)
+            self.assertEqual(record['ci_attempts'], 2)
+            self.assertEqual(record['phase'], 'issued')
+            self.assertEqual(d.due(1)['cause'], 'ci')
+            self.assertEqual(record['fixes'], 0)
+
+    def test_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach(self):
+        task = {**TASK, 'role': 'fix', 'cause': 'check'}
+        record = dict(fixes=2, repairs=[dict(run=8), dict(run=9)])
+        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run:
+            d.start(1, 'fix', HEAD)
+            prompt = run.call_args.kwargs['data']
+            self.assertIn('earlier repair runs 8, 9', prompt)
+            self.assertIn('changed approach', prompt)
+            self.assertIn('outcome.json', prompt)
 
     def test_l88_main_movement_does_not_reset_review_retry_budget(self):
         self.assertEqual(d.key(TASK), d.key({**TASK, 'base': HEAD}))
