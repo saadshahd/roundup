@@ -126,15 +126,20 @@ class NotReady(Exception):
     """The Issue is no longer ready; starting no run is the correct outcome."""
 
 
+def queued(number):
+    """True when the queue would build Issue `number` now: no dependency, PR or missing field holds it."""
+    current = next((row for row in read_orders() if row['issue'] == number), None)
+    return current is not None and current['state'] == 'ready'
+
+
 def task(number):
     """Print the Builder's task for a ready Issue; raise NotReady when another run or a person took it."""
     issue = gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}')
     if issue['state'] != 'open' or 'ready-for-agent' not in {label['name'] for label in issue['labels']}:
         raise NotReady(f'Issue #{number} is no longer authorized for execution')
     row = order(issue)
-    current = next((row for row in read_orders() if row['issue'] == number), None)
-    if current is None or current['state'] != 'ready':
-        raise NotReady(f'Issue #{number} is no longer ready: {current}')
+    if not queued(number):
+        raise NotReady(f'Issue #{number} is no longer ready')
     if row['request']:
         completion = ('This Issue is a request without queue fields. Add its acceptance as scenarios, then edit this Issue '
                       'to add Key, Priority, Specification and Scenarios lines and Mode: implement, so the queue builds it '
