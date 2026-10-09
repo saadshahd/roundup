@@ -1,0 +1,14 @@
+[package]
+name = "contracts"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+schemars = "1"
+serde.workspace = true
+serde_json.workspace = true
+ts-rs.workspace = true
+
+[lints]
+workspace = true

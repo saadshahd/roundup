@@ -1,0 +1,24 @@
+[package]
+name = "pads"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+caseless = "0.2"
+contracts = { path = "../contracts" }
+libc = "0.2"
+rpc = { path = "../rpc" }
+serde_json.workspace = true
+tempfile.workspace = true
+
+rusqlite.workspace = true
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+provenance = { path = "../provenance" }
+tokio.workspace = true
+
+[lints]
+workspace = true

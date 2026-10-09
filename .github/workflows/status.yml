@@ -1,0 +1,74 @@
+name: status
+
+# L80: full Status scans run every five minutes; run-event fanout exhausted the installation API allowance. At
+# 08:03 UTC, or on dispatch with daily, it also counts the tokens and posts the page as one comment, which notifies the
+# user the issue is assigned to. A PR waiting on the user pings through merge-ready's assignment (L79), not here.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+    - cron: '3 8 * * *'
+  workflow_dispatch:
+    inputs:
+      daily:
+        description: Count the tokens and post the page as a comment
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Finish a running scan; pending refreshes coalesce without discarding API work. Daily reports stay separate.
+concurrency:
+  group: status-${{ (github.event.schedule == '3 8 * * *' || inputs.daily) && 'daily' || 'page' }}
+  cancel-in-progress: false
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  page:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
+      checks: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: budget
+        if: github.event.schedule != '3 8 * * *' && !inputs.daily
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 loop/dispatch.py budget
+      - if: steps.budget.outputs.available == 'true' || github.event.schedule == '3 8 * * *' || inputs.daily
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
+          DAILY: ${{ github.event.schedule == '3 8 * * *' || inputs.daily }}
+        run: |
+          ACTIVITY=$(python3 loop/dispatch.py activity)
+          export ACTIVITY
+          issue=$(loop/status.sh issue)
+          if [ "$DAILY" = true ]; then
+            loop/status.sh page --cost >"$RUNNER_TEMP/page.md"
+          else
+            gh issue view "$issue" --json body --jq .body | loop/status.sh page >"$RUNNER_TEMP/page.md"
+          fi
+          gh issue edit "$issue" --body-file "$RUNNER_TEMP/page.md"
+          if [ "$DAILY" = true ]; then gh issue comment "$issue" --body-file "$RUNNER_TEMP/page.md"; fi
+
+  summary:
+    needs: [page]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Refresh the loop Status issue
+      next: The next scheduled refresh updates the Status issue; this report does not wait for an acknowledgement.

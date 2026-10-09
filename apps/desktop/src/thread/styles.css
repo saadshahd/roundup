@@ -1,0 +1,124 @@
+/* Keep "styles.css" in the name: vite.config.ts loads only CSS files matching it. */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  max-height: 40%;
+}
+
+.thread-feed {
+  overflow-y: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.thread-line {
+  white-space: pre-wrap;
+}
+
+/* U146: the Message's status, beside its line and outside its text, so a copied line stays the line. */
+.thread-line[data-status]::after {
+  content: " " attr(data-status);
+  color: var(--grey);
+}
+
+.thread-line[data-folded="true"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-failure {
+  flex: none;
+  height: 1.5em;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.thread-composer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.thread-composer input {
+  flex: 1 1 12ch;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--space-5);
+  padding: 0 var(--space-1);
+  font: inherit;
+  color: inherit;
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.thread-composer input:hover {
+  background-color: var(--hover);
+}
+
+/* Takes effect at `pointerdown` and is instant, as a button's does (U133). */
+.thread-composer input:active {
+  background-color: var(--selected);
+  transition-duration: 0s;
+}
+
+.thread-quote,
+.thread-attachment {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: var(--space-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--sunken);
+  border-radius: var(--radius-control);
+}
+
+.thread-preview {
+  position: fixed;
+  z-index: 20;
+  max-width: 480px;
+  transform: translateY(-100%);
+  pointer-events: none;
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-drawer);
+}
+
+/* U105: the periphery steps back while the input is typed in. A needs-you row stays whole; every Live line dims. */
+.window :is(.rail-row, [data-shelf-row]) {
+  transition: opacity var(--duration-crossfade) ease-out;
+}
+
+.window[data-reduced-motion="true"] :is(.rail-row, [data-shelf-row]) {
+  transition: none;
+}
+
+.window[data-typing="true"] .rail-row:not([data-kind="needs-you"]),
+.window[data-typing="true"] [data-shelf-row] {
+  opacity: 0.35;
+}
+
+/* The row already carries the dim, so its Live line must not dim it a second time (the product would be 0.12). */
+.window[data-typing="true"] .rail-row[data-kind="needs-you"] .live {
+  opacity: 0.35;
+}
+
+.centre-stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.centre-stack > .pane {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
