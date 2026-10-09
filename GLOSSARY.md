@@ -86,20 +86,14 @@ An item with an optional blocker list of other Todos, with a Home.
 _Avoid_: task, ticket
 
 **Sketch**:
-The accepted destination for user- or Agent-made rich Markdown holding Mermaid diagrams or tldraw visuals; storage, embedding and ownership are open, and Pad contracts are unchanged.
+A Pad holding Mermaid or drawing blocks; the Pad contracts are unchanged. Room-scoped storage is still open.
 
 **Pad**:
 A markdown note owned by an Agent or the user. "Scratchpad" is the product word in prose only.
 _Avoid_: scratchpad
 
 **Editor**:
-A Pad's formatted Markdown editing surface.
-
-**Source**:
-A Pad's syntax-highlighted Markdown field for direct text editing.
-
-**Preview**:
-The rendered view of a Pad's draft while the user edits; the reading view uses the same rules.
+A Pad's single formatted Markdown surface the user reads and types in.
 
 **Attachment**:
 An image pasted or dropped into the Thread's input, shown inline as its name and size with a hover preview; not a Chip.
