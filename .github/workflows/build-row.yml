@@ -23,8 +23,6 @@ jobs:
       issues: write
       pull-requests: read
       id-token: write
-    outputs:
-      explanation: ${{ steps.ledger.outputs.explanation }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,7 +74,6 @@ jobs:
             loop
           persist-credentials: false
       - if: always()
-        id: ledger
         uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: builder
@@ -93,23 +90,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
       pull-requests: write
       actions: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-      # L92: the end entry reads the branch before unclaim may delete it; a post failure still lets the Claim go.
       - env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ fromJSON(inputs.row).issue }}
-          SLUG: ${{ fromJSON(inputs.row).slug }}
-          START: ${{ fromJSON(inputs.row).claim_head }}
-          RESULT: ${{ needs.build.outputs.explanation }}
-        run: python3 loop/trail.py end "$ISSUE" builder build "build/$SLUG" "$START"
-      - if: always()
-        env:
           GH_TOKEN: ${{ github.token }}
           ROW: ${{ inputs.row }}
         run: |
