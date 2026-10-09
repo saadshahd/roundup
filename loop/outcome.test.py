@@ -5,6 +5,8 @@ import io
 import json
 import os
 import re
+import runpy
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -66,14 +68,16 @@ class OutcomeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 outcome.model_outcome(events, {})
 
-    def test_l29_retained_record_has_attempt_and_subject(self):
+    def test_l92_explain_prints_one_line_of_redacted_json_for_the_completion_job(self):
         with tempfile.TemporaryDirectory() as directory:
-            destination = Path(directory) / 'outcome.json'
-            with patch.dict(os.environ, GITHUB_RUN_ID='77', GITHUB_RUN_ATTEMPT='2', SUBJECT='330', ROLE='builder'):
-                outcome.retain('', destination)
-            report = json.loads(destination.read_text())
-            self.assertEqual((report['run'], report['attempt'], report['subject']), ('77', '2', '330'))
-            self.assertEqual(report['result'], 'missing')
+            events = Path(directory) / 'run.json'
+            events.write_text(json.dumps([{'type': 'result', 'subtype': 'success', 'result': 'tok-1 done\nsecond line'}]))
+            out = io.StringIO()
+            with patch.dict(os.environ, CLAUDE_CODE_OAUTH_TOKEN='tok-1'), patch.object(sys, 'argv', ['outcome.py', 'explain', str(events)]), \
+                 contextlib.redirect_stdout(out):
+                runpy.run_path(str(Path(outcome.__file__)), run_name='__main__')
+        self.assertEqual(out.getvalue().count('\n'), 1)
+        self.assertEqual(json.loads(out.getvalue())['text'], '[redacted] done\nsecond line')
 
     def pr(self):
         return dict(number=330, state='OPEN', isDraft=True, headRefOid='a' * 40, url='https://github.com/o/r/pull/330')
