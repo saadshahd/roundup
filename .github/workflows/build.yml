@@ -83,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
+      actions: write
       pull-requests: read
       checks: read
     outputs:

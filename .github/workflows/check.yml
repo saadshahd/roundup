@@ -1,6 +1,7 @@
 name: check
 
 on:
+  workflow_dispatch:
   # A draft's head is skipped: its Builder is still pushing red tests. ready_for_review runs check on the finished
   # head, which starts its review (L24).
   pull_request:

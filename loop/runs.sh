@@ -154,13 +154,15 @@ stopped() {
 # Sets the step output `prompt`: `.agents/<role>.md` byte for byte, then the task read from stdin, so every run of a
 # role shares the longest prefix a prompt cache can reuse.
 prompt() {
-  local role=$1 delimiter
-  [ -f ".agents/$role.md" ] || { echo "no .agents/$role.md" >&2; exit 2; }
+  local role=$1 delimiter path
+  path=".agents/$role.md"
+  [ "$role" != feedback ] || path=loop/feedback.md
+  [ -f "$path" ] || { echo "no $path" >&2; exit 2; }
   : "${GITHUB_OUTPUT:?prompt writes a step output}"
   delimiter="PROMPT_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
   {
     echo "prompt<<$delimiter"
-    cat ".agents/$role.md"
+    cat "$path"
     printf '\n## Task\n\n'
     cat
     echo "$delimiter"
@@ -178,9 +180,13 @@ review_due() {
   touched=$(printf '%s\n' "$paths" | loop/rules.sh touches)
   grep -Eq '^(code|loop)$' <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }
   verdicts=$(loop/rules.sh verdicts "$pr") || exit 4
+  if grep -qx planning <<<"$touched"; then
+    verdicts=$(jq -c --arg head "$head" '.current = (.head == $head)' <<<"$verdicts")
+  fi
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }
+  if grep -qx planning <<<"$touched"; then cat loop/feedback-review.md; fi
   if grep -qx ui <<<"$touched"; then
     code=0
     build=$(loop/percy.sh build "$head") || code=$?

@@ -50,7 +50,7 @@ def decision(pr, checks, verdicts, kinds):
         return None
     if can_repair and pr.get('mergeable') is False:
         return 'fix', 'conflict'
-    current = [v for v in verdicts if v['current']]
+    current = [v for v in verdicts if v['current'] and ('planning' not in kinds or v['head'] == pr['head']['sha'])]
     if can_repair and current and current[-1]['verdict'] == 'reject':
         return 'fix', 'reject'
     relevant = [c for c in checks if c['name'] == 'check' and c.get('conclusion') != 'skipped'
@@ -121,7 +121,8 @@ def due(number, busy=None, reserved_ci=False):
         if not reserved_ci and record and record.get('ci_head') == pr['head']['sha'] and record.get('ci_attempts', 0) >= 2:
             role, cause = 'fix', 'ci'
     base = api('git/ref/heads/main')['object']['sha'] if cause == 'conflict' else pr['base']['sha']
-    return dict(pr=number, role=role, cause=cause, head=pr['head']['sha'], base=base, branch=pr['head']['ref'], ci_run=ci_run)
+    return dict(pr=number, role=role, cause=cause, head=pr['head']['sha'], base=base, branch=pr['head']['ref'], ci_run=ci_run,
+                **({'planning': True} if 'planning' in kinds else {}))
 
 
 def key(task):
@@ -129,9 +130,9 @@ def key(task):
     return [task['role'], task['cause'], task['head'], task['base'] if task['cause'] == 'conflict' else '']
 
 
-def claim_record(number):
-    refs = api(f'git/matching-refs/heads/loop-pr/{number}')
-    exact = [r for r in refs if r['ref'] == f'refs/heads/loop-pr/{number}']
+def claim_record(number, namespace="loop-pr"):
+    refs = api(f'git/matching-refs/heads/{namespace}/{number}')
+    exact = [r for r in refs if r['ref'] == f'refs/heads/{namespace}/{number}']
     if not exact:
         return None, None
     sha = exact[0]['object']['sha']
@@ -204,20 +205,20 @@ def available(task, record):
     return record['key'] != key(task) or consumed(record) < 2
 
 
-def write_claim(number, old, record):
+def write_claim(number, old, record, namespace="loop-pr"):
     commit = api('git/commits', dict(message=json.dumps(record), tree=run('git', 'rev-parse', 'HEAD^{tree}'),
                                    parents=[old or run('git', 'rev-parse', 'HEAD')]))
-    path = f"git/refs/heads/loop-pr/{number}"
+    path = f"git/refs/heads/{namespace}/{number}"
     try:
         if old:
             # PATCH without force refuses the second sibling, even if its response arrives first.
             gh('api', '--method', 'PATCH', 'repos/{owner}/{repo}/' + path, '--input', '-',
                data=json.dumps(dict(sha=commit['sha'], force=False)))
         else:
-            api('git/refs', dict(ref=f"refs/heads/loop-pr/{number}", sha=commit['sha']))
-    except subprocess.CalledProcessError:
+            api('git/refs', dict(ref=f"refs/heads/{namespace}/{number}", sha=commit['sha']))
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         # A lost response may have applied our write. Observe before deciding.
-        latest, _ = claim_record(number)
+        latest, _ = claim_record(number) if namespace == "loop-pr" else claim_record(number, namespace)
         if latest == commit['sha']:
             return True
         if latest != old:
@@ -250,7 +251,12 @@ def issued(number):
 
 def start(number, role, head):
     task = due(number)
-    if not task or task['role'] != role or (head and task['head'] != head) or not acquire(task):
+    if not task or task['role'] != role or (head and task['head'] != head):
+        return
+    if role == 'fix' and task.get('planning'):
+        run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'pr={number}', '-f', f"head={task['head']}")
+        return
+    if not acquire(task):
         return
     fresh = due(number)
     if not fresh or key(fresh) != key(task):
@@ -308,7 +314,7 @@ def reconcile():
                     run('gh', 'run', 'rerun', str(task['ci_run']))
                     print(f"#{task['pr']}: reran cancelled CI {task['ci_run']}; no model invoked")
             continue
-        workflow = 'review.yml' if task['role'] == 'review' else 'build.yml'
+        workflow = 'review.yml' if task['role'] == 'review' else ('feedback.yml' if task.get('planning') else 'build.yml')
         run('gh', 'workflow', 'run', workflow, '-f', f"pr={task['pr']}", '-f', f"head={task['head']}")
         print(f"#{task['pr']}: queued {task['cause']} at {task['head'][:7]}")
     # Queue entry is serialized and row Claims are atomic; an empty queue does not dispatch again.
@@ -317,8 +323,9 @@ def reconcile():
 
 
 def activity():
-    rows = []
-    for workflow in ('build', 'review', 'qa', 'retro', 'check', 'loop', 'visual'):
+    import feedback
+    rows = feedback.activity()
+    for workflow in ('build', 'review', 'feedback', 'qa', 'retro', 'check', 'loop', 'visual'):
         runs = gh('run', 'list', '--workflow', workflow + '.yml', '--limit', '100',
                   '--json', 'databaseId,status,url,displayTitle')
         for item in runs:
