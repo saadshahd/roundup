@@ -41,12 +41,18 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/cache@v4
+      - id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 loop/dispatch.py budget
+      - if: steps.budget.outputs.available == 'true'
+        uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/loop-ledger-cache
           key: loop-ledger-v1-${{ github.run_id }}
           restore-keys: loop-ledger-v1-
-      - env:
+      - if: steps.budget.outputs.available == 'true'
+        env:
           GH_TOKEN: ${{ github.token }}
           LOOP_DAILY_TOKENS: ${{ vars.LOOP_DAILY_TOKENS }}
           LOOP_LEDGER_CACHE: ${{ runner.temp }}/loop-ledger-cache
