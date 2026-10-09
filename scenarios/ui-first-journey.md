@@ -20,12 +20,3 @@ Capability against UI. The Thread's input, Messages to a Door and Routes have co
 **U144 the harness serves the App on a real Daemon.** Found by the J2 audit: the Enter, Request and Review stages are observed only on the fake Daemon, because the webview reaches a Daemon only through Tauri commands (`apps/desktop/src/app/seam.ts`). Given a running `rupd` for a temporary Project and `just harness-real <project-path> <port>`, then `http://localhost:<port>/harness.html?daemon=1` mounts the same App with an AppSeam whose `rpc` and `subscribe` are served by the dev server over that `rupd`'s socket (`rpc::socket_path`) and whose `project`, `openProject` and `daemonProof` answer from the path given at start. Choosers return `null`, the Dock badge does nothing, and `daemon-exited` fires when the socket closes. Nothing else of the App differs, and `?seed=` behaves as today. It is a development tool: `vite build` leaves it out of `dist`, and it listens on loopback only.
 
 Observer: `u144_` tests in `apps/desktop/src/testing/` start the real `rupd` with the fake `claude` of `crates/rup/tests/e2e/fake_claude.py`, mount the App through the served seam, create a Room and start its Door by pointer, and assert the Terminal and Rail row come from the Daemon, not from a seed. They then close the socket and assert the U25 failure state, and call a method the Daemon rejects and assert its message is shown. `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U144/`. This is a webview proof against the real Daemon; the native chooser, WKWebView and a real `claude` remain the user's macOS and F7's observers. It adds no RPC method, App seam command or token.
-
-## Work
-
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|
-| U143 | actionable first Room and Door lifecycle states (Moves: D6, D7) | `apps/desktop/src/terminal/**`, `apps/desktop/src/rail/**`, `apps/desktop/src/state/rail.ts` | U9, U38, D1–D10 | U9 U38 |
-| U144 | serve the App on a real Daemon so the Enter, Request and Review stages can be rendered against it | `apps/desktop/vite.config.ts`, `apps/desktop/src/testing/**`, `justfile` (`harness-real`), `.agents/data/harness.md` | U26, U137, S4, D1–D10 | U143 |

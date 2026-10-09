@@ -4,13 +4,15 @@ roundup is built by agents in a loop. Every identifier, RPC method and UI string
 
 ## The loop
 
-Builder, QA and Retro runs are one-shot GitHub Actions jobs, and an event ends every wait: a merge, a run's end or a failed check starts the next run, and the user ends only the waits L79 names. A Builder run builds a Work row, fixes a PR or reviews a PR's head, each fresh, from one prompt, `.agents/builder.md`. A role's prompt is `.agents/<role>.md`, its skills are in `.agents/skills/`, and data a step reads on demand is in `.agents/data/`.
+Work orders are GitHub Issues (`.agents/data/work.md`); scenario files hold acceptance only.
+
+Builder, QA and Retro runs are one-shot GitHub Actions jobs, and an event ends every wait: a merge, a run's end or a failed check starts the next run, and the user ends only the waits L79 names. A Builder run builds a work Issue, fixes a PR or reviews a PR's head, each fresh, from one prompt, `.agents/builder.md`. A role's prompt is `.agents/<role>.md`, its skills are in `.agents/skills/`, and data a step reads on demand is in `.agents/data/`.
 
 | Step | Who, where | Skills |
 |---|---|---|
-| 1 Ask | The user adds a Work row: its ids, Item and After | — |
+| 1 Ask | The user sets direction; the loop maintains scoped GitHub work Issues | — |
 | 2 Build | `build.yml` (L23): on each merge, each run's end and each hour, one Builder run per ready or unspecified row, four at most, under the spend cap (L83) | prime; spec: to-spec, grill-with-docs, anchor; seam: codebase-design; tdd; UI: emil-design-eng; motion clause: animate |
-| 3 Review | `review.yml` (L24): a review run once `check` passes on any PR's head; at most two fix runs per PR, after a reject, a red `check` or a cut-off run (L82) | review, judge; UI: percy-review |
+| 3 Review | `review.yml` (L24): a review run once `check` passes on any PR's head; bounded repair with diagnostic escalation and automatic retry windows (L82) | review, judge; UI: percy-review |
 | 4 Merge | GitHub auto-merge on `check`, `rules` and `merge-ready` (L46) | — |
 | 5 Observe | `qa.yml` (L66) sweeps `main` every six hours; a `design-critic` run on request | review-animations, break-ui |
 | 6 Retro | `retro.yml` (L27): one Retro PR per 20 merged PRs, read from the Ledger (L29) | retro, reduce |
