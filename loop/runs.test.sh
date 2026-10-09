@@ -13,7 +13,7 @@ git -C "$dir" init -q
 git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U105-U107-U109
-cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$dir/loop/"
+cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$dir/loop/"
 printf '# Builder\n\nFixed text.\n' >"$dir/.agents/builder.md"
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
@@ -231,6 +231,14 @@ unset GITHUB_OUTPUT
 # L88 dispatch.test.py exercises the review task against the real shared prompt.
 
 # L24 review-due
+fresh
+printf '{"verdict":"reject","current":true,"head":"%s","body":"old scope","at":"2026-10-09T00:00:00Z"}\n' "$head" >"$FIXTURES/verdicts"
+fingerprint=$(python3 -c 'import json,sys; sys.path.insert(0,"loop"); from dispatch import review_request; print(review_request("",json.load(sys.stdin))["verdict"])' <"$FIXTURES/verdicts")
+check 'L88 repair requests review of its exact reject' 0 loop/runs.sh review-due 7 "$head" "$fingerprint"
+printf '{"verdict":"reject","current":true,"head":"%s","body":"new finding"}\n' "$head" >"$FIXTURES/verdicts"
+check 'L88 an edited reject invalidates the repair request' 1 loop/runs.sh review-due 7 "$head" "$fingerprint"
+printf '{"verdict":"approve","current":true,"head":"%s"}\n' "$head" >"$FIXTURES/verdicts"
+check 'L88 an approval prevents a duplicate repair review' 1 loop/runs.sh review-due 7 "$head" "$fingerprint"
 fresh
 check 'L24 a Code PR with no verdict is due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 the task names the PR and head' grep -qx "PR #7, head $head." "$FIXTURES/out"
