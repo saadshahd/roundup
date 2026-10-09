@@ -122,8 +122,13 @@ holds 'L23 builders prints each one'"'"'s slug' test "$(cat "$FIXTURES/out")" = 
 echo '{"jobs":[{"name":"build (U1, scenarios/ui.md, U1) / build","status":"in_progress"},{"name":"build (U2, scenarios/ui.md, U2) / build","status":"completed"},{"name":"build (U2, scenarios/ui.md, U2) / after","status":"queued"}]}' >"$FIXTURES/jobs-71"
 check 'L88 a completed row frees its slot while its sibling builds' 0 loop/runs.sh builders
 holds 'L88 a completion job does not consume a Builder slot' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
+touch "$FIXTURES/ready-fail"
+: >"$FIXTURES/trace"
 check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
 holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
+holds 'L88 full queue does not read PR history' test "$(grep -c 'state=closed' "$FIXTURES/trace" || true)" = 0
+check 'L88 free capacity resumes order reads and exposes failures' 4 loop/runs.sh queue 3
+rm "$FIXTURES/ready-fail"
 touch "$FIXTURES/gh-fail"
 check 'L23 a failed run list exits 4' 4 loop/runs.sh queue
 rm "$FIXTURES/gh-fail"
