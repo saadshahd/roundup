@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import importlib.util
-import time
 import unittest
 import subprocess
 import io
@@ -19,56 +18,38 @@ def issue(number=1, key='U83', **changes):
 
 
 class Orders(unittest.TestCase):
-    def test_l34_only_known_modes_and_providers_are_executable(self):
-        for value in ['Mode: skip-review','Provider: anything']:
-            row=orders.classify([issue(body=issue()['body']+value+'\n')],{},[])[0]
-            self.assertEqual(row['state'],'blocked')
-        row=orders.order(issue(body=issue()['body']+'Mode: specify\nProvider: codex\n'))
-        self.assertEqual((row['mode'],row['provider']),('specify','codex'))
+    def test_l34_only_known_modes_are_executable(self):
+        row=orders.classify([issue(body=issue()['body']+'Mode: skip-review\n')],{},[])[0]
+        self.assertEqual(row['state'],'blocked')
+        self.assertEqual(orders.order(issue(body=issue()['body']+'Mode: specify\n'))['mode'],'specify')
 
     def test_l34_task_renders_the_authorized_issue_and_mode(self):
         output = io.StringIO()
         with patch.object(orders, 'gh', return_value=issue()), \
              patch.object(orders, 'read_orders', return_value=orders.classify([issue()], {}, [])), \
-             patch.object(orders.trail, 'section', return_value='\n## Trail of #1') as section, \
              redirect_stdout(output):
             orders.task(1)
-        section.assert_called_once_with(1)
-        self.assertIn('## Trail of #1', output.getvalue())
         self.assertIn('Mode: implement', output.getvalue())
         self.assertIn('Refs #1', output.getvalue())
-
-    def test_l92_a_ready_issue_that_keeps_ending_the_same_way_waits_with_its_last_entry(self):
-        rows = orders.classify([issue()], {}, [])
-        until = time.time() + 900
-        with patch.object(orders.trail, 'plan_for', return_value=(dict(until=until, url='https://x/c1', diagnostic=True), [])):
-            row = orders.apply_trail(rows)[0]
-        self.assertEqual((row['state'], row['wait_url'], row['wait_until']), ('waiting', 'https://x/c1', int(until)))
-
-    def test_l92_an_issue_with_no_wait_stays_ready_and_a_closed_one_reads_no_trail(self):
-        rows = orders.classify([issue(), issue(number=2, key='U84', state='closed')], {}, [])
-        with patch.object(orders.trail, 'plan_for', return_value=(dict(until=None, url=None, diagnostic=False), [])) as read:
-            states = [r['state'] for r in orders.apply_trail(rows)]
-        self.assertEqual(states, ['ready', 'cancelled'])
-        read.assert_called_once()
-
-    def test_l92_an_unreadable_trail_starts_no_run(self):
-        with patch.object(orders.trail, 'plan_for', side_effect=subprocess.CalledProcessError(1, 'gh')):
-            with self.assertRaises(subprocess.SubprocessError):
-                orders.apply_trail(orders.classify([issue()], {}, []))
 
     def test_l34_task_rechecks_new_pr_ownership_before_starting(self):
         with patch.object(orders, 'gh', return_value=issue()), \
              patch.object(orders, 'read_orders', return_value=[dict(issue=1,state='in-flight')]):
-            with self.assertRaisesRegex(ValueError, 'no longer eligible'):
+            with self.assertRaisesRegex(orders.NotReady, 'no longer ready'):
                 orders.task(1)
+
+    def test_l34_an_issue_that_is_no_longer_ready_exits_3_and_starts_no_run(self):
+        with patch.object(orders, 'task', side_effect=orders.NotReady('taken')), \
+             patch.object(orders.sys, 'argv', ['orders.py', 'task', '1']):
+            with self.assertRaises(SystemExit) as stop:
+                orders.main()
+        self.assertEqual(stop.exception.code, 3)
 
     def test_l34_specification_delivery_can_release_implementation(self):
         specification = issue(body=issue()['body']+'Mode: specify\n')
         output = io.StringIO()
         with patch.object(orders, 'gh', return_value=specification), \
              patch.object(orders, 'read_orders', return_value=orders.classify([specification], {}, [])), \
-             patch.object(orders.trail, 'section', return_value=''), \
              redirect_stdout(output):
             orders.task(1)
         self.assertIn('Close this specification Issue', output.getvalue())
@@ -102,9 +83,22 @@ class Orders(unittest.TestCase):
         self.assertEqual([r['state'] for r in orders.classify([issue(),issue(2)],{},[])], ['blocked','blocked'])
 
     def test_l34_malformed_order_is_visible_and_not_ready(self):
-        row = orders.classify([issue(body='something to do')],{},[])[0]
+        row = orders.classify([issue(body='Key: U83\nsomething to do')],{},[])[0]
         self.assertEqual(row['state'],'blocked')
-        self.assertIn('Key',row['reason'])
+        self.assertIn('Specification',row['reason'])
+
+    def test_l34_a_request_without_queue_fields_is_specified_first(self):
+        request = issue(7, body='The send button stays enabled without a Door.')
+        row = orders.classify([request],{},[])[0]
+        self.assertEqual((row['state'],row['mode'],row['slug'],row['priority']),('ready','specify','issue-7',50))
+        self.assertEqual(orders.classify([issue(7, body='a bug', labels=[])],{},[])[0]['state'],'unspecified')
+        output = io.StringIO()
+        with patch.object(orders, 'gh', return_value=request), \
+             patch.object(orders, 'read_orders', return_value=[row]), \
+             redirect_stdout(output):
+            orders.task(7)
+        self.assertIn('Mode: implement, so the queue builds it', output.getvalue())
+        self.assertNotIn('Closes #7', output.getvalue())
 
     def test_l34_priority_comes_from_issues(self):
         urgent = issue(2,'U84',body=issue(2,'U84')['body'].replace('Priority: 2','Priority: 0'))

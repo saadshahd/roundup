@@ -6,22 +6,21 @@ roundup is built by agents in a loop. Every identifier, RPC method and UI string
 
 Work orders are GitHub Issues (`.agents/data/work.md`); scenario files hold acceptance only.
 
-Every unattended cycle, including planning and Retro evolution, chooses and executes routine engineering work under the recorded direction. Independent agents review proposed changes; the user confirms only L79/L81 product decisions or the required Mac observation. An approach, repair strategy or next work selection never waits for user confirmation.
+Every unattended run chooses and executes routine engineering work under the recorded direction. A review run judges each proposed change; the user answers only `flag:needs-user` questions (L79) and the required Mac observation. An approach, repair strategy or next work selection never waits for user confirmation.
 
-Builder, QA and Retro runs are one-shot GitHub Actions jobs, and an event ends every wait: a merge, a run's end or a failed check starts the next run, and the user ends only the waits L79 names. A Builder run builds a work Issue, fixes a PR or reviews a PR's head, each fresh, from one prompt, `.agents/builder.md`. A role's prompt is `.agents/<role>.md`, its skills are in `.agents/skills/`, and data a step reads on demand is in `.agents/data/`.
+Builder and QA runs are one-shot GitHub Actions jobs, and an event ends every wait: a merge, a run's end or a failed check starts the next run. The user ends only the waits labelled `flag:needs-user` (L79). A Builder run builds a work Issue, fixes a PR or reviews a PR's head, each fresh, from one prompt, `.agents/builder.md`. A role's prompt is `.agents/<role>.md`, its skills are in `.agents/skills/`, and data a step reads on demand is in `.agents/data/`.
 
 | Step | Who, where | Skills |
 |---|---|---|
-| 1 Ask | The user sets direction; the loop maintains scoped GitHub work Issues | — |
-| 2 Build | `build.yml` (L23): on each merge, each run's end and each hour, one Builder run per ready or unspecified row, four at most, under the spend cap (L83) | prime; spec: to-spec, grill-with-docs, anchor; seam: codebase-design; tdd; UI: emil-design-eng; motion clause: animate |
-| 3 Review | `review.yml` (L24): a review run once `check` passes on any PR's head; bounded repair with diagnostic escalation and automatic retry windows (L82) | review, judge; UI: percy-review |
-| 4 Merge | GitHub auto-merge on `check`, `rules` and `merge-ready` (L46) | — |
+| 1 Ask | The user sets direction and files work Issues; a build run specifies an Issue that holds no Key (L34) | — |
+| 2 Build | `build.yml` (L23): on each merge, each `ready-for-agent` label and each hour, one Builder run per ready Issue, four at most | prime; spec: to-spec, grill-with-docs, anchor; seam: codebase-design; tdd; UI: emil-design-eng; motion clause: animate |
+| 3 Review | `review.yml` (L24): a review run once `check` passes on a PR's head; `fix.yml` (L82): at most three fix runs per Builder PR | review, judge; UI: percy-review |
+| 4 Merge | GitHub auto-merge on `check`, `rules`, `review`, `percy` and `macos-line` (L46) | — |
 | 5 Observe | `qa.yml` (L66) sweeps `main` every six hours; a `design-critic` run on request | review-animations, break-ui |
-| 6 Retro | `retro.yml` (L27): one Retro PR per 20 merged PRs, read from the Ledger (L29) | retro, reduce |
 
 ## Rules
 
-1. **Done**: `loop/rules.sh merge-ready <pr>` passes and `.agents/data/pr.md` and `.agents/data/gates.md` hold.
+1. **Done**: GitHub merged the PR once its required checks passed on its head (L46), and `.agents/data/pr.md` and `.agents/data/gates.md` hold.
 2. **Slop** fails CI: `just check`, plus no public function without a test or caller.
 3. **PR size**: one module directory, about 2000 changed lines.
 4. **Contract change** (`contracts/`, a new RPC method, an App seam command, U4's tokens) follows the Contract recipe of `.agents/builder.md`: every caller changes in the same PR, and the review run's approve covers it.
@@ -38,4 +37,4 @@ Builder, QA and Retro runs are one-shot GitHub Actions jobs, and an event ends e
 - Red `main`: revert, never fix forward.
 - Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
 - No run pushes to `main`; every change merges through a PR.
-- What the user reads (the Status issue, a needs-you comment, a PR body, a report): `reduce`, then the `show-me` layout. A verdict is for agents.
+- What the user reads (a needs-you comment, a PR body, a report): `reduce`, then the `show-me` layout. A verdict is for agents.

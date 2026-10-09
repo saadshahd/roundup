@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# L24/L78: the proposed diff cannot supply its own reviewer instructions.
+# L24: the proposed diff cannot supply its own reviewer instructions.
 set -euo pipefail
 main=${1:-origin/main}
 git ls-files -z '*AGENTS.md' '*CLAUDE.md' | while IFS= read -r -d '' path; do

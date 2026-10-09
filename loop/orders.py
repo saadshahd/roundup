@@ -4,12 +4,8 @@ import json
 import re
 import subprocess
 import sys
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-
-import trail
 
 
 def gh(*args):
@@ -28,6 +24,10 @@ def field(body, name, default=None):
 
 def order(issue):
     body = issue['body'] or ''
+    if not re.search(r'^Key: ', body, re.M):
+        # A request filed without queue fields (a bug report): a Builder specifies it before anyone builds it.
+        return dict(mode='specify', issue=issue['number'], url=issue['html_url'], ids=issue['title'], file='',
+                    slug=f'issue-{issue["number"]}', priority=50, request=True)
     key = field(body, 'Key')
     if not re.fullmatch(r'[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*', key):
         raise ValueError('invalid Key')
@@ -40,11 +40,10 @@ def order(issue):
     if not 0 <= priority <= 100:
         raise ValueError('Priority must be between 0 and 100')
     mode = field(body, 'Mode', 'implement')
-    provider = field(body, 'Provider', 'any')
-    if mode not in ('implement', 'specify') or provider not in ('any', 'claude', 'codex'):
-        raise ValueError('invalid Mode or Provider')
-    row = dict(mode=mode, provider=provider, issue=issue['number'], url=issue['html_url'], ids=field(body, 'Scenarios'),
-                file=match[1], slug=key, priority=priority)
+    if mode not in ('implement', 'specify'):
+        raise ValueError('invalid Mode')
+    row = dict(mode=mode, issue=issue['number'], url=issue['html_url'], ids=field(body, 'Scenarios'),
+               file=match[1], slug=key, priority=priority, request=False)
     if row['mode'] == 'implement' and not Path(row['file']).is_file():
         raise ValueError(f"missing specification {row['file']}")
     headings = {name for path in Path('scenarios').glob('*.md')
@@ -120,39 +119,34 @@ def read_orders():
     with ThreadPoolExecutor(max_workers=8) as pool:
         blocked = dict(pool.map(dependencies, issues))
     prs = gh('pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,headRefName,body,isCrossRepository')
-    return apply_trail(classify(issues, blocked, prs))
+    return classify(issues, blocked, prs)
 
 
-def apply_trail(rows, now=None):
-    """L92: a ready Issue whose runs keep ending the same way waits; a Trail it cannot read raises (exit 4)."""
-    now = now or time.time()
-    for row in rows:
-        if row['state'] != 'ready':
-            continue
-        result, _ = trail.plan_for(row['issue'], now)
-        if result['until']:
-            row.update(state='waiting', wait_until=int(result['until']), wait_url=result['url'],
-                       reason='Trail: ended the same way again and again; next run after ' +
-                       datetime.fromtimestamp(result['until'], timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))
-    return rows
+class NotReady(Exception):
+    """The Issue is no longer ready; starting no run is the correct outcome."""
 
 
 def task(number):
+    """Print the Builder's task for a ready Issue; raise NotReady when another run or a person took it."""
     issue = gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}')
     if issue['state'] != 'open' or 'ready-for-agent' not in {label['name'] for label in issue['labels']}:
-        raise ValueError(f'Issue #{number} is no longer authorized for execution')
+        raise NotReady(f'Issue #{number} is no longer authorized for execution')
     row = order(issue)
-    rows = read_orders()
-    current = next((row for row in rows if row['issue'] == number), None)
+    current = next((row for row in read_orders() if row['issue'] == number), None)
     if current is None or current['state'] != 'ready':
-        raise ValueError(f'Issue #{number} is no longer eligible: {current}')
-    completion = ('Close this specification Issue only after its specification acceptance is demonstrated; implementation stays in its dependent Issue.'
-                  if row['mode'] == 'specify' else
-                  'Close this implementation Issue only when its full acceptance is demonstrated; a specification-only PR does not close it.')
-    history = trail.section(number)
-    print(f"Work order: {issue['html_url']}\n\n{issue['body']}\n{history}\n\n"
-          f"Mode: {row['mode']}. Use this Issue as the canonical work order. Link the PR with Refs #{number}. "
-          f"{completion} Use Closes #{number} when that condition holds. "
+        raise NotReady(f'Issue #{number} is no longer ready: {current}')
+    if row['request']:
+        completion = ('This Issue is a request without queue fields. Add its acceptance as scenarios, then edit this Issue '
+                      'to add Key, Priority, Specification and Scenarios lines and Mode: implement, so the queue builds it '
+                      'once the scenarios are on main. Never close it from this PR.')
+    elif row['mode'] == 'specify':
+        completion = ('Close this specification Issue only after its specification acceptance is demonstrated; implementation '
+                      f'stays in its dependent Issue. Use Closes #{number} when that condition holds.')
+    else:
+        completion = ('Close this implementation Issue only when its full acceptance is demonstrated; a specification-only PR '
+                      f'does not close it. Use Closes #{number} when that condition holds.')
+    print(f"Work order: {issue['html_url']}\n\n{issue['body']}\n\n"
+          f"Mode: {row['mode']}. Use this Issue as the canonical work order. Link the PR with Refs #{number}. {completion} "
           "Put progress and unresolved engineering questions on the Issue, not in scenario Work tables.")
 
 
@@ -164,10 +158,14 @@ def main():
             raise ValueError('work orders belong in GitHub Issues, not tables: ' + ', '.join(stale))
         return
     if len(sys.argv) == 3 and sys.argv[1] == 'task' and sys.argv[2].isdigit():
-        task(int(sys.argv[2]))
+        try:
+            task(int(sys.argv[2]))
+        except NotReady as refusal:
+            print(f'work orders: {refusal}', file=sys.stderr)
+            sys.exit(3)
         return
     if sys.argv[1:] not in (['ready'], ['ready', '--json']):
-        raise ValueError('usage: orders.py ready [--json] | task <issue>')
+        raise ValueError('usage: orders.py ready [--json] | task <issue> (exit 3: not ready)')
     rows = read_orders()
     if sys.argv[-1] == '--json':
         print(json.dumps(rows))

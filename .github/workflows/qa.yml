@@ -1,7 +1,7 @@
 name: qa
 
-# L66: sweeps main's harness (L52) every six hours, once per main SHA, on a runner holding no write token. A finding
-# fails the run; the sweep record is its artifact.
+# L66: sweeps main's harness (L52) every six hours on a runner holding no write token. It calls no model, so it sweeps
+# even an unchanged main. A finding fails the run; the sweep record is its artifact.
 on:
   schedule:
     - cron: '23 */6 * * *'
@@ -13,7 +13,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read
 
 # L82: bash -eo pipefail, so a failure left of a pipe fails the step.
 defaults:
@@ -21,29 +20,7 @@ defaults:
     shell: bash
 
 jobs:
-  due:
-    runs-on: ubuntu-latest
-    outputs:
-      sweep: ${{ steps.swept.outputs.sweep }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - id: swept
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          code=0
-          loop/runs.sh swept "$GITHUB_SHA" || code=$?
-          case $code in
-            0) echo "main at $GITHUB_SHA is swept"; echo "sweep=false" >>"$GITHUB_OUTPUT" ;;
-            1) echo "sweep=true" >>"$GITHUB_OUTPUT" ;;
-            *) exit "$code" ;;
-          esac
-
   sweep:
-    needs: due
-    if: needs.due.outputs.sweep == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -62,7 +39,6 @@ jobs:
           npm install -g agent-browser@0.27.0
           agent-browser install --with-deps
       - run: loop/qa-sweep.sh
-      # L66: swept counts this run only when this step passes, so a run that failed before or during the sweep is retried.
       - name: a complete sweep record
         if: always()
         run: jq -se 'length > 0 and all(.complete)' loop/out/qa/sweep-*.json
@@ -74,7 +50,7 @@ jobs:
           if-no-files-found: error
 
   summary:
-    needs: [due, sweep]
+    needs: [sweep]
     if: always()
     permissions: {}
     uses: ./.github/workflows/summary.yml

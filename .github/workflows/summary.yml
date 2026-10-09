@@ -55,10 +55,10 @@ jobs:
                       lines.append(f"\n{field.upper()}: [#{number}]({os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/{path}/{number})")
               if re.fullmatch(r'[0-9a-f]{40}', output.get('head', '')):
                   lines.append(f"Head: `{output['head']}`")
-          agents = [job for name, job in results.items() if name in ('build', 'fix', 'observe', 'review', 'sweep')]
+          agents = [job for name, job in results.items() if name in ('build', 'fix-run', 'review-run', 'sweep')]
           if agents and all(job['result'] == 'skipped' for job in agents):
-              lines.append('\n**No agent work ran.** Eligibility or Claim checks skipped the model work.')
+              lines.append('\n**No agent work ran.** Eligibility checks skipped the model work.')
           lines.extend([f"\n**Next:** {escape(os.environ['NEXT'])}",
-                        '\nAgent explanations and reconciliation decisions appear in their job summaries on this page. A model’s success claim is not proof of delivery.'])
+                        '\nA model’s success claim is not proof of delivery.'])
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('\n\n'.join(lines[:4]) + '\n\n' + '\n'.join(lines[4:]) + '\n')

@@ -1,9 +1,9 @@
 name: visual
 
-# L36: the Percy build of every harness seed; merge-ready needs it green on a PR touching apps/desktop/src (L46), and builds on main are its baseline.
+# L36: the Percy build of every harness seed; builds on main are its baseline. The ruleset requires `percy` on every PR
+# (L46), so a PR that leaves apps/desktop/src alone passes it without a build.
 on:
   pull_request:
-    paths: ['apps/desktop/src/**']
   push:
     branches: [main]
     paths: ['apps/desktop/src/**']
@@ -25,16 +25,31 @@ jobs:
   percy:
     runs-on: ubuntu-latest
     steps:
+      # A PR checks out a merge commit; its first parent is the base, so the diff to it is what the PR changes.
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+        with:
+          fetch-depth: 2
+      - id: ui
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || git diff --name-only HEAD^1 HEAD | grep -q '^apps/desktop/src/'; then
+            echo 'changed=true' >>"$GITHUB_OUTPUT"
+          else
+            echo 'The PR leaves apps/desktop/src alone: no Percy build.'
+          fi
+      - if: steps.ui.outputs.changed == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.ui.outputs.changed == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - uses: taiki-e/install-action@just
-      - run: pnpm install --frozen-lockfile
+      - if: steps.ui.outputs.changed == 'true'
+        uses: taiki-e/install-action@just
+      - if: steps.ui.outputs.changed == 'true'
+        run: pnpm install --frozen-lockfile
       # The build's commit is the PR head, not the merge commit checked out, so review finds it by the head's SHA (L24).
-      - run: loop/percy.sh snapshot
+      - if: steps.ui.outputs.changed == 'true'
+        run: loop/percy.sh snapshot
         env:
           PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
           PERCY_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}

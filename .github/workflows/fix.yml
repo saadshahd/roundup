@@ -1,0 +1,168 @@
+name: fix
+run-name: "${{ inputs.pr && format('Fix PR #{0}: {1}', inputs.pr, inputs.cause) || format('Fix {0}', github.event.workflow_run.head_branch) }}"
+
+# L82: a fix run answers one cause on a Builder PR: a failed check or rules run, a reject, a conflict with main, or a
+# draft its run left unfinished. A PR gets three fix runs that worked; the fourth cause waits on the user. The fix run
+# pushes with the Claude App's token, so its push starts check, then review, again.
+on:
+  workflow_run:
+    workflows: [check, loop]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Builder PR to fix
+        required: true
+      head:
+        description: Its head when the cause was seen; a moved head means the cause is gone
+        required: true
+      cause:
+        description: What to fix
+        required: true
+        type: choice
+        options: [check, rules, review, conflict, unfinished]
+
+# One fix run per PR at a time; the next one finds a moved head and starts no run. A run with nothing to fix gets its
+# own group, so it never replaces a fix run waiting in the PR's group.
+concurrency:
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure') &&
+    format('fix-{0}', inputs.pr || github.event.workflow_run.pull_requests[0].number) ||
+    format('fix-none-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  task:
+    if: >-
+      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'build/') &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    outputs:
+      pr: ${{ steps.task.outputs.pr }}
+      branch: ${{ steps.task.outputs.branch }}
+      prompt: ${{ steps.task.outputs.prompt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - id: task
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr || github.event.workflow_run.pull_requests[0].number }}
+          HEAD: ${{ inputs.head || github.event.workflow_run.head_sha }}
+          CAUSE: ${{ inputs.cause || (github.event.workflow_run.name == 'loop' && 'rules' || 'check') }}
+        run: |
+          code=0
+          python3 loop/builder.py fix-task "$PR" "$HEAD" "$CAUSE" >"$RUNNER_TEMP/task.md" || code=$?
+          # 3: the cause is gone, the PR is not a Builder's, or it used its fix runs.
+          [ "$code" != 3 ] || exit 0
+          [ "$code" = 0 ] || exit "$code"
+          printf '\nYour Author-Agent id is builder-%s.\n' "$GITHUB_RUN_ID" >>"$RUNNER_TEMP/task.md"
+          python3 loop/builder.py prompt <"$RUNNER_TEMP/task.md"
+          echo "branch=$(gh pr view "$PR" --json headRefName --jq .headRefName)" >>"$GITHUB_OUTPUT"
+          echo "pr=$PR" >>"$GITHUB_OUTPUT"
+
+  fix-run:
+    needs: task
+    if: needs.task.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    outputs:
+      ran: ${{ steps.ran.outputs.ran }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.task.outputs.branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      # main picks the runner setup and runs the end of the job; the PR's copies may be stale or changed.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-main
+          sparse-checkout: |
+            .github/actions/setup
+            loop
+          persist-credentials: false
+      - uses: ./.loop-main/.github/actions/setup
+        with:
+          browser: 'true'
+      - name: Stamp Builder commits
+        run: |
+          bash .loop-main/loop/author.sh "builder-$GITHUB_RUN_ID"
+          mv .loop-main "$RUNNER_TEMP/main"
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        # Isolated CLI observers use a fresh config and cannot inherit the action's stored login.
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        with:
+          prompt: ${{ needs.task.outputs.prompt }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: claude,github-actions
+          # The App's default token omits workflows; writers need to publish proposed workflow changes.
+          additional_permissions: |
+            actions: read
+            checks: read
+            workflows: write
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 100
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
+      - id: ran
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          ran=false
+          if python3 "$RUNNER_TEMP/main/loop/builder.py" worked "$EXECUTION_FILE"; then ran=true; fi
+          echo "ran=$ran" >>"$GITHUB_OUTPUT"
+
+  after:
+    needs: [task, fix-run]
+    if: ${{ !cancelled() && needs.task.outputs.pr != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.task.outputs.pr }}
+          CAUSE: ${{ inputs.cause || (github.event.workflow_run.name == 'loop' && 'rules' || 'check') }}
+          RAN: ${{ needs.fix-run.outputs.ran || 'false' }}
+        run: python3 loop/builder.py fixed "$PR" "$CAUSE" "$RAN"
+
+  summary:
+    needs: [task, fix-run, after]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Fix a Builder PR
+      next: The fix run's push starts check and review again; a draft with a Stopped line waits on the user.

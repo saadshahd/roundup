@@ -69,10 +69,9 @@ l36_run percy_fails 1
 l36_run no_link 1
 
 workflow="$root/.github/workflows/visual.yml"
-holds_eval 'the percy job runs on PRs touching apps/desktop/src' 'grep -q "^  pull_request:" "$workflow" && grep -q "apps/desktop/src/\*\*" "$workflow" && grep -q "^  percy:" "$workflow"'
-holds_eval 'pushes to main touching apps/desktop/src build the baseline' 'grep -A2 "^  push:" "$workflow" | grep -q "branches: \[main\]" && [ "$(grep -c "apps/desktop/src/\*\*" "$workflow")" = 2 ]'
+holds_eval 'the percy job reports on every PR and builds only for apps/desktop/src' 'grep -A1 "^  pull_request:" "$workflow" | grep -q "^  push:" && grep -q "^  percy:" "$workflow" && grep -q "grep -q .\^apps/desktop/src/." "$workflow"'
+holds_eval 'pushes to main touching apps/desktop/src build the baseline' 'grep -A2 "^  push:" "$workflow" | grep -q "branches: \[main\]" && [ "$(grep -c "apps/desktop/src/\*\*" "$workflow")" = 1 ]'
 holds_eval 'the percy job gets the PERCY_TOKEN secret and runs loop/percy.sh' 'grep -q "PERCY_TOKEN: \${{ secrets.PERCY_TOKEN }}" "$workflow" && grep -q "run: loop/percy.sh snapshot" "$workflow"'
-holds_eval 'merge-ready recomputes when the visual workflow completes' 'grep -q "workflows: \[check, loop, visual\]" "$root/.github/workflows/merge-ready.yml"'
 
 holds_eval 'the percy job pins the build to the PR head, so the Reviewer finds it by SHA' 'grep -q "PERCY_COMMIT: \${{ github.event.pull_request.head.sha || github.sha }}" "$workflow"'
 

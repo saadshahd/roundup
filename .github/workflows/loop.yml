@@ -1,11 +1,6 @@
 name: loop
 
 on:
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: Planning PR needing the same rules gate
-        required: true
   pull_request:
 
 concurrency:
@@ -27,22 +22,15 @@ jobs:
       - run: loop/rules.sh ci-trailers "$PR"
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr || github.event.pull_request.number }}
+          PR: ${{ github.event.pull_request.number }}
       - run: loop/rules.sh vocab
       - run: python3 loop/orders.py lint
       - run: python3 loop/orders.test.py
+      - run: python3 loop/builder.test.py
+      - run: python3 loop/workflows.test.py
       - run: loop/rules.test.sh
-      - run: loop/merge-ready.test.sh
       - run: loop/percy.test.sh
       - run: loop/qa-sweep.test.sh
-      - run: python3 loop/dispatch.test.py
-      - run: python3 loop/feedback.test.py
-      - run: python3 loop/outcome.test.py
-      - run: python3 loop/trail.test.py
-      - run: loop/runs.test.sh
-      - run: loop/codex.test.sh
-      - run: loop/retro.test.sh
-      - run: loop/status.test.sh
 
   summary:
     needs: [rules]
@@ -52,4 +40,4 @@ jobs:
     with:
       results: ${{ toJSON(needs) }}
       purpose: Check loop rules and regressions
-      next: Review and reconciliation inspect this head; failures block merge and eligible Builder PRs receive repair.
+      next: A failure blocks merge and starts a fix run on a Builder PR.

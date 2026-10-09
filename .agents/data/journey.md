@@ -2,7 +2,7 @@
 
 User-selected goal: first Project → start Agents → understand Status → intervene → review results. The product destination is `PRINCIPLES.md` P1/P3/P6 and the accepted Room/Door slice in `docs/wireframes.md`. Complete that journey before expanding into Sketch storage, Room nesting or cross-Room dependencies.
 
-Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`). A Claim or active PR keeps its ownership regardless of priority.
+Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`). An open PR keeps its Issue regardless of priority.
 
 ## What must work
 
