@@ -172,12 +172,12 @@ class Built(unittest.TestCase):
 
 
 class Fix(unittest.TestCase):
-    def test_l81_a_fix_task_needs_the_same_open_builder_head(self):
+    def test_l82_a_fix_task_needs_the_same_open_builder_head(self):
         for view in (pr(headRefOid='b' * 40), pr(state='CLOSED'), pr(headRefName='stock-loop')):
             with GitHub(view=view):
                 self.assertIsNone(builder.fix_task(9, HEAD, 'check'))
 
-    def test_l81_the_fourth_fix_waits_on_the_user(self):
+    def test_l82_the_fourth_fix_waits_on_the_user(self):
         attempts = [note('<!-- fix-attempt -->\nrun')] * 3
         with GitHub(view=pr(), notes=attempts) as github:
             self.assertIsNone(builder.fix_task(9, HEAD, 'check'))
@@ -186,14 +186,14 @@ class Fix(unittest.TestCase):
             self.assertIn('`check` failed on this head', builder.fix_task(9, HEAD, 'check'))
         self.assertFalse(github.flagged())
 
-    def test_l81_a_reject_fix_carries_the_last_verdict(self):
+    def test_l82_a_reject_fix_carries_the_last_verdict(self):
         verdicts = [note('VERDICT: reject\nfirst'), note('VERDICT: reject\nlatest')]
         with GitHub(view=pr(), notes=verdicts):
             task = builder.fix_task(9, HEAD, 'review')
         self.assertIn('latest', task)
         self.assertNotIn('first', task)
 
-    def test_l81_only_a_fix_run_that_worked_counts_as_an_attempt(self):
+    def test_l82_only_a_fix_run_that_worked_counts_as_an_attempt(self):
         with GitHub(view=pr()) as github:
             builder.fixed(9, 'check', False, 'https://run/2')
         self.assertEqual(github.writes, [])
