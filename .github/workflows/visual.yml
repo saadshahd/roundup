@@ -40,3 +40,13 @@ jobs:
           PERCY_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           PERCY_BRANCH: ${{ github.head_ref || github.ref_name }}
           PERCY_CLIENT_ERROR_LOGS: "false"
+
+  summary:
+    needs: [percy]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check rendered UI changes
+      next: Review uses the visual evidence; required Percy results remain a merge gate.
