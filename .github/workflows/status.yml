@@ -41,7 +41,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - env:
+      - id: budget
+        if: github.event.schedule != '3 8 * * *' && !inputs.daily
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 loop/dispatch.py budget
+      - if: steps.budget.outputs.available == 'true' || github.event.schedule == '3 8 * * *' || inputs.daily
+        env:
           GH_TOKEN: ${{ github.token }}
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
           DAILY: ${{ github.event.schedule == '3 8 * * *' || inputs.daily }}
