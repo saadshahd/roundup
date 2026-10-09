@@ -1,0 +1,104 @@
+{
+  "source": {
+    "number": 398,
+    "title": "Todos panel is too raw to use",
+    "body": "User report: the Todos UX and UI is too raw and almost unusable.\n\nSeen in the earlier screenshot (#355): the todos list shows bare \"#2 vhj\" style rows with a dot, a \"1 done\" row with a check, and a small plus. No spacing rhythm, no row surface, no visible way to see blockers, Home or status at a glance.\n\nExpected: the user can add, read, reorder, block, complete and move a Todo without guessing. Rows carry their blockers and Home visibly, and the panel uses Tokens.\n\nStatus: reported by the user; no detail on which actions fail. Which Todo actions are unusable (add, edit, block, move, complete) is not yet known.\n\nRelated: #355 (the whole window looks undesigned).\nReport only; no code change performed.",
+    "html_url": "https://github.com/saadshahd/roundup/issues/398",
+    "kind": "feedback",
+    "revision": "7cd4bb6fca01197056a3f41d9eedef08b437146cac3b1c541f545ffbf7fc45ff"
+  },
+  "phase": "plan",
+  "trigger": "7cd4bb6fca01197056a3f41d9eedef08b437146cac3b1c541f545ffbf7fc45ff",
+  "main": "4c90d710adac58c4cfcb79bf4243d85dcce939d2",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "Add: from the Shelf's `todos` list, the user adds a Todo with one visible add control, by pointer and by keyboard alone, and the new row appears in the list without a reload.",
+        "observer": "agent-browser headless (dedicated session, fresh profile) on the U26 harness at 1280x800 and 700x800: click `+` (pointer path) and Tab-to-`+`, Enter (keyboard path), type a title, Enter; pass when a row with that title is in the list both times and no step needed the Drawer."
+      },
+      {
+        "statement": "Read: every open Todo row shows, at rest, without hover and without opening the Drawer, its status Glyph, `#<id>`, its title, each open blocker (`waits on #<id>`) and its Home.",
+        "observer": "Harness capture of a seed with at least one blocked Todo, one Todo with a Room Home and one with the Project root Home, at 1280x800 and 700x800, light and dark; pass when the DOM text of each row contains its Glyph, id, title, blocker ids and Home name with no pointer over the list."
+      },
+      {
+        "statement": "Look: Todo rows have a row surface and a spacing rhythm made only of Tokens, and the Todo panel passes design checks D1, D2, D4, D5, D6, D7 and D8 (`docs/design-system.md`).",
+        "observer": "`loop/rules.sh delta` (or the critic's capture) on the Todo seed: each of D1, D2, D4, D5, D6, D7, D8 reads `fixed` or `still-passing` for the Shelf's Todo rows at both window sizes and both schemes; Percy before/after captures are attached to the PR."
+      },
+      {
+        "statement": "Block: the user adds and removes a blocker on a Todo by pointer and by keyboard alone, without typing an id from memory, and the row's `waits on` line changes accordingly.",
+        "observer": "agent-browser on the harness: from a Todo row, set Todo 2 to wait on Todo 1 and then clear it, once by pointer and once by keyboard; pass when the row reads `waits on #1` after the first and no `waits on` line after the second, and `todo.setBlockers` was called each time."
+      },
+      {
+        "statement": "Complete: the user completes an open Todo from its row by pointer and by keyboard, the row leaves the open list, the `\u2713 n done` count rises by one, and focus stays on a row (U35, U138).",
+        "observer": "agent-browser on the harness plus the `u35_` and `u138_` tests on main; pass when both paths complete the Todo and `document.activeElement` is a Todo row or the `+` button afterwards."
+      },
+      {
+        "statement": "Reorder: the user changes the order of open Todos by pointer and by keyboard, and the new order survives a list refetch, an App reload and a Daemon restart.",
+        "observer": "agent-browser on the harness with a real Daemon (U144) or the harness store: move Todo 3 above Todo 1 by drag and by keyboard; pass when the list order reads 3,1,2 after the move, after reload and after a Daemon restart, and `todo.list` returns that order."
+      },
+      {
+        "statement": "Move: the user changes a Todo's Home (a Room or the Project root) from the panel by pointer and by keyboard, the row shows the new Home, and the change persists.",
+        "observer": "agent-browser on the harness: move a Todo from the Project root to a Room and back; pass when the row's Home text changes each time, `todo.get` returns the new Home, and the Home survives reload."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 0,
+        "title": "Specify a Todo row that reads at a glance: surface, rhythm, blockers and Home on the row",
+        "body": "## Outcome\nA specification (scenario text only) for the Shelf's Todo row, so a Builder can make the Todos panel usable without guessing: each open row shows, at rest, its status Glyph, `#<id>`, title, open blockers and Home, on a row surface with Token spacing, and every Todo action (add, edit, block, unblock, complete, reorder, move) has a named pointer path and keyboard path from the panel.\n\nSource: #398 (feedback). Current main renders exactly what U15 and U35 require (`<glyph> #<id> <title>`, a `waits on` second line, a `\u2713 n done` fold, a small `+`), so the gap is in the specification, not a defect against it.\n\n## Scope\n- `scenarios/ui-shelf.md` (new U headings, next free ids) and the narrowing lines of `scenarios/ui.md` U15, U35, U53 and U60 that the new row changes (U15's \"text at rest stays exactly `<glyph> #<id> <title>`\" forbids a Home on the row and must be amended in the same PR).\n- `GLOSSARY.md` only if a new term is needed.\n- Apply the widened rule proposed on #398 (every fact the user acts on is on the row at rest; every action has a pointer and a keyboard path from the panel).\n- Uses the Tokens and checks of `docs/design-system.md` (D1 to D10); names which Checks the implementation moves (AGENTS.md rule 8).\n- The Home shown on a row is specified as a field to be supplied by the Todo Home specification (`todo-home-spec`); until that merges, the row specification may state the Project root Home as the only value.\n- No code, no contract change.\n\n## Acceptance\n- New scenarios each have an observer in the harness (U26) at 1280x800 and 700x800, light and dark, with pass conditions read from the DOM or measured values, never \"looks good\".\n- Every Todo action listed in #398 (add, read, reorder, block, complete, move) maps to a scenario id, existing or new; reorder and move point to `todo-order-spec` and `todo-home-spec`.\n- Every amended U15/U35/U53/U60 clause names the existing test it narrows.\n\nObserver: independent review of the specification PR checks that each #398 goal has a scenario with a mechanical pass condition and that no amended clause leaves an existing `u15_`/`u35_`/`u53_`/`u60_` test contradicting it.\n\n## Preserve\nU15, U16, U17, U35, U38, U53, U60, U112, U138, U139 outcomes except the clauses this PR amends by name; U86 icons; D1 to D10. #355, #369 and #400 keep their own scope: no Room\u2192Workstream rename and no button-kind definitions here.\n\n## Queue\nScenarios: U15, U35, U112 (amended); new ids assigned by this specification\nSpecification: [scenarios/ui-shelf.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-shelf.md)\nKey: todo-row-spec\nPriority: 20\nMode: specify\nProvider: any",
+        "blocked_by": []
+      },
+      {
+        "issue": 0,
+        "title": "Specify a user order for open Todos (reorder by pointer and keyboard, persisted)",
+        "body": "## Outcome\nA specification for reordering open Todos: the Daemon keeps a user order, `todo.list` returns open Todos in it, and the Shelf lets the user move a row up or down by drag and by keyboard. The order survives refetch, App reload and Daemon restart.\n\nSource: #398 expects the user to reorder Todos. Today T2 and U15 fix id order and the `Todo` contract (`crates/contracts/src/todo.rs`) has no order field and no reorder method.\n\n## Scope\n- `scenarios/todos.md`: a new T heading for the order (where a new Todo goes, what completing, deleting and re-opening do to the order, what an Agent's MCP call sees), amending T2's \"id order\" by name.\n- `scenarios/ui-shelf.md`: a new U heading for the pointer and keyboard reorder in the Shelf and under an Agent (U60), with U53's motion rules for a moved row.\n- The contract change it implies (a field on `Todo` and/or a new `todo.*` method) is stated with the Contract recipe of `.agents/builder.md`: every caller listed for the implementation PR.\n- No code.\n\n## Acceptance\n- Each new scenario has a test-name prefix and an observer with a mechanical pass condition (list order read from `todo.list` and from the DOM).\n- T2, U15 and U53 amendments name the tests they narrow.\n\nObserver: independent review of the specification PR checks that reorder is decided for every list a Todo appears in (Shelf, under an Agent, done fold) and that the contract recipe lists every caller.\n\n## Preserve\nT1 to T9 outcomes except T2's ordering clause; U15, U35, U53, U60, U112, U138; blockers stay independent of order (T3, T4).\n\n## Queue\nScenarios: T2, U15, U53 (amended); new ids assigned by this specification\nSpecification: [scenarios/todos.md](https://github.com/saadshahd/roundup/blob/main/scenarios/todos.md)\nKey: todo-order-spec\nPriority: 22\nMode: specify\nProvider: any",
+        "blocked_by": [
+          "todo-row-spec"
+        ]
+      },
+      {
+        "issue": 0,
+        "title": "Specify a Todo's Home and moving a Todo between Rooms and the Project root",
+        "body": "## Outcome\nA specification that gives each Todo the Home `GLOSSARY.md` already promises (\"An item with an optional blocker list of other Todos, with a Home\"; \"Each item has one Home the user can change\"), and lets the user move a Todo between a Room and the Project root from the Shelf and the Drawer by pointer and by keyboard. The row shows its Home (per `todo-row-spec`).\n\nSource: #398 expects the user to move a Todo and see its Home on the row. Today `Todo` has no Home field (`crates/contracts/src/todo.rs`; `docs/wireframes.md` capability matrix row \"Room\": \"Todos and Pads have no Room field\"). The accepted direction in `docs/wireframes.md` (2026-10-04) puts Todos in Rooms; cross-Room blockers remain undecided there.\n\n## Scope\n- `scenarios/todos.md`: a new T heading for a Todo's Home (default Home on create by the user and by an Agent, the move call, the event it emits, persistence and the migration of existing Todos to the Project root, what happens when a Room is removed).\n- `scenarios/ui-shelf.md`: a new U heading for the move action from the row and the Drawer (U17), pointer and keyboard.\n- Blockers across Homes: state the existing behaviour is kept (blockers are Home-independent) and record cross-Room dependency semantics as out of scope; this is not a product decision for this delivery.\n- The contract change is stated per the Contract recipe of `.agents/builder.md`.\n- Uses the current glossary term Room; the Room\u2192Workstream rename is #369's and changes every name at once when it lands.\n- No code.\n\n## Acceptance\n- Each new scenario has a test-name prefix and an observer with a mechanical pass condition (`todo.get` Home, the row's Home text, survival across reload).\n- The Shelf's Project-wide scope (`GLOSSARY.md` Shelf) is either kept or amended by name; Room-scoped Shelf filtering is not added unless the scenario states it.\n\nObserver: independent review of the specification PR checks that move is decided for user-created, Agent-created and Extension-created Todos, and that the migration case for existing `todos.db` files is stated.\n\n## Preserve\nT1 to T9, T8's `creator` (never changed by a move), U17, U60's placement rule (a Todo under its creating Agent), #369's naming scope, #389/#391 scope.\n\n## Queue\nScenarios: T8, U17, U60 (context); new ids assigned by this specification\nSpecification: [scenarios/todos.md](https://github.com/saadshahd/roundup/blob/main/scenarios/todos.md)\nKey: todo-home-spec\nPriority: 24\nMode: specify\nProvider: any",
+        "blocked_by": [
+          "todo-row-spec"
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 2,
+        "command": "grep -n 'pub struct Todo\\b' -A 22 crates/contracts/src/todo.rs | grep 'pub '; sed -n 80p scenarios/ui.md",
+        "output": "pub struct Todo { id: u32, title: String, body: String, done: bool, blockers: Vec<u32>, blocked: bool, created_at: i64, creator: Actor }  \u2014 no Home field. U15: the list shows open Todos 'in id order as `<glyph> #<id> <title>`'; U35: 'the text of a row at rest stays exactly `<glyph> #<id> <title>`'.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37957491739",
+        "proved": false,
+        "remaining": "Home cannot show on a row: the contract has no Home and U15/U35 forbid extra row text. Needs todo-row-spec and todo-home-spec, then implementation."
+      },
+      {
+        "goal": 6,
+        "command": "grep -n '\"todo\\.' crates/contracts/src/methods.rs",
+        "output": "todo.create, todo.get, todo.list, todo.update, todo.complete, todo.setBlockers, todo.delete \u2014 no reorder method; T2 fixes id order.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37957491739",
+        "proved": false,
+        "remaining": "Reordering is unspecified and unimplemented; needs todo-order-spec, then implementation."
+      },
+      {
+        "goal": 7,
+        "command": "grep -n '\"todo\\.' crates/contracts/src/methods.rs; grep -n 'Home' GLOSSARY.md",
+        "output": "No move method. GLOSSARY: 'Home: Where an item sits: a Room, or the Project root. Each item has one Home the user can change. ... Room-scoped Todos and Sketches are follow-up work.'",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37957491739",
+        "proved": false,
+        "remaining": "Moving a Todo is unspecified and unimplemented; needs todo-home-spec, then implementation."
+      }
+    ],
+    "rules": [
+      {
+        "path": "scenarios/ui-shelf.md",
+        "content": "Every Shelf row shows, at rest (no hover, no focus, Drawer closed), each fact the user decides on from that list: for a Todo, its status Glyph, `#<id>`, title, each open blocker and its Home. Every action that changes one of those facts (add, edit, block, unblock, complete, reorder, move) is reachable from the panel by a pointer-only path and by a keyboard-only path, in the row or in the item's Drawer, without typing an id from memory. Check: a harness test lists the facts in each row's DOM text with the pointer outside the list, and for each action drives both paths and reads the changed fact from the row.",
+        "cases": "Derived from #398 and #355. Cases: (1) #398 screenshot row '\u00b7 #2 vhj' \u2014 wrong: blockers and Home invisible at a glance; right: row carries them at rest. (2) U35's 'complete' \u2014 right: pointer and keyboard (U138) both reach it from the row. (3) U17 '+ blocker' \u2014 right: offers the other Todos, so no id typed from memory; must also be keyboard-reachable. (4) Reorder and move \u2014 wrong today: no path exists at all; right: both paths exist. Situations forced: a blocked Todo under an Agent (U60) shows its 'waits on' at rest; a done Todo in the '\u2713 n done' fold need not show actions except reopen if specified; a Pad row shows its owner at rest; a rename is reachable by Tab+Enter (U139); a drag-only reorder fails; a hover-only 'complete' fails; a Home shown only in the Drawer fails; a blocker chooser that requires typing '#4' fails; the 700x800 layout must still show Home (truncation of the title allowed, not of the Home); an Extension-created Todo shows its Home like any other. Counterexample checked: transient facts (last toucher letter, created time) are not decided on from the list, so they are not required on the row; the rule names only facts the user acts on."
+      }
+    ],
+    "question": ""
+  }
+}
