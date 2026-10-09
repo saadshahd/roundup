@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+from datetime import datetime
 
 
 def run(*args, data=None, timeout=120):
@@ -59,7 +61,16 @@ def decision(pr, checks, verdicts, kinds):
     if check['status'] != 'completed':
         return None
     if check['conclusion'] in ('failure', 'timed_out', 'cancelled') and can_repair:
-        return 'fix', 'check'
+        lanes = {}
+        for item in checks:
+            if item['head_sha'] == pr['head']['sha'] and item.get('app', {}).get('slug') == 'github-actions' and item['name'] in ('rust', 'web'):
+                if item['name'] not in lanes or item['id'] > lanes[item['name']]['id']:
+                    lanes[item['name']] = item
+        if any(item['status'] != 'completed' for item in lanes.values()):
+            return None
+        broken = any(item.get('conclusion') in ('failure', 'timed_out') for item in lanes.values())
+        cancelled = check['conclusion'] == 'cancelled' or any(item.get('conclusion') == 'cancelled' for item in lanes.values())
+        return ('ci', 'cancelled-ci') if cancelled and not broken else ('fix', 'check')
     if check['conclusion'] == 'success':
         for name in ('rules',) + (('percy',) if 'ui' in kinds else ()):
             results = [c for c in checks if c['name'] == name and c['head_sha'] == pr['head']['sha']
@@ -74,7 +85,7 @@ def decision(pr, checks, verdicts, kinds):
     return None
 
 
-def due(number, busy=None):
+def due(number, busy=None, reserved_ci=False):
     pr = api(f'pulls/{number}')
     if pr.get('mergeable') is None and not pr['draft']:
         # The first REST read can start GitHub's asynchronous mergeability calculation.
@@ -95,8 +106,22 @@ def due(number, busy=None):
     if selected is None:
         return None
     role, cause = selected
+    ci_run = None
+    if role == 'ci':
+        import re
+        latest = max((c for page in checks for c in page['check_runs'] if c['name'] == 'check'
+                      and c['head_sha'] == pr['head']['sha'] and c.get('app', {}).get('slug') == 'github-actions'), key=lambda c: c['id'])
+        match = re.search(r'/actions/runs/(\d+)', latest.get('details_url') or '')
+        if not match:
+            raise ValueError('Cancelled CI has no Actions run link')
+        ci_run = int(match[1])
+        if api(f'actions/runs/{ci_run}')['status'] != 'completed':
+            return None
+        _, record = claim_record(number)
+        if not reserved_ci and record and record.get('ci_head') == pr['head']['sha'] and record.get('ci_attempts', 0) >= 2:
+            role, cause = 'fix', 'ci'
     base = api('git/ref/heads/main')['object']['sha'] if cause == 'conflict' else pr['base']['sha']
-    return dict(pr=number, role=role, cause=cause, head=pr['head']['sha'], base=base, branch=pr['head']['ref'],
+    return dict(pr=number, role=role, cause=cause, head=pr['head']['sha'], base=base, branch=pr['head']['ref'], ci_run=ci_run,
                 **({'planning': True} if 'planning' in kinds else {}))
 
 
@@ -125,7 +150,8 @@ def started(record):
 
 def consumed(record):
     # A Claim reserves the next attempt; preflight or setup failures spend no model attempt.
-    return record['attempt'] if started(record) else record['attempt'] - 1
+    invoked = record.get('phase') == 'issued' if record['key'][0] == 'ci' else started(record)
+    return record['attempt'] if invoked else record['attempt'] - 1
 
 
 def fixes(record):
@@ -134,23 +160,49 @@ def fixes(record):
     return record.get('fixes', 0) + int(record['key'][0] == 'fix' and started(record))
 
 
+def repair_history(record, owner):
+    """Carry recent charged repairs through reviews and deterministic CI recovery."""
+    if not record:
+        return []
+    if not record.get('repairs') and fixes(record) == 0:
+        return []
+    at = datetime.fromisoformat(owner['updated_at'].replace('Z', '+00:00')).timestamp()
+    if 'repairs' not in record:
+        # Old Claims only kept a lifetime total: conservatively date that total at the last owner.
+        return [dict(run=record['run'], head=record['key'][2], cause=record['key'][1], at=at)] * min(fixes(record), 6)
+    history = list(record['repairs'])
+    if record['key'][0] == 'fix' and started(record):
+        history.append(dict(run=record['run'], head=record['key'][2], cause=record['key'][1], at=at))
+    return history[-6:]
+
+
+def repair_wait(task, history, now):
+    recent = [item for item in history if item['at'] > now - 86400]
+    if len(recent) >= 6:
+        return min(item['at'] for item in recent) + 86400
+    # The third repair diagnoses immediately. Further unchanged failures back off, at most two hours.
+    if len(recent) >= 3 and history[-1]['head'] == task['head'] and history[-1]['cause'] == task['cause']:
+        return max(now, history[-1]['at'] + min(7200, 900 * 2 ** (len(recent) - 3)))
+    return now
+
+
 def available(task, record):
     if not record:
         return True
     owner = api(f"actions/runs/{record['run']}")
     if owner['status'] != 'completed':
         return False
-    if task['role'] == 'fix' and fixes(record) >= 2:
-        return False
-    if record['key'] != key(task):
-        return True
-    # A failed setup must not create an event-triggered retry storm.
+    now = time.time()
+    # Setup failure is throttled across changing heads too; it spends no model attempt.
     if owner.get('conclusion') != 'success' and owner.get('updated_at'):
-        from datetime import datetime, timezone
-        elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(owner['updated_at'].replace('Z', '+00:00'))).total_seconds()
+        elapsed = now - datetime.fromisoformat(owner['updated_at'].replace('Z', '+00:00')).timestamp()
         if elapsed < 300:
             return False
-    return consumed(record) < 2
+    if task['role'] == 'ci' and record.get('ci_head') == task['head'] and record.get('ci_attempts', 0) >= 2:
+        return False
+    if task['role'] == 'fix':
+        return repair_wait(task, repair_history(record, owner), now) <= now
+    return record['key'] != key(task) or consumed(record) < 2
 
 
 def write_claim(number, old, record, namespace="loop-pr"):
@@ -181,7 +233,12 @@ def acquire(task):
     if not available(task, record):
         return False
     attempt = consumed(record) + 1 if record and record['key'] == key(task) else 1
-    return write_claim(task['pr'], old, dict(key=key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt, phase='claimed', fixes=fixes(record)))
+    history = repair_history(record, api(f"actions/runs/{record['run']}")) if record else []
+    return write_claim(task['pr'], old, dict(key=key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt,
+                                           phase='claimed', fixes=fixes(record), repairs=history,
+                                           ci_head=task['head'] if task['role'] == 'ci' else (record or {}).get('ci_head'),
+                                           ci_attempts=((record or {}).get('ci_attempts', 0) if (record or {}).get('ci_head') == task['head'] else 0) + 1
+                                           if task['role'] == 'ci' else (record or {}).get('ci_attempts', 0)))
 
 
 def issued(number):
@@ -208,7 +265,8 @@ def start(number, role, head):
         prompt = run('bash', 'loop/runs.sh', 'review-due', str(number), task['head'], timeout=660)
         prompt = ('Review ' + prompt + '\nIf an earlier independent approval names an ancestor, focus on the changes since that approved head, including conflict resolutions and their effects. Your verdict must still cover the current head; do not repeat unchanged findings.')
     else:
-        evidence = {'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
+        evidence = {'ci': 'Two controller CI reruns did not recover this head. Diagnose runner, concurrency and workflow failures before changing product code.',
+                    'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
                     'check': 'Inspect the failed required CI check on this exact head, read its failing job logs, and fix the cause.',
                     'rules': 'Inspect the failed rules job and repair its concrete finding. For a missing Author-Agent trailer on your latest commit only, amend its metadata, prove git diff between old and amended commits is empty, and push with an explicit force-with-lease matching the expected head; never rewrite code under that exception.',
                     'reject': 'Read the independent reject findings with loop/rules.sh verdicts and address each one.',
@@ -217,6 +275,17 @@ def start(number, role, head):
                   f"Your Author-Agent id is builder-{os.environ['GITHUB_RUN_ID']}. Mark the PR a draft while editing. "
                   "Run the required checks, remove a resolved Stopped: line, and mark it ready. Ordinary repairs never force-push; the rules task permits only its explicit metadata-only exception. "
                   "If the remote head moved, stop without overwriting it. Leave a precise Stopped: question only for an unresolved product decision.")
+        _, record = claim_record(number)
+        history = record.get('repairs', [])
+        if record.get('fixes', 0) >= 2:
+            prior = ', '.join(dict.fromkeys(str(item['run']) for item in history))
+            prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Read their job logs and retained outcome.json/Ledger artifacts first. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
+                       "Distinguish failed tests from cancelled CI, setup/authentication failure, stale work and publication failure. "
+                       "Record the observed cause and a changed approach on the PR before editing; do not repeat an unsuccessful approach or invent unavailable evidence. "
+                       "Reproduce the failure, make one bounded correction, and verify the failing observer. If the blocker is shared loop machinery, "
+                       "create or reuse one linked engineering work Issue with reproduction and acceptance, label loop:work and ready-for-agent only when specified, "
+                       "and keep this PR linked; ordinary engineering failure is not a product question. "
+                       "Conclude with evidence of what changed and what remains. CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
     issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
@@ -234,7 +303,16 @@ def reconcile():
             continue
         _, record = claim_record(task['pr'])
         if not available(task, record):
-            print(f"#{task['pr']}: claimed or retry limit reached")
+            print(f"#{task['pr']}: owner active or bounded retry waiting")
+            continue
+        if task['role'] == 'ci':
+            if acquire(task):
+                fresh = due(task['pr'], busy, reserved_ci=True)
+                if fresh and key(fresh) == key(task) and fresh['ci_run'] == task['ci_run']:
+                    # Reserve before mutation: a lost rerun response cannot cause an unbounded retry storm.
+                    issued(task['pr'])
+                    run('gh', 'run', 'rerun', str(task['ci_run']))
+                    print(f"#{task['pr']}: reran cancelled CI {task['ci_run']}; no model invoked")
             continue
         workflow = 'review.yml' if task['role'] == 'review' else ('feedback.yml' if task.get('planning') else 'build.yml')
         run('gh', 'workflow', 'run', workflow, '-f', f"pr={task['pr']}", '-f', f"head={task['head']}")
@@ -266,8 +344,15 @@ def activity():
             continue
         owner = api(f"actions/runs/{record['run']}")
         spent_review = record['key'][0] == 'review' and record['key'][2] == pr['headRefOid'] and consumed(record) >= 2
-        if owner['status'] == 'completed' and (fixes(record) >= 2 or spent_review):
-            rows.append(f"[PR #{pr['number']}]({pr['url']}): needs investigation after two attempts; [last run]({owner['html_url']})")
+        if owner['status'] == 'completed' and fixes(record) >= 2:
+            history = repair_history(record, owner)
+            task = dict(head=pr['headRefOid'], cause=record['key'][1])
+            now = time.time()
+            wait = repair_wait(task, history, now)
+            state = 'diagnostic repair eligible when current gates require it' if wait <= now else 'repair eligible after ' + datetime.fromtimestamp(wait).astimezone().isoformat()
+            rows.append(f"[PR #{pr['number']}]({pr['url']}): {state}; [last run]({owner['html_url']})")
+        elif owner['status'] == 'completed' and spent_review:
+            rows.append(f"[PR #{pr['number']}]({pr['url']}): review needs investigation after two attempts; [last run]({owner['html_url']})")
     return rows
 
 

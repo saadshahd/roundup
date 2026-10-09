@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: A PR to fix after its first reject; empty builds ready rows
+        description: A PR to repair or diagnose; empty builds ready rows
         required: false
         default: ''
       head:
@@ -124,7 +124,14 @@ jobs:
           ref: ${{ needs.repair-due.outputs.branch }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      # Old PR branches may still contain macOS-only setup; main selects the runner.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .loop-setup
+          sparse-checkout: .github/actions/setup
+          persist-credentials: false
+      - uses: ./.loop-setup/.github/actions/setup
         with:
           browser: 'true'
       - name: Stamp Builder commits
