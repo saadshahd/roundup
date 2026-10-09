@@ -607,6 +607,7 @@ def reconcile():
     # One sweep is serialized by reconcile.yml. Native Issues, never proposal files, own the queue.
     issues = [item for item in listing('issues?state=open&per_page=100') if 'pull_request' not in item]
     refs = d.api('git/matching-refs/heads/' + NAMESPACE + '/')
+    claimed = {int(ref['ref'].rsplit('/', 1)[1]) for ref in refs}
     known = {issue['number'] for issue in issues}
     for ref in refs:
         number = int(ref['ref'].rsplit('/', 1)[1])
@@ -620,9 +621,9 @@ def reconcile():
         labels = {label['name'] for label in issue['labels']}
         if labels & {'loop:status', 'loop:report-only'}:
             continue
-        old, record = read_claim(number)
-        if not record and ('loop:work' in labels and 'ready-for-agent' in labels or issue['user']['type'] == 'Bot' and 'loop:work' not in labels):
+        if number not in claimed and ('loop:work' in labels and 'ready-for-agent' in labels or issue['user']['type'] == 'Bot' and 'loop:work' not in labels):
             continue
+        old, record = read_claim(number) if number in claimed else (None, None)
         source = read_source(number, record['source'] if record else None)
         if not source:
             continue
