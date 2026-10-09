@@ -90,7 +90,7 @@ const PadRows = (props: {
   return (
     <For each={props.shown()}>
       {(pad) => (
-        <p style={markedLine}>
+        <p data-shelf-row style={markedLine}>
           <Show
             when={pad.owner.kind === "user"}
             fallback={

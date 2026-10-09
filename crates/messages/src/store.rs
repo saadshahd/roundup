@@ -195,6 +195,31 @@ impl Store {
         Ok(())
     }
 
+    /// Runs `f` as one SQLite transaction: its writes all land or none do, so a kill between two
+    /// of them never leaves a Message and the chain that should have moved with it disagreeing
+    /// (B8, B17).
+    pub(crate) fn atomically<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<T, RpcError>,
+    ) -> Result<T, RpcError> {
+        self.db
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(RpcError::internal)?;
+        match f(self) {
+            Ok(value) => {
+                if let Err(err) = self.db.execute_batch("COMMIT") {
+                    let _ = self.db.execute_batch("ROLLBACK");
+                    return Err(RpcError::internal(err));
+                }
+                Ok(value)
+            }
+            Err(err) => {
+                let _ = self.db.execute_batch("ROLLBACK");
+                Err(err)
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn insert(
         &self,
