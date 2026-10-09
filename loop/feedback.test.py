@@ -200,7 +200,10 @@ class GitHub:
         path = next(arg.split('repos/{owner}/{repo}/', 1)[1] for arg in args if arg.startswith('repos/{owner}/{repo}/'))
         if path.startswith('contents/'):
             ref = next(arg.removeprefix('ref=') for arg in args if arg.startswith('ref='))
-            content = self.trees[self.commits[ref]['tree']['sha']][path.removeprefix('contents/')]
+            tree = self.trees[self.commits[ref]['tree']['sha']]
+            if path.removeprefix('contents/') not in tree:
+                raise subprocess.CalledProcessError(1, args, stderr='gh: Not Found (HTTP 404)')
+            content = tree[path.removeprefix('contents/')]
             return dict(encoding='base64', content=base64.b64encode(content.encode()).decode())
         result = self.api(path, json.loads(data) if data else None)
         return [result] if '--slurp' in args else result
@@ -378,6 +381,19 @@ class Lifecycle(unittest.TestCase):
             self.plan()
         self.hub.pull_error = None
         return f.read_claim(355)[1]
+
+    def test_l90_rule_proposal_keeps_the_rules_already_on_main(self):
+        self.hub.trees['b' * 40]['scenarios/loop-rules.md'] = '# Loop\n\n**L1 one.** Text.\n\n**L2 two.** Text.\n'
+        def rules(path, content):
+            return {**answer(), 'rules': [dict(path=path, content=content, cases='Example and counterexample')]}
+        f.start(355)
+        with self.assertRaisesRegex(ValueError, 'drops L1'):
+            f.propose(355, rules('scenarios/loop-rules.md', '**L2 two.** Amended.\n'))
+        self.assertNotIn('pr', f.read_claim(355)[1])
+        self.assertTrue(self.plan(rules('scenarios/loop-rules.md', '# Loop\n\n**L1 one.** Text.\n\n**L2 two.** Amended.\n')))
+
+    def test_l90_rule_proposal_may_start_a_scenario_file(self):
+        self.assertTrue(self.plan({**answer(), 'rules': [dict(path='scenarios/new.md', content='**N1 new.** Text.\n', cases='Example')]}))
 
     def test_l90_reviewed_plan_publication(self):
         pr = self.plan()

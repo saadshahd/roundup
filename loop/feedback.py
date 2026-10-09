@@ -239,6 +239,19 @@ def read_file(path, ref):
     return base64.b64decode(file['content']).decode()
 
 
+RULE_ID = re.compile(r'^\*\*([A-Z]+[0-9]+)\b', re.M)
+
+
+def require_kept_rules(path, content, ref):
+    try:
+        existing = read_file(path, ref)
+    except subprocess.CalledProcessError as error:
+        require('HTTP 404' in (error.stderr or ''), 'cannot read ' + path)
+        return
+    dropped = sorted(set(RULE_ID.findall(existing)) - set(RULE_ID.findall(content)))
+    require(not dropped, f"rule proposal for {path} drops {', '.join(dropped)}")
+
+
 def proposal_path(record):
     return f"loop/plans/{record['source']['number']}/{record['source']['revision'][:16]}-{record['key'][0]}-{record['key'][2][:16]}.json"
 
@@ -264,6 +277,8 @@ def comment(number, marker, body):
 def commit_proposal(record, answer, main, parents):
     proposal = dict(source=record['source'], phase=record['key'][0], trigger=record['key'][2], main=main,
                     previous=record['previous'], answer=answer)
+    for rule in answer['rules']:
+        require_kept_rules(rule['path'], rule['content'], main)
     files = {proposal_path(record): json.dumps(proposal, indent=2) + '\n'}
     files.update({rule['path']: rule['content'] for rule in answer['rules']})
     base_tree = d.api(f'git/commits/{main}')['tree']['sha']
