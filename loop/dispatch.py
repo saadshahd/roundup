@@ -108,6 +108,11 @@ def due(number, busy=None, reserved_ci=False):
         return None
     role, cause = selected
     current = [v for v in verdicts if v['current']]
+    if cause == 'reject':
+        # A repair that handed this head to review waits for that review; it gets no second repair.
+        _, handoff = claim_record(number)
+        if handoff and handoff.get('review_after') == review_request(pr['head']['sha'], current[-1]):
+            return None
     ci_run = None
     if role == 'ci':
         import re

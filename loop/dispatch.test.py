@@ -80,6 +80,17 @@ class L88(unittest.TestCase):
         self.assertIsNone(self.review_task(verdicts=[verdict], record={**record, 'review_after': {**request, 'head': BASE}}))
         self.assertIsNone(self.review_task(verdicts=[verdict], record={**record, 'review_after': None}))
 
+    def test_l88_handed_off_review_gets_no_second_repair_on_the_same_head(self):
+        verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
+        request = d.review_request(HEAD, verdict)
+        def run(*args, **kwargs):
+            return json.dumps(verdict) if args[2] == 'verdicts' else 'code' if args[2] == 'touches' else 'x'
+        for after, due in ((request, False), (d.review_request(HEAD, {**verdict, 'body': 'new'}), True), (None, True)):
+            record = dict(run=9, key=['fix', 'reject', HEAD, ''], review_after=after)
+            with self.subTest(after=bool(after)), patch.object(d, 'api', return_value=PR), patch.object(d, 'run', side_effect=run), patch.object(d, 'gh', return_value=[dict(check_runs=[CHECK])]), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None):
+                task = d.due(1)
+                self.assertEqual(task is not None and task['cause'], 'reject' if due else False)
+
     def test_l78_loop_changes_require_review_even_after_historical_rejects(self):
         old = [dict(current=False, verdict='reject', head=BASE)] * 2
         for kinds in (['loop'], ['code']):
