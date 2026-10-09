@@ -158,7 +158,7 @@ cost() {
 # L27: the Retro's input as markdown: PRs by kind, Ledger totals by role, tokens per merged product PR, each reject
 # classified, and the costliest runs. Runs group by role and model, so a Retro can weigh Sonnet against Opus.
 report() {
-  local start pr kinds rows rejects unread dir code repeats
+  local start pr kinds rows rejects unread dir code
   start=$(since)
   kinds=$(kinds "$start")
   rows=$(ledger_rows "$start" | jq -s -c .)
@@ -176,10 +176,9 @@ report() {
     esac
   done <"$dir/product"
   rejects=$(classify <"$dir/rejects" | jq -s -c .) || exit 4
-  repeats=$(python3 loop/trail.py repeats) || exit 4
   unread=$(jq -s -c . "$dir/unread")
   rm -rf "$dir"
-  jq -nr --arg since "$start" --argjson prs "$kinds" --argjson rows "$rows" --argjson rejects "$rejects" --argjson unread "$unread" --argjson repeats "$repeats" "$weights"'
+  jq -nr --arg since "$start" --argjson prs "$kinds" --argjson rows "$rows" --argjson rejects "$rejects" --argjson unread "$unread" "$weights"'
     "# Retro: \($prs | length) PRs merged since \($since)", "",
       "| Kind | PRs |", "|---|---|",
       ($prs | group_by(.kind)[] | "| \(.[0].kind) | \(length) |"), "",
@@ -190,9 +189,6 @@ report() {
       "| Kind | Class | Confidence | Verdict |", "|---|---|---|---|",
       ($rejects[] | "| \(.kind) | \(.class) | \(.kind_confidence * 100 | round)%, \(.class_confidence * 100 | round)% | \(.id) |"), "",
       ($unread[] | "Verdicts unread on PR #\(.pr): \(.error | split("\n")[0])"), "",
-      "## Repeats", "",
-      "Answer each Trail with a rule line or a regression test under an L scenario.", "",
-      (if $repeats == [] then "nothing" else $repeats[] | "- #\(.issue) \(.title): \(.count) runs ended the same way with no new head, [last entry](\(.url))" end), "",
       "## Costliest runs", "",
       "| Run | Role | Subject | Weighted tokens | Exit |", "|---|---|---|---|---|",
       ($rows | sort_by(weighted) | reverse | .[:5][] | "| \(.run) | \(.role) | \(.subject) | \(weighted | m) | \(.exit) |")'

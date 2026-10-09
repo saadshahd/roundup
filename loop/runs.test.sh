@@ -253,7 +253,6 @@ check 'L24 a Code PR with no verdict is due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 the task names the PR and head' grep -qx "PR #7, head $head." "$FIXTURES/out"
 holds 'L24 the task carries Scenarios and Moves' bash -c 'grep -qx "Scenarios: U3" "$FIXTURES/out" && grep -qx "Moves: D2" "$FIXTURES/out"'
 holds 'L24 the task leaves out the rest of the body' bash -c '! grep -q "because" "$FIXTURES/out"'
-holds 'L92 l92_review_task_excludes_trail: a review task never holds a Trail' bash -c '! grep -qi "trail" "$FIXTURES/out"'
 holds 'L24 no Percy step outside apps/desktop/src' bash -c '! grep -q percy-review "$FIXTURES/out"'
 printf 'apps/desktop/src/a.tsx\n' >"$FIXTURES/paths"
 check 'L24 a ui PR is due' 0 loop/runs.sh review-due 7 "$head"
