@@ -1,6 +1,6 @@
 # UI: the first Room (U143)
 
-Module: `apps/desktop` (the webview). Ids: U143, U144, U145, U146. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
+Module: `apps/desktop` (the webview); U146 also edits the fake `claude` at `crates/rup/tests/e2e/fake_claude.py`. Ids: U143, U144, U145, U146. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
 
 **U143 the first Room says where it stands.** Narrows U38 and U9; changes no contract, App seam command or token. Given an open Project, then:
 
@@ -35,7 +35,7 @@ Tests are named `u145_…` in `apps/desktop/src/thread/` against the fake App se
 
 - **The fake.** After its session starts, the fake plays `UserPromptSubmit`, then the tool call with `"$prompt"` in an argument replaced by the typed text, then `Stop`, once per prompt line typed into its Terminal. Without the variable it behaves as today.
 - **The Message.** The Message to the Door goes `pending` to `delivered` (B1, `docs/messages.md`) once the Door is idle, and the Thread shows its status beside it.
-- **The Todo.** A `todo_add {title: "$prompt"}` call puts that Todo in the Shelf's `todos` and the Room's status returns to `idle` with no reload.
+- **The Todo.** A `todo_create {title: "$prompt"}` call puts that Todo in the Shelf's `todos` and the Room's status returns to `idle` with no reload.
 
-Observer: `u146_` tests in `apps/desktop/src/testing/` start the real `rupd` as U144 does with `FAKE_CLAUDE_ON_PROMPT` set to `todo_add`, mount the App through the served seam, create a Room, start its Door, send `ship j3` by pointer, and assert the Message is `delivered`, the Todo `ship j3` shows in `todos`, and the Room is not `starting`; a reopen of the Project finds both again (A8, S5). `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U146/`. A real `claude` stays F7's observer.
+Observer: `u146_` tests in `apps/desktop/src/testing/` start the real `rupd` as U144 does with `FAKE_CLAUDE_ON_PROMPT` set to a `todo_create` call with `"$prompt"` as its `title`, mount the App through the served seam, create a Room, start its Door, send `ship j3` by pointer, and assert the Message is `delivered`, the Todo `ship j3` shows in `todos`, and the Room is not `starting`; a reopen of the Project finds both again (A8, S5). `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U146/`. A real `claude` stays F7's observer.
 
