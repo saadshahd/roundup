@@ -34,6 +34,9 @@ const PadBody = (props: {
   const [conflictActor, setConflictActor] = createSignal<Actor | null>(null);
   const actionFailure = createFailure();
   const [deleted, setDeleted] = createSignal(false);
+  const [asking, setAsking] = createSignal(false);
+  const [removedByMe, setRemovedByMe] = createSignal(false);
+  let deleteButton: HTMLButtonElement | undefined;
   let editor: PadEditorHandle | undefined;
   let reader: HTMLDivElement | undefined;
   let pendingActor: Actor | null = null;
@@ -141,6 +144,13 @@ const PadBody = (props: {
       if (path !== null) await connected.app.rpc("pad.export", { name, path });
     });
 
+  const remove = () =>
+    act(async () => {
+      await connected.app.rpc("pad.delete", { name });
+      setRemovedByMe(true);
+      connected.drawer.close();
+    });
+
   const leaveField = async (typed: string) => {
     if (!editing() && typed === origin()) return;
 
@@ -221,19 +231,51 @@ const PadBody = (props: {
           owned by {connected.rail.nameOf(pad().owner)}
         </span>
       </p>
-      <p style={{ "text-align": "right" }}>
-        <button
-          type="button"
-          class="word light"
-          onClick={() => void exportToFile()}
-        >
-          export .md
-        </button>
-      </p>
+      <Show
+        when={asking()}
+        fallback={
+          <p style={{ "text-align": "right" }}>
+            <button
+              type="button"
+              class="word light"
+              ref={(button) => (deleteButton = button)}
+              onClick={() => {
+                actionFailure.clear();
+                setAsking(true);
+              }}
+            >
+              delete
+            </button>{" "}
+            <button type="button" class="word light" onClick={() => void exportToFile()}>
+              export .md
+            </button>
+          </p>
+        }
+      >
+        <p class="light">
+          {`delete ${name}?  `}
+          <Show when={pad().owner.kind !== "user"}>{`${connected.rail.nameOf(pad().owner)} owns it; you may delete any Pad  `}</Show>
+          <Show when={currentDraft() !== origin()}>{"unsaved changes are lost  "}</Show>
+          <button type="button" class="word light" onClick={() => void remove()}>
+            delete
+          </button>{" "}
+          <button
+            type="button"
+            class="word light"
+            ref={(button) => queueMicrotask(() => button.focus())}
+            onClick={() => {
+              setAsking(false);
+              queueMicrotask(() => deleteButton?.focus());
+            }}
+          >
+            keep
+          </button>
+        </p>
+      </Show>
       <Show when={actionFailure.message()}>
         {(message) => <ErrorLine message={message()} />}
       </Show>
-      <Show when={deleted()}>
+      <Show when={deleted() && !removedByMe()}>
         <ErrorLine message={`pad ${name} was deleted`} />
       </Show>
       <Show when={ownedByUser()}>
