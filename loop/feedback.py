@@ -10,6 +10,7 @@ import subprocess
 import sys
 import dispatch as d
 import orders
+from outcome import describe, redact
 
 NAMESPACE = 'loop-feedback'
 
@@ -194,6 +195,9 @@ def start(number):
     task = next_task(source, record)
     if not task or not d.available(task, record):
         return
+    if record and record['key'] == d.key(task) and read_proposal_head(record):
+        # Reconciliation publishes the retained answer; a queued job must not spend another model attempt.
+        return
     require(int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS']), 'spend cap reached')
     # Immutable Claim commits retain every accepted human revision, including earlier bodies.
     attempt = d.consumed(record) + 1 if record and record['key'] == d.key(task) else 1
@@ -221,6 +225,16 @@ def read_file(path, ref):
 
 def proposal_path(record):
     return f"loop/plans/{record['source']['number']}/{record['source']['revision'][:16]}-{record['key'][0]}-{record['key'][2][:16]}.json"
+
+
+def proposal_branch(record):
+    return f"build/feedback-{record['source']['number']}-{record['source']['revision'][:12]}-{record['key'][0]}-{record['key'][2][:12]}"
+
+
+def read_proposal_head(record):
+    branch = proposal_branch(record)
+    refs = d.api('git/matching-refs/heads/' + branch)
+    return next((ref['object']['sha'] for ref in refs if ref['ref'] == 'refs/heads/' + branch), None)
 
 
 def comment(number, marker, body):
@@ -313,24 +327,43 @@ def propose(number, answer):
                 'Stopped: ' + answer['question'] + '\nEdit the source Issue with the decision to resume planning.')
         save_claim(number, old, {**record, 'phase': 'question'})
         return
-    path = proposal_path(record)
-    branch = f"build/feedback-{number}-{record['source']['revision'][:12]}-{phase}-{record['key'][2][:12]}"
+    branch = proposal_branch(record)
+    if not read_proposal_head(record):
+        sha = commit_proposal(record, answer, record['main'], [record['main']])
+        d.api('git/refs', dict(ref='refs/heads/' + branch, sha=sha))
+    publish_proposal(number, old, record)
+
+
+def publish_proposal(number, old, record):
+    branch = proposal_branch(record)
+    assert_current(record)
     prs = d.gh('pr', 'list', '--head', branch, '--state', 'all', '--json', 'number,headRefOid', '--limit', '100')
     if prs:
         require(len(prs) == 1, 'multiple planning PRs for one Claim')
         pr = prs[0]['number']
     else:
-        refs = d.api('git/matching-refs/heads/' + branch)
-        exact = [ref for ref in refs if ref['ref'] == 'refs/heads/' + branch]
-        if not exact:
-            sha = commit_proposal(record, answer, record['main'], [record['main']])
-            d.api('git/refs', dict(ref='refs/heads/' + branch, sha=sha))
         assert_current(record)
-        pr = d.api('pulls', dict(title=f'L90: {phase} feedback #{number}', head=branch, base='main',
+        pr = d.api('pulls', dict(title=f'L90: {record["key"][0]} feedback #{number}', head=branch, base='main',
                                 body=f'Scenarios: L90\nRefs #{number}\n\nSource revision: {record["source"]["revision"]}\n\nIndependent review authorizes publication of the proposed goal and native work Issues.'))['number']
-    save_claim(number, old, {**record, 'phase': 'proposed', 'pr': pr, 'path': path})
+    save_claim(number, old, {**record, 'phase': 'proposed', 'pr': pr, 'path': proposal_path(record)})
     ensure_checks(d.api(f'pulls/{pr}'))
-    comment(number, f'<!-- feedback-proposal {pr} -->', f'Proposed {phase}: #{pr}. Human source revision `{record["source"]["revision"]}` is retained in the proposal and Claim history.')
+    comment(number, f'<!-- feedback-proposal {pr} -->', f'Proposed {record["key"][0]}: #{pr}. Human source revision `{record["source"]["revision"]}` is retained in the proposal and Claim history.')
+    return pr
+
+
+def resume_publication(number, old, record):
+    if record['phase'] not in ('issued', 'publishing') or d.api(f"actions/runs/{record['run']}")['status'] != 'completed':
+        return None
+    head = read_proposal_head(record)
+    if not head:
+        return None
+    parse_proposal(json.loads(read_file(proposal_path(record), head)), record)
+    # The shared atomic Claim excludes a queued planner while the controller resumes writes.
+    current = {**record, 'phase': 'publishing', 'run': int(os.environ['GITHUB_RUN_ID'])}
+    save_claim(number, old, current)
+    owned, latest = read_claim(number)
+    require(latest == current, 'feedback publication owner changed')
+    return publish_proposal(number, owned, current)
 
 
 def ensure_checks(pr):
@@ -344,25 +377,31 @@ def ensure_checks(pr):
         d.run('gh', 'pr', 'merge', str(pr['number']), '--auto', '--merge')
 
 
-def read_proposal(pr):
-    paths = [item['filename'] for item in listing(f'pulls/{pr["number"]}/files?per_page=100')]
-    plans = [path for path in paths if path.startswith('loop/plans/')]
-    require(len(plans) == 1, 'planning PR needs exactly one proposal')
-    proposal = json.loads(read_file(plans[0], pr['head']['sha']))
+def parse_proposal(proposal, record):
     require(set(proposal) == {'source', 'phase', 'trigger', 'main', 'previous', 'answer'}, 'invalid proposal envelope')
     require(proposal['phase'] in ('plan', 'verify'), 'invalid proposal phase')
     require(re.fullmatch(r'[0-9a-f]{40}', proposal['main']), 'invalid observed main')
     answer = parse_answer(proposal['answer'], proposal['phase'], proposal['previous'])
     require(not answer['question'], 'product questions stay on the source Issue')
-    require(set(paths) == {plans[0]} | {rule['path'] for rule in answer['rules']}, 'planning PR contains undeclared changes')
-    for rule in answer['rules']:
-        require(read_file(rule['path'], pr['head']['sha']) == rule['content'], 'rule content differs from proposal')
-    number = proposal['source']['number']
-    _, record = read_claim(number)
-    require(record and record.get('pr') == pr['number'] and record['path'] == plans[0], 'proposal has no matching controller Claim')
     require(proposal['source'] == record['source'] and proposal['main'] == record['main'] and
             proposal['phase'] == record['key'][0] and proposal['trigger'] == record['key'][2] and
             proposal['previous'] == record['previous'], 'proposal changed controller-owned context')
+    return proposal
+
+
+def read_proposal(pr):
+    paths = [item['filename'] for item in listing(f'pulls/{pr["number"]}/files?per_page=100')]
+    plans = [path for path in paths if path.startswith('loop/plans/')]
+    require(len(plans) == 1, 'planning PR needs exactly one proposal')
+    proposal = json.loads(read_file(plans[0], pr['head']['sha']))
+    number = proposal['source']['number']
+    _, record = read_claim(number)
+    require(record and record.get('pr') == pr['number'] and record['path'] == plans[0], 'proposal has no matching controller Claim')
+    proposal = parse_proposal(proposal, record)
+    answer = proposal['answer']
+    require(set(paths) == {plans[0]} | {rule['path'] for rule in answer['rules']}, 'planning PR contains undeclared changes')
+    for rule in answer['rules']:
+        require(read_file(rule['path'], pr['head']['sha']) == rule['content'], 'rule content differs from proposal')
     assert_current(record)
     # GitHub closing keywords would skip goal verification at merge, before publication runs.
     messages = [pr.get('title') or '', pr.get('body') or '']
@@ -536,8 +575,20 @@ def publish(number):
         ensure_checks(pr)
         return
     require(pr['base']['ref'] == 'main' and pr['head']['repo']['full_name'] == os.environ['GITHUB_REPOSITORY'], 'planning PR must merge into this repository main')
+    # A verdict comment updates the PR, so an unchanged refused PR is not gated again.
+    waiting = record.get('waiting') or {}
+    if (waiting.get('pr'), waiting.get('updated')) == (pr['number'], pr['updated_at']):
+        return
     # Reuse all L46 checks and independent authorship, with merged instead of open state.
-    d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
+    try:
+        d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 1:
+            raise
+        reason = redact(' '.join((error.stderr or 'publication-ready refused').split()), os.environ)[:300]
+        save_claim(number, old, {**record, 'waiting': dict(pr=pr['number'], updated=pr['updated_at'], reason=reason)})
+        print(f'feedback #{number}: merged plan #{pr["number"]} waits: {reason}', file=sys.stderr)
+        return
     proposal = gate(pr['number'])
     answer = proposal['answer']
     complete = is_complete(proposal['phase'], answer)
@@ -568,6 +619,7 @@ def reconcile():
     # One sweep is serialized by reconcile.yml. Native Issues, never proposal files, own the queue.
     issues = [item for item in listing('issues?state=open&per_page=100') if 'pull_request' not in item]
     refs = d.api('git/matching-refs/heads/' + NAMESPACE + '/')
+    claimed = {int(ref['ref'].rsplit('/', 1)[1]) for ref in refs}
     known = {issue['number'] for issue in issues}
     for ref in refs:
         number = int(ref['ref'].rsplit('/', 1)[1])
@@ -576,45 +628,64 @@ def reconcile():
     runs = d.gh('run', 'list', '--workflow', 'feedback.yml', '--limit', '100', '--json', 'status')
     queued = sum(run['status'] != 'completed' for run in runs)
     within_budget = None
+    failures = []
     for issue in issues:
         number = issue['number']
         labels = {label['name'] for label in issue['labels']}
         if labels & {'loop:status', 'loop:report-only'}:
             continue
-        old, record = read_claim(number)
-        if not record and ('loop:work' in labels and 'ready-for-agent' in labels or issue['user']['type'] == 'Bot' and 'loop:work' not in labels):
+        if number not in claimed and ('loop:work' in labels and 'ready-for-agent' in labels or issue['user']['type'] == 'Bot' and 'loop:work' not in labels):
             continue
-        source = read_source(number, record['source'] if record else None)
-        if not source:
-            continue
-        if issue['state'] == 'closed':
-            d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{number}', '--input', '-', data=json.dumps(dict(state='open')))
-        if record and record['source']['revision'] == source['revision'] and record['phase'] == 'proposed':
-            if not refresh_verification(number, old, record):
-                publish(number)
-                continue
-            _, record = read_claim(number)
-        task = next_task(source, record)
-        if task and d.available(task, record) and queued < 4:
-            if within_budget is None:
-                within_budget = int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
-            if not within_budget:
-                print('feedback: spend cap reached', file=sys.stderr)
-                continue
-            if record and record['phase'] == 'proposed' and record['source']['revision'] != source['revision']:
-                pr = d.api(f'pulls/{record["pr"]}')
-                if pr['state'] == 'open':
-                    d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{pr["number"]}', '--input', '-', data=json.dumps(dict(state='closed')))
-            queued += 1
-            d.run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'issue={number}')
-        elif task:
-            print(f'feedback #{number}: claimed or retry limit reached', file=sys.stderr)
+        try:
+            within_budget, queued = sweep(issue, number in claimed, within_budget, queued)
+        except (ValueError, subprocess.CalledProcessError, KeyError, TypeError) as error:
+            # One source's failure leaves the others swept; timeouts and OS errors stop the sweep.
+            print(f'feedback #{number}: {describe(error)}', file=sys.stderr)
+            failures.append(error)
+    if failures:
+        raise failures[0]
+
+
+def sweep(issue, claimed, within_budget, queued):
+    """One source Issue's reconciliation; returns the sweep's spend decision and queued planner count."""
+    number = issue['number']
+    old, record = read_claim(number) if claimed else (None, None)
+    source = read_source(number, record['source'] if record else None)
+    if not source:
+        return within_budget, queued
+    if issue['state'] == 'closed':
+        d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{number}', '--input', '-', data=json.dumps(dict(state='open')))
+    if record and record['source']['revision'] == source['revision'] and resume_publication(number, old, record):
+        return within_budget, queued
+    if record and record['source']['revision'] == source['revision'] and record['phase'] == 'proposed':
+        if not refresh_verification(number, old, record):
+            publish(number)
+            return within_budget, queued
+        _, record = read_claim(number)
+    task = next_task(source, record)
+    if task and d.available(task, record) and queued < 4:
+        if within_budget is None:
+            within_budget = int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
+        if not within_budget:
+            print('feedback: spend cap reached', file=sys.stderr)
+            return within_budget, queued
+        if record and record['phase'] == 'proposed' and record['source']['revision'] != source['revision']:
+            pr = d.api(f'pulls/{record["pr"]}')
+            if pr['state'] == 'open':
+                d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{pr["number"]}', '--input', '-', data=json.dumps(dict(state='closed')))
+        queued += 1
+        d.run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'issue={number}')
+    elif task:
+        print(f'feedback #{number}: claimed or retry limit reached', file=sys.stderr)
+    return within_budget, queued
 
 
 def activity():
     rows = []
     for ref in d.api('git/matching-refs/heads/' + NAMESPACE + '/'):
         record = json.loads(d.api('git/commits/' + ref['object']['sha'])['message'])
+        if record['phase'] == 'proposed' and record.get('waiting', {}).get('pr') == record['pr']:
+            rows.append(f"[Feedback #{record['source']['number']}]({record['source']['html_url']}): merged plan #{record['pr']} waits: {record['waiting']['reason']}")
         if record['phase'] not in ('claimed', 'issued'):
             continue
         owner = d.api(f"actions/runs/{record['run']}")
@@ -666,5 +737,5 @@ if __name__ == '__main__':
         print(f'feedback: {error}', file=sys.stderr)
         sys.exit(1)
     except (subprocess.SubprocessError, KeyError, TypeError, OSError) as error:
-        print(f'feedback: {error}', file=sys.stderr)
+        print(f'feedback: {describe(error)}', file=sys.stderr)
         sys.exit(4)

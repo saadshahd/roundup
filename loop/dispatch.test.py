@@ -27,6 +27,41 @@ TASK = dict(pr=1, role='review', cause='review', head=HEAD, base=BASE, branch='b
 
 
 class L88(unittest.TestCase):
+    def test_l88_low_api_budget_defers_and_reports_reset(self):
+        for core, graphql, available in ((100, 100, True), (99, 500, False), (500, 0, False)):
+            with self.subTest(core=core, graphql=graphql), tempfile.TemporaryDirectory() as directory:
+                output, summary = Path(directory) / 'output', Path(directory) / 'summary'
+                resources = dict(core=dict(remaining=core, reset=1791565200), graphql=dict(remaining=graphql, reset=1791565200))
+                with patch.object(d, 'gh', return_value=dict(resources=resources)), patch.dict(os.environ, GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary)):
+                    d.budget()
+                self.assertEqual(output.read_text(), f'available={str(available).lower()}\n')
+                if not available:
+                    self.assertIn('2026-10-09T17:00:00+00:00', summary.read_text())
+                    self.assertIn('later scheduled run', summary.read_text())
+
+    def test_l88_failed_budget_read_never_allows_a_scan(self):
+        for failure in ({'resources': {}}, {'resources': {'core': {'remaining': '99', 'reset': 1}, 'graphql': {'remaining': 100, 'reset': 1}}}, subprocess.CalledProcessError(1, ['gh'])):
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'output'
+                kwargs = {'side_effect': failure} if isinstance(failure, Exception) else {'return_value': failure}
+                with patch.object(d, 'gh', **kwargs), patch.dict(os.environ, GITHUB_OUTPUT=str(output)):
+                    with self.assertRaises((KeyError, ValueError, subprocess.CalledProcessError)):
+                        d.budget()
+                self.assertFalse(output.exists())
+
+    def test_l88_github_failure_reports_redacted_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            gh = Path(directory) / 'gh'
+            gh.write_text('#!/bin/sh\nprintf "API rate limit exceeded (HTTP 403), credential %s\\n" "$GH_TOKEN" >&2\nexit 1\n')
+            gh.chmod(0o755)
+            result = subprocess.run([sys.executable, str(ROOT / 'loop/dispatch.py'), 'budget'],
+                                    env={**os.environ, 'PATH': directory + os.pathsep + os.environ['PATH'], 'GH_TOKEN': 'private-test-credential'},
+                                    text=True, capture_output=True)
+        self.assertEqual(result.returncode, 4)
+        self.assertIn('API rate limit exceeded (HTTP 403)', result.stderr)
+        self.assertIn('[redacted]', result.stderr)
+        self.assertNotIn('private-test-credential', result.stderr)
+
     def test_l88_successful_repair_requests_review_without_a_new_commit(self):
         verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
         request = d.review_request(HEAD, verdict)
@@ -268,12 +303,14 @@ class L88(unittest.TestCase):
     def test_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach(self):
         task = {**TASK, 'role': 'fix', 'cause': 'check'}
         record = dict(fixes=2, repairs=[dict(run=8), dict(run=9)])
-        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run:
+        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run, patch.object(d.trail, 'pr_section', return_value='\n## Trail of #7') as section:
             d.start(1, 'fix', HEAD)
             prompt = run.call_args.kwargs['data']
+            section.assert_called_once_with(1)
             self.assertIn('earlier repair runs 8, 9', prompt)
             self.assertIn('changed approach', prompt)
-            self.assertIn('outcome.json', prompt)
+            self.assertIn('## Trail of #7', prompt)
+            self.assertNotIn('outcome.json', prompt)
 
     def test_l88_main_movement_does_not_reset_review_retry_budget(self):
         self.assertEqual(d.key(TASK), d.key({**TASK, 'base': HEAD}))

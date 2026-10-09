@@ -13,7 +13,7 @@ git -C "$dir" init -q
 git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U105-U107-U109
-cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/feedback.md" "$dir/loop/"
+cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/trail.py" "$root/loop/feedback.md" "$dir/loop/"
 printf '# Builder\n\nFixed text.\n' >"$dir/.agents/builder.md"
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
@@ -122,8 +122,13 @@ holds 'L23 builders prints each one'"'"'s slug' test "$(cat "$FIXTURES/out")" = 
 echo '{"jobs":[{"name":"build (U1, scenarios/ui.md, U1) / build","status":"in_progress"},{"name":"build (U2, scenarios/ui.md, U2) / build","status":"completed"},{"name":"build (U2, scenarios/ui.md, U2) / after","status":"queued"}]}' >"$FIXTURES/jobs-71"
 check 'L88 a completed row frees its slot while its sibling builds' 0 loop/runs.sh builders
 holds 'L88 a completion job does not consume a Builder slot' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
+touch "$FIXTURES/ready-fail"
+: >"$FIXTURES/trace"
 check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
 holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
+holds 'L88 full queue does not read PR history' test "$(grep -c 'state=closed' "$FIXTURES/trace" || true)" = 0
+check 'L88 free capacity resumes order reads and exposes failures' 4 loop/runs.sh queue 3
+rm "$FIXTURES/ready-fail"
 touch "$FIXTURES/gh-fail"
 check 'L23 a failed run list exits 4' 4 loop/runs.sh queue
 rm "$FIXTURES/gh-fail"
@@ -248,6 +253,7 @@ check 'L24 a Code PR with no verdict is due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 the task names the PR and head' grep -qx "PR #7, head $head." "$FIXTURES/out"
 holds 'L24 the task carries Scenarios and Moves' bash -c 'grep -qx "Scenarios: U3" "$FIXTURES/out" && grep -qx "Moves: D2" "$FIXTURES/out"'
 holds 'L24 the task leaves out the rest of the body' bash -c '! grep -q "because" "$FIXTURES/out"'
+holds 'L92 l92_review_task_excludes_trail: a review task never holds a Trail' bash -c '! grep -qi "trail" "$FIXTURES/out"'
 holds 'L24 no Percy step outside apps/desktop/src' bash -c '! grep -q percy-review "$FIXTURES/out"'
 printf 'apps/desktop/src/a.tsx\n' >"$FIXTURES/paths"
 check 'L24 a ui PR is due' 0 loop/runs.sh review-due 7 "$head"

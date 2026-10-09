@@ -6,7 +6,9 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+
+import trail
 
 
 def run(*args, data=None, timeout=120):
@@ -315,17 +317,13 @@ def start(number, role, head):
         history = record.get('repairs', [])
         if record.get('fixes', 0) >= 2:
             prior = ', '.join(dict.fromkeys(str(item['run']) for item in history))
-            prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Read their job logs and retained outcome.json/Ledger artifacts first. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
-                       "Distinguish failed tests from cancelled CI, setup/authentication failure, stale work and publication failure. "
-                       "Record the observed cause and a changed approach on the PR before editing; do not repeat an unsuccessful approach or invent unavailable evidence. "
-                       "Reproduce the failure, make one bounded correction, and verify the failing observer. If the blocker is shared loop machinery, "
-                       "create or reuse one linked engineering work Issue with reproduction and acceptance, label loop:work and ready-for-agent only when specified, "
-                       "and keep this PR linked; ordinary engineering failure is not a product question. "
-                       "Conclude with evidence of what changed and what remains. CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
+            prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
+                       + trail.DIAGNOSTIC + " CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
+        prompt += trail.pr_section(number)
     issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-        for name in ('pr', 'head', 'branch'):
+        for name in ('pr', 'head', 'branch', 'cause'):
             out.write(f'{name}={task[name]}\n')
 
 
@@ -356,6 +354,25 @@ def reconcile():
     # Queue entry is serialized and row Claims are atomic; an empty queue does not dispatch again.
     if json.loads(run('bash', 'loop/runs.sh', 'queue', '4')):
         run('gh', 'workflow', 'run', 'build.yml')
+
+
+def budget():
+    """Defer full scans when the authenticated token has little API capacity left."""
+    resources = gh('api', 'rate_limit')['resources']
+    limits = {name: resources[name] for name in ('core', 'graphql')}
+    if any(type(limit.get(field)) is not int or limit[field] < 0
+           for limit in limits.values() for field in ('remaining', 'reset')):
+        raise ValueError('invalid GitHub API budget')
+    low = {name: limit for name, limit in limits.items() if limit['remaining'] < 100}
+    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+        output.write('available=' + str(not low).lower() + '\n')
+    if low:
+        reset = datetime.fromtimestamp(max(limit['reset'] for limit in low.values()), tz=timezone.utc).isoformat()
+        message = 'Full API scan deferred: ' + ', '.join(f"{name}={limit['remaining']} remaining" for name, limit in low.items()) + f'. Budget resets at {reset}; a later scheduled run retries.'
+        print(message)
+        if os.environ.get('GITHUB_STEP_SUMMARY'):
+            with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                summary.write(message + '\n')
 
 
 def activity():
@@ -400,10 +417,13 @@ if __name__ == '__main__':
             start(int(sys.argv[2]), sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else '')
         elif sys.argv[1] == 'repaired':
             repaired(int(sys.argv[2]))
+        elif sys.argv[1] == 'budget':
+            budget()
         elif sys.argv[1] == 'activity':
             print(json.dumps(activity()))
         else:
-            raise ValueError('expected reconcile, start, repaired or activity')
+            raise ValueError('expected reconcile, start, repaired, budget or activity')
     except (subprocess.SubprocessError, ValueError, KeyError, TypeError, OSError) as error:
-        print(f'PR dispatch failed: {error}', file=sys.stderr)
+        from outcome import describe  # outcome imports this module
+        print(f'PR dispatch failed: {describe(error)}', file=sys.stderr)
         sys.exit(4)
