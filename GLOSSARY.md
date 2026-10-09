@@ -88,6 +88,9 @@ _Avoid_: task, ticket
 **Sketch**:
 A Pad holding Mermaid or drawing blocks; the Pad contracts are unchanged. Room-scoped storage is still open.
 
+**Drawing**:
+A fenced ```excalidraw block in a Pad whose JSON body is a diagram the user edits in place and an Agent writes as text. It is Pad text, so the Pad contracts are unchanged.
+
 **Pad**:
 A markdown note owned by an Agent or the user. "Scratchpad" is the product word in prose only.
 _Avoid_: scratchpad
