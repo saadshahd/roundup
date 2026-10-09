@@ -30,7 +30,7 @@ export const message = (id: number, over: Partial<Message> = {}): Message => ({
 
 export const sent = (data: Message): DaemonEvent => event({ name: "message.sent", data });
 
-type Options = { messages?: Message[]; reducedMotion?: boolean; failure?: Error };
+type Options = { messages?: Message[]; reducedMotion?: boolean; failure?: Error; select?: string | null };
 
 /** The Rail, the Pane, the Thread and the Shelf in one `.window`, as the App lays them out, over a fake Daemon. */
 export const mountThread = async (tree: RailNode[], options: Options = {}) => {
@@ -70,6 +70,11 @@ export const mountThread = async (tree: RailNode[], options: Options = {}) => {
   ));
 
   await connected.rail.settled();
+
+  // U145: the Thread shows only under a Room, so these tests open the first one unless `select` says otherwise.
+  const opened = options.select === undefined ? tree.find((node) => node.kind === "room" || node.parent === null)?.id : options.select;
+
+  if (opened !== undefined && opened !== null) connected.rail.select(opened);
 
   return { app, connected, emulators: made, ...view };
 };

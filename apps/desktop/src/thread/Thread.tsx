@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import type { JSX } from "solid-js";
+import type { Accessor, JSX } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
 import { useConnectedProject } from "../state/connectedProject";
@@ -41,7 +41,7 @@ const AttachmentChip = (props: { attachment: Attachment; onPreview: (preview: Pr
  * The conversation with the selected Room's Door: the feed of Messages (U106), and the input (U105, U109, U110).
  * `selectionOf` reads the selected Terminal's selection through the emulator the Pane owns.
  */
-export const Thread = (props: { selectionOf: (terminalId: string | null) => string }) => {
+const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: string | null) => string }) => {
   const { app, rail, events, reducedMotion } = useConnectedProject();
   const feed = createMessageFeed(app, events);
   const [expanded, setExpanded] = createSignal(false);
@@ -52,6 +52,7 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
   const [preview, setPreview] = createSignal<Preview | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
   const [typing, setTyping] = createSignal(false);
+  const [sending, setSending] = createSignal(false);
   const [root, setRoot] = createSignal<HTMLElement>();
   let feedElement: HTMLElement | undefined;
   let field: HTMLInputElement | undefined;
@@ -71,23 +72,6 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
       return { id: message.id, status: message.status, folded, text: folded ? foldedLine(from, to, message) : fullLine(from, to, message) };
     }),
   );
-
-  /** The Room whose Door the input talks to: the selected Room, or the nearest one above the selected node. */
-  const doorId = createMemo(() => {
-    let id = rail.selected();
-
-    while (id !== null) {
-      const found = rail.nodes.find((node) => node.id === id);
-
-      if (found === undefined) return null;
-
-      if (found.kind === "room") return found.id;
-
-      id = found.parent;
-    }
-
-    return null;
-  });
 
   // U105: the periphery lives outside this region, so the dim is a mark on the window that the stylesheet reads.
   createEffect(() => {
@@ -172,29 +156,29 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
     setAttachments((now) => [...now, ...ok.map((file) => ({ id: nextAttachment++, name: file.name, size: file.size, url: URL.createObjectURL(file) }))]);
   };
 
+  const nothingToSend = () => value().trim() === "" && quotes().length === 0 && attachments().length === 0;
+
   const submit = async () => {
+    if (sending()) return;
+
     const typed = value().trim();
     const body = [...quotes().map(quotedLines), typed].filter((part) => part !== "").join("\n");
 
     setTyping(false);
 
     if (body !== "") {
-      const door = doorId();
-
-      if (door === null) {
-        setFailure("select a Room to talk to its Door");
-
-        return;
-      }
+      setSending(true);
 
       try {
-        await app.rpc("message.send", { to: door, kind: "note", body, replyTo: null });
+        await app.rpc("message.send", { to: props.door(), kind: "note", body, replyTo: null });
       } catch (error) {
         if (!(error instanceof Error)) throw error;
 
         setFailure(error.message);
 
         return;
+      } finally {
+        setSending(false);
       }
     }
 
@@ -295,6 +279,16 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
             addFiles(files);
           }}
         />
+        <button
+          type="button"
+          class="word thread-send"
+          aria-disabled={nothingToSend() || sending() ? true : undefined}
+          onClick={() => {
+            if (!nothingToSend() && !sending()) void submit();
+          }}
+        >
+          send
+        </button>
       </div>
       <Show when={preview()}>
         {(shown) => (
@@ -303,4 +297,32 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
       </Show>
     </div>
   );
+};
+
+/** The selected Room, or the nearest one above the selected row; `null` when the selection resolves to no Room. */
+const useDoorId = (): Accessor<string | null> => {
+  const { rail } = useConnectedProject();
+
+  return createMemo(() => {
+    let id = rail.selected();
+
+    while (id !== null) {
+      const found = rail.nodes.find((node) => node.id === id);
+
+      if (found === undefined) return null;
+
+      if (found.kind === "room") return found.id;
+
+      id = found.parent;
+    }
+
+    return null;
+  });
+};
+
+/** U145: the Thread exists only where there is a Room whose Door it talks to. */
+export const Thread = (props: { selectionOf: (terminalId: string | null) => string }) => {
+  const door = useDoorId();
+
+  return <Show when={door()}>{(id) => <ThreadBody door={id} selectionOf={props.selectionOf} />}</Show>;
 };

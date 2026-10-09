@@ -36,11 +36,37 @@
   white-space: pre;
 }
 
+/* U145: the composer is inset from the centre's edges and rests on its own surface; the one focus ring wraps it, so the input draws none. */
 .thread-composer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
+  margin: 0 var(--space-3) var(--space-3);
+  padding: var(--space-1);
+  background-color: var(--sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+}
+
+.thread-composer:has(input:focus-visible) {
+  outline-width: 2px;
+  outline-style: solid;
+  outline-color: var(--accent);
+  outline-offset: 1px;
+}
+
+.thread-composer input:focus-visible {
+  outline-width: 0;
+}
+
+.thread-send {
+  flex: none;
+  padding: 0 var(--space-2);
+}
+
+.thread-send[aria-disabled="true"]:hover {
+  background-color: transparent;
 }
 
 .thread-composer input {
