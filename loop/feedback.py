@@ -383,12 +383,16 @@ def resume_publication(number, old, record):
 
 
 def ensure_checks(pr):
-    # A GITHUB_TOKEN write starts no pull_request run, or one GitHub holds for a person's approval. Missed dispatches are recoverable.
+    # A GITHUB_TOKEN write starts no pull_request run, or one GitHub holds for a person's approval. The controller
+    # dispatches its own and deletes the held ones, so no planning PR asks for a click. Missed dispatches are recoverable.
     for workflow in ('check.yml', 'loop.yml'):
-        runs = d.gh('run', 'list', '--workflow', workflow, '--branch', pr['head']['ref'], '--limit', '100', '--json', 'headSha,status,conclusion')
-        if not any(run['headSha'] == pr['head']['sha'] and run['conclusion'] != 'action_required' for run in runs):
+        runs = d.gh('run', 'list', '--workflow', workflow, '--branch', pr['head']['ref'], '--limit', '100', '--json', 'databaseId,headSha,status,conclusion')
+        held = [run for run in runs if run['conclusion'] == 'action_required']
+        if not any(run['headSha'] == pr['head']['sha'] for run in runs if run not in held):
             args = ('-f', f'pr={pr["number"]}') if workflow == 'loop.yml' else ()
             d.run('gh', 'workflow', 'run', workflow, '--ref', pr['head']['ref'], *args)
+        for run in held:
+            d.run('gh', 'run', 'delete', str(run['databaseId']))
     if not pr.get('auto_merge'):
         d.run('gh', 'pr', 'merge', str(pr['number']), '--auto', '--merge')
 

@@ -193,7 +193,7 @@ class GitHub:
                         labels=dict(totalCount=len(issue['labels']), nodes=issue['labels']), editor=dict(login=self.editor), author=dict(login=issue['user']['login']))
             return dict(data=dict(repository=dict(issue=node)))
         if args[:2] == ('run', 'list'):
-            return copy.deepcopy(self.workflow_runs)
+            return [run for run in copy.deepcopy(self.workflow_runs) if run.pop('workflow') == args[args.index('--workflow')+1]]
         if args[:2] == ('pr', 'list'):
             branch = args[args.index('--head')+1] if '--head' in args else None
             return [dict(number=p['number'], headRefOid=p['head']['sha'], headRefName=p['head']['ref'], body=p['body'], isCrossRepository=False)
@@ -241,7 +241,7 @@ class GitHub:
             return '\n'.join(json.dumps(e) for e in self.events.get(int(args[3]), []))
         if args[:3] == ('bash', 'loop/runs.sh', 'prompt'):
             return subprocess.run(args, input=data, capture_output=True, text=True, check=True).stdout
-        if args[:3] in (('gh', 'workflow', 'run'), ('gh', 'pr', 'merge'), ('gh', 'pr', 'ready')):
+        if args[:3] in (('gh', 'workflow', 'run'), ('gh', 'run', 'delete'), ('gh', 'pr', 'merge'), ('gh', 'pr', 'ready')):
             if args[:3] == ('gh', 'pr', 'ready'):
                 self.prs[int(args[3])]['draft'] = '--undo' in args
             self.writes.append((args, None))
@@ -397,18 +397,21 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.hub.issues[355]['body'], source()['body'])
         self.assertEqual(self.hub.issues[355]['state'], 'open')
 
-    def test_l90_a_held_planning_run_still_gets_dispatched_checks(self):
+    def test_l90_a_held_planning_run_gets_dispatched_checks_and_is_deleted(self):
         pr = self.plan()
         head = self.hub.prs[pr]['head']['sha']
-        dispatched = lambda: [args[3] for args, _ in self.hub.writes if args[:3] == ('gh', 'workflow', 'run')]
-        self.hub.workflow_runs = [dict(headSha=head, status='completed', conclusion='action_required')]
+        calls = lambda verb: [args[3] for args, _ in self.hub.writes if args[:3] == ('gh',) + verb]
+        self.hub.workflow_runs = [dict(workflow=w, databaseId=i, headSha=head, status='completed', conclusion='action_required')
+                                  for i, w in ((7, 'check.yml'), (8, 'loop.yml'))]
         self.hub.writes.clear()
         f.publish(355)
-        self.assertEqual(dispatched(), ['check.yml', 'loop.yml'])
-        self.hub.workflow_runs = [dict(headSha=head, status='queued', conclusion='')]
+        self.assertEqual(calls(('workflow', 'run')), ['check.yml', 'loop.yml'])
+        self.assertEqual(calls(('run', 'delete')), ['7', '8'])
+        self.hub.workflow_runs = [dict(workflow=w, databaseId=i, headSha=head, status='queued', conclusion='')
+                                  for i, w in ((9, 'check.yml'), (10, 'loop.yml'))]
         self.hub.writes.clear()
         f.publish(355)
-        self.assertEqual(dispatched(), [])
+        self.assertEqual(calls(('workflow', 'run')) + calls(('run', 'delete')), [])
 
     def test_l93_waiting_publication_reason_survives_the_process_boundary(self):
         pr = self.plan()
