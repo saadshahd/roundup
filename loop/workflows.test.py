@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""L2, L23, L24, L89: what the workflows grant each run, and the scripts they run before a model starts."""
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def action_inputs(workflow):
+    """The `with:` block and env of a workflow's claude-code-action step."""
+    source = (ROOT / f'.github/workflows/{workflow}.yml').read_text()
+    return source.split('uses: anthropics/claude-code-action@v1', 1)[1].split('      - ', 1)[0]
+
+
+def git(path, *args):
+    return subprocess.run(['git', '-C', path, *args], text=True, capture_output=True, check=True).stdout.strip()
+
+
+def new_repo(path):
+    git(path, 'init')
+    git(path, 'config', 'user.name', 'test')
+    git(path, 'config', 'user.email', 'test@test')
+
+
+class Permissions(unittest.TestCase):
+    def test_l23_writing_runs_request_workflow_changes_and_read_only_ci_evidence(self):
+        for workflow in ('build', 'fix'):
+            inputs = action_inputs(workflow)
+            block = inputs.split('additional_permissions: |\n', 1)[1]
+            granted = []
+            for line in block.splitlines():
+                if not line.startswith('            '):
+                    break
+                granted.append(line.strip())
+            self.assertEqual(set(granted), {'actions: read', 'checks: read', 'workflows: write'}, workflow)
+            self.assertNotIn('github_token:', inputs, workflow)
+
+    def test_l24_the_review_run_keeps_the_read_only_workflow_token(self):
+        inputs = action_inputs('review')
+        self.assertIn('github_token: ${{ github.token }}', inputs)
+        self.assertNotIn('additional_permissions:', inputs)
+        source = (ROOT / '.github/workflows/review.yml').read_text()
+        job = source.split('  review-run:', 1)[1].split('    steps:', 1)[0]
+        self.assertNotIn(': write', job)
+
+
+class Scripts(unittest.TestCase):
+    def test_l24_proposed_instructions_do_not_control_the_reviewer(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            new_repo(path)
+            trusted = ['AGENTS.md', 'CLAUDE.md', '.claude/rule.md', '.agents/builder.md', 'loop/rules.sh']
+            for name in trusted:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('trusted')
+            git(path, 'add', '.')
+            git(path, 'commit', '-m', 'main')
+            base = git(path, 'rev-parse', 'HEAD')
+            for name in trusted + ['apps/AGENTS.md', '.claude/added.md']:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('proposed')
+            (root / 'product.txt').write_text('proposed product')
+            git(path, 'add', '.')
+            git(path, 'commit', '-m', 'PR')
+            head = git(path, 'rev-parse', 'HEAD')
+            subprocess.run(['bash', str(ROOT / 'loop/review-checkout.sh'), base], cwd=path, check=True)
+            self.assertEqual(git(path, 'rev-parse', 'HEAD'), head)
+            self.assertEqual((root / 'product.txt').read_text(), 'proposed product')
+            for name in trusted:
+                self.assertEqual((root / name).read_text(), 'trusted')
+            self.assertFalse((root / 'apps/AGENTS.md').exists())
+            self.assertFalse((root / '.claude/added.md').exists())
+
+    def test_l2_builder_hook_stamps_commits_and_preserves_existing_attribution(self):
+        with tempfile.TemporaryDirectory() as path:
+            new_repo(path)
+            subprocess.run(['bash', str(ROOT / 'loop/author.sh'), 'builder-test'], cwd=path,
+                           env={**os.environ, 'RUNNER_TEMP': path}, check=True)
+            git(path, 'commit', '--allow-empty', '-m', 'change')
+            self.assertEqual(git(path, 'log', '-1', '--format=%(trailers:key=Author-Agent,valueonly)'), 'builder-test')
+            git(path, 'commit', '--amend', '--allow-empty', '--no-edit')
+            self.assertEqual(git(path, 'log', '-1', '--format=%(trailers:key=Author-Agent,valueonly)'), 'builder-test')
+            git(path, 'commit', '--allow-empty', '-m', 'change', '-m', 'Author-Agent: another-author')
+            self.assertEqual(git(path, 'log', '-1', '--format=%(trailers:key=Author-Agent,valueonly)'), 'another-author')
+
+
+class L89(unittest.TestCase):
+    def test_l89_required_gate_rejects_failed_cancelled_and_skipped_lanes(self):
+        text = (ROOT / '.github/workflows/check.yml').read_text()
+        command = text.split('        run: test ')[1].splitlines()[0].strip()
+        for rust in ('success', 'failure', 'cancelled', 'skipped'):
+            for web in ('success', 'failure', 'cancelled', 'skipped'):
+                result = subprocess.run(['bash', '-c', 'test ' + command], env={**os.environ, 'RUST': rust, 'WEB': web})
+                self.assertEqual(result.returncode == 0, rust == web == 'success')
+
+    def test_l89_local_and_ci_use_the_same_recipes(self):
+        text = (ROOT / 'justfile').read_text()
+        self.assertIn('check: check-rust check-web', text)
+        workflows = (ROOT / '.github/workflows/check.yml').read_text()
+        self.assertIn('run: just check-rust', workflows)
+        self.assertIn('run: just check-web', workflows)
+        self.assertIn('needs: [rust, web]', workflows)
+
+
+if __name__ == '__main__':
+    unittest.main()
