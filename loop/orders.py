@@ -4,8 +4,12 @@ import json
 import re
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
+import trail
 
 
 def gh(*args):
@@ -116,7 +120,21 @@ def read_orders():
     with ThreadPoolExecutor(max_workers=8) as pool:
         blocked = dict(pool.map(dependencies, issues))
     prs = gh('pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,headRefName,body,isCrossRepository')
-    return classify(issues, blocked, prs)
+    return apply_trail(classify(issues, blocked, prs))
+
+
+def apply_trail(rows, now=None):
+    """L92: a ready Issue whose runs keep ending the same way waits; a Trail it cannot read raises (exit 4)."""
+    now = now or time.time()
+    for row in rows:
+        if row['state'] != 'ready':
+            continue
+        result, _ = trail.plan_for(row['issue'], now)
+        if result['until']:
+            row.update(state='waiting', wait_until=int(result['until']), wait_url=result['url'],
+                       reason='Trail: ended the same way again and again; next run after ' +
+                       datetime.fromtimestamp(result['until'], timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))
+    return rows
 
 
 def task(number):
@@ -131,7 +149,8 @@ def task(number):
     completion = ('Close this specification Issue only after its specification acceptance is demonstrated; implementation stays in its dependent Issue.'
                   if row['mode'] == 'specify' else
                   'Close this implementation Issue only when its full acceptance is demonstrated; a specification-only PR does not close it.')
-    print(f"Work order: {issue['html_url']}\n\n{issue['body']}\n\n"
+    history = trail.section(number)
+    print(f"Work order: {issue['html_url']}\n\n{issue['body']}\n{history}\n\n"
           f"Mode: {row['mode']}. Use this Issue as the canonical work order. Link the PR with Refs #{number}. "
           f"{completion} Use Closes #{number} when that condition holds. "
           "Put progress and unresolved engineering questions on the Issue, not in scenario Work tables.")
