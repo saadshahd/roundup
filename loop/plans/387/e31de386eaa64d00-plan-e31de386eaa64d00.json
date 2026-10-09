@@ -1,0 +1,78 @@
+{
+  "source": {
+    "number": 387,
+    "title": "U134, U135: visual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency",
+    "body": "<!-- work-order:scenarios/ui-visual.md:U134-U135 -->\n## Outcome\nvisual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency\n\n## Acceptance\nScenarios: U134, U135\nSpecification: [scenarios/ui-visual.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-visual.md)\n\n## Scope\n`apps/desktop/src/**/*.css`, `apps/desktop/src/drawer/**`\n\n## Preserve\nevery existing test\n\n## Dependencies\nafter U132 and U133 merge\n\n## Delivery\nExisting implementation: #349. Continue that PR; do not start another Builder.\n\n## Queue\nKey: U134-U135\nPriority: 100\nMigration state: in-flight\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/387",
+    "kind": "work",
+    "revision": "e31de386eaa64d003ac831ba7bc9e6cee4b54abdca88a46c8433275a3949a9f1"
+  },
+  "phase": "plan",
+  "trigger": "e31de386eaa64d003ac831ba7bc9e6cee4b54abdca88a46c8433275a3949a9f1",
+  "main": "a950d0a0411eb943a47d01e0f671fc2c6aa7aef2",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "U134 holds on main: with a Drawer open in the main workspace, the Rail and the Shelf compute `--sunken`, the pane and the Drawer `--ground`; no border is wider than 1 px or any colour but `--hairline`; only the Drawer has a `box-shadow` (`--shadow-drawer`); no `backdrop-filter` element contains another; and opening the Drawer does not change the Terminal's size (D8).",
+        "observer": "`u134_` tests in `apps/desktop/src/drawer/u134_surfaces.test.tsx` run on the task's main, plus an independent read of computed style on the rendered workspace in the browser harness (U26) with a Drawer open."
+      },
+      {
+        "statement": "U135 holds on main: under each of `prefers-color-scheme: dark`, `prefers-contrast: more`, `prefers-reduced-transparency: reduce` and `prefers-reduced-motion: reduce` alone, every Token takes its dark value in dark; `--grey` text computes as `--text` and `--hairline` 40% opaque under more contrast; no element has a `backdrop-filter` under reduced transparency; every duration except the instant changes is `0s` under reduced motion; text keeps 4.5:1 and every Glyph tone and focus ring 3:1 against its own ground; D1 to D9 hold in each, and D10 at 700 by 800.",
+        "observer": "`u135_` tests in `apps/desktop/src/app/u135_schemes.test.tsx` run on the task's main, plus `window.__checks()` (U137) evaluated in the browser harness under each media setting and at 700x800."
+      },
+      {
+        "statement": "In dark, the main workspace with a selected Terminal shows no light block: the pane's `--ground` (U134) extends through the Terminal, whose emulator background, foreground, cursor and selection are the dark values of `--ground`, `--text` and `--selected` (U59 read with U135's 'in dark every Token takes its dark value').",
+        "observer": "In the browser harness under `prefers-color-scheme: dark`, the `.xterm-viewport` computed background and the emulator theme read back equal the dark `--ground`/`--text`/`--selected`; a Vitest check compares the emulator's dark theme fields to the dark column of `tokens.css`."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 387,
+        "title": "U134, U135: visual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency",
+        "body": "<!-- work-order:scenarios/ui-visual.md:U134-U135 -->\n## Outcome\nvisual pass 3, surfaces and schemes: `--sunken` and `--ground`, the one hairline, the Drawer's shadow, dark, more contrast, reduced transparency\n\n## Acceptance\nScenarios: U134, U135\nSpecification: [scenarios/ui-visual.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui-visual.md)\n\n## Scope\n`apps/desktop/src/**/*.css`, `apps/desktop/src/drawer/**`\n\n## Preserve\nevery existing test\n\n## Dependencies\nafter U132 and U133 merge\n\n## Delivery\nExisting implementation: #349. Continue that PR; do not start another Builder.\n\n## Queue\nKey: U134-U135\nPriority: 100\nMigration state: in-flight\n\nImported from the Work table. The issue-backed queue is being installed; this issue does not create a second Builder. Completion requires delivery evidence, not a matching test name.\n",
+        "blocked_by": []
+      },
+      {
+        "issue": 0,
+        "title": "U59 dark: specify the Terminal's dark theme so it follows the scheme",
+        "body": "## Outcome\nU59 says the emulator's background is `--ground`, its foreground and cursor `--text`, its selection the Rail's band, and its 16 ANSI colours \"a light palette\". `apps/desktop/src/terminal/theme.ts` hard-codes the light values, so since #349 turned dark on (U135) the selected Terminal stays a white block inside a dark pane (#349's body: \"Not done: the Terminal's xterm theme is still the light palette\"). `docs/design-system.md` directs \"Light and dark\". This delivery amends U59 in `scenarios/ui.md` so the Terminal follows the active scheme; implementation is a later Work Issue blocked by this one.\n\n## Scope\n`scenarios/ui.md` (U59 only). Specification only: no code under `apps/`.\n\n## Acceptance\nThe amended U59 states, mechanically:\n- In each scheme, the emulator's `background`, `cursorAccent` are the active scheme's `--ground`; `foreground` and `cursor` its `--text`; `selectionBackground` its `--selected`; a scheme change while a Terminal is open repaints it without a reload or losing scrollback.\n- A dark ANSI palette of 16 colours, each at 4.5:1 or better as text on the dark `--ground`; a colour that cannot is named in the test with its measured ratio, none under 3:1; the light palette keeps its existing rule on the light `--ground`.\n- Under `prefers-contrast: more`, the default foreground is `--text` (unchanged) and no ANSI colour falls below 4.5:1.\n- A program that sets its own background is still drawn as it asks.\n- Observers: Vitest compares each theme field to the matching column of `tokens.css` in light and dark and computes each ANSI colour's contrast in both; the browser harness (U26) reads `.xterm-viewport`'s computed background equal to the dark `--ground` under `prefers-color-scheme: dark`.\n- Test names: `u59_` (amended), and states its Owns: `apps/desktop/src/terminal/**` and its stylesheet.\nObserver: an independent review of the specification PR checks each bullet above appears in U59 on its head, and that `just check` passes.\n\n## Preserve\nEvery existing U59 clause for light; U101\u2013U103 and U11\u2013U14 Terminal behaviour; every existing test.\n\n## Queue\nScenarios: U59\nSpecification: [scenarios/ui.md](https://github.com/saadshahd/roundup/blob/main/scenarios/ui.md)\nKey: U59-dark-spec\nPriority: 50\nMode: specify\nProvider: any\n",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "cd apps/desktop && npx vitest run src/drawer/u134_surfaces.test.tsx src/app/u135_schemes.test.tsx",
+        "output": "Test Files  2 passed (2)\n      Tests  19 passed (19)\n(on main a950d0a, which contains #349's merge commit 5baacb0)",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37960559092",
+        "proved": false,
+        "remaining": "The six `u134_` tests pass under jsdom. That proves only those tests. Still needed: independent exact-head verification against computed style in the browser harness with a Drawer open, including the Terminal's size when the Drawer opens."
+      },
+      {
+        "goal": 2,
+        "command": "cd apps/desktop && npx vitest run src/drawer/u134_surfaces.test.tsx src/app/u135_schemes.test.tsx",
+        "output": "Test Files  2 passed (2)\n      Tests  19 passed (19)",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37960559092",
+        "proved": false,
+        "remaining": "The thirteen `u135_` tests pass under jsdom, with `testing/media.ts` emulating the media settings. Still needed: `window.__checks()` D1\u2013D10 in a real browser under each media setting and at 700x800. Also unresolved: whether the light Terminal inside the dark pane breaks D1/D8 in dark (see goal 3)."
+      },
+      {
+        "goal": 3,
+        "command": "sed -n 1,10p apps/desktop/src/terminal/theme.ts; gh pr view 349 --json body",
+        "output": "terminalTheme: background \"#ffffff\", foreground \"#1d1d1f\", cursor \"#1d1d1f\", selectionBackground \"rgba(0, 0, 0, 0.05)\" (light only, no scheme switch). PR #349 body: \"Not done: the Terminal's xterm theme (`terminal/theme.ts`) is still the light palette, so the Terminal stays light in dark; it is outside this row's Owns.\"",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37960559092",
+        "proved": false,
+        "remaining": "Not met on main: the Terminal is light in dark. U59 specifies only a light ANSI palette, so the implementation first needs the U59-dark-spec specification delivery. An implementation Work Issue blocked by it follows in a later batch."
+      }
+    ],
+    "rules": [
+      {
+        "path": "scenarios/ui.md",
+        "content": "**U59 the terminal blends with the app.** (amended clause) In each colour scheme the emulator's `background` and `cursorAccent` are that scheme's `--ground`, its `foreground` and `cursor` that scheme's `--text`, and its `selectionBackground` that scheme's `--selected`; when the scheme changes while a Terminal is open, the emulator repaints with the new values without a reload and keeps its scrollback. The 16 ANSI colours come from a light palette in light and a dark palette in dark, each reading at 4.5:1 or better as text on that scheme's `--ground` (U4's rule); a colour that cannot is named in the test with its measured ratio and scheme, and none is under 3:1. Observers: Vitest checks each emulator theme field against the light and the dark `:root` of `tokens.css` and computes each ANSI colour's contrast in both schemes; in the browser harness (U26), under `prefers-color-scheme: dark`, `.xterm-viewport`'s computed background is the colour the dark `--ground` resolves to. Test: `u59_`.",
+        "cases": "Rule (widen): any colour the App paints, whether through a stylesheet or a JS option object (xterm `ITheme`, canvas), is the value of a Token in the active scheme, and a scheme change repaints it. Cases: (1) Terminal background in dark. Wrong: #ffffff, a white block in a dark pane. Right: dark `--ground`. (2) Terminal foreground and cursor in dark. Wrong: #1d1d1f on dark. Right: dark `--text`. (3) Selection in dark. Wrong: rgba(0,0,0,.05), invisible on dark. Right: dark `--selected`. (4) ANSI `black` (#1d1d1f) in dark. Wrong: unreadable on the dark ground. Right: a dark-palette entry at 4.5:1. Probes: the user switches the scheme with a Terminal open \u2192 it repaints without a reload; prefers-contrast: more \u2192 foreground stays `--text`; a program sets its own background \u2192 it is drawn as asked (exception kept); the WebGL renderer \u2192 the same theme fields; the U83 earlier-run snapshot \u2192 follows the scheme; the empty-Terminal notch (U55) \u2192 uses Tokens; the PadDrawer \u2192 already Tokens via CSS; the Rail Glyphs \u2192 CSS Tokens, unaffected; light scheme \u2192 the existing light palette, unchanged; reduced motion \u2192 no repaint animation. Counterexample hunted: a program's own truecolour background. Narrowed by keeping U59's 'drawn as it asks' exception."
+      }
+    ],
+    "question": ""
+  }
+}
