@@ -53,6 +53,7 @@ jobs:
     outputs:
       pr: ${{ steps.task.outputs.pr }}
       branch: ${{ steps.task.outputs.branch }}
+      cause: ${{ steps.task.outputs.cause }}
       prompt: ${{ steps.task.outputs.prompt }}
     steps:
       - uses: actions/checkout@v4
@@ -73,8 +74,11 @@ jobs:
           [ "$code" = 0 ] || exit "$code"
           printf '\nYour Author-Agent id is builder-%s.\n' "$GITHUB_RUN_ID" >>"$RUNNER_TEMP/task.md"
           python3 loop/builder.py prompt <"$RUNNER_TEMP/task.md"
-          echo "branch=$(gh pr view "$PR" --json headRefName --jq .headRefName)" >>"$GITHUB_OUTPUT"
-          echo "pr=$PR" >>"$GITHUB_OUTPUT"
+          {
+            echo "branch=$(gh pr view "$PR" --json headRefName --jq .headRefName)"
+            echo "pr=$PR"
+            echo "cause=$CAUSE"
+          } >>"$GITHUB_OUTPUT"
 
   fix-run:
     needs: task
@@ -156,7 +160,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ needs.task.outputs.pr }}
-          CAUSE: ${{ inputs.cause || (github.event.workflow_run.name == 'loop' && 'rules' || 'check') }}
+          CAUSE: ${{ needs.task.outputs.cause }}
           RAN: ${{ needs.fix-run.outputs.ran || 'false' }}
         run: python3 loop/builder.py fixed "$PR" "$CAUSE" "$RAN"
 
