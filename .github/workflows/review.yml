@@ -1,26 +1,19 @@
 name: review
-run-name: "${{ inputs.pr && format('Review PR #{0}', inputs.pr) || format('Review {0}', github.event.workflow_run.head_branch) }}"
+run-name: Review ${{ github.event.workflow_run.head_branch }}
 
-# L24: one Reviewer run per Code PR head, once check passes on it. The Reviewer holds only a read token and answers in
-# a fixed schema; the post job publishes that answer as the verdict merge-ready trusts. It runs on Opus, since a
-# missed defect merges; Builders and the Retro run on Sonnet, whose misses the Reviewer or the user still sees.
+# L24: one review run per PR head, once check passes on it. A workflow_run job runs main's copy of this file, so no PR
+# changes its own review. The review run holds a read token and answers in a fixed schema; `post` publishes the answer
+# as a VERDICT comment and the `review` status the ruleset requires, and a reject starts a fix run. It runs on Opus,
+# since a missed defect merges; build and fix runs use Sonnet, whose misses the review run still sees.
 on:
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: PR needing review
-        required: true
-      head:
-        description: Expected PR head
-        required: true
   workflow_run:
-    workflows: [check, loop, visual]
+    workflows: [check]
     types: [completed]
 
-# Duplicate review dispatches queue; the shared PR Claim prevents duplicate model runs.
+# The newest head of a branch wins; an older head's review has nothing left to decide.
 concurrency:
-  group: review-${{ inputs.pr || github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
+  group: review-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -31,47 +24,44 @@ defaults:
     shell: bash
 
 jobs:
-  # Reads main's scripts and shared Builder prompt, never the PR's.
-  due:
+  task:
     if: >-
-      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)
+      github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      actions: read
-      checks: read
+      contents: read
+      issues: read
       pull-requests: read
     outputs:
-      pr: ${{ steps.due.outputs.pr }}
-      head: ${{ steps.due.outputs.head }}
-      prompt: ${{ steps.due.outputs.prompt }}
+      pr: ${{ steps.task.outputs.pr }}
+      head: ${{ github.event.workflow_run.head_sha }}
+      prompt: ${{ steps.task.outputs.prompt }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
           persist-credentials: false
-      - id: due
+      - id: task
         env:
           GH_TOKEN: ${{ github.token }}
           PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
-          HEAD: ${{ inputs.head || github.event.workflow_run.head_sha }}
+          HEAD: ${{ github.event.workflow_run.head_sha }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
-          PR: ${{ inputs.pr }}
-          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
         run: |
-          pr="$PR"
-          if [ -z "$pr" ]; then
-            pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
-          fi
+          pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
           [ -n "$pr" ] || exit 0
-          python3 loop/outcome.py report python3 loop/dispatch.py start "$pr" review "$HEAD"
+          code=0
+          python3 loop/builder.py review-task "$pr" "$HEAD" >"$RUNNER_TEMP/task.md" || code=$?
+          # 3: a draft, or the PR moved on; `gh pr ready` reruns check and so this review.
+          [ "$code" != 3 ] || exit 0
+          [ "$code" = 0 ] || exit "$code"
+          python3 loop/builder.py prompt <"$RUNNER_TEMP/task.md"
+          echo "pr=$pr" >>"$GITHUB_OUTPUT"
 
-  review:
-    needs: due
-    if: needs.due.outputs.pr != ''
+  review-run:
+    needs: task
+    if: needs.task.outputs.pr != ''
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -84,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.due.outputs.head }}
+          ref: ${{ needs.task.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
       - name: Install main's reviewer instructions
@@ -94,7 +84,7 @@ jobs:
         env:
           PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
         with:
-          prompt: ${{ needs.due.outputs.prompt }}
+          prompt: ${{ needs.task.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           allowed_bots: claude,github-actions
@@ -103,54 +93,36 @@ jobs:
             --max-turns 60
             --allowedTools Bash,Read,Glob,Grep,Skill
             --json-schema '{"type":"object","properties":{"verdict":{"enum":["approve","reject"]},"findings":{"type":"string"}},"required":["verdict","findings"]}'
-      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
-      - if: always()
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          path: .loop-ledger
-          sparse-checkout: |
-            .github/actions/ledger
-            loop
-          persist-credentials: false
-      - if: always()
-        uses: ./.loop-ledger/.github/actions/ledger
-        with:
-          role: reviewer
-          subject: ${{ needs.due.outputs.pr }}
-          execution-file: ${{ steps.claude.outputs.execution_file }}
-          redact-token: ${{ steps.claude.outputs.github_token }}
-          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          redact-percy: ${{ secrets.PERCY_TOKEN }}
-          conclusion: ${{ steps.claude.outcome }}
 
+  # Runs when the review run fails too: no answer becomes an `error` status and a question to the user.
   post:
-    needs: [due, review]
+    needs: [task, review-run]
+    if: ${{ !cancelled() && needs.task.outputs.pr != '' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: write
-      issues: write
       actions: write
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
           persist-credentials: false
       - env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ needs.due.outputs.pr }}
-          HEAD: ${{ needs.due.outputs.head }}
-          ANSWER: ${{ needs.review.outputs.answer }}
-        run: printf '%s' "$ANSWER" | loop/runs.sh verdict "$PR" "$HEAD" "reviewer-$GITHUB_RUN_ID"
+          PR: ${{ needs.task.outputs.pr }}
+          HEAD: ${{ needs.task.outputs.head }}
+          ANSWER: ${{ needs.review-run.outputs.answer }}
+        run: printf '%s' "$ANSWER" | python3 loop/builder.py review-post "$PR" "$HEAD" "reviewer-$GITHUB_RUN_ID"
 
   summary:
-    needs: [due, review, post]
+    needs: [task, review-run, post]
     if: always()
     permissions: {}
     uses: ./.github/workflows/summary.yml
     with:
       results: ${{ toJSON(needs) }}
       purpose: Independently review a PR head
-      next: An approval enables the merge gate; a rejection goes to repair. No new product decision is required.
+      next: An approval passes the review status; a reject on a Builder PR starts a fix run.
