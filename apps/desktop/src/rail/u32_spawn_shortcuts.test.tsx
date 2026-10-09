@@ -148,6 +148,6 @@ describe("u32 spawn shortcuts and pinned actions", () => {
 
     sheet.remove();
 
-    expect(pinned).toEqual(["sticky", "0px", "var(--ground)"]);
+    expect(pinned).toEqual(["sticky", "0px", "var(--sunken)"]);
   });
 });

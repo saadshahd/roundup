@@ -6,7 +6,7 @@
   gap: 16px;
   height: var(--rail-actions-height);
   box-sizing: border-box;
-  background: var(--ground);
+  background: var(--sunken);
 }
 
 .rail-row {
@@ -107,7 +107,7 @@
   position: sticky;
   bottom: var(--rail-actions-height);
   z-index: 1;
-  background: var(--ground);
+  background: var(--sunken);
 }
 
 .rail-row {

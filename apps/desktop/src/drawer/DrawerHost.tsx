@@ -56,6 +56,7 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
       class="drawer"
       aria-label="drawer"
       inert={!isOpen()}
+      data-open={isOpen()}
       ref={setPanel}
       style={{
         position: "absolute",
