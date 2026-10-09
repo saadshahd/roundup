@@ -68,7 +68,7 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
       const to = nameOf(message.to);
       const folded = isBetweenAgents(message, nodeIds()) && !expanded();
 
-      return { id: message.id, folded, text: folded ? foldedLine(from, to, message) : fullLine(from, to, message) };
+      return { id: message.id, status: message.status, folded, text: folded ? foldedLine(from, to, message) : fullLine(from, to, message) };
     }),
   );
 
@@ -232,7 +232,7 @@ export const Thread = (props: { selectionOf: (terminalId: string | null) => stri
       <div class="thread-feed" role="log" aria-label="thread" tabIndex={0} ref={(element) => (feedElement = element)}>
         <For each={lines()}>
           {(line) => (
-            <p class="thread-line" data-message={line.id} data-folded={line.folded}>
+            <p class="thread-line" data-message={line.id} data-status={line.status} data-folded={line.folded}>
               {line.text}
             </p>
           )}
