@@ -2,13 +2,16 @@ use std::io::Read;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use contracts::agent::SignalParams;
+use contracts::agent::{Brief, NodeId, SignalParams};
 use contracts::decision::{PermissionOutput, PermissionParams};
 use contracts::{Actor, ActorKind};
 use serde_json::{Value, json};
 
 /// How long `rup signal` waits for the Daemon: well inside the 5 s Claude Code gives a hook.
 const SIGNAL_DEADLINE: Duration = Duration::from_secs(1);
+
+/// How long `rup context` waits for the Daemon: inside the 5 s Claude Code gives a hook.
+const CONTEXT_DEADLINE: Duration = Duration::from_secs(4);
 
 /// What `rup signal` says when it cannot know whether the Daemon took the Signal.
 const MAYBE_ARRIVED: &str = "the Signal may or may not have arrived";
@@ -25,6 +28,9 @@ async fn main() -> ExitCode {
         ["signal", agent_id] => signal(agent_id).await,
         // Exit 2 would tell Claude Code to block its tool call or prompt; `signal` only ever exits 1.
         ["signal", ..] => Err("usage: rup signal <agent-id>".into()),
+        ["context", agent_id] => return context(agent_id).await,
+        // As for `signal`: only exit 1, never 2.
+        ["context", ..] => Err("usage: rup context <agent-id>".into()),
         ["permission", agent_id] => permission(agent_id).await,
         // As for `signal`: exit 2 would block the tool call.
         ["permission", ..] => Err("usage: rup permission <agent-id>".into()),
@@ -47,7 +53,7 @@ async fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: rup ping | rup signal <agent-id> | rup permission <agent-id> | rup mcp <agent-id>"
+        "usage: rup ping | rup signal <agent-id> | rup context <agent-id> | rup permission <agent-id> | rup mcp <agent-id>"
     );
     ExitCode::from(2)
 }
@@ -90,6 +96,41 @@ async fn signal(agent_id: &str) -> Result<(), String> {
                 SIGNAL_DEADLINE.as_secs()
             )
         })?
+}
+
+/// E3: Claude Code runs this as the Agent's second `SessionStart` hook. It prints what the Daemon's
+/// `agent.brief` returns and nothing else. Whatever goes wrong is one line on stderr and exit 0,
+/// so the Agent still starts, without its Context.
+async fn context(agent_id: &str) -> ExitCode {
+    let told = tokio::time::timeout(CONTEXT_DEADLINE, brief(agent_id)).await;
+    match told {
+        Ok(Ok(brief)) => print!("{}", brief.stdout),
+        Ok(Err(why)) => eprintln!("rup: no Context from the Daemon at {}: {why}", socket()),
+        Err(_) => eprintln!(
+            "rup: the Daemon at {} did not answer within {} s; no Context",
+            socket(),
+            CONTEXT_DEADLINE.as_secs()
+        ),
+    }
+    ExitCode::SUCCESS
+}
+
+fn socket() -> String {
+    rpc::socket_path().map_or_else(|err| err.to_string(), |path| path.display().to_string())
+}
+
+async fn brief(agent_id: &str) -> Result<Brief, String> {
+    let client = identified(agent_id).await?;
+    let reply = client
+        .request(
+            "agent.brief",
+            NodeId {
+                id: agent_id.to_owned(),
+            },
+        )
+        .await
+        .map_err(hung_up)?;
+    serde_json::from_value(reply).map_err(|err| format!("the reply is unreadable: {err}"))
 }
 
 /// H8: Claude Code runs this as the Agent's `PermissionRequest` hook. It prints exactly the reply

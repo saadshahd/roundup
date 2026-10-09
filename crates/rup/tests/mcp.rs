@@ -150,7 +150,7 @@ fn assert_exit_1_with_one_line_naming(output: &Output, socket: &Path) {
     assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
 }
 
-const M1_METHODS: [&str; 17] = [
+const M1_METHODS: [&str; 18] = [
     "todo.create",
     "todo.get",
     "todo.list",
@@ -169,6 +169,8 @@ const M1_METHODS: [&str; 17] = [
     "message.get",
     "message.list",
     "message.pass",
+    // E2
+    "agent.context",
 ];
 
 #[tokio::test]
@@ -270,6 +272,8 @@ async fn m1_input_schemas_are_the_contract_schemas() {
     }
     assert_eq!(schema("todo_list"), json!({ "type": "object" }));
     assert_eq!(schema("pad_list"), json!({ "type": "object" }));
+    // E4: the shim fills the id, so the tool takes no input.
+    assert_eq!(schema("agent_context"), json!({ "type": "object" }));
 }
 
 #[tokio::test]

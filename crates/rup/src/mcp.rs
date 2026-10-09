@@ -29,6 +29,8 @@ struct Offered {
     method: &'static str,
     tool: Tool,
     takes_params: bool,
+    /// E4: the params are `{id}` with the shim's own Agent id, and the tool takes no input.
+    own_id: bool,
     /// H14: the call waits for the user, so no `CALL_TIMEOUT` applies and its result is the answer's text.
     waits_for_user: bool,
 }
@@ -76,6 +78,7 @@ fn ask_user() -> Offered {
             schema,
         ),
         takes_params: true,
+        own_id: false,
         waits_for_user: true,
     }
 }
@@ -95,7 +98,19 @@ fn offer(
         method,
         tool: Tool::new(method.replace('.', "_"), description, schema),
         takes_params,
+        own_id: false,
         waits_for_user: false,
+    }
+}
+
+/// E4: `agent.context` takes `{id}`; the shim fills it, so the Agent's tool takes no input.
+fn agent_context() -> Offered {
+    Offered {
+        own_id: true,
+        ..offered_without_params(
+            "agent.context",
+            "Ask where you stand now: whom you report to, whom to ask, your peers and your open Todos.",
+        )
     }
 }
 
@@ -131,6 +146,7 @@ fn offered_tools() -> Vec<Offered> {
             "message.pass",
             "Pass a question sent to you on to the next Door above, at once.",
         ),
+        agent_context(),
         ask_user(),
     ]
 }
@@ -172,14 +188,35 @@ impl Shim {
             })?
     }
 
+    /// E6: tell the Daemon this Agent's `rup mcp` is up, once, on the start connection (after its
+    /// `daemon.identify`) and before any tool call. A refusal or silence is one line on stderr:
+    /// the tools still work, and the Daemon's Channel says `missing` on its own.
+    async fn report_channel(&self, start: &rpc::Client) {
+        let up = start.request(
+            "agent.channelUp",
+            contracts::agent::NodeId {
+                id: self.actor.id.clone(),
+            },
+        );
+        match tokio::time::timeout(CALL_TIMEOUT, up).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => eprintln!("rup: the Daemon did not take the Channel report: {err}"),
+            Err(_) => eprintln!(
+                "rup: no answer to the Channel report within {}s",
+                CALL_TIMEOUT.as_secs()
+            ),
+        }
+    }
+
     async fn call(
         &self,
         offer: &Offered,
         arguments: Option<JsonObject>,
     ) -> Result<Result<Value, RpcError>, Gone> {
-        let params = match (offer.takes_params, arguments) {
-            (true, arguments) => Value::Object(arguments.unwrap_or_default()),
-            (false, _) => Value::Null,
+        let params = match (offer.takes_params, offer.own_id, arguments) {
+            (_, true, _) => serde_json::json!({ "id": self.actor.id }),
+            (true, false, arguments) => Value::Object(arguments.unwrap_or_default()),
+            (false, false, _) => Value::Null,
         };
         let client = self.connect().await?;
         if offer.waits_for_user {
@@ -276,7 +313,9 @@ async fn serve(id: String) -> Result<(), String> {
         tools: offered_tools(),
         gone,
     };
-    shim.connect().await.map_err(|gone| gone.to_string())?;
+    let start = shim.connect().await.map_err(|gone| gone.to_string())?;
+    shim.report_channel(&start).await;
+    drop(start);
     let running = shim
         .serve(rmcp::transport::stdio())
         .await
