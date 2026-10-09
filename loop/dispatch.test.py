@@ -449,7 +449,7 @@ class PublicationPermissions(unittest.TestCase):
 class L89(unittest.TestCase):
     def test_l89_required_gate_rejects_failed_cancelled_and_skipped_lanes(self):
         text = (ROOT / '.github/workflows/check.yml').read_text()
-        command = text.split('        run: test ')[1].strip()
+        command = text.split('        run: test ')[1].splitlines()[0].strip()
         for rust in ('success', 'failure', 'cancelled', 'skipped'):
             for web in ('success', 'failure', 'cancelled', 'skipped'):
                 result = subprocess.run(['bash', '-c', 'test ' + command], env={**os.environ, 'RUST': rust, 'WEB': web})

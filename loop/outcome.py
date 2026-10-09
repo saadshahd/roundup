@@ -68,14 +68,28 @@ def observation(branch, number=None):
     return delivery(prs)
 
 
+def summary(title, text):
+    """A bounded, redacted explanation on the Actions run, independent of its verdict."""
+    if os.environ.get('GITHUB_STEP_SUMMARY'):
+        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+            output.write('### ' + html.escape(redact(title, os.environ)) + '\n\n' + redact(text, os.environ)[:12000] + '\n\n')
+
+
+def report(command):
+    result = subprocess.run(command, text=True, capture_output=True, timeout=600)
+    text = redact(result.stdout + result.stderr, os.environ)
+    print(text, end='')
+    summary(' '.join(command[1:]), '<pre>' + html.escape(text[:10000] or 'No work selected.') + '</pre>')
+    return result.returncode
+
+
 def observe(branch, number=None):
     report = observation(branch, number)
     # This is an observation, never a verdict, approval, or attribution of a concurrent push.
     text = 'Delivery observation: ' + json.dumps(report)
     print(text)
-    if os.environ.get('GITHUB_STEP_SUMMARY'):
-        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-            summary.write('<pre>' + html.escape(text) + '</pre>\n')
+    link = f" [PR #{report['number']}]({report['url']})" if 'number' in report else ''
+    summary('Delivery: ' + report['state'], report['message'] + link)
     return 0 if report['state'] in ('ready', 'merged') else 1
 
 
@@ -83,11 +97,17 @@ if __name__ == '__main__':
     try:
         if len(sys.argv) == 3 and sys.argv[1] == 'explain':
             events = json.loads(Path(sys.argv[2]).read_text()) if sys.argv[2] and Path(sys.argv[2]).is_file() else []
-            print(json.dumps(model_outcome(events, os.environ)))
+            result = model_outcome(events, os.environ)
+            summary('Agent explanation (model claim) — ' + result['result'],
+                    (result['text'] or 'No final explanation was available. Check the failed or cancelled step below.')
+                    + ('\n\nExplanation truncated at 8000 characters.' if result['truncated'] else ''))
+            print(json.dumps(result))
+        elif len(sys.argv) >= 3 and sys.argv[1] == 'report':
+            sys.exit(report(sys.argv[2:]))
         elif len(sys.argv) in (3, 4) and sys.argv[1] == 'observe':
             sys.exit(observe(sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else None))
         else:
-            sys.exit('usage: outcome.py explain <execution-file> | observe <branch> [pr]')
+            sys.exit('usage: outcome.py explain <execution-file> | observe <branch> [pr] | report <command>...')
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         # Never echo malformed execution data or subprocess output, which may hold credentials.
         print('Outcome evidence unavailable: extraction or GitHub observation failed.', file=sys.stderr)
