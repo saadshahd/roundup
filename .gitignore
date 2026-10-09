@@ -4,3 +4,4 @@ target/
 dist/
 .roundup/
 .percy/
+__pycache__/

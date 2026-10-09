@@ -1,29 +1,25 @@
 name: build
-run-name: "${{ inputs.pr && format('Repair PR #{0}', inputs.pr) || 'Build ready rows' }}"
+run-name: Build ready work Issues
 
-# L23: one-shot Builder runs. GitHub does the waiting: a tick claims ready Work rows while up to four Builders run
-# across all ticks. A PR dispatch checks current evidence and claims one bounded repair (L88).
-# Each row refills independently when its Builder ends.
+# L23: one-shot build runs. `pick` starts the fix runs open Builder PRs need and fills up to four build jobs with ready
+# work Issues; each build job builds one Issue. `after` holds the write token the Builder never sees: it hands each
+# run's PR on, or strikes its Issue (L81).
 on:
+  push:
+    branches: [main]
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '17 * * * *'
+  issues:
+    types: [labeled]
   workflow_dispatch:
     inputs:
-      pr:
-        description: A PR to repair or diagnose; empty builds ready rows
-        required: false
-        default: ''
-      head:
-        description: Expected PR head; stale dispatches do no work
-        required: false
       max:
-        description: Builder runs at most
+        description: Build jobs at most
         required: false
         default: '4'
 
 permissions:
   contents: read
-  issues: write
 
 # L82: bash -eo pipefail, so a failure left of a pipe fails the step.
 defaults:
@@ -31,129 +27,89 @@ defaults:
     shell: bash
 
 jobs:
-  # One queue job at a time, so two ticks never claim one row; Builders of earlier ticks keep running meanwhile.
-  # Its checkout keeps the token that pushes the Claims; it runs main's scripts only.
-  queue:
-    if: ${{ !inputs.pr }}
+  # One pick at a time, so two triggers never start one Issue twice; build jobs of earlier runs keep running.
+  pick:
+    if: github.event_name != 'issues' || github.event.label.name == 'ready-for-agent'
     runs-on: ubuntu-latest
     concurrency:
-      group: build-queue
+      group: build-pick
       cancel-in-progress: false
     permissions:
-      actions: read
-      issues: write
-      contents: write
+      actions: write
+      contents: read
+      issues: read
       pull-requests: read
     outputs:
-      rows: ${{ steps.queue.outputs.rows }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: queue
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MAX: ${{ inputs.max || '4' }}
-        run: |
-          loop/runs.sh recover
-          rows=$(loop/runs.sh queue "$MAX" | loop/runs.sh claim)
-          echo "rows=$rows" >>"$GITHUB_OUTPUT"
-
-  build:
-    needs: queue
-    if: needs.queue.outputs.rows != '[]'
-    name: build (${{ matrix.row.ids }}, ${{ matrix.row.file }}, ${{ matrix.row.slug }})
-    strategy:
-      fail-fast: false
-      matrix:
-        row: ${{ fromJSON(needs.queue.outputs.rows) }}
-    uses: ./.github/workflows/build-row.yml
-    with:
-      row: ${{ toJSON(matrix.row) }}
-    secrets: inherit
-    # The reusable workflow narrows the agent job to read; only its after job can dispatch/write.
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      actions: write
-      id-token: write
-
-  # Trusted main owns the Claim and constructs the task before PR code is checked out.
-  repair-due:
-    if: ${{ inputs.pr }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
-      pull-requests: read
-      checks: read
-    outputs:
-      branch: ${{ steps.due.outputs.branch }}
-      head: ${{ steps.due.outputs.head }}
-      cause: ${{ steps.due.outputs.cause }}
-      prompt: ${{ steps.due.outputs.prompt }}
+      rows: ${{ steps.pick.outputs.rows }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
           persist-credentials: false
-      - id: due
+      - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
-          HEAD: ${{ inputs.head }}
-          CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
-        run: python3 loop/outcome.py report python3 loop/dispatch.py start "$PR" fix "$HEAD"
+          MAX: ${{ inputs.max || '4' }}
+        run: echo "rows=$(python3 loop/builder.py pick "$MAX")" >>"$GITHUB_OUTPUT"
 
-  fix:
-    needs: repair-due
-    if: needs.repair-due.outputs.branch != ''
+  build:
+    needs: pick
+    if: needs.pick.outputs.rows != '[]'
+    name: 'build #${{ matrix.row.issue }}'
+    strategy:
+      fail-fast: false
+      matrix:
+        row: ${{ fromJSON(needs.pick.outputs.rows) }}
+    # A second job for one Issue waits, then finds the first one's PR and starts no run.
     concurrency:
-      group: build-${{ inputs.pr }}
+      group: build-${{ matrix.row.issue }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
       contents: read
+      issues: read
       pull-requests: read
       id-token: write
-    outputs:
-      branch: ${{ steps.current.outputs.ok == 'true' && needs.repair-due.outputs.branch || '' }}
-      explanation: ${{ steps.ledger.outputs.explanation }}
+    env:
+      ISSUE: ${{ matrix.row.issue }}
+      SLUG: ${{ matrix.row.slug }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.repair-due.outputs.branch }}
+          ref: main
           fetch-depth: 0
           persist-credentials: false
-      # Old PR branches may still contain macOS-only setup; main selects the runner.
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          path: .loop-setup
-          sparse-checkout: .github/actions/setup
-          persist-credentials: false
-      - uses: ./.loop-setup/.github/actions/setup
+      # The Builder switches this checkout to its branch; the end of the job runs main's copy.
+      - run: |
+          cp -R loop "$RUNNER_TEMP/loop"
+          mkdir "$RUNNER_TEMP/built"
+          echo "{\"issue\": $ISSUE, \"slug\": \"$SLUG\", \"ran\": false}" >"$RUNNER_TEMP/built/$ISSUE.json"
+      - uses: ./.github/actions/setup
         with:
           browser: 'true'
       - name: Stamp Builder commits
-        run: git show origin/main:loop/author.sh | bash -s -- "builder-$GITHUB_RUN_ID"
-      - id: current
+        run: bash loop/author.sh "builder-$GITHUB_RUN_ID"
+      - id: task
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
-          HEAD: ${{ needs.repair-due.outputs.head }}
         run: |
-          current=$(gh pr view "$PR" --json state,headRefOid --jq 'select(.state == "OPEN") | .headRefOid')
-          if [ "$current" = "$HEAD" ]; then echo 'ok=true' >>"$GITHUB_OUTPUT"; fi
+          code=0
+          python3 loop/orders.py task "$ISSUE" >"$RUNNER_TEMP/task.md" || code=$?
+          # 3: another run or a person took the Issue since the pick; that ends this job with no run.
+          [ "$code" != 3 ] || exit 0
+          [ "$code" = 0 ] || exit "$code"
+          printf '\nBuild on branch build/%s from origin/main. Your Author-Agent id is builder-%s.\n' "$SLUG" "$GITHUB_RUN_ID" >>"$RUNNER_TEMP/task.md"
+          python3 loop/builder.py prompt <"$RUNNER_TEMP/task.md"
+          echo 'due=true' >>"$GITHUB_OUTPUT"
       - id: claude
-        if: steps.current.outputs.ok == 'true'
+        if: steps.task.outputs.due == 'true'
         uses: anthropics/claude-code-action@v1
         # Isolated CLI observers use a fresh config and cannot inherit the action's stored login.
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
-          prompt: ${{ needs.repair-due.outputs.prompt }}
+          prompt: ${{ steps.task.outputs.prompt }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: claude,github-actions
           # The App's default token omits workflows; writers need to publish proposed workflow changes.
@@ -163,69 +119,55 @@ jobs:
             workflows: write
           claude_args: >-
             --model claude-sonnet-5-5
-            --max-turns 100
+            --max-turns 150
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,Skill,TodoWrite
-      # A git checkout tolerates skill symlinks that GitHub's remote-action archive loader rejects.
+      - if: always() && steps.task.outputs.due == 'true'
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          ran=false
+          if python3 "$RUNNER_TEMP/loop/builder.py" worked "$EXECUTION_FILE"; then ran=true; fi
+          echo "{\"issue\": $ISSUE, \"slug\": \"$SLUG\", \"ran\": $ran}" >"$RUNNER_TEMP/built/$ISSUE.json"
       - if: always()
-        uses: actions/checkout@v4
+        uses: actions/upload-artifact@v4
         with:
-          ref: main
-          path: .loop-ledger
-          sparse-checkout: |
-            .github/actions/ledger
-            loop
-          persist-credentials: false
-      - if: always()
-        id: ledger
-        uses: ./.loop-ledger/.github/actions/ledger
-        with:
-          role: builder
-          subject: ${{ inputs.pr }}
-          execution-file: ${{ steps.claude.outputs.execution_file }}
-          redact-token: ${{ steps.claude.outputs.github_token }}
-          redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          conclusion: ${{ steps.claude.outcome }}
+          name: built-${{ matrix.row.issue }}
+          path: ${{ runner.temp }}/built/${{ matrix.row.issue }}.json
+          if-no-files-found: error
+          retention-days: 7
 
-  # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
-  after-fix:
-    needs: [repair-due, fix]
-    if: always() && needs.fix.outputs.branch
+  after:
+    needs: [pick, build]
+    if: always() && needs.pick.result == 'success' && needs.pick.outputs.rows != '[]'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: write
+      contents: read
       issues: write
       pull-requests: write
-      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           persist-credentials: false
-      # L92: the end entry goes on the Issue the PR links; a post failure still lets the draft check run.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: built-*
+          path: ${{ runner.temp }}/built
+          merge-multiple: true
       - env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ needs.fix.outputs.branch }}
-          PR: ${{ inputs.pr }}
-          CAUSE: ${{ needs.repair-due.outputs.cause }}
-          START: ${{ needs.repair-due.outputs.head }}
-          RESULT: ${{ needs.fix.outputs.explanation }}
-        run: python3 loop/trail.py end-pr "$PR" builder "$CAUSE" "$BRANCH" "$START"
-      - if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ needs.fix.outputs.branch }}
-          PR: ${{ inputs.pr }}
         run: |
-          loop/runs.sh stopped "$BRANCH"
-          python3 loop/outcome.py observe "$BRANCH" "$PR"
-          python3 loop/dispatch.py repaired "$PR"
+          for row in "$RUNNER_TEMP"/built/*.json; do
+            python3 loop/builder.py built "$(jq -r .issue "$row")" "$(jq -r .slug "$row")" "$(jq -r .ran "$row")"
+          done
 
   summary:
-    needs: [queue, build, repair-due, fix, after-fix]
+    needs: [pick, build, after]
     if: always()
     permissions: {}
     uses: ./.github/workflows/summary.yml
     with:
       results: ${{ toJSON(needs) }}
-      purpose: Build or repair work Issues
-      next: Reconciliation selects the next eligible work or repair after this run ends.
+      purpose: Build ready work Issues
+      next: Each PR goes through check and review to auto-merge; a draft with a Stopped line waits on the user.
