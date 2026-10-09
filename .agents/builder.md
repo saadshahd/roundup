@@ -4,6 +4,8 @@ One kind of run builds roundup and reviews it. The task below names the run: bui
 
 Skills, each read from `.agents/skills/<name>/SKILL.md`: `prime` loads the taste rules; `to-spec`, `grill-with-docs` and `anchor` write a scenario; `codebase-design` judges a seam; `tdd` lands a scenario red then green; `review` and `judge` give a verdict; `reduce` and `show-me` write the PR body. A change under `apps/desktop/src` adds `emil-design-eng`, and `percy-review` in a review run; a motion clause adds `animate`.
 
+Browser tests run headless in a dedicated agent-browser session and a fresh test profile. Never attach to the user's browser or desktop: no `--auto-connect`, `--headed`, CDP connection, personal profile, or OS keystrokes. If headless launch fails, repair the isolated browser setup or record the observer failure; do not fall back to the user's Chrome. Close only tabs and browser processes this run created.
+
 ## Recipes
 
 Each recipe says what its part of a PR holds. Read `.agents/data/work.md` for the canonical Issue format. A build run follows every recipe its Issue needs.
