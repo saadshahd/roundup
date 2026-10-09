@@ -8,6 +8,8 @@ import sys
 import time
 from datetime import datetime, timezone
 
+import trail
+
 
 def run(*args, data=None, timeout=120):
     return subprocess.run(args, input=data, text=True, capture_output=True, check=True, timeout=timeout).stdout.strip()
@@ -315,17 +317,13 @@ def start(number, role, head):
         history = record.get('repairs', [])
         if record.get('fixes', 0) >= 2:
             prior = ', '.join(dict.fromkeys(str(item['run']) for item in history))
-            prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Read their job logs and retained outcome.json/Ledger artifacts first. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
-                       "Distinguish failed tests from cancelled CI, setup/authentication failure, stale work and publication failure. "
-                       "Record the observed cause and a changed approach on the PR before editing; do not repeat an unsuccessful approach or invent unavailable evidence. "
-                       "Reproduce the failure, make one bounded correction, and verify the failing observer. If the blocker is shared loop machinery, "
-                       "create or reuse one linked engineering work Issue with reproduction and acceptance, label loop:work and ready-for-agent only when specified, "
-                       "and keep this PR linked; ordinary engineering failure is not a product question. "
-                       "Conclude with evidence of what changed and what remains. CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
+            prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
+                       + trail.DIAGNOSTIC + " CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
+        prompt += trail.pr_section(number)
     issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-        for name in ('pr', 'head', 'branch'):
+        for name in ('pr', 'head', 'branch', 'cause'):
             out.write(f'{name}={task[name]}\n')
 
 
