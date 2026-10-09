@@ -1,0 +1,45 @@
+{
+  "source": {
+    "number": 438,
+    "title": "\"message store poisoned\" has no recovery: one panic locks messages until restart",
+    "body": "User report: the app shows \"message store poisoned\" with no way to clear or fix it.\n\nCause (read from code, not reproduced): `crates/messages/src/lib.rs` keeps the store behind a `Mutex<Store>`. If any thread panics while it holds the lock, the mutex stays poisoned. `fn store()` (line 517) then returns `RpcError::internal(\"message store poisoned\")` on every later call. Four sites take the lock with `.unwrap()` (lines 632, 721, 742, 756), so a poisoned lock panics those paths too. Nothing clears the poison, so messages stay broken until the daemon restarts.\n\nExpected: a panic in one call does not disable messages. The failure is shown to the user with a way to recover (for example restart the messages module), and the first panic's cause is logged.\n\nOpen (design call for the build run): drop the poison by recovering the guard, or avoid a held lock across code that can panic; and find the first panic that poisoned it.\n\nReport only; no code change performed.",
+    "html_url": "https://github.com/saadshahd/roundup/issues/438",
+    "kind": "feedback",
+    "revision": "4ea315ff2aafc40d401b14bcdd0bf853d041568c8086cfb3b627a817853a1d96"
+  },
+  "phase": "plan",
+  "trigger": "4ea315ff2aafc40d401b14bcdd0bf853d041568c8086cfb3b627a817853a1d96",
+  "main": "a950d0a0411eb943a47d01e0f671fc2c6aa7aef2",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "A panic in one Messages operation while it holds the store lock does not disable Messages: every later `message.*`, `route.*` and `takeover.*` call through the real Daemon answers normally and never returns \"message store poisoned\", without restarting the Daemon.",
+        "observer": "A Rust test through `crates/messages` (and one through real `rupd`) injects a panic inside a store-locked operation, then calls `message.send`, `message.list`/`message.get`, `route.set` and `takeover.begin` and checks that each succeeds; grep of `crates/messages/src` finds no `lock().unwrap()` on the store and no \"store poisoned\" error path."
+      },
+      {
+        "statement": "The store is consistent after that panic: the panicking operation's writes all landed or none did, and B8's at-most-once delivery still holds (no Message typed twice, none stranded `delivered` and untyped by the failed operation).",
+        "observer": "The same injected-panic test compares `message.list` and `route.list` before and after the failed operation, and replays the B8 restart test on the store afterwards."
+      },
+      {
+        "statement": "The background work survives a failed store operation: the status listener and the bound clock keep running, so a Message pending for an Agent is still delivered on its next `idle` and a hop still passes at its B14 bound after the failure.",
+        "observer": "A test with a fake Terminal and fake clock makes one store call inside `on_status`/`settle` fail or panic, then sends a Message to an `idle` Agent and advances the clock; the Message is typed and the hop passes."
+      },
+      {
+        "statement": "The first failure's cause is logged: the Daemon's stderr carries one line naming the Messages operation and the panic message or store error that failed, and the RPC caller whose call failed gets an `INTERNAL` error naming that failure (shown by the App's existing failure line) after which retrying the same call succeeds.",
+        "observer": "A real-`rupd` test captures stderr while injecting the failure and asserts the logged line and the caller's error message; a second identical call succeeds."
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 0,
+        "title": "B28: specify that one failed Messages operation never disables Messages",
+        "body": "## Outcome\nSpecify B28 in `scenarios/messages.md`: a panic or store error in one Messages operation (an RPC call, the status listener, the bound clock) fails only that operation. The store lock is never left poisoned. The operation's SQLite transaction leaves all of its writes or none. The cause is logged once to the Daemon's stderr with the operation's name. The caller gets `INTERNAL` naming the cause, and the next call succeeds without a Daemon restart. The background listener and bound clock keep running after a failure. Source: #438 (user report \"message store poisoned\" with no recovery).\n\n## Scope\n`scenarios/messages.md` (a new B28 heading; update the header range from B1 to B27 to B1 to B28). If a new term is needed, add it to `GLOSSARY.md`. No code.\n\nThe scenario must name its observers:\n- an injected panic inside a store-locked operation, followed by `message.send`, `message.get`, `route.set` and `takeover.begin` succeeding;\n- `message.list`/`route.list` unchanged by the failed operation;\n- a failure inside `on_status`/`settle`, followed by delivery on the next `idle` and a hop passing at B14's bound under the fake clock;\n- the captured stderr line and the caller's error through real `rupd`.\n\nRecovery is automatic, with no user action and no module restart. This follows #438's open design call: recover the guard and rely on the store's transactions (`store.rs` runs each change as one transaction), or hold no lock across code that can panic.\n\n## Acceptance\nScenarios: B28\nSpecification: [scenarios/messages.md](https://github.com/saadshahd/roundup/blob/main/scenarios/messages.md)\nObserver: the specification PR merges after independent review, and B28 on main names the four observers above.\n\n## Preserve\nB1 to B27 unchanged, B8's at-most-once delivery and B6's no-lock-while-typing rule included. No contract change. No product code.\n\n## Queue\nKey: B28-spec\nPriority: 1\nMode: specify\nProvider: any",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [],
+    "rules": [],
+    "question": ""
+  }
+}
