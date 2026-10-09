@@ -49,6 +49,19 @@ class L88(unittest.TestCase):
                         d.budget()
                 self.assertFalse(output.exists())
 
+    def test_l88_github_failure_reports_redacted_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            gh = Path(directory) / 'gh'
+            gh.write_text('#!/bin/sh\nprintf "API rate limit exceeded (HTTP 403), credential %s\\n" "$GH_TOKEN" >&2\nexit 1\n')
+            gh.chmod(0o755)
+            result = subprocess.run([sys.executable, str(ROOT / 'loop/dispatch.py'), 'budget'],
+                                    env={**os.environ, 'PATH': directory + os.pathsep + os.environ['PATH'], 'GH_TOKEN': 'private-test-credential'},
+                                    text=True, capture_output=True)
+        self.assertEqual(result.returncode, 4)
+        self.assertIn('API rate limit exceeded (HTTP 403)', result.stderr)
+        self.assertIn('[redacted]', result.stderr)
+        self.assertNotIn('private-test-credential', result.stderr)
+
     def test_l88_successful_repair_requests_review_without_a_new_commit(self):
         verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
         request = d.review_request(HEAD, verdict)
@@ -290,12 +303,14 @@ class L88(unittest.TestCase):
     def test_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach(self):
         task = {**TASK, 'role': 'fix', 'cause': 'check'}
         record = dict(fixes=2, repairs=[dict(run=8), dict(run=9)])
-        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run:
+        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run, patch.object(d.trail, 'pr_section', return_value='\n## Trail of #7') as section:
             d.start(1, 'fix', HEAD)
             prompt = run.call_args.kwargs['data']
+            section.assert_called_once_with(1)
             self.assertIn('earlier repair runs 8, 9', prompt)
             self.assertIn('changed approach', prompt)
-            self.assertIn('outcome.json', prompt)
+            self.assertIn('## Trail of #7', prompt)
+            self.assertNotIn('outcome.json', prompt)
 
     def test_l88_main_movement_does_not_reset_review_retry_budget(self):
         self.assertEqual(d.key(TASK), d.key({**TASK, 'base': HEAD}))
