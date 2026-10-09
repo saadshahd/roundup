@@ -11,6 +11,10 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   observe:
     runs-on: ubuntu-latest
