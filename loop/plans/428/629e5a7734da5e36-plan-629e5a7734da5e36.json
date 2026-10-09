@@ -1,0 +1,83 @@
+{
+  "source": {
+    "number": 428,
+    "title": "L82: Recover exhausted repairs through diagnosis and renewable budgets",
+    "body": "Replace permanent two-attempt abandonment with bounded diagnostic recovery.\n\nScenarios: L82, L88\nSpecification: scenarios/loop-rules.md\nKey: diagnostic-recovery\nPriority: 0\nMode: implement\nProvider: codex\n\nEvidence from PRs #330, #349, #393, #405 and #425: all ten charged repairs invoked the model. Four attempts dealt with cancelled CI rather than failed tests. #393 advanced its implementation and resolved a conflict, then exhausted the same lifetime budget. #330 made no observed progress and its older final explanations were not retained.\n\nDeliver controller-only cancellation reruns; diagnostic repair after two ordinary attempts; rolling limits and backoff that become eligible automatically; preserved atomic ownership and independent gates. Older PRs must use current runner setup. No manual counter reset and no user decision for engineering failures.\n\nObserver: regression tests for classification, second CI rerun, ownership, rolling expiry, diagnostic evidence instructions; independently reviewed PR; a real formerly exhausted PR picked up and a cancelled-CI rerun without a model. Retain the run links and remaining failures. Root Codex owns branch codex/adaptive-repair.\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/428",
+    "kind": "work",
+    "revision": "629e5a7734da5e360280130b90c91578b14a3fb8c4f008f38b35689177e79676"
+  },
+  "phase": "plan",
+  "trigger": "629e5a7734da5e360280130b90c91578b14a3fb8c4f008f38b35689177e79676",
+  "main": "e523b9329cf5ac8cb8319a338f81861eebe8f2b4",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "Cancelled required Rust/web CI with no failed test lane gets a rerun from the trusted controller, at most twice per head, with no model invoked and no repair budget charged. A failed lane still routes to repair.",
+        "observer": "loop/dispatch.test.py L82 cancellation and second-rerun tests on main, plus a real hosted reconcile run that logs '#<pr>: reran cancelled CI <run>; no model invoked' and has no matching Builder/fix job or Ledger charge"
+      },
+      {
+        "statement": "After two ordinary repairs, a PR gets diagnostic repair instead of permanent abandonment. The diagnostic prompt has the agent read prior run logs and retained outcome.json/Ledger evidence, classify the failure (code, cancelled CI, setup/auth, publication), and record the cause and changed approach before editing.",
+        "observer": "test_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach and test_l82_two_repairs_escalate_without_abandoning_changed_or_unchanged_heads on main, plus a retained hosted diagnostic repair run on a formerly exhausted PR"
+      },
+      {
+        "statement": "Repair limits roll: at most six model repairs per rolling 24h. Backoff applies to an unchanged head and cause, from 15 minutes up to 2 hours. Expired budget becomes eligible again on reconciliation, with no manual counter reset and no user decision.",
+        "observer": "test_l82_rolling_budget_survives_new_heads_and_expires_without_user_reset and the setup-failure wait test on main; Status Running/queued row naming diagnostic eligibility or the next retry time with the last run link"
+      },
+      {
+        "statement": "Atomic per-PR Claim ownership and independent gates are preserved. Reruns are reserved before mutation. Review and repair share one Claim. No retry bypasses required checks or independent approval. Older PRs use main's runner setup.",
+        "observer": "L88 ownership tests in loop/dispatch.test.py on main; the change was independently reviewed at its exact head"
+      },
+      {
+        "statement": "Live: a real formerly exhausted PR (e.g. #330) is picked up again by reconciliation and its result is retained. A real cancelled-CI rerun happens without a model. Run links and remaining failures are recorded.",
+        "observer": "Hosted reconcile/fix run links and the retained outcome.json artifact for the formerly exhausted PR, plus a reconcile run log for the model-free rerun"
+      }
+    ],
+    "deliveries": [],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "git checkout e523b9329cf5ac8cb8319a338f81861eebe8f2b4 && python3 loop/dispatch.test.py -v",
+        "output": "test_l82_cancelled_ci_is_not_a_code_repair ... ok\ntest_l82_second_ci_reservation_runs_before_escalating ... ok\ntest_l82_reviews_and_ci_recovery_preserve_repair_history ... ok",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37958211725",
+        "proved": false,
+        "remaining": "No hosted observation yet of a model-free cancelled-CI rerun (a reconcile log line 'reran cancelled CI ... no model invoked')."
+      },
+      {
+        "goal": 2,
+        "command": "python3 loop/dispatch.test.py -v (main e523b93)",
+        "output": "test_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach ... ok\ntest_l82_two_repairs_escalate_without_abandoning_changed_or_unchanged_heads ... ok",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37958211725",
+        "proved": false,
+        "remaining": "No retained hosted diagnostic repair run yet. #330 is still open and holds loop-pr/330 (33a4b98); its diagnostic run and outcome.json need to be observed."
+      },
+      {
+        "goal": 3,
+        "command": "python3 loop/dispatch.test.py -v (main e523b93)",
+        "output": "test_l82_rolling_budget_survives_new_heads_and_expires_without_user_reset ... ok\ntest_l82_repeated_setup_failure_waits_even_after_head_changes ... ok",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37958211725",
+        "proved": false,
+        "remaining": "Status page rendering of eligibility/retry time with the last run link has not been observed on the live Status issue."
+      },
+      {
+        "goal": 4,
+        "command": "python3 loop/dispatch.test.py -v (main e523b93); gh pr view 429 --json mergeCommit,comments",
+        "output": "All L88 ownership tests ok (claimed_pr_is_not_redispatched, git_rejects_competing_sibling_claims, live_owner_blocks_both_review_and_repair, stale_or_duplicate_dispatch_never_invokes_model_prompt, ...). PR #429 merged 2026-10-09T13:53:54Z as 38dffd0 (an ancestor of main) with 'VERDICT: approve' at Head eeac5e17.",
+        "url": "https://github.com/saadshahd/roundup/pull/429",
+        "proved": false,
+        "remaining": "Independent exact-head review of goal evidence owns closure. Old-PR runner setup is not yet observed on a hosted repair of a pre-Linux PR."
+      },
+      {
+        "goal": 5,
+        "command": "gh pr view {393,405,349,425,330} --json state,mergedAt; git ls-remote origin 'refs/heads/loop-pr/*'",
+        "output": "#349 MERGED 14:00:37Z, #393 MERGED 14:12:36Z, #405 MERGED 15:49:56Z, #425 MERGED 16:08:07Z (all after #429 merged at 13:53:54Z); #330 OPEN, loop-pr/330 at 33a4b98",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37958211725",
+        "proved": false,
+        "remaining": "These merges happened after #429, but which run repaired each PR and whether a model was invoked has not been linked. Verification must retain the specific reconcile/fix run URLs and the #330 result."
+      }
+    ],
+    "rules": [],
+    "question": ""
+  }
+}
