@@ -17,6 +17,9 @@ file. What it does comes from the environment, so one script serves every scenar
   FAKE_CLAUDE_CONTEXT_REPORT a file path: written with the stdout of the `rup context` command that
                            runs under SessionStart (E3), as Claude Code puts it in the session
   FAKE_CLAUDE_SHIM_DELAY_MS milliseconds to wait before the `roundup` server is started (E6)
+  FAKE_CLAUDE_ON_PROMPT    JSON {"name", "arguments"} (U146): after SessionStart, once per prompt line typed into
+                           the Terminal, play UserPromptSubmit, then this tool call with the string "$prompt"
+                           in an argument replaced by the typed text, then Stop
   FAKE_CLAUDE_GATE         a file path: after the played PermissionRequest hook command (which waits for
                            the user's answer, H9) is started, the next event waits until the file exists,
                            as the user's own act in the Terminal (H7a) happens in its own time
@@ -32,6 +35,7 @@ It then sleeps until the Daemon stops it.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -93,6 +97,41 @@ def play_loop():
             json.dump(ran, report)
 
 
+def hook(event, extra=None):
+    command = json.load(open(flag("--settings")))["hooks"][event][0]["hooks"][0]["command"]
+    payload = {"hook_event_name": event, **(extra or {})}
+    subprocess.run(command, shell=True, input=json.dumps(payload), text=True, check=True, stdout=subprocess.PIPE)
+
+
+def typed_prompts():
+    """Each line typed into the Terminal, with the bracketed-paste markers of a Steer removed."""
+    pending = b""
+    while True:
+        chunk = os.read(0, 4096)
+        if not chunk:
+            return
+        pending += chunk
+        while True:
+            ends = [i for i in (pending.find(b"\r"), pending.find(b"\n")) if i >= 0]
+            if not ends:
+                break
+            line, pending = pending[: min(ends)], pending[min(ends) + 1 :]
+            text = line.replace(b"\x1b[200~", b"").replace(b"\x1b[201~", b"").decode(errors="replace").strip()
+            # The Daemon heads a Message with `[from <sender>, <kind>] `; the prompt is its body.
+            text = re.sub(r"^\[[^\]]*\] ", "", text)
+            if text:
+                yield text
+
+
+def play_prompts(tool):
+    hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
+    for prompt in typed_prompts():
+        hook("UserPromptSubmit", {"prompt": prompt})
+        arguments = {key: prompt if value == "$prompt" else value for key, value in tool.get("arguments", {}).items()}
+        mcp_session([{**tool, "arguments": arguments}])
+        hook("Stop")
+
+
 def mcp_session(calls, report=None):
     config = json.load(open(flag("--mcp-config")))["mcpServers"]["roundup"]
     server = subprocess.Popen(
@@ -144,4 +183,6 @@ if any(k in os.environ for k in ("FAKE_CLAUDE_TOOL", "FAKE_CLAUDE_TOOLS", "FAKE_
         calls.insert(0, json.loads(os.environ["FAKE_CLAUDE_TOOL"]))
     time.sleep(int(os.environ.get("FAKE_CLAUDE_SHIM_DELAY_MS", "0")) / 1000)
     mcp_session(calls, os.environ.get("FAKE_CLAUDE_BRIEF_REPORT"))
+if "FAKE_CLAUDE_ON_PROMPT" in os.environ:
+    play_prompts(json.loads(os.environ["FAKE_CLAUDE_ON_PROMPT"]))
 time.sleep(3600)

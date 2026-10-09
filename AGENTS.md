@@ -6,6 +6,8 @@ roundup is built by agents in a loop. Every identifier, RPC method and UI string
 
 Work orders are GitHub Issues (`.agents/data/work.md`); scenario files hold acceptance only.
 
+Every unattended cycle, including planning and Retro evolution, chooses and executes routine engineering work under the recorded direction. Independent agents review proposed changes; the user confirms only L79/L81 product decisions or the required Mac observation. An approach, repair strategy or next work selection never waits for user confirmation.
+
 Builder, QA and Retro runs are one-shot GitHub Actions jobs, and an event ends every wait: a merge, a run's end or a failed check starts the next run, and the user ends only the waits L79 names. A Builder run builds a work Issue, fixes a PR or reviews a PR's head, each fresh, from one prompt, `.agents/builder.md`. A role's prompt is `.agents/<role>.md`, its skills are in `.agents/skills/`, and data a step reads on demand is in `.agents/data/`.
 
 | Step | Who, where | Skills |

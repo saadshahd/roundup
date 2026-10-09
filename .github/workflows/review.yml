@@ -60,7 +60,7 @@ jobs:
           HEAD: ${{ inputs.head || github.event.pull_request.head.sha }}
           PR: ${{ inputs.pr || github.event.pull_request.number }}
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
-        run: python3 loop/dispatch.py start "$PR" review "$HEAD"
+        run: python3 loop/outcome.py report python3 loop/dispatch.py start "$PR" review "$HEAD"
 
   # At actual model startup, never while the job is queued: `reviewing` and the head's one activity comment.
   announce:
@@ -184,3 +184,13 @@ jobs:
           POST: ${{ needs.post.result }}
           ANSWER: ${{ needs.review.outputs.answer }}
         run: python3 loop/dispatch.py finish "$PR" "$HEAD" "$REVIEW" "$POST" "$(jq -r '.verdict // empty' <<<"${ANSWER:-null}" 2>/dev/null || true)"
+
+  summary:
+    needs: [due, announce, review, post, finish]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Independently review a PR head
+      next: An approval enables the merge gate; a rejection goes to repair. No new product decision is required.

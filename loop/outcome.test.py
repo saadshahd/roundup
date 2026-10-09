@@ -17,6 +17,48 @@ import outcome
 
 
 class OutcomeTests(unittest.TestCase):
+    def test_l93_summary_uses_results_without_api_reads_or_prompt_output(self):
+        workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/summary.yml').read_text()
+        block = workflow.split('        run: |\n', 1)[1]
+        code = '\n'.join(line[10:] for line in block.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / 'summary.md'
+            with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary),
+                            RESULTS=json.dumps(dict(due=dict(result='success', outputs=dict(pr='42', prompt='PRIVATE')),
+                                                    review=dict(result='skipped'))),
+                            PURPOSE='Review', NEXT='Repair', GITHUB_SERVER_URL='https://github.com',
+                            GITHUB_REPOSITORY='o/r', GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='1', GITHUB_EVENT_NAME='workflow_dispatch'):
+                exec(compile(code, 'summary-workflow', 'exec'), {})
+            text = summary.read_text()
+            self.assertIn('No agent work ran', text)
+            self.assertIn('/pull/42', text)
+            self.assertNotIn('PRIVATE', text)
+            self.assertNotIn('uses:', workflow)
+            self.assertIn('permissions: {}', workflow)
+
+    def test_l93_command_report_keeps_failure_and_redacts_summary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'summary.md'
+            with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(path), GH_TOKEN='private-value'), contextlib.redirect_stdout(io.StringIO()) as output:
+                code = outcome.report([sys.executable, '-c', 'import sys; print("blocked private-value"); sys.exit(7)'])
+            self.assertEqual(code, 7)
+            self.assertIn('blocked [redacted]', path.read_text())
+            self.assertNotIn('private-value', path.read_text() + output.getvalue())
+
+    def test_l93_every_workflow_explains_all_its_jobs_even_on_failure(self):
+        root = Path(__file__).resolve().parent.parent / '.github/workflows'
+        for workflow in root.glob('*.yml'):
+            if workflow.name == 'summary.yml':
+                continue
+            jobs = workflow.read_text().split('\njobs:\n', 1)[1]
+            names = re.findall(r'^  ([\w-]+):\s*$', jobs, re.M)
+            summary = jobs.split('\n  summary:\n', 1)[1]
+            self.assertIn('if: always()', summary, workflow.name)
+            self.assertIn('uses: ./.github/workflows/summary.yml', summary, workflow.name)
+            needs = re.search(r'needs: \[([^]]+)\]', summary).group(1).split(', ')
+            self.assertEqual(set(needs), set(names) - {'summary'}, workflow.name)
+
+
     def test_f7_retention_excludes_auth_and_redacts_partial_captures(self):
         workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/f7.yml').read_text()
         block = workflow.split('        shell: python\n        run: |\n', 1)[1].split('      - uses:', 1)[0]

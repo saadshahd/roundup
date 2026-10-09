@@ -17,6 +17,12 @@
   white-space: pre-wrap;
 }
 
+/* U146: the Message's status, beside its line and outside its text, so a copied line stays the line. */
+.thread-line[data-status]::after {
+  content: " " attr(data-status);
+  color: var(--grey);
+}
+
 .thread-line[data-folded="true"] {
   white-space: nowrap;
   overflow: hidden;
