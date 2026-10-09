@@ -90,3 +90,13 @@ jobs:
           redact-oauth: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           redact-typesafe: ${{ secrets.TYPESAFE_API_KEY }}
           conclusion: ${{ steps.claude.outcome }}
+
+  summary:
+    needs: [retro]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Evolve the loop from recorded results
+      next: A proposed improvement gets independent review and required checks, then auto-merges.

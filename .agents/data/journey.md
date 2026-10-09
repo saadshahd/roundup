@@ -14,7 +14,7 @@ Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`
 | Intervene | Answer one real Decision or enter an Agent directly, then observe it resume. An error remains actionable; stopping a Door preserves its Room and contents. |
 | Review | Read the action's outcome and inspect its resulting work from the Room. Reopen the Project and find that work again. Do not claim Room-scoped storage before its contract and behavior exist. |
 
-The latest audit evidence is `artifacts/ux/journey/README.md` (J2, main `4649c5f`); no stage is yet proved.
+The latest audit evidence is `artifacts/ux/journey/README.md` (J3, main `caf5589`); no stage is yet proved.
 
 ## How a Builder closes a gap
 
