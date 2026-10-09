@@ -68,6 +68,7 @@ class Orders(unittest.TestCase):
         output = io.StringIO()
         with patch.object(orders, 'gh', return_value=specification), \
              patch.object(orders, 'read_orders', return_value=orders.classify([specification], {}, [])), \
+             patch.object(orders.trail, 'section', return_value=''), \
              redirect_stdout(output):
             orders.task(1)
         self.assertIn('Close this specification Issue', output.getvalue())
