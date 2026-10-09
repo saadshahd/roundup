@@ -424,5 +424,6 @@ if __name__ == '__main__':
         else:
             raise ValueError('expected reconcile, start, repaired, budget or activity')
     except (subprocess.SubprocessError, ValueError, KeyError, TypeError, OSError) as error:
-        print(f'PR dispatch failed: {error}', file=sys.stderr)
+        from outcome import describe  # outcome imports this module
+        print(f'PR dispatch failed: {describe(error)}', file=sys.stderr)
         sys.exit(4)
