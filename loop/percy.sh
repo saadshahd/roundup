@@ -37,10 +37,10 @@ snapshot() {
 }
 
 # visual pins each build's commit to the PR head (PERCY_COMMIT), so a head's build is found by its SHA. The Reviewer
-# starts once check passes, which can be before visual has started its build, so this waits PERCY_WAIT seconds (600).
+# starts when a PR opens, before visual has started its build, so it asks PERCY_WAIT seconds (default 0) and never delays the model.
 build() {
   [ -n "${PERCY_TOKEN:-}" ] || { echo "L24 percy: PERCY_TOKEN is not set" >&2; exit 2; }
-  local sha=$1 wait=${PERCY_WAIT:-600} waited=0 found id
+  local sha=$1 wait=${PERCY_WAIT:-0} waited=0 found id
   while :; do
     found=$(curl -sS -g --fail-with-body --max-time 30 -H "Authorization: Token token=$PERCY_TOKEN" \
       "https://percy.io/api/v1/builds?filter[sha]=$sha&page[limit]=1") || { echo "L24 percy: the Percy API failed: $found" >&2; exit 4; }

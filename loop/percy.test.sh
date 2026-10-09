@@ -102,12 +102,12 @@ l24_run() {
   if [ "$code" -eq "$want" ]; then echo "ok:   L24 $name"; else echo "FAIL: L24 $name (wanted exit $want, got $code: $out)"; failures=$((failures + 1)); fi
 }
 printf '{"data":[]}\n{"data":[{"id":"41823"}]}\n' >"$ANSWERS"
-l24_run build_appears 0 "$root/loop/percy.sh" build "$sha"
+PERCY_WAIT=60 l24_run build_appears 0 "$root/loop/percy.sh" build "$sha"
 holds_eval 'build prints the id once visual has started it' '[ "$out" = 41823 ]'
 holds_eval 'build asks Percy for the head SHA with the token' 'grep -qF "filter[sha]=$sha" "$TRACE" && grep -q "Authorization: Token token=fake" "$TRACE"'
 printf '{"data":[]}\n' >"$ANSWERS"
-PERCY_WAIT=0 l24_run no_build 1 "$root/loop/percy.sh" build "$sha"
-holds_eval 'no build names the SHA' '[[ $out == *"no Percy build for $sha"* ]]'
+l24_run no_build 1 "$root/loop/percy.sh" build "$sha"
+holds_eval 'no build names the SHA and the model never waits for one by default' '[[ $out == *"no Percy build for $sha after 0s"* ]]'
 l24_run api_fails 4 "$root/loop/percy.sh" build "$sha"
 PERCY_TOKEN='' l24_run build_without_token 2 "$root/loop/percy.sh" build "$sha"
 l24_run build_of_no_sha 2 "$root/loop/percy.sh" build main

@@ -171,13 +171,12 @@ prompt() {
   } >>"$GITHUB_OUTPUT"
 }
 
-# L24: prints the Reviewer's task and exits 0 when <head> of a ready Code PR needs a verdict; prints why not and exits 1.
-# A draft is skipped: its Builder is still pushing, and `gh pr ready` reruns check on the head it finished with.
+# L24: prints the Reviewer's task and exits 0 when <head> of an open Code or Loop PR, draft or ready, needs a verdict;
+# prints why not and exits 1. CI and Percy are evidence the task reports as they stand, never a gate.
 review_due() {
   local pr=$1 head=$2 view paths touched verdicts code build
   view=$(gh_or_4 pr view "$pr" --json state,headRefOid,body,isDraft)
   [ "$(jq -r '"\(.state) \(.headRefOid)"' <<<"$view")" = "OPEN $head" ] || { echo "PR #$pr is not open at $head"; return 1; }
-  [ "$(jq -r .isDraft <<<"$view")" = false ] || { echo "PR #$pr is a draft"; return 1; }
   paths=$(gh_or_4 pr diff "$pr" --name-only)
   touched=$(printf '%s\n' "$paths" | loop/rules.sh touches)
   grep -Eq '^(code|loop)$' <<<"$touched" || { echo "PR #$pr is not a Code PR"; return 1; }
@@ -196,13 +195,15 @@ review_due() {
   ! jq -se 'any(.current)' <<<"$verdicts" >/dev/null || { echo "a verdict already covers $head"; return 1; }
   printf 'PR #%s, head %s.\n' "$pr" "$head"
   jq -r '.body // ""' <<<"$view" | { grep -E '^(Scenarios|Moves|macOS):' || true; }
+  ci=$(gh_or_4 api "repos/{owner}/{repo}/commits/$head/check-runs?per_page=100&filter=latest" --jq '[.check_runs[] | select(.app.slug == "github-actions") | "\(.name): \(if .status == "completed" then .conclusion else .status end)"] | unique | join(", ")')
+  printf 'CI at this head when the review started: %s. Pending or absent evidence is not a pass: report it as pending and never as passing.\n' "${ci:-none yet}"
   if grep -qx planning <<<"$touched"; then cat loop/feedback-review.md; fi
   if grep -qx ui <<<"$touched"; then
     code=0
-    build=$(loop/percy.sh build "$head") || code=$?
+    build=$(PERCY_WAIT=0 loop/percy.sh build "$head") || code=$?
     case $code in
       0) printf 'It touches apps/desktop/src: run percy-review on Percy build %s, made for this head; with a build id it needs no .percy/config.yml. Each diff must match a then-clause of the scenarios above or a D check the Moves: line names; nothing the author wrote counts as intent (rule 5).\n' "$build" ;;
-      1) echo 'It touches apps/desktop/src, but no Percy build exists for this head: review the code alone and say so in a NOTE.' ;;
+      1) echo 'It touches apps/desktop/src, but no Percy build exists for this head yet (it may still be running): review the code alone and say in a NOTE that visual evidence was pending.' ;;
       *) exit 4 ;;
     esac
   fi

@@ -251,8 +251,10 @@ What `just check` runs and builds with: `justfile`, `Cargo.toml`, `Cargo.lock`, 
 `loop/`, `.github/`, `.agents/`, `.claude/`, and every `AGENTS.md` or `CLAUDE.md`; a review run reads `main`'s copy, never the PR's, and a PR touching it requires independent review and the required gates (L24, L46).
 
 **Claim**:
-The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, created atomically for one Builder. The owner records its run and initial head. Completion releases only its own owner and an unchanged branch without an open PR; reconciliation recovers a cloud owner after its Builder ends, and the local controller recovers a local owner (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88).
+The branch `build/<slug>` at `main` and its unique `loop-row/<slug>` owner, created atomically for one Builder. The owner records its run and initial head. Completion releases only its own owner and an unchanged branch without an open PR; reconciliation recovers a cloud owner after its Builder ends, and the local controller recovers a local owner (L23). For review and repair, `loop-pr/<number>` records the owning GitHub run, PR head and Attempt; a non-force ref update admits one owner, and a completed owner permits bounded recovery (L88). `loop-review/<number>` is the review Claim: it records the reviewed head, run and Attempt, so a reviewer never waits for a writing Builder and an older head's reviewer never blocks the current head (L88).
 
+**Review activity**:
+The one comment per PR head, **Reviewing · Claude · commit `<short SHA>`** with a link to the Actions job, created when the reviewer's model step starts and updated in place when the review ends. The labels `needs-review` (claimed, model not yet running), `reviewing` and `needs-fix` (rejected) project it; they are never the lock (L24).
 **Ledger**:
 One row per agent run (role, subject, model, turns, tokens, usage coverage, exit), kept as that run's `ledger-*` artifact (L29); what a Retro reads. Usage coverage is `recorded`, `partial` or `unavailable`; missing output is not proof of zero use.
 

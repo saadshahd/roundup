@@ -41,6 +41,7 @@ case "$*" in
   'api repos/{owner}/{repo}/git/commits/'*' --jq .message') git show -s --format=%B "${2##*/}" ;;
   'run view '*' --json status,jobs --jq '*) jq -r "${@: -1}" "$FIXTURES/owner-run-$3" ;;
   'api repos/{owner}/{repo}/pulls?state=closed&per_page=100 --paginate --jq '*) jq -r "${@: -1}" "$FIXTURES/closed" ;;
+  'api repos/{owner}/{repo}/commits/'*'/check-runs'*) jq -r "${@: -1}" "$FIXTURES/ci" ;;
   'pr view '*' --json state,headRefOid,body,isDraft') cat "$FIXTURES/view" ;;
   'pr diff '*' --name-only') cat "$FIXTURES/paths" ;;
   'pr comment '*' --body-file -') cat >"$FIXTURES/comment" ;;
@@ -73,6 +74,7 @@ fresh() {
   printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":"Scenarios: U3\\nMoves: D2\\nWhy: because"}\n' "$head" >"$FIXTURES/view"
   printf 'crates/rupd/src/main.rs\nscenarios/ui.md\n' >"$FIXTURES/paths"
   echo '[]' >"$FIXTURES/build-runs"
+  echo '{"check_runs":[]}' >"$FIXTURES/ci"
 }
 say() { jq -nc --arg v "$1" --argjson current "${2:-false}" '{verdict: $v, head: null, current: $current, body: ("VERDICT: " + $v + "\nfinding")}' >>"$FIXTURES/verdicts"; }
 
@@ -252,6 +254,10 @@ fresh
 check 'L24 a Code PR with no verdict is due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 the task names the PR and head' grep -qx "PR #7, head $head." "$FIXTURES/out"
 holds 'L24 the task carries Scenarios and Moves' bash -c 'grep -qx "Scenarios: U3" "$FIXTURES/out" && grep -qx "Moves: D2" "$FIXTURES/out"'
+holds 'L24 absent CI is reported as pending, not as a pass' grep -q 'CI at this head when the review started: none yet. Pending or absent evidence is not a pass' "$FIXTURES/out"
+printf '{"check_runs":[{"name":"check","status":"in_progress","conclusion":null,"app":{"slug":"github-actions"}},{"name":"rules","status":"completed","conclusion":"failure","app":{"slug":"github-actions"}}]}\n' >"$FIXTURES/ci"
+check 'L24 a Code PR with running and failed CI is still due' 0 loop/runs.sh review-due 7 "$head"
+holds 'L24 running and failed CI are reported as they stand' grep -q 'CI at this head when the review started: check: in_progress, rules: failure\.' "$FIXTURES/out"
 holds 'L24 the task leaves out the rest of the body' bash -c '! grep -q "because" "$FIXTURES/out"'
 holds 'L24 no Percy step outside apps/desktop/src' bash -c '! grep -q percy-review "$FIXTURES/out"'
 printf 'apps/desktop/src/a.tsx\n' >"$FIXTURES/paths"
@@ -260,7 +266,7 @@ holds 'L24 a ui PR gets percy-review on the Percy build of its head' grep -q 'ru
 holds 'L24 the intent is the scenarios and the Moves checks, never the author' bash -c 'grep -q "a then-clause of the scenarios above or a D check the Moves: line names; nothing the author wrote counts as intent" "$FIXTURES/out"'
 echo 1 >"$FIXTURES/percy-code"
 check 'L24 a ui PR with no Percy build is due' 0 loop/runs.sh review-due 7 "$head"
-holds 'L24 with no Percy build the Reviewer reviews the code and notes it' grep -q 'no Percy build exists for this head' "$FIXTURES/out"
+holds 'L24 with no Percy build the Reviewer reviews the code and notes it' grep -q 'no Percy build exists for this head yet' "$FIXTURES/out"
 echo 4 >"$FIXTURES/percy-code"
 check 'L24 a Percy API failure exits 4' 4 loop/runs.sh review-due 7 "$head"
 rm "$FIXTURES/percy-code"
@@ -274,8 +280,7 @@ check 'L24 a verdict covering the head is not repeated' 1 loop/runs.sh review-du
 fresh; printf 'docs/a.md\nloop/rules.sh\n' >"$FIXTURES/paths"
 check 'L24 a loop-only PR receives independent review' 0 loop/runs.sh review-due 7 "$head"
 fresh; printf '{"state":"OPEN","isDraft":true,"headRefOid":"%s","body":""}\n' "$head" >"$FIXTURES/view"
-check 'L24 a draft is not reviewed' 1 loop/runs.sh review-due 7 "$head"
-holds 'L24 the draft is named' grep -qx 'PR #7 is a draft' "$FIXTURES/out"
+check 'L24 a draft is reviewed too' 0 loop/runs.sh review-due 7 "$head"
 fresh; printf '{"state":"OPEN","isDraft":false,"headRefOid":"%s","body":""}\n' "$(printf 'b%.0s' {1..40})" >"$FIXTURES/view"
 check 'L24 a head that moved is not reviewed' 1 loop/runs.sh review-due 7 "$head"
 fresh; touch "$FIXTURES/gh-fail"

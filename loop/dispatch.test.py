@@ -74,30 +74,17 @@ class L88(unittest.TestCase):
         verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
         request = d.review_request(HEAD, verdict)
         record = dict(run=9, key=['fix', 'reject', HEAD, ''], phase='issued', attempt=1, review_after=request)
-        def read(path, payload=None):
-            if path == 'pulls/1': return PR
-            raise AssertionError(path)
-        def command(*args, **kwargs):
-            if args[2] == 'verdicts': return json.dumps(verdict)
-            if args[2] == 'touches': return 'code'
-            return 'crates/messages/src/tests/b_hop_tests.rs'
-        with patch.object(d, 'api', side_effect=read), patch.object(d, 'run', side_effect=command), patch.object(d, 'gh', return_value=[dict(check_runs=[CHECK, RULES])]), patch.object(d, 'claim_record', return_value=('old', record)):
-            task = d.due(1, busy=set())
-            self.assertEqual(task['role'], 'review')
-            self.assertEqual(task['review_after'], request)
-            record['key'] = d.key(task)
-            self.assertEqual(d.due(1, busy=set())['role'], 'review')
-            with patch.object(d, 'gh', return_value=[dict(check_runs=[{**CHECK, 'status': 'in_progress'}, RULES])]):
-                self.assertIsNone(d.due(1, busy=set()))
-            verdict['body'] = 'new reject'
-            self.assertEqual(d.due(1, busy=set())['role'], 'fix')
-            verdict['body'] = 'scope'
-            record['review_after'] = {**request, 'head': BASE}
-            self.assertEqual(d.due(1, busy=set())['role'], 'fix')
+        task = self.review_task(verdicts=[verdict], record=record)
+        self.assertEqual(task['review_after'], request)
+        self.assertIsNone(self.review_task(verdicts=[{**verdict, 'body': 'new reject'}], record=record))
+        self.assertIsNone(self.review_task(verdicts=[verdict], record={**record, 'review_after': {**request, 'head': BASE}}))
+        self.assertIsNone(self.review_task(verdicts=[verdict], record={**record, 'review_after': None}))
 
     def test_l78_loop_changes_require_review_even_after_historical_rejects(self):
-        self.assertEqual(d.decision(PR, [CHECK, RULES], [dict(current=False, verdict='reject')] * 2, ['loop']), ('review', 'review'))
-        self.assertIsNone(d.decision(PR, [CHECK], [], ['loop']))
+        old = [dict(current=False, verdict='reject', head=BASE)] * 2
+        for kinds in (['loop'], ['code']):
+            with patch.object(d, 'api', return_value=PR), patch.object(d, 'run', side_effect=lambda *a, **k: '\n'.join(map(json.dumps, old)) if a[2] == 'verdicts' else '\n'.join(kinds) if a[2] == 'touches' else 'x'):
+                self.assertEqual(d.review_task(1)['head'], HEAD)
 
     def test_l24_proposed_instructions_do_not_control_the_reviewer(self):
         with tempfile.TemporaryDirectory() as path:
@@ -133,8 +120,9 @@ class L88(unittest.TestCase):
 
     def test_l90_planning_clean_merges_require_exact_head_review(self):
         inherited = dict(current=True, verdict='approve', head=BASE)
-        self.assertEqual(d.decision(PR, [CHECK, RULES], [inherited], ['loop', 'planning']), ('review', 'review'))
-        self.assertIsNone(d.decision(PR, [CHECK, RULES], [{**inherited, 'head': HEAD}], ['loop', 'planning']))
+        for verdicts, due in (([inherited], True), ([{**inherited, 'head': HEAD}], False)):
+            with patch.object(d, 'api', return_value=PR), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'run', side_effect=lambda *a, **k: '\n'.join(map(json.dumps, verdicts)) if a[2] == 'verdicts' else 'loop\nplanning' if a[2] == 'touches' else 'x'):
+                self.assertEqual(bool(d.review_task(1)), due)
 
     def test_l90_plan_repair_never_runs_the_generic_write_capable_builder(self):
         task = {**TASK, 'role': 'fix', 'cause': 'reject', 'planning': True}
@@ -143,19 +131,24 @@ class L88(unittest.TestCase):
             acquire.assert_not_called()
             run.assert_called_once_with('gh', 'workflow', 'run', 'feedback.yml', '-f', 'pr=1', '-f', 'head=' + HEAD)
 
-    def test_l88_review_requires_successful_current_head_check(self):
-        self.assertEqual(d.decision(PR, [CHECK, RULES], [], ['code']), ('review', 'review'))
-        for change in [dict(head_sha=BASE), dict(status='in_progress'), dict(conclusion='skipped'), dict(app=dict(slug='other'))]:
-            self.assertIsNone(d.decision(PR, [{**CHECK, **change}], [], ['code']))
-        self.assertIsNone(d.decision(PR, [CHECK, RULES], [dict(current=True, verdict='approve')], ['code']))
-        self.assertIsNone(d.decision(PR, [CHECK, RULES], [], ['docs']))
+    def review_task(self, pr=PR, verdicts=(), kinds=('code',), record=None):
+        out = {'verdicts': '\n'.join(map(json.dumps, verdicts)), 'touches': '\n'.join(kinds)}
+        with patch.object(d, 'api', return_value=pr), patch.object(d, 'claim_record', return_value=(None, record)), patch.object(d, 'run', side_effect=lambda *a, **k: out.get(a[2], 'x')):
+            return d.review_task(1)
 
-    def test_l88_rules_failures_are_repaired_before_review(self):
+    def test_l24_review_is_due_whatever_ci_says(self):
+        # review_task reads no check run at all: absent, running and failed CI cannot gate it.
+        self.assertEqual(self.review_task()['head'], HEAD)
+        self.assertEqual(self.review_task({**PR, 'draft': True})['head'], HEAD)
+        self.assertIsNone(self.review_task(verdicts=[dict(current=True, verdict='approve', head=HEAD)]))
+        self.assertIsNone(self.review_task(kinds=('docs',)))
+        self.assertIsNone(self.review_task({**PR, 'head': dict(PR['head'], repo=dict(full_name='fork/r'))}))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES], [], ['code']))
+
+    def test_l88_rules_failures_are_repaired_not_reviewed_first(self):
         self.assertIsNone(d.decision(PR, [CHECK], [], ['code']))
         self.assertEqual(d.decision(PR, [CHECK, {**RULES, 'conclusion': 'failure'}], [], ['code']), ('fix', 'rules'))
         self.assertIsNone(d.decision(PR, [CHECK, RULES], [], ['code', 'ui']))
-        percy = {**CHECK, 'name': 'percy', 'id': 3}
-        self.assertEqual(d.decision(PR, [CHECK, RULES, percy], [], ['code', 'ui']), ('review', 'review'))
 
     def test_l2_builder_hook_stamps_commits_and_preserves_existing_attribution(self):
         with tempfile.TemporaryDirectory() as path:
@@ -180,7 +173,8 @@ class L88(unittest.TestCase):
 
     def test_l88_latest_check_wins_and_skipped_is_not_a_result(self):
         self.assertIsNone(d.decision(PR, [CHECK, RULES, {**CHECK, 'id': 3, 'status': 'in_progress'}], [], ['code']))
-        self.assertEqual(d.decision(PR, [CHECK, RULES, {**CHECK, 'id': 3, 'conclusion': 'skipped'}], [], ['code']), ('review', 'review'))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES, {**CHECK, 'id': 3, 'conclusion': 'skipped'}], [], ['code']))
+        self.assertEqual(d.decision(PR, [{**CHECK, 'conclusion': 'failure'}, {**CHECK, 'id': 3, 'conclusion': 'skipped'}], [], ['code']), ('fix', 'check'))
 
     def test_l88_explicit_questions_and_second_reject_keep_gates(self):
         self.assertIsNone(d.decision({**PR, 'draft': True, 'body': 'Stopped: choose semantics'}, [CHECK], [], ['code']))
@@ -276,10 +270,10 @@ class L88(unittest.TestCase):
             if args[0:3] == ('bash', 'loop/rules.sh', 'touches'):
                 return 'code'
             return ''
-        def write(number, old, replacement):
+        def write(number, old, replacement, namespace='loop-pr'):
             record.clear(); record.update(replacement)
             return True
-        with patch.object(d, 'api', side_effect=api), patch.object(d, 'gh', side_effect=gh), patch.object(d, 'run', side_effect=run), patch.object(d, 'claim_record', side_effect=lambda n: ('old', dict(record))), patch.object(d, 'write_claim', side_effect=write), patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.dict(os.environ, GITHUB_RUN_ID='42'):
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'gh', side_effect=gh), patch.object(d, 'run', side_effect=run), patch.object(d, 'review_task', return_value=None), patch.object(d, 'claim_record', side_effect=lambda n, ns='loop-pr': ('old', dict(record))), patch.object(d, 'write_claim', side_effect=write), patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.dict(os.environ, GITHUB_RUN_ID='42'):
             d.reconcile()
             self.assertIn(('gh', 'run', 'rerun', '12'), commands)
             self.assertEqual(record['ci_attempts'], 2)
@@ -303,19 +297,24 @@ class L88(unittest.TestCase):
         self.assertNotEqual(d.key(task), d.key({**task, 'base': HEAD}))
 
     def test_l88_stale_or_duplicate_dispatch_never_invokes_model_prompt(self):
-        for fresh in (None, {**TASK, 'head': BASE}, {**TASK, 'role': 'fix'}):
-            with patch.object(d, 'due', return_value=fresh), patch.object(d, 'acquire') as acquire, patch.object(d, 'run') as run:
+        for fresh in (None, {**TASK, 'head': BASE}):
+            with patch.object(d, 'review_task', return_value=fresh), patch.object(d, 'acquire_review') as acquire, patch.object(d, 'run') as run:
                 d.start(1, 'review', HEAD)
                 acquire.assert_not_called()
                 run.assert_not_called()
-        with patch.object(d, 'due', return_value=TASK), patch.object(d, 'acquire', return_value=False), patch.object(d, 'run') as run:
+        with patch.object(d, 'review_task', return_value=TASK), patch.object(d, 'acquire_review', return_value=False), patch.object(d, 'run') as run:
             d.start(1, 'review', HEAD)
             run.assert_not_called()
+        for fresh in (None, {**TASK, 'head': BASE}):
+            with patch.object(d, 'due', side_effect=[{**TASK, 'role': 'fix'}, fresh]), patch.object(d, 'acquire', return_value=True), patch.object(d, 'run') as run:
+                d.start(1, 'fix', HEAD)
+                run.assert_not_called()
 
     def test_l88_changed_evidence_after_acquisition_does_no_work(self):
-        with patch.object(d, 'due', side_effect=[TASK, None]), patch.object(d, 'acquire', return_value=True), patch.object(d, 'run') as run:
+        with patch.object(d, 'review_task', side_effect=[TASK, None]), patch.object(d, 'acquire_review', return_value=True), patch.object(d, 'project') as project, patch.object(d, 'run') as run:
             d.start(1, 'review', HEAD)
             run.assert_not_called()
+            project.assert_not_called()
 
     def test_l88_two_failed_preflights_do_not_exhaust_model_attempts(self):
         record = dict(run=9, key=d.key(TASK), attempt=1, phase='claimed')
@@ -327,8 +326,8 @@ class L88(unittest.TestCase):
         with patch.object(d, 'api', return_value=dict(jobs=[dict(steps=[dict(name='Run anthropics/claude-code-action@v1', status='completed', conclusion='skipped')])])):
             self.assertEqual(d.consumed(record), 0)
 
-    def test_l88_review_allows_the_existing_percy_wait(self):
-        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name), patch.object(d, 'due', return_value=TASK), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'run', return_value='ready') as run:
+    def test_l88_review_task_build_allows_the_model_step_timeout(self):
+        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name), patch.object(d, 'review_task', return_value=TASK), patch.object(d, 'acquire_review', return_value=True), patch.object(d, 'project'), patch.object(d, 'issued'), patch.object(d, 'run', return_value='ready') as run:
             d.start(1, 'review', HEAD)
             self.assertEqual(run.call_args_list[0].kwargs['timeout'], 660)
 
@@ -338,7 +337,7 @@ class L88(unittest.TestCase):
             if args[2] == 'review-due':
                 return 'PR #1, head ' + HEAD + '.'
             return original(*args, **kwargs)
-        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name), patch.object(d, 'due', return_value=TASK), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'run', side_effect=execute):
+        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name), patch.object(d, 'review_task', return_value=TASK), patch.object(d, 'acquire_review', return_value=True), patch.object(d, 'project'), patch.object(d, 'issued'), patch.object(d, 'run', side_effect=execute):
             d.start(1, 'review', HEAD)
             result = Path(output.name).read_text()
             self.assertIn((ROOT / '.agents/builder.md').read_text(), result)
@@ -390,13 +389,13 @@ class L88(unittest.TestCase):
         self.assertIsNone(d.decision(other, [], [], ['code']))
 
     def test_l88_missed_event_dispatches_and_empty_queue_stops(self):
-        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'available', return_value=True), patch.object(d, 'run', side_effect=['', '', '[]']) as run:
+        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'review_task', return_value=TASK), patch.object(d, 'due', return_value=None), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'run', side_effect=['', '', '[]']) as run:
             d.reconcile()
             self.assertEqual(run.call_args_list[1].args, ('gh', 'workflow', 'run', 'review.yml', '-f', 'pr=1', '-f', 'head=' + HEAD))
             self.assertEqual(run.call_count, 3)
 
     def test_l88_claimed_pr_is_not_redispatched(self):
-        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=('old', {})), patch.object(d, 'available', return_value=False), patch.object(d, 'run', return_value='[]') as run:
+        with patch.object(d, 'active_builds', return_value=set()), patch.object(d, 'local_branch', return_value=None), patch.object(d, 'gh', return_value=[dict(number=1)]), patch.object(d, 'review_task', return_value=None), patch.object(d, 'due', return_value=TASK), patch.object(d, 'claim_record', return_value=('old', {})), patch.object(d, 'available', return_value=False), patch.object(d, 'run', return_value='[]') as run:
             d.reconcile()
             self.assertEqual([c.args for c in run.call_args_list], [('bash', 'loop/runs.sh', 'recover'), ('bash', 'loop/runs.sh', 'queue', '4')])
 
@@ -405,6 +404,160 @@ class L88(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 d.reconcile()
             gh.assert_not_called()
+
+
+class ReviewOnOpen(unittest.TestCase):
+    """L24/L88: review starts on open, one reviewer per head, activity in one comment."""
+    OWNER = dict(head=HEAD, run=9, attempt=1, phase='issued')
+
+    def test_l24_two_simultaneous_events_start_one_reviewer(self):
+        # The second Claim write loses the non-force compare-and-swap, so it starts no model.
+        with patch.object(d, 'review_task', return_value=TASK), patch.object(d, 'claim_record', return_value=(None, None)), patch.object(d, 'write_claim', side_effect=[True, False]) as write, patch.object(d, 'project'), patch.object(d, 'issued'), patch.object(d, 'run', return_value='ready'), tempfile.NamedTemporaryFile() as out, patch.dict(os.environ, GITHUB_OUTPUT=out.name, GITHUB_RUN_ID='1'):
+            d.start(1, 'review', HEAD)
+            d.start(1, 'review', HEAD)
+            self.assertEqual(Path(out.name).read_text().count('pr=1'), 1)
+            self.assertEqual(write.call_args.args[3], 'loop-review')
+
+    def test_l24_live_reviewer_blocks_duplicates_but_not_a_new_head_or_a_builder(self):
+        with patch.object(d, 'api', return_value=dict(status='in_progress')):
+            self.assertFalse(d.review_available(HEAD, self.OWNER))
+            self.assertTrue(d.review_available(BASE, self.OWNER))
+            # The review Claim is its own ref: a writing Builder's loop-pr Claim never enters it.
+            self.assertTrue(d.review_available(HEAD, None))
+
+    def test_l88_review_ignores_the_active_builder_and_its_claim(self):
+        with patch.object(d, 'api', return_value=PR), patch.object(d, 'claim_record', return_value=(None, None)) as claim, patch.object(d, 'active_builds') as builds, patch.object(d, 'local_branch') as local, patch.object(d, 'run', side_effect=lambda *a, **k: 'code' if a[2] == 'touches' else ''):
+            self.assertEqual(d.review_task(1)['head'], HEAD)
+            builds.assert_not_called()
+            local.assert_not_called()
+            self.assertNotIn('loop-review', [c.args[1:] for c in claim.call_args_list])
+
+    def test_l24_old_head_results_leave_the_new_head_untouched(self):
+        moved = {**PR, 'head': dict(PR['head'], sha=BASE), 'labels': [dict(name='needs-review')]}
+        with patch.object(d, 'api', return_value=moved) as api, patch.object(d, 'run') as run:
+            self.assertFalse(d.project(1, HEAD, 'approved'))
+            run.assert_not_called()
+            api.assert_called_once_with('pulls/1')
+
+    def test_l24_labels_change_only_when_they_differ(self):
+        labelled = {**PR, 'labels': [dict(name='needs-review')]}
+        with patch.object(d, 'api', return_value=labelled) as api, patch.object(d, 'run') as run:
+            d.project(1, HEAD, 'queued')
+            run.assert_not_called()
+            self.assertEqual(api.call_count, 1)
+            d.project(1, HEAD, 'reviewing')
+            self.assertEqual(api.call_args.args, ('issues/1/labels', {'labels': ['reviewing']}))
+            self.assertEqual(run.call_args.args[-1], 'repos/{owner}/{repo}/issues/1/labels/needs-review')
+        with patch.object(d, 'api', return_value=labelled), patch.object(d, 'run') as run:
+            d.project(1, HEAD, 'rejected')
+            self.assertEqual(run.call_args.args[-1], 'repos/{owner}/{repo}/issues/1/labels/needs-review')
+
+    def test_l24_a_queued_job_claims_nothing_and_a_started_model_announces(self):
+        queued = dict(jobs=[dict(name='review', status='queued', steps=[])])
+        running = dict(jobs=[dict(name='review', status='in_progress', steps=[dict(name='Run anthropics/claude-code-action@v1', status='in_progress')])])
+        never = dict(jobs=[dict(name='review', status='completed', steps=[dict(name='Run anthropics/claude-code-action@v1', status='completed', conclusion='skipped')])])
+        with patch.dict(os.environ, GITHUB_RUN_ID='9'):
+            with patch.object(d, 'api', return_value=queued):
+                self.assertFalse(d.model_running(9))
+            with patch.object(d, 'api', return_value=running):
+                self.assertTrue(d.model_running(9))
+            with patch.object(d, 'api', return_value=never):
+                self.assertIsNone(d.model_running(9))
+            with patch.object(d, 'model_running', return_value=None), patch.object(d, 'activity_comment') as comment:
+                d.announce(1, HEAD)
+                comment.assert_not_called()
+            with patch.object(d, 'model_running', side_effect=[False, True]), patch.object(d, 'time') as clock, patch.object(d, 'claim_record', return_value=('o', self.OWNER)), patch.object(d, 'activity_comment') as comment, patch.object(d, 'project') as project:
+                clock.time.return_value = 0
+                d.announce(1, HEAD)
+                comment.assert_called_once_with(1, HEAD, 9, 1, 'reviewing')
+                project.assert_called_once_with(1, HEAD, 'reviewing')
+            with patch.object(d, 'model_running', return_value=False), patch.object(d, 'time') as clock:
+                clock.time.side_effect = [0, 10 ** 6]
+                with self.assertRaises(ValueError):
+                    d.announce(1, HEAD)
+
+    def test_l24_start_completion_and_interruption_update_one_comment(self):
+        stored = []
+        def api(path, payload=None):
+            if path == 'actions/runs/9/jobs?per_page=100':
+                return dict(jobs=[dict(name='review', html_url='https://github.com/o/r/actions/runs/9/job/5')])
+            if path == 'issues/1/comments':
+                stored.append(dict(id=len(stored) + 1, user=dict(login='github-actions[bot]'), body=payload['body']))
+                return {}
+            raise AssertionError(path)
+        def gh(*args, data=None):
+            if args[-1] == '--slurp':
+                return [list(stored)]
+            stored[int(args[3].rsplit('/', 1)[1]) - 1]['body'] = json.loads(data)['body']
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'gh', side_effect=gh), patch.object(d, 'project'):
+            d.activity_comment(1, HEAD, 9, 1, 'reviewing')
+            self.assertEqual(len(stored), 1)
+            body = stored[0]['body']
+            self.assertTrue(body.startswith('**Reviewing · Claude · commit `aaaaaaa`**\n\n[GitHub Actions run](https://github.com/o/r/actions/runs/9/job/5)'))
+            self.assertIn(f'<!-- review-activity {HEAD} run=9 attempt=1 -->', body)
+            d.activity_comment(1, HEAD, 9, 1, 'reviewing')
+            self.assertEqual(stored[0]['body'], body)
+            d.conclude(1, HEAD, 9, 1, 'approve')
+            self.assertEqual(len(stored), 1)
+            self.assertTrue(stored[0]['body'].startswith('**Approved · Claude'))
+            d.conclude(1, HEAD, 9, 1, 'cancelled', 'Reviewer job cancelled.')
+            self.assertEqual(len(stored), 1)
+            self.assertIn('Back to `needs-review`', stored[0]['body'])
+            self.assertIn('Reviewer job cancelled.', stored[0]['body'])
+        # Another head gets its own comment.
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'gh', side_effect=gh):
+            d.activity_comment(1, BASE, 9, 1, 'reviewing')
+            self.assertEqual(len(stored), 2)
+
+    def test_l24_finish_maps_results_to_labels_and_a_lost_review_returns_to_needs_review(self):
+        for review, post, verdict, state in (('success', 'success', 'approve', 'approved'), ('success', 'success', 'reject', 'rejected'),
+                                              ('failure', 'skipped', '', 'queued'), ('cancelled', 'skipped', '', 'queued'), ('success', 'failure', 'approve', 'queued')):
+            with self.subTest(review=review, post=post), patch.dict(os.environ, GITHUB_RUN_ID='9'), patch.object(d, 'claim_record', return_value=('o', self.OWNER)), patch.object(d, 'activity_comment') as comment, patch.object(d, 'project') as project:
+                d.finish(1, HEAD, review, post, verdict)
+                project.assert_called_once_with(1, HEAD, state)
+                if state == 'queued':
+                    self.assertIn(review, comment.call_args.args[5])
+
+    def test_l24_failed_api_writes_stay_visible(self):
+        error = subprocess.CalledProcessError(1, ['gh'])
+        with patch.object(d, 'api', side_effect=error):
+            with self.assertRaises(subprocess.CalledProcessError):
+                d.project(1, HEAD, 'queued')
+        with patch.object(d, 'run_link', return_value='u'), patch.object(d, 'gh', side_effect=error):
+            with self.assertRaises(subprocess.CalledProcessError):
+                d.activity_comment(1, HEAD, 9, 1, 'reviewing')
+
+    def test_l88_reconcile_settles_a_stale_reviewing_label_from_the_actual_run(self):
+        owner = dict(status='completed', conclusion='cancelled')
+        stale = {**PR, 'labels': [dict(name='reviewing')]}
+        def api(path, payload=None):
+            return stale if path == 'pulls/1' else owner
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'claim_record', return_value=('o', self.OWNER)), patch.object(d, 'run', return_value=''), patch.object(d, 'conclude') as conclude:
+            d.settle(1)
+            self.assertEqual(conclude.call_args.args[:5], (1, HEAD, 9, 1, 'cancelled'))
+        verdict = json.dumps(dict(current=True, verdict='approve', head=HEAD))
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'claim_record', return_value=('o', self.OWNER)), patch.object(d, 'run', return_value=verdict), patch.object(d, 'conclude') as conclude:
+            d.settle(1)
+            self.assertEqual(conclude.call_args.args[4], 'approve')
+        owner['status'] = 'in_progress'
+        with patch.object(d, 'api', side_effect=api), patch.object(d, 'claim_record', return_value=('o', self.OWNER)), patch.object(d, 'conclude') as conclude:
+            d.settle(1)
+            conclude.assert_not_called()
+
+    def test_l24_lost_reviewer_retries_are_bounded(self):
+        done = dict(status='completed', conclusion='failure', updated_at='2026-01-01T00:00:00Z')
+        with patch.object(d, 'api', return_value=done), patch.object(d, 'started', return_value=True):
+            self.assertTrue(d.review_available(HEAD, {**self.OWNER, 'attempt': 1}))
+            self.assertFalse(d.review_available(HEAD, {**self.OWNER, 'attempt': 2}))
+
+    def test_l24_review_workflow_triggers_on_open_without_waiting_for_ci(self):
+        source = (ROOT / '.github/workflows/review.yml').read_text()
+        triggers = source.split('\npermissions:', 1)[0]
+        self.assertIn('pull_request_target:', triggers)
+        for event in ('opened', 'reopened', 'synchronize'):
+            self.assertIn(event, triggers)
+        self.assertNotIn('workflow_run', triggers.split('concurrency:')[0].split('on:', 1)[1])
+        self.assertIn('inputs.head || github.event.pull_request.head.sha', source.split('concurrency:', 1)[1].split('permissions:', 1)[0])
 
 
 class PublicationPermissions(unittest.TestCase):

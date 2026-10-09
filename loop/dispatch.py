@@ -39,7 +39,7 @@ def eligible(pr):
 
 
 def decision(pr, checks, verdicts, kinds):
-    """Choose from current evidence, without a dispatch side effect."""
+    """Choose repair from current evidence, without a dispatch side effect. Review is review_task: CI never gates it."""
     if not eligible(pr):
         return None
     can_repair = pr['head']['ref'].startswith('build/')
@@ -81,8 +81,6 @@ def decision(pr, checks, verdicts, kinds):
                 return None
             if latest['conclusion'] != 'success':
                 return ('fix', 'rules' if name == 'rules' else 'check') if can_repair else None
-    if check['conclusion'] == 'success' and ('code' in kinds or 'loop' in kinds) and not current:
-        return 'review', 'review'
     return None
 
 
@@ -102,16 +100,12 @@ def due(number, busy=None, reserved_ci=False):
     verdicts = [json.loads(line) for line in run('bash', 'loop/rules.sh', 'verdicts', str(number)).splitlines()]
     paths = run('gh', 'pr', 'diff', str(number), '--name-only')
     kinds = run('bash', 'loop/rules.sh', 'touches', data=paths).splitlines()
-    _, record = claim_record(number)
-    current = [v for v in verdicts if v['current']]
-    review_after = review_request(pr['head']['sha'], current[-1]) if current and current[-1]['verdict'] == 'reject' else None
-    rereview = review_after and (record or {}).get('review_after') == review_after
-    decision_verdicts = [{**v, 'current': False} for v in verdicts] if rereview else verdicts
     checks = gh('api', f"repos/{{owner}}/{{repo}}/commits/{pr['head']['sha']}/check-runs?per_page=100&filter=latest", '--paginate', '--slurp')
-    selected = decision(pr, [c for page in checks for c in page['check_runs']], decision_verdicts, kinds)
+    selected = decision(pr, [c for page in checks for c in page['check_runs']], verdicts, kinds)
     if selected is None:
         return None
     role, cause = selected
+    current = [v for v in verdicts if v['current']]
     ci_run = None
     if role == 'ci':
         import re
@@ -129,8 +123,7 @@ def due(number, busy=None, reserved_ci=False):
     base = api('git/ref/heads/main')['object']['sha'] if cause == 'conflict' else pr['base']['sha']
     return dict(pr=number, role=role, cause=cause, head=pr['head']['sha'], base=base, branch=pr['head']['ref'], ci_run=ci_run,
                 **({'planning': True} if 'planning' in kinds else {}),
-                **({'review_after': review_after} if rereview else {}),
-                **({'repair_verdict': review_after['verdict']} if cause == 'reject' and review_after else {}))
+                **({'repair_verdict': review_request(pr['head']['sha'], current[-1])['verdict']} if cause == 'reject' else {}))
 
 
 def review_request(head, verdict):
@@ -271,21 +264,23 @@ def acquire(task):
     history = repair_history(record, api(f"actions/runs/{record['run']}")) if record else []
     return write_claim(task['pr'], old, dict(key=key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt,
                                            phase='claimed', fixes=fixes(record), repairs=history,
-                                           review_after=task.get('review_after'), repair_verdict=task.get('repair_verdict'),
+                                           review_after=(record or {}).get('review_after'), repair_verdict=task.get('repair_verdict'),
                                            ci_head=task['head'] if task['role'] == 'ci' else (record or {}).get('ci_head'),
                                            ci_attempts=((record or {}).get('ci_attempts', 0) if (record or {}).get('ci_head') == task['head'] else 0) + 1
                                            if task['role'] == 'ci' else (record or {}).get('ci_attempts', 0)))
 
 
-def issued(number):
-    old, record = claim_record(number)
+def issued(number, namespace='loop-pr'):
+    old, record = claim_record(number, namespace)
     if not record or record['run'] != int(os.environ['GITHUB_RUN_ID']):
         raise ValueError(f'Claim ownership changed for PR #{number}')
-    if not write_claim(number, old, {**record, 'phase': 'issued'}):
+    if not write_claim(number, old, {**record, 'phase': 'issued'}, namespace):
         raise ValueError(f'Claim changed before starting PR #{number}')
 
 
 def start(number, role, head):
+    if role == 'review':
+        return start_review(number, head)
     task = due(number)
     if not task or task['role'] != role or (head and task['head'] != head):
         return
@@ -297,31 +292,27 @@ def start(number, role, head):
     fresh = due(number)
     if not fresh or key(fresh) != key(task):
         return
-    if role == 'review':
-        prompt = run('bash', 'loop/runs.sh', 'review-due', str(number), task['head'], *([task['review_after']['verdict']] if task.get('review_after') else []), timeout=660)
-        prompt = ('Review ' + prompt + '\nIf an earlier independent approval names an ancestor, focus on the changes since that approved head, including conflict resolutions and their effects. Your verdict must still cover the current head; do not repeat unchanged findings.')
-    else:
-        evidence = {'ci': 'Two controller CI reruns did not recover this head. Diagnose runner, concurrency and workflow failures before changing product code.',
-                    'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
-                    'check': 'Inspect the failed required CI check on this exact head, read its failing job logs, and fix the cause.',
-                    'rules': 'Inspect the failed rules job and repair its concrete finding. For a missing Author-Agent trailer on your latest commit only, amend its metadata, prove git diff between old and amended commits is empty, and push with an explicit force-with-lease matching the expected head; never rewrite code under that exception.',
-                    'reject': 'Read the independent reject findings with loop/rules.sh verdicts and address each one.',
-                    'cutoff': 'Continue the interrupted Builder work; inspect the PR body and linked run for what remains.'}[task['cause']]
-        prompt = (f"Fix PR #{number} on branch {task['branch']}, expected head {task['head']}. {evidence}\n"
-                  f"Your Author-Agent id is builder-{os.environ['GITHUB_RUN_ID']}. Mark the PR a draft while editing. "
-                  "Run the required checks, remove a resolved Stopped: line, and mark it ready. Ordinary repairs never force-push; the rules task permits only its explicit metadata-only exception. "
-                  "If the remote head moved, stop without overwriting it. Leave a precise Stopped: question only for an unresolved product decision.")
-        _, record = claim_record(number)
-        history = record.get('repairs', [])
-        if record.get('fixes', 0) >= 2:
-            prior = ', '.join(dict.fromkeys(str(item['run']) for item in history))
-            prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Read their job logs and retained outcome.json/Ledger artifacts first. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
-                       "Distinguish failed tests from cancelled CI, setup/authentication failure, stale work and publication failure. "
-                       "Record the observed cause and a changed approach on the PR before editing; do not repeat an unsuccessful approach or invent unavailable evidence. "
-                       "Reproduce the failure, make one bounded correction, and verify the failing observer. If the blocker is shared loop machinery, "
-                       "create or reuse one linked engineering work Issue with reproduction and acceptance, label loop:work and ready-for-agent only when specified, "
-                       "and keep this PR linked; ordinary engineering failure is not a product question. "
-                       "Conclude with evidence of what changed and what remains. CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
+    evidence = {'ci': 'Two controller CI reruns did not recover this head. Diagnose runner, concurrency and workflow failures before changing product code.',
+                'conflict': 'Merge origin/main into the PR branch and resolve conflicts; never rebase or force-push. Regenerate conflicted lockfiles as .agents/data/pr.md prescribes.',
+                'check': 'Inspect the failed required CI check on this exact head, read its failing job logs, and fix the cause.',
+                'rules': 'Inspect the failed rules job and repair its concrete finding. For a missing Author-Agent trailer on your latest commit only, amend its metadata, prove git diff between old and amended commits is empty, and push with an explicit force-with-lease matching the expected head; never rewrite code under that exception.',
+                'reject': 'Read the independent reject findings with loop/rules.sh verdicts and address each one.',
+                'cutoff': 'Continue the interrupted Builder work; inspect the PR body and linked run for what remains.'}[task['cause']]
+    prompt = (f"Fix PR #{number} on branch {task['branch']}, expected head {task['head']}. {evidence}\n"
+              f"Your Author-Agent id is builder-{os.environ['GITHUB_RUN_ID']}. Mark the PR a draft while editing. "
+              "Run the required checks, remove a resolved Stopped: line, and mark it ready. Ordinary repairs never force-push; the rules task permits only its explicit metadata-only exception. "
+              "If the remote head moved, stop without overwriting it. Leave a precise Stopped: question only for an unresolved product decision.")
+    _, record = claim_record(number)
+    history = record.get('repairs', [])
+    if record.get('fixes', 0) >= 2:
+        prior = ', '.join(dict.fromkeys(str(item['run']) for item in history))
+        prompt += (f"\nDiagnostic repair: earlier repair runs {prior}. Read their job logs and retained outcome.json/Ledger artifacts first. Legacy history may omit earlier run IDs; inspect the PR timeline for those. "
+                   "Distinguish failed tests from cancelled CI, setup/authentication failure, stale work and publication failure. "
+                   "Record the observed cause and a changed approach on the PR before editing; do not repeat an unsuccessful approach or invent unavailable evidence. "
+                   "Reproduce the failure, make one bounded correction, and verify the failing observer. If the blocker is shared loop machinery, "
+                   "create or reuse one linked engineering work Issue with reproduction and acceptance, label loop:work and ready-for-agent only when specified, "
+                   "and keep this PR linked; ordinary engineering failure is not a product question. "
+                   "Conclude with evidence of what changed and what remains. CI reruns belong to the trusted controller; do not spend a model run toggling draft status to rerun CI.")
     issued(number)
     run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
@@ -329,11 +320,185 @@ def start(number, role, head):
             out.write(f'{name}={task[name]}\n')
 
 
+REVIEW = 'loop-review'
+MODEL_STEP = 'Run anthropics/claude-code-action@v1'
+LABELS = {'queued': ({'needs-review'}, {'reviewing', 'needs-fix'}),
+          'reviewing': ({'reviewing'}, {'needs-review', 'needs-fix'}),
+          'approved': (set(), {'needs-review', 'reviewing', 'needs-fix'}),
+          'rejected': ({'needs-fix'}, {'needs-review', 'reviewing'})}
+TITLES = {'reviewing': 'Reviewing', 'approved': 'Approved', 'rejected': 'Rejected', 'failed': 'Review failed', 'cancelled': 'Review cancelled'}
+
+
+def review_task(number):
+    """L24: an open same-repository Code or Loop PR head with no covering verdict is due, draft or ready, whatever CI says."""
+    pr = api(f'pulls/{number}')
+    if not eligible(pr):
+        return None
+    kinds = run('bash', 'loop/rules.sh', 'touches', data=run('gh', 'pr', 'diff', str(number), '--name-only')).splitlines()
+    if not {'code', 'loop'} & set(kinds):
+        return None
+    verdicts = [json.loads(line) for line in run('bash', 'loop/rules.sh', 'verdicts', str(number)).splitlines()]
+    current = [v for v in verdicts if v['current'] and ('planning' not in kinds or v['head'] == pr['head']['sha'])]
+    after = review_request(pr['head']['sha'], current[-1]) if current and current[-1]['verdict'] == 'reject' else None
+    if current:
+        # Only a repair's handoff re-reviews an unchanged head under a reject.
+        _, record = claim_record(number)
+        if not after or (record or {}).get('review_after') != after:
+            return None
+    return dict(pr=number, role='review', cause='review', head=pr['head']['sha'], branch=pr['head']['ref'],
+                **({'review_after': after} if current else {}), **({'planning': True} if 'planning' in kinds else {}))
+
+
+def review_spent(record):
+    # A Claim reserves the next attempt; preflight or setup failures spend no model attempt.
+    return record['attempt'] if started(record) else record['attempt'] - 1
+
+
+def review_available(head, record):
+    """One reviewer per head: a live or spent owner of this head blocks; any owner of an older head never does."""
+    if not record or record['head'] != head:
+        return True
+    owner = api(f"actions/runs/{record['run']}")
+    if owner['status'] != 'completed':
+        return False
+    if owner.get('conclusion') != 'success' and owner.get('updated_at'):
+        if time.time() - datetime.fromisoformat(owner['updated_at'].replace('Z', '+00:00')).timestamp() < 300:
+            return False
+    return review_spent(record) < 2
+
+
+def acquire_review(task):
+    old, record = claim_record(task['pr'], REVIEW)
+    if not review_available(task['head'], record):
+        return False
+    attempt = review_spent(record) + 1 if record and record['head'] == task['head'] else 1
+    return write_claim(task['pr'], old, dict(head=task['head'], run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt, phase='claimed'), REVIEW)
+
+
+def project(number, head, state):
+    """Labels are a projection of the exact head's review, never its lock. Returns False for a head that moved."""
+    pr = api(f'pulls/{number}')
+    if pr['state'] != 'open' or pr['head']['sha'] != head:
+        return False
+    have = {label['name'] for label in pr['labels']}
+    add, drop = LABELS[state]
+    if add - have:
+        api(f'issues/{number}/labels', {'labels': sorted(add - have)})
+    for name in sorted(drop & have):
+        run('gh', 'api', '--method', 'DELETE', f'repos/{{owner}}/{{repo}}/issues/{number}/labels/{name}')
+    return True
+
+
+def run_link(run_id):
+    jobs = api(f'actions/runs/{run_id}/jobs?per_page=100')['jobs']
+    job = next((j for j in jobs if j['name'] == 'review'), None)
+    return job['html_url'] if job else f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}"
+
+
+def activity_comment(number, head, run_id, attempt, title, detail=''):
+    """One durable comment per PR head, found by its hidden marker and updated in place."""
+    body = (f"**{TITLES[title]} · Claude · commit `{head[:7]}`**\n\n{detail + chr(10) if detail else ''}[GitHub Actions run]({run_link(run_id)})\n\n"
+            f"<!-- review-activity {head} run={run_id} attempt={attempt} -->")
+    pages = gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}/comments?per_page=100', '--paginate', '--slurp')
+    mine = [c for page in pages for c in page if c['user']['login'] == 'github-actions[bot]' and f'<!-- review-activity {head} ' in c['body']]
+    if not mine:
+        api(f'issues/{number}/comments', {'body': body})
+    elif mine[-1]['body'] != body:
+        gh('api', '--method', 'PATCH', f"repos/{{owner}}/{{repo}}/issues/comments/{mine[-1]['id']}", '--input', '-', data=json.dumps({'body': body}))
+
+
+def start_review(number, head):
+    task = review_task(number)
+    if not task or (head and task['head'] != head) or not acquire_review(task):
+        return
+    fresh = review_task(number)
+    if not fresh or fresh['head'] != task['head']:
+        return
+    project(number, task['head'], 'queued')
+    prompt = run('bash', 'loop/runs.sh', 'review-due', str(number), task['head'], *([task['review_after']['verdict']] if task.get('review_after') else []), timeout=660)
+    prompt = ('Review ' + prompt + '\nIf an earlier independent approval names an ancestor, focus on the changes since that approved head, including conflict resolutions and their effects. Your verdict must still cover the current head; do not repeat unchanged findings.')
+    issued(number, REVIEW)
+    run('bash', 'loop/runs.sh', 'prompt', 'builder', data=prompt + '\n')
+    with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+        for name in ('pr', 'head', 'branch'):
+            out.write(f'{name}={task[name]}\n')
+
+
+def model_running(run_id):
+    """True once the reviewer's model step runs; None when its job ended without ever running it."""
+    jobs = [j for j in api(f'actions/runs/{run_id}/jobs?per_page=100')['jobs'] if j['name'] == 'review']
+    if any(s['name'] == MODEL_STEP and s['status'] in ('in_progress', 'completed') and s.get('conclusion') != 'skipped'
+           for j in jobs for s in j.get('steps', [])):
+        return True
+    return None if jobs and all(j['status'] == 'completed' for j in jobs) else False
+
+
+def announce(number, head, poll=20, patience=1800):
+    """At actual model startup: `reviewing` and the activity comment. A queued job claims nothing."""
+    run_id = int(os.environ['GITHUB_RUN_ID'])
+    end = time.time() + patience
+    while not (running := model_running(run_id)):
+        if running is None:
+            return
+        if time.time() > end:
+            raise ValueError('the reviewer model did not start in time')
+        time.sleep(poll)
+    _, record = claim_record(number, REVIEW)
+    if not record or record['run'] != run_id or record['head'] != head:
+        return
+    activity_comment(number, head, run_id, record['attempt'], 'reviewing')
+    project(number, head, 'reviewing')
+
+
+def conclude(number, head, run_id, attempt, outcome, reason=''):
+    """Update the head's one activity comment, then its labels. A lost review returns to needs-review."""
+    state = {'approve': 'approved', 'reject': 'rejected'}.get(outcome, 'queued')
+    title = {'approve': 'approved', 'reject': 'rejected'}.get(outcome, outcome)
+    detail = reason or ('The independent verdict is posted separately.' if state != 'queued' else '')
+    if state == 'queued':
+        detail = f"{reason or 'The reviewer ended without a verdict.'} Back to `needs-review`; reconciliation retries a bounded number of times."
+    activity_comment(number, head, run_id, attempt, title, detail)
+    project(number, head, state)
+
+
+def finish(number, head, review_result, post_result, verdict):
+    run_id = int(os.environ['GITHUB_RUN_ID'])
+    _, record = claim_record(number, REVIEW)
+    attempt = record['attempt'] if record and record['run'] == run_id else 1
+    if review_result == 'success' and post_result == 'success' and verdict in ('approve', 'reject'):
+        return conclude(number, head, run_id, attempt, verdict)
+    outcome = 'cancelled' if 'cancelled' in (review_result, post_result) else 'failed'
+    conclude(number, head, run_id, attempt, outcome, f'Reviewer job {review_result}, verdict post {post_result}.')
+
+
+def settle(number):
+    """Repair stale activity: a head labelled `reviewing` whose owner run ended is judged by its verdict or its run."""
+    pr = api(f'pulls/{number}')
+    _, record = claim_record(number, REVIEW)
+    if not record or record['head'] != pr['head']['sha']:
+        return
+    owner = api(f"actions/runs/{record['run']}")
+    if owner['status'] != 'completed':
+        return
+    verdicts = [json.loads(line) for line in run('bash', 'loop/rules.sh', 'verdicts', str(number)).splitlines()]
+    current = [v for v in verdicts if v['current'] and v['head'] == record['head']]
+    if current:
+        return conclude(number, record['head'], record['run'], record['attempt'], current[-1]['verdict'])
+    outcome = 'cancelled' if owner.get('conclusion') == 'cancelled' else 'failed'
+    conclude(number, record['head'], record['run'], record['attempt'], outcome, f"The reviewer run {owner.get('conclusion') or 'ended'} without a verdict.")
+
+
 def reconcile():
     run('bash', 'loop/runs.sh', 'recover')
-    prs = gh('pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,isDraft')
+    prs = gh('pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,isDraft,labels')
     busy = {'build/' + s for s in active_builds()} | {local_branch()}
     for pr in prs:
+        if 'reviewing' in {label['name'] for label in pr.get('labels', [])}:
+            settle(pr['number'])
+        review = review_task(pr['number'])
+        if review and review_available(review['head'], claim_record(pr['number'], REVIEW)[1]):
+            run('gh', 'workflow', 'run', 'review.yml', '-f', f"pr={pr['number']}", '-f', f"head={review['head']}")
+            print(f"#{pr['number']}: queued review at {review['head'][:7]}")
         task = due(pr['number'], busy)
         if not task:
             continue
@@ -350,7 +515,7 @@ def reconcile():
                     run('gh', 'run', 'rerun', str(task['ci_run']))
                     print(f"#{task['pr']}: reran cancelled CI {task['ci_run']}; no model invoked")
             continue
-        workflow = 'review.yml' if task['role'] == 'review' else ('feedback.yml' if task.get('planning') else 'build.yml')
+        workflow = 'feedback.yml' if task.get('planning') else 'build.yml'
         run('gh', 'workflow', 'run', workflow, '-f', f"pr={task['pr']}", '-f', f"head={task['head']}")
         print(f"#{task['pr']}: queued {task['cause']} at {task['head'][:7]}")
     # Queue entry is serialized and row Claims are atomic; an empty queue does not dispatch again.
@@ -392,13 +557,18 @@ def activity():
                 rows.append(f"[{item['displayTitle']} · {job['name']}]({job.get('url') or item['url']}): {job['status']}")
             if not active:
                 rows.append(f"[{item['displayTitle']}]({item['url']}): {item['status']}")
-    prs = gh('pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,url')
+    prs = gh('pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,url,labels')
     for pr in prs:
+        if 'needs-review' in {label['name'] for label in pr.get('labels', [])}:
+            _, reviewer = claim_record(pr['number'], REVIEW)
+            if reviewer and reviewer['head'] == pr['headRefOid']:
+                owner = api(f"actions/runs/{reviewer['run']}")
+                if owner['status'] == 'completed' and review_spent(reviewer) >= 2:
+                    rows.append(f"[PR #{pr['number']}]({pr['url']}): review needs investigation after two attempts; [last run]({owner['html_url']})")
         _, record = claim_record(pr['number'])
         if not record:
             continue
         owner = api(f"actions/runs/{record['run']}")
-        spent_review = record['key'][0] == 'review' and record['key'][2] == pr['headRefOid'] and consumed(record) >= 2
         if owner['status'] == 'completed' and fixes(record) >= 2:
             history = repair_history(record, owner)
             task = dict(head=pr['headRefOid'], cause=record['key'][1])
@@ -406,8 +576,6 @@ def activity():
             wait = repair_wait(task, history, now)
             state = 'diagnostic repair eligible when current gates require it' if wait <= now else 'repair eligible after ' + datetime.fromtimestamp(wait).astimezone().isoformat()
             rows.append(f"[PR #{pr['number']}]({pr['url']}): {state}; [last run]({owner['html_url']})")
-        elif owner['status'] == 'completed' and spent_review:
-            rows.append(f"[PR #{pr['number']}]({pr['url']}): review needs investigation after two attempts; [last run]({owner['html_url']})")
     return rows
 
 
@@ -417,6 +585,10 @@ if __name__ == '__main__':
             reconcile()
         elif sys.argv[1] == 'start':
             start(int(sys.argv[2]), sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else '')
+        elif sys.argv[1] == 'announce':
+            announce(int(sys.argv[2]), sys.argv[3])
+        elif sys.argv[1] == 'finish':
+            finish(int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6] if len(sys.argv) > 6 else '')
         elif sys.argv[1] == 'repaired':
             repaired(int(sys.argv[2]))
         elif sys.argv[1] == 'budget':
@@ -424,7 +596,7 @@ if __name__ == '__main__':
         elif sys.argv[1] == 'activity':
             print(json.dumps(activity()))
         else:
-            raise ValueError('expected reconcile, start, repaired, budget or activity')
+            raise ValueError('expected reconcile, start, announce, finish, repaired, budget or activity')
     except (subprocess.SubprocessError, ValueError, KeyError, TypeError, OSError) as error:
         print(f'PR dispatch failed: {error}', file=sys.stderr)
         sys.exit(4)

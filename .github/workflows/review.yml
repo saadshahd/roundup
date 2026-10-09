@@ -1,9 +1,11 @@
 name: review
-run-name: "${{ inputs.pr && format('Review PR #{0}', inputs.pr) || format('Review {0}', github.event.workflow_run.head_branch) }}"
+run-name: "Review PR #${{ inputs.pr || github.event.pull_request.number }}"
 
-# L24: one Reviewer run per Code PR head, once check passes on it. The Reviewer holds only a read token and answers in
-# a fixed schema; the post job publishes that answer as the verdict merge-ready trusts. It runs on Opus, since a
-# missed defect merges; Builders and the Retro run on Sonnet, whose misses the Reviewer or the user still sees.
+# L24: one Reviewer run per PR head, started when the PR opens, reopens or gets a push, draft or ready, whatever CI
+# says. The Reviewer holds only a read token and answers in a fixed schema; the post job publishes that answer as the
+# verdict merge-ready trusts, and the announce and finish jobs keep the head's labels and one activity comment. It runs
+# on Opus, since a missed defect merges; Builders and the Retro run on Sonnet, whose misses the Reviewer or the user
+# still sees. pull_request_target runs main's workflow; the head is only checked out, read-only, in the review job.
 on:
   workflow_dispatch:
     inputs:
@@ -13,13 +15,13 @@ on:
       head:
         description: Expected PR head
         required: true
-  workflow_run:
-    workflows: [check, loop, visual]
-    types: [completed]
+  pull_request_target:
+    types: [opened, reopened, synchronize]
 
-# Duplicate review dispatches queue; the shared PR Claim prevents duplicate model runs.
+# One group per PR head: duplicate events for a head queue behind its reviewer and the review Claim ends them, while a
+# new head never waits behind an old head's reviewer.
 concurrency:
-  group: review-${{ inputs.pr || github.event.workflow_run.head_branch }}
+  group: review-${{ inputs.pr || github.event.pull_request.number }}-${{ inputs.head || github.event.pull_request.head.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -33,16 +35,14 @@ defaults:
 jobs:
   # Reads main's scripts and shared Builder prompt, never the PR's.
   due:
-    if: >-
-      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
       checks: read
-      pull-requests: read
+      pull-requests: write
+      issues: write
     outputs:
       pr: ${{ steps.due.outputs.pr }}
       head: ${{ steps.due.outputs.head }}
@@ -57,17 +57,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
-          HEAD: ${{ inputs.head || github.event.workflow_run.head_sha }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
-          PR: ${{ inputs.pr }}
+          HEAD: ${{ inputs.head || github.event.pull_request.head.sha }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
-        run: |
-          pr="$PR"
-          if [ -z "$pr" ]; then
-            pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
-          fi
-          [ -n "$pr" ] || exit 0
-          python3 loop/dispatch.py start "$pr" review "$HEAD"
+        run: python3 loop/dispatch.py start "$PR" review "$HEAD"
+
+  # At actual model startup, never while the job is queued: `reviewing` and the head's one activity comment.
+  announce:
+    needs: due
+    if: needs.due.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.due.outputs.pr }}
+          HEAD: ${{ needs.due.outputs.head }}
+        run: python3 loop/dispatch.py announce "$PR" "$HEAD"
 
   review:
     needs: due
@@ -144,3 +159,28 @@ jobs:
           HEAD: ${{ needs.due.outputs.head }}
           ANSWER: ${{ needs.review.outputs.answer }}
         run: printf '%s' "$ANSWER" | loop/runs.sh verdict "$PR" "$HEAD" "reviewer-$GITHUB_RUN_ID"
+
+  # Whatever happened to the other jobs: update the head's activity comment and labels; a lost review returns to
+  # needs-review and reconciliation retries it within its bound.
+  finish:
+    needs: [due, announce, review, post]
+    if: always() && needs.due.outputs.pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.due.outputs.pr }}
+          HEAD: ${{ needs.due.outputs.head }}
+          REVIEW: ${{ needs.review.result }}
+          POST: ${{ needs.post.result }}
+          ANSWER: ${{ needs.review.outputs.answer }}
+        run: python3 loop/dispatch.py finish "$PR" "$HEAD" "$REVIEW" "$POST" "$(jq -r '.verdict // empty' <<<"${ANSWER:-null}" 2>/dev/null || true)"
