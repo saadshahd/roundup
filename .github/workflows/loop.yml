@@ -43,3 +43,13 @@ jobs:
       - run: loop/codex.test.sh
       - run: loop/retro.test.sh
       - run: loop/status.test.sh
+
+  summary:
+    needs: [rules]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check loop rules and regressions
+      next: Review and reconciliation inspect this head; failures block merge and eligible Builder PRs receive repair.

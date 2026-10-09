@@ -182,6 +182,8 @@ def next_task(source, record):
     revision = source['revision']
     if not record or record['source']['revision'] != revision:
         return dict(role='plan', cause=revision, head=revision, base='')
+    if record['phase'] == 'replan':
+        return dict(role=record['key'][0], cause=revision, head=digest([revision, record['recovery']]), base='')
     if record['phase'] in ('question', 'complete'):
         return None
     if record['phase'] == 'published':
@@ -214,6 +216,8 @@ def start(number):
     previous = (record.get('plan') or record.get('previous')) if record and task['role'] == 'verify' else None
     current = dict(key=d.key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt, phase='claimed', fixes=0,
                    source=source, main=(record['main'] if record and record['key'] == d.key(task) else d.api('git/ref/heads/main')['object']['sha']), previous=previous)
+    if record and record.get('recovery'):
+        current['recovery'] = record['recovery']
     save_claim(number, old, current)
     assert_current(current)
     old, latest = read_claim(number)
@@ -222,6 +226,8 @@ def start(number):
     save_claim(number, old, current)
     context = dict(source=source, phase=task['role'], main=current['main'], previous=previous,
                    run=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{current['run']}")
+    if current.get('recovery'):
+        context['recovery'] = current['recovery']
     d.run('bash', 'loop/runs.sh', 'prompt', 'feedback', data=json.dumps(context))
     with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
         out.write(f"issue={number}\nmain={current['main']}\n")
@@ -587,17 +593,19 @@ def publish(number):
     require(pr['base']['ref'] == 'main' and pr['head']['repo']['full_name'] == os.environ['GITHUB_REPOSITORY'], 'planning PR must merge into this repository main')
     # A verdict comment updates the PR, so an unchanged refused PR is not gated again.
     waiting = record.get('waiting') or {}
-    if (waiting.get('pr'), waiting.get('updated')) == (pr['number'], pr['updated_at']):
-        return
-    # Reuse all L46 checks and independent authorship, with merged instead of open state.
-    try:
-        d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
-    except subprocess.CalledProcessError as error:
-        if error.returncode != 1:
-            raise
-        reason = redact(' '.join((error.stderr or 'publication-ready refused').split()), os.environ)[:300]
-        save_claim(number, old, {**record, 'waiting': dict(pr=pr['number'], updated=pr['updated_at'], reason=reason)})
-        print(f'feedback #{number}: merged plan #{pr["number"]} waits: {reason}', file=sys.stderr)
+    if (waiting.get('pr'), waiting.get('updated')) != (pr['number'], pr['updated_at']):
+        waiting = {}
+        # Reuse all L46 checks and independent authorship, with merged instead of open state.
+        try:
+            d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 1:
+                raise
+            reason = redact(' '.join((error.stderr or 'publication-ready refused').split()), os.environ)[:300]
+            waiting = dict(pr=pr['number'], updated=pr['updated_at'], reason=reason)
+            save_claim(number, old, {**record, 'waiting': waiting})
+    if waiting:
+        print(f'feedback #{number}: merged plan #{pr["number"]} waits: {waiting["reason"]}')
         return
     proposal = gate(pr['number'])
     answer = proposal['answer']
@@ -623,6 +631,32 @@ def publish(number):
         save_claim(number, old, {**record, 'phase': 'published', 'children': children,
                                  'baseline': children_state(children), 'plan': plan})
     d.run('gh', 'workflow', 'run', 'reconcile.yml')
+
+
+def recover_unreviewed_plan(number, old, record):
+    """A bypassed merge never authorizes delivery; a fresh proposal must earn review."""
+    pr = d.api(f'pulls/{record["pr"]}')
+    if not pr.get('merged'):
+        return False
+    verdicts = [json.loads(line) for line in d.run('bash', 'loop/rules.sh', 'verdicts', str(pr['number'])).splitlines()]
+    exact = [verdict for verdict in verdicts if verdict['head'] == pr['head']['sha']]
+    if exact and exact[-1]['verdict'] == 'approve':
+        return False
+    assert_current(record)
+    recovery = dict(pr=pr['number'], head=pr['head']['sha'], reason='Merged plan lacks independent exact-head approval.')
+    save_claim(number, old, {**record, 'phase': 'replan', 'recovery': recovery})
+    print(f'Feedback #{number}: PR #{pr["number"]} merged without approval; withheld delivery and scheduled a fresh reviewed plan.')
+    return True
+
+
+def publication(command, number):
+    """Translate the isolated publisher's process result, including an unknown timeout."""
+    try:
+        return 'ok', d.run(sys.executable, 'loop/feedback.py', command, str(number), timeout=180)
+    except subprocess.CalledProcessError as error:
+        return 'failed', redact(error.stderr or str(error), os.environ)[:4000]
+    except subprocess.TimeoutExpired:
+        return 'unknown', 'Publication timed out; writes may have applied. The next sweep inspects retained state before retrying.'
 
 
 def reconcile():
@@ -658,6 +692,7 @@ def reconcile():
             failures.append(error)
     if failures:
         raise failures[0]
+    print(f'Feedback sweep complete; {queued} runs running or queued.')
 
 
 def sweep(issue, claimed, within_budget, queued):
@@ -669,11 +704,19 @@ def sweep(issue, claimed, within_budget, queued):
         return within_budget, queued
     if issue['state'] == 'closed':
         d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{number}', '--input', '-', data=json.dumps(dict(state='open')))
-    if record and record['source']['revision'] == source['revision'] and resume_publication(number, old, record):
-        return within_budget, queued
+    if record and record['source']['revision'] == source['revision'] and record['phase'] in ('issued', 'publishing'):
+        status, detail = publication('resume', number)
+        require(status == 'ok', f'Feedback #{number}: resumed publication {status}: {detail}')
+        if detail:
+            print(f'Feedback #{number}: resumed proposal PR #{detail}.')
+            return within_budget, queued
     if record and record['source']['revision'] == source['revision'] and record['phase'] == 'proposed':
-        if not refresh_verification(number, old, record):
-            publish(number)
+        if recover_unreviewed_plan(number, old, record):
+            old, record = read_claim(number)
+        elif not refresh_verification(number, old, record):
+            status, detail = publication('publish', number)
+            require(status == 'ok', f'Feedback #{number}, PR #{record["pr"]}: publication blocked ({status}): {detail}')
+            print(detail or f'Feedback #{number}: publication checked for PR #{record["pr"]}.')
             return within_budget, queued
         _, record = read_claim(number)
     task = next_task(source, record)
@@ -689,6 +732,7 @@ def sweep(issue, claimed, within_budget, queued):
                 d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{pr["number"]}', '--input', '-', data=json.dumps(dict(state='closed')))
         queued += 1
         d.run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'issue={number}')
+        print(f'Feedback #{number}: queued {task["role"]}; next: feedback run.')
     elif task:
         print(f'feedback #{number}: claimed or retry limit reached', file=sys.stderr)
     return within_budget, queued
@@ -718,7 +762,7 @@ def parse_number(value):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
-    for name in ('reconcile', 'start', 'repair', 'repair-propose', 'propose', 'publish', 'gate'):
+    for name in ('reconcile', 'start', 'repair', 'repair-propose', 'propose', 'publish', 'resume', 'gate'):
         command = commands.add_parser(name)
         if name != 'reconcile':
             command.add_argument('number', type=parse_number)
@@ -743,6 +787,11 @@ if __name__ == '__main__':
             repair_propose(args.number, args.head, args.main, json.load(sys.stdin))
         elif args.command == 'propose':
             propose(args.number, json.load(sys.stdin))
+        elif args.command == 'resume':
+            old, record = read_claim(args.number)
+            result = resume_publication(args.number, old, record) if record else None
+            if result:
+                print(result)
         elif args.command == 'publish':
             publish(args.number)
         elif args.command == 'gate':
