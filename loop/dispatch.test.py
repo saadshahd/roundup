@@ -63,6 +63,18 @@ class L88(unittest.TestCase):
             self.assertFalse((root / 'apps/AGENTS.md').exists())
             self.assertFalse((root / '.claude/added.md').exists())
 
+    def test_l90_planning_clean_merges_require_exact_head_review(self):
+        inherited = dict(current=True, verdict='approve', head=BASE)
+        self.assertEqual(d.decision(PR, [CHECK, RULES], [inherited], ['loop', 'planning']), ('review', 'review'))
+        self.assertIsNone(d.decision(PR, [CHECK, RULES], [{**inherited, 'head': HEAD}], ['loop', 'planning']))
+
+    def test_l90_plan_repair_never_runs_the_generic_write_capable_builder(self):
+        task = {**TASK, 'role': 'fix', 'cause': 'reject', 'planning': True}
+        with patch.object(d, 'due', return_value=task), patch.object(d, 'acquire') as acquire, patch.object(d, 'run') as run:
+            d.start(1, 'fix', HEAD)
+            acquire.assert_not_called()
+            run.assert_called_once_with('gh', 'workflow', 'run', 'feedback.yml', '-f', 'pr=1', '-f', 'head=' + HEAD)
+
     def test_l88_review_requires_successful_current_head_check(self):
         self.assertEqual(d.decision(PR, [CHECK, RULES], [], ['code']), ('review', 'review'))
         for change in [dict(head_sha=BASE), dict(status='in_progress'), dict(conclusion='skipped'), dict(app=dict(slug='other'))]:

@@ -77,6 +77,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: read
+      actions: read
     outputs:
       answer: ${{ steps.claude.outputs.structured_output }}
     steps:

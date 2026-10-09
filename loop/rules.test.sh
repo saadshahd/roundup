@@ -217,7 +217,7 @@ def git(*args):
 head = d.get('head') or git('rev-parse', 'work')
 base = git('rev-parse', 'main')
 pr = {'head': {'sha': head}, 'base': {'ref': d.get('base', 'main'), 'sha': base},
-      'state': 'open', 'draft': d.get('draft', False), 'body': d.get('body', 'Scenarios: L46\n')}
+      'state': d.get('state', 'open'), 'merged': d.get('merged', False), 'merge_commit_sha': d.get('merge_commit_sha'), 'draft': d.get('draft', False), 'body': d.get('body', 'Scenarios: L46\n')}
 if '/pulls/' in route and route.endswith('/files?per_page=100'):
     files = []
     for name in git('diff', '--name-only', '--no-renames', base+'...'+head).splitlines():
@@ -470,6 +470,33 @@ gate_set '.body="Scenarios: L46\n"'
 expect fail 'L81 a draft without a Stopped line is not stopped' gate_error_contains 'the Builder stopped' gate merge-ready 12
 gate_set '.draft=false | .body="Scenarios: L46\nStopped: needs a GLOSSARY term for Pin\n"'
 ready_at 'L81 a ready PR with an old Stopped line is ready'
+
+# L90 uses the same L46 gate for publication, with merged instead of open state.
+# The feedback controller's revision observer is independently exercised in feedback.test.py.
+gate_repo
+mkdir -p loop/plans
+printf '{}\n' >loop/plans/goal.json
+printf 'import os, sys\nsys.exit(int(os.environ.get("FEEDBACK_GATE_EXIT", "0")))\n' >loop/feedback.py
+commit plan 'Author-Agent: planner'
+expect_output 'loop planning' 'L90 plans are loop changes with exact-head review' touches 'loop/plans/goal.json\n'
+ready_at 'L90 an approved current planning head passes the shared gate'
+merged=$(git commit-tree 'HEAD^{tree}' -p main -p HEAD -m 'Merge planning PR')
+gate_set --arg merged "$merged" '.state="closed" | .merged=true | .merge_commit_sha=$merged'
+expect_exit 0 'L90 reviewed merged plans can publish' gate publication-ready 12
+gate_quiet
+expect_exit 1 'L90 unreviewed merged plans cannot publish' gate publication-ready 12
+gate_say approve "$(git rev-parse HEAD)"
+gate_set '.checks=[{check_runs:[]}]'
+expect_exit 1 'L90 merged plans without CI cannot publish' gate publication-ready 12
+gate_set 'del(.checks)'
+FEEDBACK_GATE_EXIT=1 expect_exit 1 'L90 stale feedback cannot publish' gate publication-ready 12
+FEEDBACK_GATE_EXIT=4 expect_exit 4 'L90 feedback API failures stay failures' gate publication-ready 12
+gate_set '.state="open" | .merged=false'
+expect_exit 1 'L90 open plans cannot publish' gate publication-ready 12
+approved=$(git rev-parse HEAD)
+git checkout -q main; echo change >other.txt; commit main 'Author-Agent: another'
+git checkout -q work; git merge -q --no-ff main -m 'Merge main'
+expect pass 'L90 a clean main merge needs another exact-head review' gate_error_contains 'planning PR needs independent exact-head' gate merge-ready 12
 
 # L46 merge-ready: checks, base and the pinned head.
 gate_repo
