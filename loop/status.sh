@@ -98,7 +98,6 @@ page() {
       "\(.ids): \(.state); started \(.started | strftime("%Y-%m-%d %H:%M UTC")); " +
       (if .state == "running" then "deadline " + (.deadline | strftime("%H:%M UTC"))
        else "\(.usage.input // 0) input + \(.usage.cache_read // 0) cached + \(.usage.output // 0) output tokens" end)] | cell) + " |" end),
-    "| Waiting | \([$orders[] | select(.wait_until) | "#\(.issue) next run after \(.wait_until | strftime("%Y-%m-%d %H:%M")) UTC, [last entry](\(.wait_url))"] | cell) |",
     "| Needs you | \($needs | cell) |", "| Blocked | \($blocked | cell) |", "| Watch | \($watch | cell) |"'
 }
 

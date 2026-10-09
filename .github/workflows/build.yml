@@ -89,7 +89,6 @@ jobs:
     outputs:
       branch: ${{ steps.due.outputs.branch }}
       head: ${{ steps.due.outputs.head }}
-      cause: ${{ steps.due.outputs.cause }}
       prompt: ${{ steps.due.outputs.prompt }}
     steps:
       - uses: actions/checkout@v4
@@ -119,7 +118,6 @@ jobs:
       id-token: write
     outputs:
       branch: ${{ steps.current.outputs.ok == 'true' && needs.repair-due.outputs.branch || '' }}
-      explanation: ${{ steps.ledger.outputs.explanation }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -176,7 +174,6 @@ jobs:
             loop
           persist-credentials: false
       - if: always()
-        id: ledger
         uses: ./.loop-ledger/.github/actions/ledger
         with:
           role: builder
@@ -188,12 +185,11 @@ jobs:
 
   # After a fix run ends, however it ends: asks the user about its PR if the run left it a draft (L81).
   after-fix:
-    needs: [repair-due, fix]
+    needs: fix
     if: always() && needs.fix.outputs.branch
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
       pull-requests: write
       actions: write
     steps:
@@ -201,17 +197,7 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-      # L92: the end entry goes on the Issue the PR links; a post failure still lets the draft check run.
       - env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ needs.fix.outputs.branch }}
-          PR: ${{ inputs.pr }}
-          CAUSE: ${{ needs.repair-due.outputs.cause }}
-          START: ${{ needs.repair-due.outputs.head }}
-          RESULT: ${{ needs.fix.outputs.explanation }}
-        run: python3 loop/trail.py end-pr "$PR" builder "$CAUSE" "$BRANCH" "$START"
-      - if: always()
-        env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.fix.outputs.branch }}
           PR: ${{ inputs.pr }}

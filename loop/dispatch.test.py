@@ -290,14 +290,12 @@ class L88(unittest.TestCase):
     def test_l82_diagnostic_prompt_includes_prior_evidence_and_changed_approach(self):
         task = {**TASK, 'role': 'fix', 'cause': 'check'}
         record = dict(fixes=2, repairs=[dict(run=8), dict(run=9)])
-        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run, patch.object(d.trail, 'pr_section', return_value='\n## Trail of #7') as section:
+        with tempfile.NamedTemporaryFile() as output, patch.dict(os.environ, GITHUB_OUTPUT=output.name, GITHUB_RUN_ID='42'), patch.object(d, 'due', return_value=task), patch.object(d, 'acquire', return_value=True), patch.object(d, 'issued'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'run') as run:
             d.start(1, 'fix', HEAD)
             prompt = run.call_args.kwargs['data']
-            section.assert_called_once_with(1)
             self.assertIn('earlier repair runs 8, 9', prompt)
             self.assertIn('changed approach', prompt)
-            self.assertIn('## Trail of #7', prompt)
-            self.assertNotIn('outcome.json', prompt)
+            self.assertIn('outcome.json', prompt)
 
     def test_l88_main_movement_does_not_reset_review_retry_budget(self):
         self.assertEqual(d.key(TASK), d.key({**TASK, 'base': HEAD}))
