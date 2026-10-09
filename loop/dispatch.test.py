@@ -27,6 +27,52 @@ TASK = dict(pr=1, role='review', cause='review', head=HEAD, base=BASE, branch='b
 
 
 class L88(unittest.TestCase):
+    def test_l88_successful_repair_requests_review_without_a_new_commit(self):
+        verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
+        request = d.review_request(HEAD, verdict)
+        record = dict(run=9, key=['fix', 'reject', HEAD, ''], repair_verdict=request['verdict'])
+        jobs = dict(jobs=[dict(steps=[dict(name='Run anthropics/claude-code-action@v1', conclusion='success')])])
+        with patch.dict(os.environ, GITHUB_RUN_ID='9'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'api', side_effect=[jobs, PR]), patch.object(d, 'run', return_value=json.dumps(verdict)), patch.object(d, 'write_claim', return_value=True) as write:
+            d.repaired(1)
+            self.assertEqual(write.call_args.args[2]['review_after'], request)
+        for change in ('failed', 'draft', 'new-verdict', 'lost-owner'):
+            with self.subTest(change=change):
+                changed = copy.deepcopy(jobs)
+                if change == 'failed':
+                    changed['jobs'][0]['steps'][0]['conclusion'] = 'failure'
+                event = {**verdict, 'body': 'new finding'} if change == 'new-verdict' else verdict
+                with patch.dict(os.environ, GITHUB_RUN_ID='10' if change == 'lost-owner' else '9'), patch.object(d, 'claim_record', return_value=('old', record)), patch.object(d, 'api', side_effect=[changed, {**PR, 'draft': change == 'draft'}]), patch.object(d, 'run', return_value=json.dumps(event)), patch.object(d, 'write_claim') as write:
+                    if change == 'lost-owner':
+                        with self.assertRaises(ValueError): d.repaired(1)
+                    else:
+                        d.repaired(1)
+                    write.assert_not_called()
+
+    def test_l88_review_request_survives_claim_but_not_new_head_or_reject(self):
+        verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
+        request = d.review_request(HEAD, verdict)
+        record = dict(run=9, key=['fix', 'reject', HEAD, ''], phase='issued', attempt=1, review_after=request)
+        def read(path, payload=None):
+            if path == 'pulls/1': return PR
+            raise AssertionError(path)
+        def command(*args, **kwargs):
+            if args[2] == 'verdicts': return json.dumps(verdict)
+            if args[2] == 'touches': return 'code'
+            return 'crates/messages/src/tests/b_hop_tests.rs'
+        with patch.object(d, 'api', side_effect=read), patch.object(d, 'run', side_effect=command), patch.object(d, 'gh', return_value=[dict(check_runs=[CHECK, RULES])]), patch.object(d, 'claim_record', return_value=('old', record)):
+            task = d.due(1, busy=set())
+            self.assertEqual(task['role'], 'review')
+            self.assertEqual(task['review_after'], request)
+            record['key'] = d.key(task)
+            self.assertEqual(d.due(1, busy=set())['role'], 'review')
+            with patch.object(d, 'gh', return_value=[dict(check_runs=[{**CHECK, 'status': 'in_progress'}, RULES])]):
+                self.assertIsNone(d.due(1, busy=set()))
+            verdict['body'] = 'new reject'
+            self.assertEqual(d.due(1, busy=set())['role'], 'fix')
+            verdict['body'] = 'scope'
+            record['review_after'] = {**request, 'head': BASE}
+            self.assertEqual(d.due(1, busy=set())['role'], 'fix')
+
     def test_l78_loop_changes_require_review_even_after_historical_rejects(self):
         self.assertEqual(d.decision(PR, [CHECK, RULES], [dict(current=False, verdict='reject')] * 2, ['loop']), ('review', 'review'))
         self.assertIsNone(d.decision(PR, [CHECK], [], ['loop']))
