@@ -10,7 +10,7 @@ import subprocess
 import sys
 import dispatch as d
 import orders
-from outcome import redact
+from outcome import describe, redact
 
 NAMESPACE = 'loop-feedback'
 
@@ -575,8 +575,20 @@ def publish(number):
         ensure_checks(pr)
         return
     require(pr['base']['ref'] == 'main' and pr['head']['repo']['full_name'] == os.environ['GITHUB_REPOSITORY'], 'planning PR must merge into this repository main')
+    # A verdict comment updates the PR, so an unchanged refused PR is not gated again.
+    waiting = record.get('waiting') or {}
+    if (waiting.get('pr'), waiting.get('updated')) == (pr['number'], pr['updated_at']):
+        return
     # Reuse all L46 checks and independent authorship, with merged instead of open state.
-    d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
+    try:
+        d.run('bash', 'loop/rules.sh', 'publication-ready', str(pr['number']), timeout=300)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 1:
+            raise
+        reason = redact(' '.join((error.stderr or 'publication-ready refused').split()), os.environ)[:300]
+        save_claim(number, old, {**record, 'waiting': dict(pr=pr['number'], updated=pr['updated_at'], reason=reason)})
+        print(f'feedback #{number}: merged plan #{pr["number"]} waits: {reason}', file=sys.stderr)
+        return
     proposal = gate(pr['number'])
     answer = proposal['answer']
     complete = is_complete(proposal['phase'], answer)
@@ -616,6 +628,7 @@ def reconcile():
     runs = d.gh('run', 'list', '--workflow', 'feedback.yml', '--limit', '100', '--json', 'status')
     queued = sum(run['status'] != 'completed' for run in runs)
     within_budget = None
+    failures = []
     for issue in issues:
         number = issue['number']
         labels = {label['name'] for label in issue['labels']}
@@ -623,40 +636,56 @@ def reconcile():
             continue
         if number not in claimed and ('loop:work' in labels and 'ready-for-agent' in labels or issue['user']['type'] == 'Bot' and 'loop:work' not in labels):
             continue
-        old, record = read_claim(number) if number in claimed else (None, None)
-        source = read_source(number, record['source'] if record else None)
-        if not source:
-            continue
-        if issue['state'] == 'closed':
-            d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{number}', '--input', '-', data=json.dumps(dict(state='open')))
-        if record and record['source']['revision'] == source['revision'] and resume_publication(number, old, record):
-            continue
-        if record and record['source']['revision'] == source['revision'] and record['phase'] == 'proposed':
-            if not refresh_verification(number, old, record):
-                publish(number)
-                continue
-            _, record = read_claim(number)
-        task = next_task(source, record)
-        if task and d.available(task, record) and queued < 4:
-            if within_budget is None:
-                within_budget = int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
-            if not within_budget:
-                print('feedback: spend cap reached', file=sys.stderr)
-                continue
-            if record and record['phase'] == 'proposed' and record['source']['revision'] != source['revision']:
-                pr = d.api(f'pulls/{record["pr"]}')
-                if pr['state'] == 'open':
-                    d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{pr["number"]}', '--input', '-', data=json.dumps(dict(state='closed')))
-            queued += 1
-            d.run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'issue={number}')
-        elif task:
-            print(f'feedback #{number}: claimed or retry limit reached', file=sys.stderr)
+        try:
+            within_budget, queued = sweep(issue, number in claimed, within_budget, queued)
+        except (ValueError, subprocess.CalledProcessError, KeyError, TypeError) as error:
+            # One source's failure leaves the others swept; timeouts and OS errors stop the sweep.
+            print(f'feedback #{number}: {describe(error)}', file=sys.stderr)
+            failures.append(error)
+    if failures:
+        raise failures[0]
+
+
+def sweep(issue, claimed, within_budget, queued):
+    """One source Issue's reconciliation; returns the sweep's spend decision and queued planner count."""
+    number = issue['number']
+    old, record = read_claim(number) if claimed else (None, None)
+    source = read_source(number, record['source'] if record else None)
+    if not source:
+        return within_budget, queued
+    if issue['state'] == 'closed':
+        d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/issues/{number}', '--input', '-', data=json.dumps(dict(state='open')))
+    if record and record['source']['revision'] == source['revision'] and resume_publication(number, old, record):
+        return within_budget, queued
+    if record and record['source']['revision'] == source['revision'] and record['phase'] == 'proposed':
+        if not refresh_verification(number, old, record):
+            publish(number)
+            return within_budget, queued
+        _, record = read_claim(number)
+    task = next_task(source, record)
+    if task and d.available(task, record) and queued < 4:
+        if within_budget is None:
+            within_budget = int(d.run('bash', 'loop/retro.sh', 'spent', timeout=600)) < int(os.environ['LOOP_DAILY_TOKENS'])
+        if not within_budget:
+            print('feedback: spend cap reached', file=sys.stderr)
+            return within_budget, queued
+        if record and record['phase'] == 'proposed' and record['source']['revision'] != source['revision']:
+            pr = d.api(f'pulls/{record["pr"]}')
+            if pr['state'] == 'open':
+                d.gh('api', '--method', 'PATCH', f'repos/{{owner}}/{{repo}}/pulls/{pr["number"]}', '--input', '-', data=json.dumps(dict(state='closed')))
+        queued += 1
+        d.run('gh', 'workflow', 'run', 'feedback.yml', '-f', f'issue={number}')
+    elif task:
+        print(f'feedback #{number}: claimed or retry limit reached', file=sys.stderr)
+    return within_budget, queued
 
 
 def activity():
     rows = []
     for ref in d.api('git/matching-refs/heads/' + NAMESPACE + '/'):
         record = json.loads(d.api('git/commits/' + ref['object']['sha'])['message'])
+        if record['phase'] == 'proposed' and record.get('waiting', {}).get('pr') == record['pr']:
+            rows.append(f"[Feedback #{record['source']['number']}]({record['source']['html_url']}): merged plan #{record['pr']} waits: {record['waiting']['reason']}")
         if record['phase'] not in ('claimed', 'issued'):
             continue
         owner = d.api(f"actions/runs/{record['run']}")
@@ -708,8 +737,5 @@ if __name__ == '__main__':
         print(f'feedback: {error}', file=sys.stderr)
         sys.exit(1)
     except (subprocess.SubprocessError, KeyError, TypeError, OSError) as error:
-        detail = getattr(error, 'stderr', None) or ''
-        if isinstance(detail, bytes):
-            detail = detail.decode(errors='replace')
-        print(redact(f'feedback: {error}\n{detail}'.rstrip(), os.environ)[:8000], file=sys.stderr)
+        print(f'feedback: {describe(error)}', file=sys.stderr)
         sys.exit(4)

@@ -49,6 +49,19 @@ class L88(unittest.TestCase):
                         d.budget()
                 self.assertFalse(output.exists())
 
+    def test_l88_github_failure_reports_redacted_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            gh = Path(directory) / 'gh'
+            gh.write_text('#!/bin/sh\nprintf "API rate limit exceeded (HTTP 403), credential %s\\n" "$GH_TOKEN" >&2\nexit 1\n')
+            gh.chmod(0o755)
+            result = subprocess.run([sys.executable, str(ROOT / 'loop/dispatch.py'), 'budget'],
+                                    env={**os.environ, 'PATH': directory + os.pathsep + os.environ['PATH'], 'GH_TOKEN': 'private-test-credential'},
+                                    text=True, capture_output=True)
+        self.assertEqual(result.returncode, 4)
+        self.assertIn('API rate limit exceeded (HTTP 403)', result.stderr)
+        self.assertIn('[redacted]', result.stderr)
+        self.assertNotIn('private-test-credential', result.stderr)
+
     def test_l88_successful_repair_requests_review_without_a_new_commit(self):
         verdict = dict(current=True, verdict='reject', head=HEAD, at='2026-10-09T00:00:00Z', body='scope')
         request = d.review_request(HEAD, verdict)
