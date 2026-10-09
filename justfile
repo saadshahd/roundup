@@ -10,6 +10,7 @@ check-rust:
     spikes/context-injection/e7_report.test.sh
 
 check-web:
+    test -z "$(find .claude/skills -xtype l)"
     pnpm lint
     pnpm typecheck
     pnpm slop
