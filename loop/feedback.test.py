@@ -4,6 +4,8 @@ import sys
 sys.dont_write_bytecode = True
 import unittest
 import copy
+import contextlib
+import io
 import base64
 import json
 import os
@@ -204,6 +206,19 @@ class GitHub:
         return [result] if '--slurp' in args else result
 
     def run(self, *args, data=None, **kwargs):
+        if args[:2] == (sys.executable, 'loop/feedback.py') and args[2] in ('publish', 'resume'):
+            try:
+                number = int(args[3])
+                if args[2] == 'resume':
+                    old, record = f.read_claim(number)
+                    result = f.resume_publication(number, old, record)
+                    return str(result) if result else ''
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    f.publish(number)
+                return output.getvalue().strip()
+            except (ValueError, subprocess.CalledProcessError) as error:
+                raise subprocess.CalledProcessError(1, args, stderr=str(error)) from error
+            return ''
         if args[:2] == ('git', 'rev-parse'):
             return 'b' * 40 if args[2].endswith('tree}') else self.refs['refs/heads/main']
         if args[:3] == ('bash', 'loop/retro.sh', 'spent'):
@@ -344,6 +359,7 @@ class Lifecycle(unittest.TestCase):
                             patch.dict(os.environ, GITHUB_REPOSITORY='o/r', GITHUB_RUN_ID='42', GITHUB_OUTPUT=output.name, LOOP_DAILY_TOKENS='1000')):
             replacement.start()
             self.addCleanup(replacement.stop)
+        self.addCleanup(f.permission.cache_clear)
 
     def plan(self, result=None):
         f.start(355)
@@ -379,6 +395,91 @@ class Lifecycle(unittest.TestCase):
         self.assertIn(dict(name='ready-for-agent'), self.hub.issues[356]['labels'])
         self.assertEqual(self.hub.issues[355]['body'], source()['body'])
         self.assertEqual(self.hub.issues[355]['state'], 'open')
+
+    def test_l93_waiting_publication_reason_survives_the_process_boundary(self):
+        pr = self.plan()
+        self.hub.merge(pr, approve=False)
+        for _ in range(2):
+            status, text = f.publication('publish', 355)
+            self.assertEqual(status, 'ok')
+            self.assertIn(f'merged plan #{pr} waits:', text)
+            self.assertIn('independent exact-head approval', text)
+        self.assertEqual(self.hub.gated, [pr])
+
+    def test_l90_unreviewed_merge_gets_a_fresh_plan_not_delivery(self):
+        pr = self.plan()
+        old = f.read_claim(355)[1]
+        self.hub.merge(pr, approve=False)
+        self.hub.runs[42] = dict(status='completed', conclusion='success')
+        f.reconcile()
+        record = f.read_claim(355)[1]
+        self.assertEqual(record['phase'], 'replan')
+        self.assertEqual(record['recovery']['pr'], pr)
+        self.assertEqual(self.hub.children, {})
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.start(355)
+        current = f.read_claim(355)[1]
+        self.assertEqual(current['phase'], 'issued')
+        self.assertNotEqual(f.proposal_path(current), f.proposal_path(old))
+        f.propose(355, answer())
+        replacement = f.read_claim(355)[1]['pr']
+        self.assertNotEqual(pr, replacement)
+        self.assertEqual(self.hub.children, {})
+        self.hub.merge(replacement)
+        f.publish(355)
+        self.assertEqual(f.read_claim(355)[1]['children'], [356])
+
+    def test_l90_unreviewed_verification_retains_original_goals(self):
+        record = self.published()
+        self.hub.issues[record['children'][0]].update(state='closed', state_reason='completed')
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.start(355)
+        f.propose(355, verification(True))
+        self.hub.merge(f.read_claim(355)[1]['pr'], approve=False)
+        self.hub.runs[43] = dict(status='completed', conclusion='success')
+        f.reconcile()
+        os.environ['GITHUB_RUN_ID'] = '44'
+        f.start(355)
+        current = f.read_claim(355)[1]
+        self.assertEqual(current['key'][0], 'verify')
+        self.assertEqual(current['previous']['answer']['goals'], record['plan']['answer']['goals'])
+        weaker = verification(True)
+        weaker['goals'][0]['statement'] = 'A weaker goal'
+        with self.assertRaisesRegex(ValueError, 'retain every original goal'):
+            f.propose(355, weaker)
+
+    def test_l93_publication_timeout_does_not_starve_later_feedback(self):
+        pr = self.plan()
+        self.hub.merge(pr)
+        self.hub.issues[356] = source(number=356)
+        run = self.hub.run
+        def timeout(*args, **kwargs):
+            if args[:3] == (sys.executable, 'loop/feedback.py', 'publish'):
+                raise subprocess.TimeoutExpired(args, 180)
+            return run(*args, **kwargs)
+        with patch.object(f.d, 'run', side_effect=timeout), self.assertRaisesRegex(ValueError, 'unknown'):
+            f.reconcile()
+        self.assertTrue(any('issue=356' in call for call, _ in self.hub.writes))
+
+    def test_l93_resumed_publication_failure_does_not_starve_later_feedback(self):
+        self.unpublished()
+        self.hub.runs[42] = dict(status='completed', conclusion='failure')
+        self.hub.pull_error = subprocess.CalledProcessError(1, ['gh'], stderr='denied')
+        self.hub.issues[356] = source(number=356)
+        with self.assertRaisesRegex(ValueError, 'resumed publication failed'):
+            f.reconcile()
+        self.assertTrue(any('issue=356' in call for call, _ in self.hub.writes))
+
+    def test_l90_blocked_publication_does_not_starve_later_feedback(self):
+        pr = self.plan(answer(issue=999))
+        self.hub.merge(pr)
+        self.hub.issues[356] = source(number=356, title='Another authorized request')
+        with self.assertRaisesRegex(ValueError, 'publication blocked'):
+            f.reconcile()
+        self.assertTrue(any(call[:4] == ('gh', 'workflow', 'run', 'feedback.yml')
+                            and 'issue=356' in call for call, _ in self.hub.writes))
+        self.assertEqual(f.read_claim(355)[1]['phase'], 'proposed')
+        self.assertEqual(self.hub.children, {})
 
     def test_l90_duplicate_and_competing_claims(self):
         f.start(355)
@@ -654,7 +755,7 @@ class Lifecycle(unittest.TestCase):
         self.unpublished()
         self.hub.pull_error = subprocess.CalledProcessError(1, ['gh'])
         os.environ['GITHUB_RUN_ID'] = '43'
-        with self.assertRaises(subprocess.CalledProcessError):
+        with self.assertRaisesRegex(ValueError, 'resumed publication failed'):
             f.reconcile()
         self.assertEqual(f.read_claim(355)[1]['phase'], 'publishing')
         self.hub.pull_error = None
@@ -689,19 +790,16 @@ class Lifecycle(unittest.TestCase):
         self.hub.issues[357] = {**source(number=357, html_url='https://github.com/o/r/issues/357'), 'id': 357, 'state_reason': None}
         return (('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=357'), None)
 
-    def test_l90_refused_plan_waits_and_the_sweep_continues(self):
+    def test_l90_refused_plan_recovers_and_the_sweep_continues(self):
         pr = self.plan()
         self.hub.merge(pr, approve=False)
         planner = self.second_source()
         os.environ['GITHUB_RUN_ID'] = '43'
         f.reconcile()
         self.assertIn(planner, self.hub.writes)
-        self.assertIn(f'merged plan #{pr} waits: publication-ready: a planning PR needs independent exact-head approval', f.activity()[0])
-        f.reconcile()
-        self.assertEqual(self.hub.gated, [pr])
-        self.hub.merge(pr)
-        f.reconcile()
-        self.assertEqual(f.read_claim(355)[1]['phase'], 'published')
+        self.assertEqual(f.read_claim(355)[1]['phase'], 'replan')
+        self.assertEqual(f.read_claim(355)[1]['recovery']['pr'], pr)
+        self.assertEqual(self.hub.children, {})
 
     def test_l90_one_source_failure_leaves_the_others_swept(self):
         planner = self.second_source()
@@ -721,6 +819,22 @@ class Lifecycle(unittest.TestCase):
                 f.reconcile()
                 read.assert_not_called()
             self.assertEqual(self.hub.writes, [])
+
+    def test_l88_pr_and_run_events_skip_the_feedback_sweep(self):
+        for event in f.UNSWEPT_EVENTS:
+            with patch.dict(os.environ, GITHUB_EVENT_NAME=event), patch.object(f, 'listing') as listing:
+                f.reconcile()
+                listing.assert_not_called()
+        self.assertEqual(self.hub.writes, [])
+        with patch.dict(os.environ, GITHUB_EVENT_NAME='schedule'):
+            f.reconcile()
+        self.assertIn((('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=355'), None), self.hub.writes)
+
+    def test_l88_one_sweep_reads_each_editor_permission_once(self):
+        self.second_source()
+        with patch.object(f.d, 'api', side_effect=self.hub.api) as api:
+            f.reconcile()
+        self.assertEqual([call.args[0] for call in api.call_args_list if call.args[0].startswith('collaborators/')], ['collaborators/owner/permission'])
 
     def test_l90_intake_dispatches_without_a_user_label(self):
         f.reconcile()

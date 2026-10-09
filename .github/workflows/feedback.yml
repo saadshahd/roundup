@@ -64,7 +64,7 @@ jobs:
           if [ -n "$PR" ]; then
             python3 loop/feedback.py repair "$PR" "$HEAD"
           else
-            python3 loop/feedback.py start "$ISSUE"
+            python3 loop/outcome.py report python3 loop/feedback.py start "$ISSUE"
           fi
 
   observe:
@@ -158,3 +158,13 @@ jobs:
         run: |
           if [ -n "$BRANCH" ]; then loop/runs.sh stopped "$BRANCH"; fi
           gh workflow run reconcile.yml
+
+  summary:
+    needs: [due, observe, propose, after]
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Plan or verify user feedback
+      next: A proposed plan gets independent review, then the controller publishes its work Issues.
