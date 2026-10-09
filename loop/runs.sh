@@ -165,7 +165,7 @@ prompt() {
     cat "$path"
     printf '\n## Task\n\n'
     cat
-    echo "$delimiter"
+    printf '\n%s\n' "$delimiter"
   } >>"$GITHUB_OUTPUT"
 }
 
