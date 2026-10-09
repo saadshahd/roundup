@@ -13,7 +13,7 @@ git -C "$dir" init -q
 git -C "$dir" remote add origin "$dir/origin.git"
 git -C "$dir" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
 git -C "$dir" push -q origin HEAD:refs/heads/main HEAD:refs/heads/build/U5 HEAD:refs/heads/build/U105-U107-U109
-cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$dir/loop/"
+cp "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/dispatch.py" "$root/loop/feedback.md" "$dir/loop/"
 printf '# Builder\n\nFixed text.\n' >"$dir/.agents/builder.md"
 cat >"$dir/loop/rules.sh" <<'RULES'
 #!/usr/bin/env bash
@@ -122,8 +122,13 @@ holds 'L23 builders prints each one'"'"'s slug' test "$(cat "$FIXTURES/out")" = 
 echo '{"jobs":[{"name":"build (U1, scenarios/ui.md, U1) / build","status":"in_progress"},{"name":"build (U2, scenarios/ui.md, U2) / build","status":"completed"},{"name":"build (U2, scenarios/ui.md, U2) / after","status":"queued"}]}' >"$FIXTURES/jobs-71"
 check 'L88 a completed row frees its slot while its sibling builds' 0 loop/runs.sh builders
 holds 'L88 a completion job does not consume a Builder slot' test "$(cat "$FIXTURES/out")" = $'U1\nU9'
+touch "$FIXTURES/ready-fail"
+: >"$FIXTURES/trace"
 check 'L23 queue with every slot taken' 0 loop/runs.sh queue 2
 holds 'L23 no slot left is an empty queue' test "$(cat "$FIXTURES/out")" = '[]'
+holds 'L88 full queue does not read PR history' test "$(grep -c 'state=closed' "$FIXTURES/trace" || true)" = 0
+check 'L88 free capacity resumes order reads and exposes failures' 4 loop/runs.sh queue 3
+rm "$FIXTURES/ready-fail"
 touch "$FIXTURES/gh-fail"
 check 'L23 a failed run list exits 4' 4 loop/runs.sh queue
 rm "$FIXTURES/gh-fail"
@@ -223,14 +228,26 @@ fresh
 export GITHUB_OUTPUT="$FIXTURES/output"
 check 'L23 prompt writes the role text then the task' 0 bash -c 'echo "Build U3." | loop/runs.sh prompt builder'
 holds 'L23 prompt starts with the role file byte for byte' bash -c 'sed -n "2,4p" "$FIXTURES/output" | cmp -s - .agents/builder.md'
-holds 'L23 prompt ends with the task' bash -c 'tail -n 2 "$FIXTURES/output" | head -n 1 | grep -qx "Build U3."'
-holds 'L23 prompt closes its delimiter' bash -c 'd=$(head -n1 "$FIXTURES/output"); [ "${d#prompt<<}" = "$(tail -n1 "$FIXTURES/output")" ]'
+holds 'L23 prompt ends with the task' bash -c 'tail -n 3 "$FIXTURES/output" | head -n 1 | grep -qx "Build U3."'
+holds 'L23 prompt closes its delimiter' bash -c 'test -s "$FIXTURES/output" && d=$(head -n1 "$FIXTURES/output") && [ "${d#prompt<<}" = "$(tail -n1 "$FIXTURES/output")" ]'
+fresh
+export GITHUB_OUTPUT="$FIXTURES/output"
+check 'L90 feedback accepts JSON without a trailing newline' 0 bash -c 'printf %s "{\"source\":355}" | loop/runs.sh prompt feedback'
+holds 'L90 feedback terminates its output on a separate line' bash -c 'test -s "$FIXTURES/output" && d=$(head -n1 "$FIXTURES/output") && [ "${d#prompt<<}" = "$(tail -n1 "$FIXTURES/output")" ]'
 check 'L23 prompt refuses an unknown role' 2 bash -c 'echo x | loop/runs.sh prompt driver'
 unset GITHUB_OUTPUT
 
 # L88 dispatch.test.py exercises the review task against the real shared prompt.
 
 # L24 review-due
+fresh
+printf '{"verdict":"reject","current":true,"head":"%s","body":"old scope","at":"2026-10-09T00:00:00Z"}\n' "$head" >"$FIXTURES/verdicts"
+fingerprint=$(python3 -c 'import json,sys; sys.path.insert(0,"loop"); from dispatch import review_request; print(review_request("",json.load(sys.stdin))["verdict"])' <"$FIXTURES/verdicts")
+check 'L88 repair requests review of its exact reject' 0 loop/runs.sh review-due 7 "$head" "$fingerprint"
+printf '{"verdict":"reject","current":true,"head":"%s","body":"new finding"}\n' "$head" >"$FIXTURES/verdicts"
+check 'L88 an edited reject invalidates the repair request' 1 loop/runs.sh review-due 7 "$head" "$fingerprint"
+printf '{"verdict":"approve","current":true,"head":"%s"}\n' "$head" >"$FIXTURES/verdicts"
+check 'L88 an approval prevents a duplicate repair review' 1 loop/runs.sh review-due 7 "$head" "$fingerprint"
 fresh
 check 'L24 a Code PR with no verdict is due' 0 loop/runs.sh review-due 7 "$head"
 holds 'L24 the task names the PR and head' grep -qx "PR #7, head $head." "$FIXTURES/out"

@@ -189,7 +189,7 @@ jobs:
     if: always() && needs.fix.outputs.branch
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       actions: write
     steps:
@@ -204,3 +204,4 @@ jobs:
         run: |
           loop/runs.sh stopped "$BRANCH"
           python3 loop/outcome.py observe "$BRANCH" "$PR"
+          python3 loop/dispatch.py repaired "$PR"
