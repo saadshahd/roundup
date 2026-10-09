@@ -48,6 +48,7 @@ export const OpenRow = (props: {
     <div
       data-id={props.nested ? undefined : props.todo.id}
       data-todo={props.todo.id}
+      data-shelf-row={props.nested ? undefined : ""}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocusIn={() => setFocused(true)}

@@ -37,6 +37,7 @@ jobs:
       - run: loop/qa-sweep.test.sh
       - run: python3 loop/dispatch.test.py
       - run: python3 loop/feedback.test.py
+      - run: python3 loop/outcome.test.py
       - run: loop/runs.test.sh
       - run: loop/codex.test.sh
       - run: loop/retro.test.sh

@@ -257,6 +257,30 @@ class L88(unittest.TestCase):
             gh.assert_not_called()
 
 
+class PublicationPermissions(unittest.TestCase):
+    def test_l23_writing_roles_request_workflow_changes_and_read_only_ci_evidence(self):
+        for name in ('build', 'build-row', 'retro'):
+            source = (ROOT / f'.github/workflows/{name}.yml').read_text()
+            action = source.split('uses: anthropics/claude-code-action@v1', 1)[1]
+            inputs = action.split('      - ', 1)[0]
+            block = inputs.split('additional_permissions: |\n', 1)[1]
+            granted = []
+            for line in block.splitlines():
+                if not line.startswith('            '):
+                    break
+                granted.append(line.strip())
+            self.assertEqual(set(granted), {'actions: read', 'checks: read', 'workflows: write'}, name)
+            self.assertNotIn('github_token:', inputs, name)
+
+    def test_l24_reviewer_keeps_the_read_only_workflow_token(self):
+        source = (ROOT / '.github/workflows/review.yml').read_text()
+        action = source.split('uses: anthropics/claude-code-action@v1', 1)[1].split('      - ', 1)[0]
+        self.assertIn('github_token: ${{ github.token }}', action)
+        self.assertNotIn('additional_permissions:', action)
+        job = source.split('  review:', 1)[1].split('    steps:', 1)[0]
+        self.assertNotIn(': write', job)
+
+
 class L89(unittest.TestCase):
     def test_l89_required_gate_rejects_failed_cancelled_and_skipped_lanes(self):
         text = (ROOT / '.github/workflows/check.yml').read_text()

@@ -47,6 +47,18 @@ jobs:
           rust: 'false'
       - run: just check-web
 
+  # L84: main's proof that Builders' runner can run full `just check`; it also saves the Linux cache. A PR never runs
+  # it and no `needs` reads it, so no Linux green merges alone.
+  linux:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: just check
+
   # Keep the required check name; neither a skipped nor failed lane can turn it green.
   check:
     needs: [rust, web]
