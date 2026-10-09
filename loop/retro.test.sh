@@ -6,7 +6,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir -p "$dir/bin" "$dir/loop"
-cp "$root/loop/retro.sh" "$root/loop/runs.sh" "$root/loop/lib.sh" "$dir/loop/"
+cp "$root/loop/retro.sh" "$root/loop/runs.sh" "$root/loop/lib.sh" "$root/loop/outcome.py" "$root/loop/dispatch.py" "$dir/loop/"
 git -C "$dir" init -q
 git -C "$dir" add loop
 GIT_COMMITTER_DATE='2026-10-08T09:00:00+02:00' git -C "$dir" -c user.name=t -c user.email=t@t commit -q -m retro
@@ -83,7 +83,26 @@ holds 'L29 zero is different from missing usage' jq -e '.usage == "recorded" and
 printf '[{"type":"result","usage":{"input_tokens":15}}]\n' >"$FIXTURES/partial.json"
 check 'L29 partial result usage remains partial' 0 loop/retro.sh ledger builder U3 "$FIXTURES/partial.json" success
 holds 'L29 missing fields are not called complete usage' jq -e '.usage == "partial" and .input == 15' "$FIXTURES/out"
+check 'L90 a feedback observer can write a Ledger row' 0 loop/retro.sh ledger feedback 355 "$FIXTURES/run.json" success
+holds 'L90 the Ledger preserves the feedback role' jq -e '.role == "feedback"' "$FIXTURES/out"
 check 'L29 an unknown role fails before reading' 2 loop/retro.sh ledger driver U3 '' failure
+
+# Exercise the real spend command; the feedback tests' API fake cannot establish this integration.
+now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+jq -n --arg now "$now" '{artifacts:[{name:"ledger-77-1-feedback-355", expired:false, created_at:$now, workflow_run:{id:77}}]}' >"$FIXTURES/artifacts"
+loop/retro.sh ledger feedback 355 "$FIXTURES/run.json" success >"$FIXTURES/ledger-77-1-feedback-355"
+check 'L90 feedback can read its actual spend command' 0 loop/retro.sh spent
+holds 'L83 spend is weighted and rounded upward' test "$(cat "$FIXTURES/out")" = 152
+: >"$FIXTURES/trace"
+check 'L83 cached spend reads the Ledger' 0 env LOOP_LEDGER_CACHE="$dir/cache" loop/retro.sh spent
+check 'L83 a second scan reuses immutable downloads' 0 env LOOP_LEDGER_CACHE="$dir/cache" loop/retro.sh spent
+holds 'L83 repeat scans download each artifact once' test "$(grep -c 'gh run download' "$FIXTURES/trace")" = 1
+printf '{"usage":"unavailable"}\n' >"$FIXTURES/ledger-77-1-feedback-355"
+check 'L83 missing usage fails instead of inventing zero spend' 4 loop/retro.sh spent
+printf '{"usage":"partial","input":5,"output":0,"cache_write":0,"cache_read":0}\n' >"$FIXTURES/ledger-77-1-feedback-355"
+check 'L83 partial usage preserves its known floor' 0 loop/retro.sh spent
+holds 'L83 the partial floor remains visible' test "$(cat "$FIXTURES/out")" = 5
+holds 'L83 partial fields are never called full coverage' grep -q 'coverage is partial' "$FIXTURES/err"
 
 # Execute the action's actual extraction step against a main ref, with no checkout files in its output directory.
 git update-ref refs/remotes/origin/main HEAD
@@ -91,10 +110,26 @@ mkdir "$dir/runner"
 sed -n '/^      run: |$/,/^    - uses:/p' "$root/.github/actions/ledger/action.yml" |
   sed '1d;$d;s/^        //' >"$dir/ledger-step.sh"
 check 'L29 the action extracts every dependency needed for a Ledger row' 0 env \
-  RUNNER_TEMP="$dir/runner" GITHUB_OUTPUT="$dir/outputs" ROLE=builder SUBJECT=A23 \
+  GITHUB_ACTION_PATH="$dir" RUNNER_TEMP="$dir/runner" GITHUB_OUTPUT="$dir/outputs" ROLE=builder SUBJECT=A23 \
   EXECUTION_FILE="$FIXTURES/run.json" CONCLUSION=success bash -eo pipefail "$dir/ledger-step.sh"
 holds 'L29 the extracted action writes its row and artifact slug' bash -c \
   'jq -e '\''.subject == "A23" and .exit == "success" and .turns == 3'\'' "$1/runner/ledger/ledger.json" && grep -qx "slug=A23" "$1/outputs"' _ "$dir"
+
+holds 'L29 the action retains an explicit unavailable explanation without raw events' bash -c \
+  'jq -e '\''.kind == "model-claim" and .explanation == "unavailable" and .subject == "A23" and (has("events") | not)'\'' "$1/runner/ledger/outcome.json"' _ "$dir"
+
+# An old or modified PR checkout cannot select the extraction scripts.
+mkdir -p "$dir/pr/loop"
+git -C "$dir/pr" init -q
+printf 'exit 99\n' >"$dir/pr/loop/retro.sh"
+git -C "$dir/pr" add loop
+git -C "$dir/pr" -c user.name=t -c user.email=t@t commit -q -m untrusted
+pushd "$dir/pr" >/dev/null
+check 'L29 the action reads its trusted checkout instead of PR HEAD' 0 env \
+  GITHUB_ACTION_PATH="$dir" RUNNER_TEMP="$dir/runner" GITHUB_OUTPUT="$dir/outputs" ROLE=builder SUBJECT=trusted \
+  EXECUTION_FILE="$FIXTURES/run.json" CONCLUSION=success bash -eo pipefail "$dir/ledger-step.sh"
+popd >/dev/null
+holds 'L29 the trusted checkout produced the artifact' jq -e '.subject == "trusted" and .exit == "success"' "$dir/runner/ledger/ledger.json"
 
 # L27 due
 fresh; merged 20 2026-10-08T23:00:00Z

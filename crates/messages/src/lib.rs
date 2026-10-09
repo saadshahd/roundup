@@ -166,57 +166,60 @@ impl Messages {
         // before this one's insert lands (B1).
         let message = {
             let mut store = self.store()?;
+            // Outside the transaction: a refusal keeps the drops `accept_receiver` reconciled.
             if let Some(node) = &receiver_status {
                 accept_receiver(&self.inner, &mut store, node)?;
             }
-            if let Some(reply_to) = p.reply_to
-                && store.get(reply_to)?.is_none()
-            {
-                return Err(RpcError::new(
-                    code::INVALID_PARAMS,
-                    format!("replyTo names no Message: {reply_to}"),
-                ));
-            }
-            if store.count_open(&p.to)? >= OPEN_BOUND {
-                return Err(RpcError::conflict(format!(
-                    "{} already has {OPEN_BOUND} pending or held Messages",
-                    p.to
-                )));
-            }
-            // B10: a Message to the user is delivered at once, whatever Routes exist; the
-            // user has no `idle` for B2's pending-until-idle rule to wait on.
-            let (status, reason) = if p.to == Actor::user().id {
-                (MessageStatus::Delivered, None)
-            } else {
-                let route = store
-                    .get_route(&ctx.actor.id, &p.to)?
-                    .unwrap_or(Delivery::Auto);
-                // B6: under a Takeover, an auto Message from any Actor but the user is held for
-                // it; the user's own Messages are delivered as B2 says, Takeover or not.
-                send_status(
-                    ctx.actor.kind == ActorKind::User,
-                    route,
-                    store.is_takeover_active(&p.to),
-                )
-            };
-            let message = store.insert(
-                &ctx.actor,
-                &p.to,
-                p.kind,
-                &p.body,
-                p.reply_to,
-                status,
-                reason,
-                (self.inner.clock)(),
-                receiver_status.as_ref().map_or((0, 0), binding),
-                None,
-            )?;
-            self.answer(ctx, &store, &message)?;
-            if let Some(rest) = &chain_rest {
-                store.start_chain(&ctx.actor, &message.body, rest, message.id)?;
-            }
-            store.arm_chains((self.inner.clock)())?;
-            message
+            store.atomically(|store| {
+                if let Some(reply_to) = p.reply_to
+                    && store.get(reply_to)?.is_none()
+                {
+                    return Err(RpcError::new(
+                        code::INVALID_PARAMS,
+                        format!("replyTo names no Message: {reply_to}"),
+                    ));
+                }
+                if store.count_open(&p.to)? >= OPEN_BOUND {
+                    return Err(RpcError::conflict(format!(
+                        "{} already has {OPEN_BOUND} pending or held Messages",
+                        p.to
+                    )));
+                }
+                // B10: a Message to the user is delivered at once, whatever Routes exist; the
+                // user has no `idle` for B2's pending-until-idle rule to wait on.
+                let (status, reason) = if p.to == Actor::user().id {
+                    (MessageStatus::Delivered, None)
+                } else {
+                    let route = store
+                        .get_route(&ctx.actor.id, &p.to)?
+                        .unwrap_or(Delivery::Auto);
+                    // B6: under a Takeover, an auto Message from any Actor but the user is held for
+                    // it; the user's own Messages are delivered as B2 says, Takeover or not.
+                    send_status(
+                        ctx.actor.kind == ActorKind::User,
+                        route,
+                        store.is_takeover_active(&p.to),
+                    )
+                };
+                let message = store.insert(
+                    &ctx.actor,
+                    &p.to,
+                    p.kind,
+                    &p.body,
+                    p.reply_to,
+                    status,
+                    reason,
+                    (self.inner.clock)(),
+                    receiver_status.as_ref().map_or((0, 0), binding),
+                    None,
+                )?;
+                self.answer(ctx, store, &message)?;
+                if let Some(rest) = &chain_rest {
+                    store.start_chain(&ctx.actor, &message.body, rest, message.id)?;
+                }
+                store.arm_chains((self.inner.clock)())?;
+                Ok(message)
+            })?
         };
         ctx.touch(Verb::Wrote, &item(message.id))?;
         ctx.emit(EventData::MessageSent(message.clone()));
@@ -228,6 +231,13 @@ impl Messages {
         }
         if let Some(landing) = self.answered_landing(ctx, &message)? {
             ctx.emit(EventData::MessageDelivered(landing));
+        }
+        if message.status == MessageStatus::Pending
+            && let Some(node) = receiver_status
+                .as_ref()
+                .filter(|node| node.status.as_ref().is_some_and(|s| s.kind == Kind::Idle))
+        {
+            on_idle(&self.inner, &p.to, binding(node), Pick::Fresh).await;
         }
         // A hop the Route dropped moves the chain on at once (B16).
         let _ = settle(&self.inner, None).await;
@@ -246,7 +256,10 @@ impl Messages {
         let (Some(chain), Some(hop)) = (store.chain_of(hop_id)?, store.get(hop_id)?) else {
             return Ok(());
         };
-        if hop.status == MessageStatus::Delivered && hops::is_hop_receiver(&ctx.actor, &hop) {
+        if hop.status == MessageStatus::Delivered
+            && hops::is_hop_receiver(&ctx.actor, &hop)
+            && is_receiver(&chain.origin, &message.to)
+        {
             store.move_chain(chain.id, None, &[])?;
         }
         Ok(())
@@ -263,7 +276,9 @@ impl Messages {
         }
         let store = self.store()?;
         let escalated = store.get(landing_id)?.is_some_and(|held| {
-            held.to == Actor::user().id && held.reason == Some(Reason::Escalated)
+            held.to == Actor::user().id
+                && held.reason == Some(Reason::Escalated)
+                && is_receiver(&held.from, &message.to)
         });
         if escalated && store.release_held(landing_id, MessageStatus::Delivered, None)? {
             return store.get(landing_id);
@@ -345,6 +360,7 @@ impl Messages {
             store.arm_chains((self.inner.clock)())?;
         }
         ctx.touch(Verb::Wrote, &item(p.id))?;
+        nudge(&self.inner, &message.to).await;
         reply(&self.get_or_not_found(p.id)?)
     }
 
@@ -439,6 +455,7 @@ impl Messages {
                 agent: agent.clone(),
                 on: false,
             }));
+            nudge(&self.inner, &agent).await;
         }
         Ok(Value::Null)
     }
@@ -616,8 +633,12 @@ async fn settle(inner: &Arc<Inner>, force: Option<u32>) -> Result<(), RpcError> 
         hops::settle(inner, &mut store, &nodes, (inner.clock)(), force)?
     };
     let rupd = Actor::daemon();
+    let mut waiting = Vec::new();
     for hop in made {
         let message = hop.message;
+        if hop.new && message.status == MessageStatus::Pending {
+            waiting.push(message.to.clone());
+        }
         if hop.new {
             inner
                 .touches
@@ -639,6 +660,10 @@ async fn settle(inner: &Arc<Inner>, force: Option<u32>) -> Result<(), RpcError> 
                 .emit(rupd.clone(), EventData::MessageDropped(message)),
             MessageStatus::Pending => {}
         }
+    }
+    // B13: a hop made for a receiver already idle has no later `idle` to wait for.
+    for door in waiting {
+        nudge(inner, &door).await;
     }
     Ok(())
 }
@@ -705,7 +730,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
         .expect("message store");
     }
     if kind == Kind::Idle {
-        on_idle(inner, agent, at).await;
+        on_idle(inner, agent, at, Pick::Next).await;
     }
     let _ = settle(inner, None).await;
 }
@@ -782,13 +807,19 @@ async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
 /// next one, so exactly one Message is typed per `idle`. It is recorded `delivered` in one
 /// conditional write before typing starts (B8), so a Takeover beginning while the prompt is being
 /// typed cannot hold a Message already in flight; a refusal reverts that record.
-async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
+///
+/// `Pick::Fresh` is for work that became deliverable while its receiver was already `idle` (a
+/// Message just sent, released, or passed on to it): no `idle` event will follow for it, so the
+/// one the next `idle` would pick is typed now, though its Status revision is the current one.
+async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick) {
     let found = {
         let store = inner.store.lock().unwrap();
         if store.require_generation(agent, at).is_err() {
             return;
         }
-        let pending = store.pending_queue(agent, at).expect("message store");
+        // A just-sent Message is bound to the current revision, which the queue excludes.
+        let upto = (at.0, at.1.saturating_add(i64::from(pick == Pick::Fresh)));
+        let pending = store.pending_queue(agent, upto).expect("message store");
         idle_pick(&pending).and_then(|id| pending.into_iter().find(|m| m.id == id))
     };
     let Some(found) = found else {
@@ -803,7 +834,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
         let store = inner.store.lock().unwrap();
         if store.require_generation(agent, at).is_err()
             || (store.bound(found.id).expect("message store").0 != at.0
-                || store.bound(found.id).expect("message store").1 >= at.1)
+                || (pick == Pick::Next && store.bound(found.id).expect("message store").1 >= at.1))
         {
             return;
         }
@@ -857,6 +888,29 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding) {
     inner
         .bus
         .emit(Actor::daemon(), EventData::MessageDelivered(message));
+}
+
+/// Which pending Messages an `idle` may type.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pick {
+    /// An `idle` event: those bound to an earlier Status revision.
+    Next,
+    /// The receiver is idle already: those bound to this revision too.
+    Fresh,
+}
+
+/// B2, B3, B6, B13: types the next Message to `agent` now if the Rail shows it `idle`.
+async fn nudge(inner: &Arc<Inner>, agent: &str) {
+    let Ok(nodes) = rail_nodes(inner).await else {
+        return;
+    };
+    if let Some(node) = nodes.iter().find(|node| {
+        node.id == agent
+            && node.kind != NodeKind::Terminal
+            && node.status.as_ref().is_some_and(|s| s.kind == Kind::Idle)
+    }) {
+        on_idle(inner, agent, binding(node), Pick::Fresh).await;
+    }
 }
 
 fn binding(node: &RailNode) -> store::Binding {
@@ -1060,6 +1114,7 @@ mod tests {
 
     mod b_held_tests;
     mod b_hop_tests;
+    mod b_idle_tests;
     mod inv_tests;
 
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,
@@ -1146,11 +1201,14 @@ mod tests {
 
     impl Harness {
         fn new(dir: &Path, rail: Vec<RailNode>) -> Self {
+            Self::with_deliver(dir, rail, noop_deliver())
+        }
+
+        fn with_deliver(dir: &Path, rail: Vec<RailNode>, deliver: Deliver) -> Self {
             let bus = Bus::new();
             let bus_events = bus.subscribe();
             Self {
-                messages: Messages::open(dir, bus.clone(), FakeRail::new(rail), noop_deliver())
-                    .unwrap(),
+                messages: Messages::open(dir, bus.clone(), FakeRail::new(rail), deliver).unwrap(),
                 bus,
                 bus_events,
                 touches: Arc::new(Touches::in_memory().unwrap()),
@@ -1201,7 +1259,7 @@ mod tests {
     #[tokio::test]
     async fn b1_send_assigns_sequential_ids_from_is_the_caller_and_touches_wrote() {
         let dir = tempfile::tempdir().unwrap();
-        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
 
         let first = h
             .call_as(
@@ -1459,7 +1517,7 @@ mod tests {
     #[tokio::test]
     async fn b1_a_receiver_at_the_bound_of_32_is_conflict() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         for _ in 0..32 {
             h.call_as(
                 agent("a"),
@@ -1564,7 +1622,7 @@ mod tests {
     #[tokio::test]
     async fn b1_a_rejected_call_at_the_bound_changes_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         for _ in 0..32 {
             h.call_as(
                 agent("a"),
@@ -1717,7 +1775,7 @@ mod tests {
     #[tokio::test]
     async fn b3_deliver_and_drop_are_the_users_calls_only() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         h.call(
             "route.set",
             json!({"from": "a", "to": "b", "delivery": "ask-first"}),
@@ -1776,7 +1834,7 @@ mod tests {
     #[tokio::test]
     async fn b3_deliver_clears_the_held_reason() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         h.call(
             "route.set",
             json!({"from": "a", "to": "b", "delivery": "ask-first"}),
@@ -1800,7 +1858,7 @@ mod tests {
     #[tokio::test]
     async fn b3_deliver_of_a_held_message_emits_no_event_until_it_is_typed() {
         let dir = tempfile::tempdir().unwrap();
-        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let mut h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         h.call(
             "route.set",
             json!({"from": "a", "to": "b", "delivery": "ask-first"}),
@@ -2013,7 +2071,7 @@ mod tests {
     #[tokio::test]
     async fn b5_a_route_change_does_not_affect_an_already_pending_or_held_message() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         let pending = h
             .call_as(
                 agent("a"),
@@ -2148,7 +2206,7 @@ mod tests {
                 Messages::open(
                     dir.path(),
                     bus.clone(),
-                    FakeRail::new(vec![agent_node("b", Kind::Idle)]),
+                    FakeRail::new(vec![agent_node("b", Kind::Working)]),
                     noop_deliver(),
                 )
                 .unwrap(),
@@ -2264,9 +2322,9 @@ mod tests {
     async fn b8_routes_messages_and_statuses_survive_reopening_and_the_id_sequence_continues() {
         let dir = tempfile::tempdir().unwrap();
         let rail = vec![
-            agent_node("b", Kind::Idle),
-            agent_node("c", Kind::Idle),
-            agent_node("d", Kind::Idle),
+            agent_node("b", Kind::Working),
+            agent_node("c", Kind::Working),
+            agent_node("d", Kind::Working),
         ];
         {
             let h = Harness::new(dir.path(), rail.clone());
@@ -2667,7 +2725,7 @@ mod tests {
     #[tokio::test]
     async fn b11_list_status_filters_by_status() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Idle)]);
+        let h = Harness::new(dir.path(), vec![agent_node("b", Kind::Working)]);
         h.call(
             "route.set",
             json!({"from": "a", "to": "b", "delivery": "ask-first"}),
@@ -2702,5 +2760,185 @@ mod tests {
             .collect();
 
         assert_eq!(ids, [json!(1)]);
+    }
+
+    /// A `Deliver` that records every prompt typed, as `(agent, text)`.
+    type Typed = Arc<StdMutex<Vec<(String, String)>>>;
+
+    fn recording_deliver() -> (Deliver, Typed) {
+        let typed = Arc::new(StdMutex::new(Vec::new()));
+        let log = Arc::clone(&typed);
+        let deliver: Deliver = Arc::new(move |agent, text| {
+            log.lock().unwrap().push((agent, text));
+            Box::pin(async { Ok(()) })
+        });
+        (deliver, typed)
+    }
+
+    fn door(id: &str, parent: Option<&str>) -> RailNode {
+        let mut door = node(
+            id,
+            NodeKind::Room,
+            true,
+            Some(Status {
+                kind: Kind::Idle,
+                label: "status".into(),
+                since: 0,
+            }),
+        );
+        door.parent = parent.map(Into::into);
+        door
+    }
+
+    #[tokio::test]
+    async fn b2_a_message_to_an_idle_door_is_typed_without_a_later_status_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let (deliver, typed) = recording_deliver();
+        let h = Harness::with_deliver(
+            dir.path(),
+            vec![door("m", None), agent_node("a", Kind::Working)],
+            deliver,
+        );
+
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "m", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(typed.lock().unwrap().len(), 1);
+        let got = h
+            .call("message.get", json!({"id": sent["id"]}))
+            .await
+            .unwrap();
+        assert_eq!(got["status"], "delivered");
+    }
+
+    #[tokio::test]
+    async fn b3_a_released_message_to_an_idle_agent_is_typed_without_a_later_status_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let (deliver, typed) = recording_deliver();
+        let h = Harness::with_deliver(dir.path(), vec![agent_node("b", Kind::Idle)], deliver);
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "ask-first"}),
+        )
+        .await
+        .unwrap();
+        h.call_as(
+            agent("a"),
+            "message.send",
+            json!({"to": "b", "kind": "note", "body": "hi"}),
+        )
+        .await
+        .unwrap();
+        assert!(typed.lock().unwrap().is_empty());
+
+        h.call("message.deliver", json!({"id": 1})).await.unwrap();
+
+        assert_eq!(typed.lock().unwrap().len(), 1);
+        let got = h.call("message.get", json!({"id": 1})).await.unwrap();
+        assert_eq!(got["status"], "delivered");
+    }
+
+    #[tokio::test]
+    async fn b6_ending_a_takeover_of_an_idle_agent_types_one_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let (deliver, typed) = recording_deliver();
+        let h = Harness::with_deliver(dir.path(), vec![agent_node("b", Kind::Idle)], deliver);
+        h.call("takeover.begin", json!({"agent": "b"}))
+            .await
+            .unwrap();
+        for body in ["one", "two"] {
+            h.call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "b", "kind": "note", "body": body}),
+            )
+            .await
+            .unwrap();
+        }
+        assert!(typed.lock().unwrap().is_empty());
+
+        h.call("takeover.end", json!({"agent": "b"})).await.unwrap();
+
+        // B7: one Message per idle; the second waits for the next.
+        let typed = typed.lock().unwrap();
+        assert_eq!(typed.len(), 1);
+        assert!(typed[0].1.ends_with("one"));
+    }
+
+    #[tokio::test]
+    async fn b13_a_hop_passed_to_an_idle_ancestor_door_is_typed_without_a_status_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let (deliver, typed) = recording_deliver();
+        let h = Harness::with_deliver(
+            dir.path(),
+            vec![
+                door("m1", Some("m2")),
+                door("m2", None),
+                agent_node("a", Kind::Working),
+            ],
+            deliver,
+        );
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "m1", "kind": "question", "body": "why?"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(typed.lock().unwrap().len(), 1);
+
+        h.call_as(agent("m1"), "message.pass", json!({"id": sent["id"]}))
+            .await
+            .unwrap();
+
+        let typed = typed.lock().unwrap();
+        assert_eq!(typed.len(), 2);
+        assert_eq!(typed[1].0, "m2");
+    }
+
+    #[tokio::test]
+    async fn b17_a_failure_between_the_landing_and_the_chain_move_leaves_neither() {
+        let dir = tempfile::tempdir().unwrap();
+        let (deliver, _typed) = recording_deliver();
+        let h = Harness::with_deliver(
+            dir.path(),
+            vec![door("m", None), agent_node("a", Kind::Working)],
+            deliver,
+        );
+        let sent = h
+            .call_as(
+                agent("a"),
+                "message.send",
+                json!({"to": "m", "kind": "question", "body": "why?"}),
+            )
+            .await
+            .unwrap();
+        // The crash boundary: the chain move fails after the Landing was inserted.
+        rusqlite::Connection::open(dir.path().join("messages.db"))
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER fail_move BEFORE UPDATE ON chains
+                 BEGIN SELECT RAISE(ABORT, 'killed between the writes'); END;",
+            )
+            .unwrap();
+
+        let passed = h
+            .call_as(agent("m"), "message.pass", json!({"id": sent["id"]}))
+            .await;
+        assert!(passed.is_err());
+
+        let all = h.call("message.list", json!({})).await.unwrap();
+        assert_eq!(all.as_array().unwrap().len(), 1, "no landing was stored");
+        drop(h);
+        let reopened = Harness::new(dir.path(), vec![door("m", None)]);
+        let all = reopened.call("message.list", json!({})).await.unwrap();
+        assert_eq!(all.as_array().unwrap().len(), 1);
     }
 }

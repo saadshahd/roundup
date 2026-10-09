@@ -17,10 +17,3 @@ D1 and D7 are in `crates/rupd`. D2 to D7 are end-to-end tests of the whole Daemo
 **D6 a Daemon killed without warning leaves a Project that reopens whole.** Given a Daemon with a Group, two Agents, a Terminal, three Todos where Todo 2 is blocked by 1, and two Pads (one owned by an Agent, one by the user), when its program is killed with SIGKILL and a new Daemon starts on the same Project folder, then `rail.tree` has the same node ids, names, parents, `order` values and `meta` flags, every Agent is `done` and every Terminal node has `terminal_id: null` (A8, A12), `todo.list` has the same three Todos with the same blockers and `done` state, `pad.list` the same Pads with the same owners and text, `provenance.history` still names the Actors of the earlier writes, and the next `todo.create` returns id 4. Owns `crates/rup/tests/e2e/**`. It keeps A8, T5, P7 and A12 green and narrows none; a failure here is fixed in the module that loses data, never by the test.
 
 **D7 a store that cannot be read stops the Daemon, loudly.** Given a Project whose Rail, Todos or Pads file is truncated to a few bytes of garbage, when `rupd <project>` starts, then it exits with a non-zero status within a bound the test names, writes one line to stderr naming that file, accepts no connection, and leaves the file's bytes exactly as they were: it is never replaced with an empty store. A Project with none of the files starts as today. The App shows the Daemon's failure as it does for any exit (S3); D7 asserts only the Daemon's side. Owns `crates/rupd/**` and `crates/rup/tests/e2e/**`; if the failure sits in a module's `open`, that module's crate carries the fix and its test names D7.
-
-## Work
-
-Rows a Builder can take; `loop/rules.sh ready` prints each one's state.
-
-| Ids | Item | Owns | Keeps green | After |
-|---|---|---|---|---|

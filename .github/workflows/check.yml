@@ -1,6 +1,7 @@
 name: check
 
 on:
+  workflow_dispatch:
   # A draft's head is skipped: its Builder is still pushing red tests. ready_for_review runs check on the finished
   # head, which starts its review (L24).
   pull_request:
@@ -45,6 +46,18 @@ jobs:
         with:
           rust: 'false'
       - run: just check-web
+
+  # L84: main's proof that Builders' runner can run full `just check`; it also saves the Linux cache. A PR never runs
+  # it and no `needs` reads it, so no Linux green merges alone.
+  linux:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: just check
 
   # Keep the required check name; neither a skipped nor failed lane can turn it green.
   check:

@@ -15,3 +15,21 @@ D3, D4, D5, D8 and D9 pass on every capture. D1 and D10 fail on all ten, D2 on e
 ## First unproved behavior
 
 Earlier-run Agent or Terminal with no saved output: selecting one leaves a blank pane with no explanation (a Review/Intervene dead end), already specified as **U83** (`scenarios/ui-surfaces.md`, ready, no PR, no Claim). It is the only independent gap with an owner-less ready row; H18/U113 (Intervene) and B1–B18 are owned by open PRs, and F7 by #330. No new implementation row is added. J2 waits on U83.
+
+# J2 journey audit
+
+Main: `4649c5f` (holds U83, H18, U143; open PRs #393 U113, #396 B1–B18, #349 U134/U135, #330 F7 re-run). Same method as J1: `just harness <seed> 5199`, agent-browser, Chromium, light, 1280×800 and 700×800, all twelve seeds-by-width read with `window.__checks()`. New captures: `j2-earlier-run-*` and `j2-agents-10-*` (`.png` and `.checks.json`). The J1 captures of `first-run`, `empty-project`, `door-stopped` and `conflict` were repeated and read the same: `first-run` fails D1, D10; `empty-project` and `conflict` fail D1, D2, D10; `door-stopped` additionally fails D6 and D7 (`textarea.xterm-helper-textarea`: no hover state, no pressed state) at both widths. Nothing here ran a real Daemon, a real `claude` or the native App.
+
+| Stage | Observed | Verdict |
+|---|---|---|
+| Enter | Unchanged since J1. The webview reaches a Daemon only through Tauri commands, so no browser run can go from `first-run` to a Thread on a real Daemon. | Unproved: needs U144. |
+| Request | Daemon half: `b24_` and `d3_` in `crates/rup/tests/e2e.rs` drive a Door over MCP against the fake `claude`; no rendered run reads the Todo in the Shelf. Real `claude` is F7's re-run (#330). | Unproved: needs U144 for the rendered half. |
+| Understand | `agents-10` unchanged: glyph and word separate error, needs-you, blocked, working; header `4 need you`; no Room selected, so selected-Room identification stays unobserved. | Unproved. |
+| Intervene | No Decision Card renders on main; U113 (#393) is in flight. | Unproved; owned by U113. |
+| Review | U83 now renders: `earlier-run` selected shows `no output kept from an earlier run` at both widths, so that dead end is closed. No result view of a Room and no rendered reopen. | Unproved: needs U144 for reopen; Room-scoped results have no contract. |
+
+## Gap selected
+
+Enter, Request and Review share one missing observer: the App cannot be rendered on a real Daemon outside the native App. Specified as **U144** (`scenarios/ui-first-journey.md`), After U143 (done), so ready. Intervene stays with U113 and the Meta-agent spike with #330; neither is duplicated. **J3** waits on U144 and repeats this audit through `just harness-real`.
+
+Loop note, not changed here: `loop/rules.sh ready` marks a policy row done only by a `j<n>_` test, so J1 and J2 print `ready` after merging.

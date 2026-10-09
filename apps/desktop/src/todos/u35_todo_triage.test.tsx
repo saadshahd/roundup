@@ -289,7 +289,7 @@ describe("u35 Todo triage without the Drawer", () => {
 
       // jsdom turns 1ch into pixels in this property and leaves it as written in others; since U130 moved font-size to
       // `var(--text-body)`, which jsdom cannot resolve, it converts ch against its own default font size instead of styles.css's.
-      expect(button.background).toContain("--ground");
+      expect(button.background).toContain("--sunken");
       expect(button.paddingLeft).toMatch(/^(1ch|8px)$/);
     } finally {
       sheet.remove();

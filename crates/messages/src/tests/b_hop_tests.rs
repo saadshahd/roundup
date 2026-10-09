@@ -523,3 +523,36 @@ async fn b14_a_restart_reads_the_bound_from_the_stored_time() {
     h.at(70_000).await;
     assert_eq!(h.all().await.len(), 2);
 }
+
+#[tokio::test]
+async fn b17_a_note_to_anyone_but_the_asker_stops_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    h.ask("c", "sub").await;
+    h.becomes("sub", Kind::Idle).await;
+
+    let elsewhere = json!({"to": "d", "kind": "note", "body": "fyi", "replyTo": 1});
+    h.call_as(agent("sub"), "message.send", elsewhere)
+        .await
+        .unwrap();
+    h.at(60_000).await;
+
+    let all = h.all().await;
+    assert!(all.iter().any(|m| m.3 == json!(1)), "{all:?}");
+}
+
+#[tokio::test]
+async fn b15_a_reply_addressed_elsewhere_does_not_deliver_the_landing() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = Hops::new(dir.path());
+    h.ask("c", "top").await;
+    h.at(60_000).await;
+    assert_eq!(h.get(2).await["status"], "held");
+
+    let elsewhere = json!({"to": "d", "kind": "note", "body": "go left", "replyTo": 2});
+    h.call_as(Actor::user(), "message.send", elsewhere)
+        .await
+        .unwrap();
+
+    assert_eq!(h.get(2).await["status"], "held");
+}

@@ -474,6 +474,16 @@ async fn h7_a_decision_with_no_live_hook_survives_a_close_and_is_cleared_by_a_si
 /// H10: a permission request stays with the user. The parent hears nothing.
 #[tokio::test]
 async fn h10_a_childs_decision_reaches_no_byte_signal_or_call_of_its_parent() {
+    a_childs_decision_reaches_only_the_user().await;
+}
+
+/// B18: H10's test is this scenario's test; a Decision is no Message, so no hop climbs.
+#[tokio::test]
+async fn b18_a_permission_request_does_not_bubble_to_the_parent() {
+    a_childs_decision_reaches_only_the_user().await;
+}
+
+async fn a_childs_decision_reaches_only_the_user() {
     let f = Arc::new(Fixture::running("sleep 30").with_proof(PROOF));
     // A Door is the parent Agent of the Agents in its Room.
     let parent = f.room("team", None).await;
