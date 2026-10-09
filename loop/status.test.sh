@@ -49,6 +49,7 @@ case "$*" in
   'pr list --state open --limit 200 --json '*) cat "$FIXTURES/open" ;;
   'api repos/{owner}/{repo}/commits/'*'/status --jq '*) sha=${2#repos/\{owner\}/\{repo\}/commits/}; jq -r "$filter" "$FIXTURES/status-${sha%/status}" ;;
   'run list --workflow check.yml --branch main --event push --status completed --limit 1 '*) cat "$FIXTURES/main" ;;
+  'run view '*' --json jobs --jq '*) cat "$FIXTURES/linux-jobs" 2>/dev/null | jq -r "$filter" || true ;;
   'run list --workflow '*'.yml --limit 100 '*) cat "$FIXTURES/runs-${4%.yml}" 2>/dev/null || echo '[]' ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
@@ -71,7 +72,7 @@ fresh() {
   : >"$FIXTURES/builders"
   echo '[]' >"$FIXTURES/merged"
   echo '[]' >"$FIXTURES/open"
-  echo '[{"conclusion":"success","headSha":"0123456789abcdef"}]' >"$FIXTURES/main"
+  echo '[{"conclusion":"success","headSha":"0123456789abcdef","databaseId":5}]' >"$FIXTURES/main"
 }
 # pr <number> <title> <updatedAt> [draft] [labels] [merge-ready state] [head]: one open PR, appended to the fixture.
 pr() {
@@ -147,12 +148,20 @@ holds 'L80 blocked holds each ready PR merge-ready fails that nothing changed fo
 fresh
 pr 30 'U5 building' 2026-10-09T11:00:00Z true '' FAILURE build/U5
 echo U7 >"$FIXTURES/builders"
-echo '[{"conclusion":"failure","headSha":"abcdef0123456789"}]' >"$FIXTURES/main"
+echo '[{"conclusion":"failure","headSha":"abcdef0123456789","databaseId":6}]' >"$FIXTURES/main"
 echo '[{"workflowName":"build","createdAt":"2026-10-09T10:00:00Z","url":"u/1","conclusion":"failure"},{"workflowName":"build","createdAt":"2026-10-09T11:00:00Z","url":"u/2","conclusion":"timed_out"},{"workflowName":"build","createdAt":"2026-10-09T11:30:00Z","url":"u/3","conclusion":"cancelled"},{"workflowName":"build","createdAt":"2026-10-08T11:00:00Z","url":"u/4","conclusion":"failure"},{"workflowName":"build","createdAt":"2026-10-09T11:40:00Z","url":"u/5","conclusion":"success"}]' >"$FIXTURES/runs-build"
 echo '[{"workflowName":"review","createdAt":"2026-10-09T09:00:00Z","url":"r/1","conclusion":"startup_failure"}]' >"$FIXTURES/runs-review"
 check 'L80 page reads main, Claims and failed runs' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 watch names a red main, a Claim with no PR or Builder, and failed agent runs of 24 hours' test "$(row Watch)" = \
   'main is red: check failure on abcdef0<br>build/U8: no open PR and no Builder; delete it to build its row again<br>build: 2 failed in 24 h, latest u/2<br>review: 1 failed in 24 h, latest r/1'
+# L84: a failed linux job of main's push run is named; a green one, or a failed macOS job alone, is not.
+echo '{"jobs":[{"name":"rust","conclusion":"success"},{"name":"linux","conclusion":"failure"}]}' >"$FIXTURES/linux-jobs"
+check 'L84 page reads the push run jobs' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L84 watch says Linux just check failed on main' bash -c 'grep -q "Linux check failed: just check on ubuntu-latest at abcdef0; Builders run there" "$FIXTURES/out"'
+echo '{"jobs":[{"name":"rust","conclusion":"failure"},{"name":"linux","conclusion":"success"}]}' >"$FIXTURES/linux-jobs"
+check 'L84 page with a green linux job' 0 bash -c 'loop/status.sh page </dev/null'
+holds 'L84 a green linux job raises no Linux warning' bash -c '! grep -q "Linux check failed" "$FIXTURES/out"'
+rm "$FIXTURES/linux-jobs"
 jq -nc --arg sha "$(git rev-parse HEAD)" '[{head:{ref:"build/U8",sha:$sha,repo:{id:1}},base:{ref:"main",repo:{id:1}},merged_at:"2026-10-08T00:00:00Z"}]' >"$FIXTURES/closed"
 check 'L80 a merged branch is not an orphan' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 completed work raises no branch warning' bash -c '! grep -q "build/U8: no open PR" "$FIXTURES/out"'

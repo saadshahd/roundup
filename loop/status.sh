@@ -52,7 +52,11 @@ page() {
         | "#\(.number) \(.title): \($desc), unchanged since \(.updatedAt[:16] | sub("T"; " ")) UTC"'
     done | jq -s -c .)
 
-  main=$(gh_or_4 run list --workflow check.yml --branch main --event push --status completed --limit 1 --json conclusion,headSha)
+  main=$(gh_or_4 run list --workflow check.yml --branch main --event push --status completed --limit 1 --json conclusion,headSha,databaseId)
+  # L84: the push run's `linux` job is main's proof that Builders' runner can run `just check`.
+  linux=$(for id in $(jq -r '.[].databaseId' <<<"$main"); do
+    gh_or_4 run view "$id" --json jobs --jq '.jobs[] | select(.name == "linux" and .conclusion == "failure") | .name'
+  done)
   # An unfinished Claim with no open PR and no Builder blocks its row (L23).
   claims=$(git ls-remote --heads origin 'build/*' 'loop-row/*') || { echo "git ls-remote origin failed" >&2; exit 4; }
   completed=$(merged_heads)
@@ -77,14 +81,15 @@ page() {
   done | jq -s -c --arg since "$(at $((now - 86400)) '%Y-%m-%dT%H:%M:%SZ')" '
     add | map(select(.createdAt >= $since and (.conclusion | IN("failure", "timed_out", "startup_failure")))) | group_by(.workflowName)
     | map("\(.[0].workflowName): \(length) failed in 24 h, latest \(max_by(.createdAt).url)")')
-  watch=$(jq -nc --argjson main "$main" --argjson claims "$claims" --argjson failed "$failed" --argjson owners "$owners" '
-    [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"] + $claims + $owners + $failed')
+  watch=$(jq -nc --arg linux "$linux" --argjson main "$main" --argjson claims "$claims" --argjson failed "$failed" --argjson owners "$owners" '
+    [$main[] | select(.conclusion != "success") | "main is red: check \(.conclusion) on \(.headSha[:7])"]
+    + [$main[] | select($linux != "") | "Linux check failed: just check on ubuntu-latest at \(.headSha[:7]); Builders run there"] + $claims + $owners + $failed')
 
   jq -nr --arg at "$(at "$now" '%Y-%m-%d %H:%M')" --arg merged "$merged" --arg tokens "$tokens" \
     --argjson orders "$orders" --argjson activity "${ACTIVITY:-[]}" --arg codex "${CODEX_STATUS:-}" --argjson needs "$needs" --argjson blocked "$blocked" --argjson watch "$watch" '
     def cell: if length == 0 then "nothing" else map(gsub("\\|"; "\\|")) | join("<br>") end;
     "<!-- loop-status -->",
-    "Loop status at \($at) UTC. This body updates on run events and every five minutes; at 08:03 UTC the same table lands as a comment.", "",
+    "Loop status at \($at) UTC. This body updates every five minutes; at 08:03 UTC the same table lands as a comment.", "",
     "| Row | Now |", "|---|---|",
     "| Merged | \($merged) |", $tokens,
     "| Work Issues | \([$orders[] | select(.state != "done" and .state != "cancelled")] | group_by(.state) | map("\(length) \(.[0].state)") | cell) |",
