@@ -58,6 +58,8 @@ class GitHub:
         self.lost_issue_response = False
         self.pull_error = None
         self.lost_pull_response = False
+        self.updates = 0
+        self.gated = []
 
     def sha(self):
         self.counter += 1
@@ -158,7 +160,7 @@ class GitHub:
                 raise self.pull_error
             number = max(self.prs, default=0) + 1
             sha = self.refs['refs/heads/' + payload['head']]
-            self.prs[number] = dict(number=number, title=payload['title'], body=payload['body'], state='open', merged=False, mergeable=True, draft=False,
+            self.prs[number] = dict(number=number, title=payload['title'], body=payload['body'], state='open', merged=False, mergeable=True, draft=False, updated_at='0',
                                     head=dict(sha=sha, ref=payload['head'], repo=dict(full_name='o/r')),
                                     base=dict(ref='main', sha=self.refs['refs/heads/main'], repo=dict(full_name='o/r')))
             if self.lost_pull_response:
@@ -225,9 +227,10 @@ class GitHub:
             return subprocess.run(args, input=data, capture_output=True, text=True, check=True).stdout
         if args[:3] == ('bash', 'loop/rules.sh', 'publication-ready'):
             pr = self.prs[int(args[3])]
+            self.gated.append(pr['number'])
             exact = [e for e in self.events.get(pr['number'], []) if e['head'] == pr['head']['sha']]
             if not exact or exact[-1]['verdict'] != 'approve':
-                raise subprocess.CalledProcessError(1, ['publication-ready'])
+                raise subprocess.CalledProcessError(1, ['publication-ready'], stderr='publication-ready: a planning PR needs independent exact-head approval')
             return 'ready ' + pr['head']['sha']
         if args[:3] == ('bash', 'loop/rules.sh', 'verdicts'):
             return '\n'.join(json.dumps(e) for e in self.events.get(int(args[3]), []))
@@ -244,7 +247,13 @@ class GitHub:
         pr = self.prs[number]
         pr.update(state='closed', merged=True)
         if approve:
-            self.events[number] = [dict(head=pr['head']['sha'], verdict='approve')]
+            self.verdict(number, pr['head']['sha'], 'approve')
+
+    def verdict(self, number, head, verdict):
+        # A verdict is a comment, and a comment updates its PR.
+        self.events[number] = [dict(head=head, verdict=verdict)]
+        self.updates += 1
+        self.prs[number]['updated_at'] = str(self.updates)
 
 
 
@@ -369,9 +378,9 @@ class Lifecycle(unittest.TestCase):
         pr = self.plan()
         self.assertEqual(list(self.hub.issues), [355])
         self.hub.merge(pr, approve=False)
-        with self.assertRaises(subprocess.CalledProcessError):
-            f.publish(355)
+        f.publish(355)
         self.assertEqual(list(self.hub.issues), [355])
+        self.assertIn('exact-head approval', f.read_claim(355)[1]['waiting']['reason'])
         self.hub.merge(pr)
         f.publish(355)
         f.publish(355)
@@ -566,11 +575,11 @@ class Lifecycle(unittest.TestCase):
         f.propose(355, verification(True))
         pr = f.read_claim(355)[1]['pr']
         self.hub.merge(pr, approve=False)
-        with self.assertRaises(subprocess.CalledProcessError):
-            f.publish(355)
-        self.hub.events[pr] = [dict(head='c' * 40, verdict='approve')]
-        with self.assertRaises(subprocess.CalledProcessError):
-            f.publish(355)
+        f.publish(355)
+        self.hub.verdict(pr, 'c' * 40, 'approve')
+        f.publish(355)
+        self.assertEqual(self.hub.issues[355]['state'], 'open')
+        self.assertEqual(f.read_claim(355)[1]['phase'], 'proposed')
         self.hub.merge(pr)
         self.hub.main_changes = [dict(filename='apps/desktop/src/App.tsx')]
         with self.assertRaisesRegex(ValueError, 'main behavior changed'):
@@ -761,6 +770,32 @@ class Lifecycle(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'controller-owned context'):
             f.reconcile()
         self.assertEqual(self.hub.prs, {})
+
+    def second_source(self):
+        self.hub.issues[357] = {**source(number=357, html_url='https://github.com/o/r/issues/357'), 'id': 357, 'state_reason': None}
+        return (('gh', 'workflow', 'run', 'feedback.yml', '-f', 'issue=357'), None)
+
+    def test_l90_refused_plan_recovers_and_the_sweep_continues(self):
+        pr = self.plan()
+        self.hub.merge(pr, approve=False)
+        planner = self.second_source()
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.reconcile()
+        self.assertIn(planner, self.hub.writes)
+        self.assertEqual(f.read_claim(355)[1]['phase'], 'replan')
+        self.assertEqual(f.read_claim(355)[1]['recovery']['pr'], pr)
+        self.assertEqual(self.hub.children, {})
+
+    def test_l90_one_source_failure_leaves_the_others_swept(self):
+        planner = self.second_source()
+        original = f.read_source
+        def failing(number, *args, **kwargs):
+            if number == 355:
+                raise subprocess.CalledProcessError(1, ['gh'], stderr='gh: Server Error (HTTP 502)')
+            return original(number, *args, **kwargs)
+        with patch.object(f, 'read_source', side_effect=failing), self.assertRaises(subprocess.CalledProcessError):
+            f.reconcile()
+        self.assertIn(planner, self.hub.writes)
 
     def test_l88_excluded_unclaimed_issues_need_no_ownership_reads(self):
         for labels, author in ((['loop:work', 'ready-for-agent'], 'User'), ([], 'Bot')):

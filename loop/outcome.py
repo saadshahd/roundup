@@ -18,6 +18,14 @@ def redact(text, environment):
     return re.sub(r'\b(?:sk-ant-[\w-]+|gh[pousr]_[\w]+|github_pat_[\w]+)\b', '[redacted]', text)
 
 
+def describe(error):
+    """An error with GitHub's own words from its stderr, credentials redacted."""
+    detail = getattr(error, 'stderr', None) or ''
+    if isinstance(detail, bytes):
+        detail = detail.decode(errors='replace')
+    return redact(f'{error}\n{detail}'.rstrip(), os.environ)[:8000]
+
+
 def model_outcome(events, environment):
     if not isinstance(events, list) or any(not isinstance(event, dict) for event in events):
         raise ValueError('execution output must be an array of objects')
