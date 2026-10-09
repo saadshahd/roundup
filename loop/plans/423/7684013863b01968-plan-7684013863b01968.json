@@ -1,0 +1,84 @@
+{
+  "source": {
+    "number": 423,
+    "title": "L91: Run only the CI lanes affected by a change",
+    "body": "Run CI according to the files and dependencies changed, so documentation and loop work do not wait for unrelated Rust/UI suites.\n\nScenarios: L91\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nKey: affected-ci\nPriority: 1\nMode: specify\nProvider: claude\n\nScope: shared change classifier and the check/rules workflows. Keep required status names, independent review, existing test recipes and visual gates. Mixed changes take the union; shared or unknown inputs run everything. Include executable documentation, deleted files, renames and large diffs. Missing history and unexpected skips must fail visibly.\n\nObserver: classifier/gate regression tests, workflow lint, full local checks, independent review, and actual GitHub job selections for docs-only, loop-only and product changes. Publish which checks ran or were deliberately omitted. A green implementation PR alone does not prove all deployed routing branches.\n\nClaude owns further work. The paused local draft in `codex/ci-routing` is retained; inspect existing changes before resuming. No user decision required.\n\n",
+    "html_url": "https://github.com/saadshahd/roundup/issues/423",
+    "kind": "work",
+    "revision": "7684013863b0196804b8cb4137d0aa374f159bc4332b969e12c3209f3bc2daab"
+  },
+  "phase": "plan",
+  "trigger": "7684013863b0196804b8cb4137d0aa374f159bc4332b969e12c3209f3bc2daab",
+  "main": "caf55898dfa1c910afe9988bd9b27978cd0ba062",
+  "previous": null,
+  "answer": {
+    "goals": [
+      {
+        "statement": "A pull request that changes only documentation that no check executes or reads runs neither the Rust nor the web suite. The required `check`, `rules` and `merge-ready` statuses still report, and each one names the lanes it deliberately left out.",
+        "observer": "Actual GitHub job selections on a docs-only PR: the run page and summary show the Rust and web lanes left out by classifier decision, and the required statuses are present and green"
+      },
+      {
+        "statement": "A pull request that changes only loop machinery (`loop/`, `.agents/`, loop workflows) runs the loop `rules` suite and does not wait for the Rust or web suites.",
+        "observer": "Actual GitHub job selections on a loop-only PR, plus classifier regression tests"
+      },
+      {
+        "statement": "A product change runs every lane its paths and dependencies reach (Rust for crates/contracts, web for apps/packages, visual for apps/desktop/src). A mixed change runs the union of its lanes. A shared or unknown input (the classifier itself, setup action, justfile, check/loop workflows, lockfiles, unmatched paths) runs everything.",
+        "observer": "Classifier regression tests over path sets, plus actual GitHub job selections on a product PR"
+      },
+      {
+        "statement": "Deleted files, both sides of a rename, executable documentation (files that a test, lint or recipe reads) and diffs too large to list completely are classified correctly. If base history is missing, the file list is incomplete or the classifier errors, every lane runs or the gate fails visibly. A lane skipped without a recorded classifier decision fails the required gate.",
+        "observer": "Classifier/gate regression tests, workflow lint, `just check`, and independent exact-head review"
+      }
+    ],
+    "deliveries": [
+      {
+        "issue": 423,
+        "title": "L91: Run only the CI lanes affected by a change",
+        "body": "Run CI according to the files and dependencies changed, so documentation and loop work do not wait for unrelated Rust/UI suites.\n\nScenarios: L91\nSpecification: [scenarios/loop-rules.md](https://github.com/saadshahd/roundup/blob/main/scenarios/loop-rules.md)\nKey: affected-ci\nPriority: 1\nMode: specify\nProvider: claude\n\nScope: shared change classifier and the check/rules workflows. Keep required status names, independent review, existing test recipes and visual gates. Mixed changes take the union; shared or unknown inputs run everything. Include executable documentation, deleted files, renames and large diffs. Missing history and unexpected skips must fail visibly.\n\nObserver: classifier/gate regression tests, workflow lint, full local checks, independent review, and actual GitHub job selections for docs-only, loop-only and product changes. Publish which checks ran or were deliberately omitted. A green implementation PR alone does not prove all deployed routing branches.\n\nClaude owns further work. The paused local draft in `codex/ci-routing` is retained; inspect existing changes before resuming. No user decision required.\n\n",
+        "blocked_by": []
+      }
+    ],
+    "evidence": [
+      {
+        "goal": 1,
+        "command": "grep -rn 'L91' scenarios/ .github/workflows/; sed -n '1,25p' .github/workflows/check.yml .github/workflows/loop.yml",
+        "output": "No L91 heading on main caf55898. check.yml runs `rust` (macos) and `web` (ubuntu) on every non-draft pull_request without a paths filter, and `check` requires both to be success. loop.yml `rules` runs on every pull_request. Only visual.yml has a paths filter (apps/desktop/src/**).",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37978404388",
+        "proved": false,
+        "remaining": "Every PR runs every lane today, docs-only included. The L91 specification is not on main and nothing has been implemented."
+      },
+      {
+        "goal": 2,
+        "command": "sed -n '1,60p' .github/workflows/loop.yml .github/workflows/check.yml",
+        "output": "Loop-only PRs still trigger check.yml `rust` and `web` and wait for them; no classifier exists.",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37978404388",
+        "proved": false,
+        "remaining": "Needs the L91 spec merged, then an implementation and a real loop-only PR whose job selections are recorded."
+      },
+      {
+        "goal": 3,
+        "command": "grep -n 'paths' .github/workflows/*.yml",
+        "output": ".github/workflows/visual.yml:6:    paths: ['apps/desktop/src/**']\n.github/workflows/visual.yml:9:    paths: ['apps/desktop/src/**']",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37978404388",
+        "proved": false,
+        "remaining": "There is no shared classifier, so union and run-everything behaviour cannot be observed yet."
+      },
+      {
+        "goal": 4,
+        "command": "git ls-remote origin 'refs/heads/*ci-routing*'",
+        "output": "(no output: the codex/ci-routing draft is not on origin)",
+        "url": "https://github.com/saadshahd/roundup/actions/runs/37978404388",
+        "proved": false,
+        "remaining": "There are no tests or workflow for deletions, renames, executable docs, large diffs, missing history or unexpected skips. The retained draft is local only, and its Builder must look at it if it can reach it."
+      }
+    ],
+    "rules": [
+      {
+        "path": "scenarios/loop-rules.md",
+        "content": "**L91 affected CI.** One shared classifier, `loop/rules.sh lanes <base> <head>`, maps a PR's changed paths to the lanes `rust`, `web`, `rules` and `visual`. Changed paths include added, modified and deleted files and both sides of every rename. The file list must be complete: it comes from git between the merge base and the head, never a truncated API page. A path joins every lane that executes or reads it. `crates/`, `Cargo.*`, `rust-toolchain.toml`, `contracts/` and `spikes/` go to `rust`. `apps/`, `ext/`, `tools/`, `package.json`, `pnpm-*`, `tsconfig.json` and `.claude/skills/` go to `web`. `apps/desktop/src/` also goes to `visual`. `loop/`, `.agents/` and loop-only workflows go to `rules`. Documentation goes to a lane only when a test, lint or recipe of that lane reads it: `GLOSSARY.md` goes to `rules` (vocab), and scenario files go to every lane whose tests read them. All other docs go to no lane. A mixed change runs the union of its lanes. These shared inputs run every lane: the classifier and its tests, `.github/actions/`, `justfile`, `check.yml`, `loop.yml`, `visual.yml`, `merge-ready.yml`, and any path no mapping names. So do missing base history, an incomplete file list and a classifier error. A push to `main` runs every lane. Required status names `check`, `rules`, `merge-ready` and (for UI) percy are unchanged, and independent review and existing recipes are kept. A lane left out by the classifier's recorded decision counts as satisfied. A lane that is skipped, cancelled or missing without that decision fails its required gate. Each run's summary lists the lanes that ran and each lane left out, with the path set that left it out. Tests: `l91_*` in `loop/rules.test.sh`. Observer: classifier/gate tests, workflow lint, `just check`, independent review, and actual GitHub job selections recorded for a docs-only, a loop-only and a product PR.",
+        "cases": "Examples. (1) Only `docs/perf.md` changed: no lanes, and `check` and `rules` are green by recorded omission. (2) Only `loop/status.sh` changed: `rules` runs, Rust and web are left out. (3) `crates/x/src/lib.rs` changed: rust. (4) `apps/desktop/src/App.tsx` changed: web and visual. (5) `crates/` and `docs/` changed: rust only, since docs add nothing. (6) `GLOSSARY.md` changed: rules (vocab reads it). (7) `justfile` changed: every lane. (8) `.github/actions/setup/action.yml` changed: every lane. (9) `crates/a.rs` deleted: rust. (10) `docs/x.md` renamed to `crates/x/README.md` and read by a doctest: rust. (11) A 4000-file diff: the full git list is used, never a 3000-file API page. (12) Shallow clone with no merge base: every lane runs. (13) A new top-level `foo/` directory: every lane runs (unknown input). (14) Push to main: every lane runs. Counterexamples, which the rule forbids. (A) A docs-only PR whose `check` status is absent or pending forever. (B) The rust job cancelled by concurrency with `check` reported green. (C) A rename classified only by its new path when the old path was in rust. (D) A classifier crash read as an empty lane set. (E) Changing the classifier itself while running only `rules`."
+      }
+    ],
+    "question": ""
+  }
+}
