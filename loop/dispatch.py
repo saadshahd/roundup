@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """L88: reconcile PR work; a durable per-PR Claim owns review and repair together."""
+import hashlib
 import json
 import os
 import subprocess
@@ -103,8 +104,13 @@ def due(number, busy=None, reserved_ci=False):
     verdicts = [json.loads(line) for line in run('bash', 'loop/rules.sh', 'verdicts', str(number)).splitlines()]
     paths = run('gh', 'pr', 'diff', str(number), '--name-only')
     kinds = run('bash', 'loop/rules.sh', 'touches', data=paths).splitlines()
+    _, record = claim_record(number)
+    current = [v for v in verdicts if v['current']]
+    review_after = review_request(pr['head']['sha'], current[-1]) if current and current[-1]['verdict'] == 'reject' else None
+    rereview = review_after and (record or {}).get('review_after') == review_after
+    decision_verdicts = [{**v, 'current': False} for v in verdicts] if rereview else verdicts
     checks = gh('api', f"repos/{{owner}}/{{repo}}/commits/{pr['head']['sha']}/check-runs?per_page=100&filter=latest", '--paginate', '--slurp')
-    selected = decision(pr, [c for page in checks for c in page['check_runs']], verdicts, kinds)
+    selected = decision(pr, [c for page in checks for c in page['check_runs']], decision_verdicts, kinds)
     if selected is None:
         return None
     role, cause = selected
@@ -124,7 +130,36 @@ def due(number, busy=None, reserved_ci=False):
             role, cause = 'fix', 'ci'
     base = api('git/ref/heads/main')['object']['sha'] if cause == 'conflict' else pr['base']['sha']
     return dict(pr=number, role=role, cause=cause, head=pr['head']['sha'], base=base, branch=pr['head']['ref'], ci_run=ci_run,
-                **({'planning': True} if 'planning' in kinds else {}))
+                **({'planning': True} if 'planning' in kinds else {}),
+                **({'review_after': review_after} if rereview else {}),
+                **({'repair_verdict': review_after['verdict']} if cause == 'reject' and review_after else {}))
+
+
+def review_request(head, verdict):
+    return dict(head=head, verdict=hashlib.sha256(json.dumps(verdict, sort_keys=True).encode()).hexdigest())
+
+
+def repaired(number):
+    """A successful owned repair requests review; it never approves its delivery."""
+    old, record = claim_record(number)
+    if not record or record['run'] != int(os.environ['GITHUB_RUN_ID']) or record['key'][0] != 'fix':
+        raise ValueError('repair completion does not own this PR')
+    jobs = api(f"actions/runs/{record['run']}/jobs?per_page=100")['jobs']
+    if not any(step['name'] == 'Run anthropics/claude-code-action@v1' and step.get('conclusion') == 'success'
+               for job in jobs for step in job.get('steps', [])):
+        return
+    pr = api(f'pulls/{number}')
+    if not eligible(pr) or pr['draft']:
+        return
+    verdicts = [json.loads(line) for line in run('bash', 'loop/rules.sh', 'verdicts', str(number)).splitlines()]
+    current = [v for v in verdicts if v['current']]
+    if not current or current[-1]['verdict'] != 'reject':
+        return
+    request = review_request(pr['head']['sha'], current[-1])
+    if request['verdict'] != record.get('repair_verdict'):
+        return
+    if not write_claim(number, old, {**record, 'review_after': request}):
+        raise ValueError('repair owner changed before review handoff')
 
 
 def key(task):
@@ -238,6 +273,7 @@ def acquire(task):
     history = repair_history(record, api(f"actions/runs/{record['run']}")) if record else []
     return write_claim(task['pr'], old, dict(key=key(task), run=int(os.environ['GITHUB_RUN_ID']), attempt=attempt,
                                            phase='claimed', fixes=fixes(record), repairs=history,
+                                           review_after=task.get('review_after'), repair_verdict=task.get('repair_verdict'),
                                            ci_head=task['head'] if task['role'] == 'ci' else (record or {}).get('ci_head'),
                                            ci_attempts=((record or {}).get('ci_attempts', 0) if (record or {}).get('ci_head') == task['head'] else 0) + 1
                                            if task['role'] == 'ci' else (record or {}).get('ci_attempts', 0)))
@@ -264,7 +300,7 @@ def start(number, role, head):
     if not fresh or key(fresh) != key(task):
         return
     if role == 'review':
-        prompt = run('bash', 'loop/runs.sh', 'review-due', str(number), task['head'], timeout=660)
+        prompt = run('bash', 'loop/runs.sh', 'review-due', str(number), task['head'], *([task['review_after']['verdict']] if task.get('review_after') else []), timeout=660)
         prompt = ('Review ' + prompt + '\nIf an earlier independent approval names an ancestor, focus on the changes since that approved head, including conflict resolutions and their effects. Your verdict must still cover the current head; do not repeat unchanged findings.')
     else:
         evidence = {'ci': 'Two controller CI reruns did not recover this head. Diagnose runner, concurrency and workflow failures before changing product code.',
@@ -360,10 +396,12 @@ if __name__ == '__main__':
             reconcile()
         elif sys.argv[1] == 'start':
             start(int(sys.argv[2]), sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else '')
+        elif sys.argv[1] == 'repaired':
+            repaired(int(sys.argv[2]))
         elif sys.argv[1] == 'activity':
             print(json.dumps(activity()))
         else:
-            raise ValueError('expected reconcile, start or activity')
+            raise ValueError('expected reconcile, start, repaired or activity')
     except (subprocess.SubprocessError, ValueError, KeyError, TypeError, OSError) as error:
         print(f'PR dispatch failed: {error}', file=sys.stderr)
         sys.exit(4)
