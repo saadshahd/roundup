@@ -201,9 +201,6 @@ fresh
 echo '[{"issue":381,"state":"ready"},{"issue":380,"state":"waiting"},{"issue":362,"state":"done"}]' >"$FIXTURES/orders"
 check 'L80 Status counts live work Issues without reopening delivered work' 0 bash -c 'loop/status.sh page </dev/null'
 holds 'L80 the Issue queue is visible' grep -q '^| Work Issues | 1 ready<br>1 waiting |$' "$FIXTURES/out"
-echo '[{"issue":372,"state":"waiting","wait_until":1790000000,"wait_url":"https://example/c9"}]' >"$FIXTURES/orders"
-check 'L92 Status names a waiting Issue' 0 bash -c 'loop/status.sh page </dev/null'
-holds 'L92 the waiting row has the next eligible time and the last entry' grep -qF '| Waiting | #372 next run after 2026-09-21 14:13 UTC, [last entry](https://example/c9) |' "$FIXTURES/out"
 touch "$FIXTURES/orders-fail"
 check 'L80 unavailable Issue data fails instead of reporting an empty queue' 4 bash -c 'loop/status.sh page </dev/null'
 

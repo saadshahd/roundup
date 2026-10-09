@@ -31,10 +31,6 @@ inputs:
     description: the claude-code-action step's outcome; empty reads as failure
     required: false
     default: ''
-outputs:
-  explanation:
-    description: the run's redacted final model explanation as one line of JSON (L92)
-    value: ${{ steps.row.outputs.explanation }}
 runs:
   using: composite
   steps:
@@ -59,9 +55,7 @@ runs:
         cat "$RUNNER_TEMP/ledger/ledger.json"
         git -C "$GITHUB_ACTION_PATH" show HEAD:loop/outcome.py >"$RUNNER_TEMP/ledger/loop/outcome.py"
         git -C "$GITHUB_ACTION_PATH" show HEAD:loop/dispatch.py >"$RUNNER_TEMP/ledger/loop/dispatch.py"
-        git -C "$GITHUB_ACTION_PATH" show HEAD:loop/trail.py >"$RUNNER_TEMP/ledger/loop/trail.py"
-        # L92: the redacted final explanation goes to the run's completion job, which posts it to the Issue's Trail.
-        echo "explanation=$(python3 "$RUNNER_TEMP/ledger/loop/outcome.py" explain "$EXECUTION_FILE")" >>"$GITHUB_OUTPUT"
+        python3 "$RUNNER_TEMP/ledger/loop/outcome.py" retain "$EXECUTION_FILE" "$RUNNER_TEMP/ledger/outcome.json"
         slug=$(bash "$RUNNER_TEMP/ledger/loop/runs.sh" slug "$SUBJECT")
         echo "slug=$slug" >>"$GITHUB_OUTPUT"
     - uses: actions/upload-artifact@v4
@@ -69,4 +63,5 @@ runs:
         name: ledger-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.role }}-${{ steps.row.outputs.slug }}
         path: |
           ${{ runner.temp }}/ledger/ledger.json
+          ${{ runner.temp }}/ledger/outcome.json
         retention-days: 90
