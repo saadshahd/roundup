@@ -1,6 +1,6 @@
 # UI: the first Room (U143)
 
-Module: `apps/desktop` (the webview). Ids: U143, U144, U145. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
+Module: `apps/desktop` (the webview). Ids: U143, U144, U145, U146. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
 
 **U143 the first Room says where it stands.** Narrows U38 and U9; changes no contract, App seam command or token. Given an open Project, then:
 
@@ -30,3 +30,12 @@ Observer: `u144_` tests in `apps/desktop/src/testing/` start the real `rupd` wit
 - **Errors.** A failed `message.send` still shows its message on U80's one line; no other line shows there.
 
 Tests are named `u145_…` in `apps/desktop/src/thread/` against the fake App seam: an empty Project, a Project whose only row is a root Terminal, a selected Room, an Agent inside a Room, the send button by pointer and keyboard, its disabled state, the focus after `start a Room`, and a rejected `message.send`. Observer: the U26 harness at 1280 by 800 and 700 by 800 with `?seed=empty-project` (no Thread in the DOM) and `?seed=door-stopped` with its Room selected (the composer's insets read from `getBoundingClientRect`, its computed surface, and `document.activeElement` before any input). `window.__checks()` must not regress against `main` for D1, D2, D6, D7 and D8; captures go to `artifacts/ux/U145/`. Room becoming Workstream (#369) renames this scenario's words with every other one and does not change it.
+
+**U146 a Door answers a Thread message in the real-Daemon harness.** Found by the J3 audit: on `just harness-real`, a Message sent to a started Room's Door reaches the Daemon and shows in the Thread, but the fake `claude` of `crates/rup/tests/e2e/fake_claude.py` is scripted only by its environment at start, so it never reads what is typed and takes no action, the Room stays `starting`, and no Todo or outcome can be observed. Changes no contract, App seam command or token. Given `FAKE_CLAUDE_ON_PROMPT`, a JSON `{"name", "arguments"}` tool call, then:
+
+- **The fake.** After its session starts, the fake plays `UserPromptSubmit`, then the tool call with `"$prompt"` in an argument replaced by the typed text, then `Stop`, once per prompt line typed into its Terminal. Without the variable it behaves as today.
+- **The Message.** The Message to the Door goes `pending` to `delivered` (B1, `docs/messages.md`) once the Door is idle, and the Thread shows its status beside it.
+- **The Todo.** A `todo_add {title: "$prompt"}` call puts that Todo in the Shelf's `todos` and the Room's status returns to `idle` with no reload.
+
+Observer: `u146_` tests in `apps/desktop/src/testing/` start the real `rupd` as U144 does with `FAKE_CLAUDE_ON_PROMPT` set to `todo_add`, mount the App through the served seam, create a Room, start its Door, send `ship j3` by pointer, and assert the Message is `delivered`, the Todo `ship j3` shows in `todos`, and the Room is not `starting`; a reopen of the Project finds both again (A8, S5). `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U146/`. A real `claude` stays F7's observer.
+
