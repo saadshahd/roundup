@@ -1,0 +1,37 @@
+name: macos-line
+
+# L46: a ready PR that changes crates/desktop/ waits on the user's `macOS:` line, since Percy renders Chromium only. The
+# ruleset requires this job, so it runs on every PR; editing the body to add the line runs it again.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: macos-line-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  macos-line:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      # main's script judges every PR, so no PR changes its own check.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 loop/builder.py macos-line "$PR"

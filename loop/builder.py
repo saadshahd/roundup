@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""L23, L24, L81: what GitHub Actions leaves to roundup around Builder runs: which Issues to build, how a run ended,
-when a PR gets a fix run and how a review run's answer reaches the PR. Exit 4: GitHub could not be read or written."""
+"""L23, L24, L46, L81: what GitHub Actions leaves to roundup around Builder runs: which Issues to build, how a run
+ended, when a PR gets a fix run, how a review run's answer reaches the PR and when a PR waits on the user's `macOS:`
+line. Exit 4: GitHub could not be read or written."""
 import json
 import os
 import re
@@ -29,6 +30,8 @@ CAUSES = {
     'conflict': 'The PR conflicts with `main`: merge `origin/main` and keep the behaviour of both sides.',
     'unfinished': 'The last run left this PR a draft without a `Stopped:` line: finish the work.',
 }
+MACOS = ('This PR changes `crates/desktop/`, which Percy cannot render: run `just app` on a Mac, then add a '
+         '`macOS: <what you saw>` line to the PR body.')
 
 
 def call(*args):
@@ -50,10 +53,13 @@ def comment(number, body):
     call('api', f'repos/{{owner}}/{{repo}}/issues/{number}/comments', '-f', f'body={body}')
 
 
+def labels(number):
+    return {label['name'] for label in orders.gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}')['labels']}
+
+
 def flag(number, why):
     """Ask the user once: label the Issue or PR `flag:needs-user` and say why, unless it already waits on them."""
-    labels = {label['name'] for label in orders.gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}')['labels']}
-    if NEEDS_USER in labels:
+    if NEEDS_USER in labels(number):
         return
     call('api', f'repos/{{owner}}/{{repo}}/issues/{number}/labels', '-f', f'labels[]={NEEDS_USER}')
     comment(number, f'<!-- needs-user -->\n{why}')
@@ -242,6 +248,22 @@ def review_post(pr, head, reviewer, answer, run_url):
     return True
 
 
+def macos_line(pr):
+    """False, asking the user, when a ready PR changes `crates/desktop/` and its body has no `macOS:` line. Once the line
+    is there, the label comes off if that question was the last one asked."""
+    current = view(pr)
+    pages = orders.gh('api', f'repos/{{owner}}/{{repo}}/pulls/{pr}/files?per_page=100', '--paginate', '--slurp')
+    if current['isDraft'] or not any(f['filename'].startswith('crates/desktop/') for page in pages for f in page):
+        return True
+    if not re.search(r'^macOS: \S', current['body'] or '', re.M):
+        flag(pr, MACOS)
+        return False
+    asked = marked(pr, '<!-- needs-user -->')
+    if asked and asked[-1]['body'] == f'<!-- needs-user -->\n{MACOS}' and NEEDS_USER in labels(pr):
+        call('api', '-X', 'DELETE', f'repos/{{owner}}/{{repo}}/issues/{pr}/labels/{NEEDS_USER}')
+    return True
+
+
 def task_or_nothing(task):
     """Print a task and exit 0, or exit 3 when there is none: the run has nothing to do."""
     print(task or '', end='')
@@ -268,10 +290,12 @@ def main(args):
             return task_or_nothing(review_task(int(pr), head))
         case ['review-post', pr, head, reviewer] if pr.isdigit():
             return 0 if review_post(int(pr), head, reviewer, sys.stdin.read(), run_url) else 1
+        case ['macos-line', pr] if pr.isdigit():
+            return 0 if macos_line(int(pr)) else 1
         case _:
             print('usage: builder.py prompt | worked <file> | pick <most> | built <issue> <slug> <ran> | '
                   'fix-task <pr> <head> <cause> | fixed <pr> <cause> <ran> | review-task <pr> <head> | '
-                  'review-post <pr> <head> <reviewer>', file=sys.stderr)
+                  'review-post <pr> <head> <reviewer> | macos-line <pr>', file=sys.stderr)
             return 2
     return 0
 

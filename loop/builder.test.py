@@ -34,8 +34,9 @@ def note(body, ago=0, login='github-actions[bot]'):
 class GitHub:
     """Answers builder.py's reads from fixed data and records its writes."""
 
-    def __init__(self, view=None, prs=(), notes=(), labels=(), diff='', runs=None):
+    def __init__(self, view=None, prs=(), notes=(), labels=(), diff='', runs=None, files=()):
         self.view, self.prs, self.notes, self.labels, self.diff, self.runs = view, list(prs), list(notes), labels, diff, runs or {}
+        self.files = files
         self.writes = []
 
     def read(self, *args):
@@ -45,6 +46,8 @@ class GitHub:
             return self.prs
         if '/comments' in args[1]:
             return [self.notes]
+        if '/files' in args[1]:
+            return [[dict(filename=name) for name in self.files]]
         if '/actions/workflows/' in args[1]:
             status = args[1].split('status=')[1].split('&')[0]
             return dict(workflow_runs=[dict(id=run) for run, (state, _) in self.runs.items() if state == status])
@@ -240,6 +243,31 @@ class Review(unittest.TestCase):
         self.assertTrue(github.flagged())
         with GitHub(view=pr(headRefOid='b' * 40)) as github:
             self.assertTrue(builder.review_post(9, HEAD, 'reviewer-1', '{"verdict":"approve"}', 'https://run/3'))
+        self.assertEqual(github.writes, [])
+
+
+class MacosLine(unittest.TestCase):
+    DESKTOP = ('crates/desktop/src/main.rs',)
+    ASKED = note(f'<!-- needs-user -->\n{builder.MACOS}')
+
+    def test_l46_a_ready_desktop_pr_without_a_macos_line_fails_and_asks_the_user(self):
+        with GitHub(view=pr(), files=self.DESKTOP) as github:
+            self.assertFalse(builder.macos_line(9))
+        self.assertTrue(github.flagged())
+        for view, files in ((pr(isDraft=True), self.DESKTOP), (pr(), ('apps/desktop/src/App.tsx',))):
+            with GitHub(view=view, files=files) as github:
+                self.assertTrue(builder.macos_line(9))
+            self.assertEqual(github.writes, [])
+
+    def test_l46_the_macos_line_takes_back_only_its_own_question(self):
+        delete = ('api', '-X', 'DELETE', 'repos/{owner}/{repo}/issues/9/labels/flag:needs-user')
+        lined = pr(body='Scenarios: U1\nmacOS: the Rail renders')
+        with GitHub(view=lined, files=self.DESKTOP, notes=[self.ASKED], labels=['flag:needs-user']) as github:
+            self.assertTrue(builder.macos_line(9))
+        self.assertEqual(github.writes, [delete])
+        other = note('<!-- needs-user -->\nThe Builder stopped.')
+        with GitHub(view=lined, files=self.DESKTOP, notes=[self.ASKED, other], labels=['flag:needs-user']) as github:
+            self.assertTrue(builder.macos_line(9))
         self.assertEqual(github.writes, [])
 
 
