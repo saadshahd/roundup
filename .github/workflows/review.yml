@@ -67,7 +67,7 @@ jobs:
             pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD\") | .number")
           fi
           [ -n "$pr" ] || exit 0
-          python3 loop/dispatch.py start "$pr" review "$HEAD"
+          python3 loop/outcome.py report python3 loop/dispatch.py start "$pr" review "$HEAD"
 
   review:
     needs: due
@@ -144,3 +144,14 @@ jobs:
           HEAD: ${{ needs.due.outputs.head }}
           ANSWER: ${{ needs.review.outputs.answer }}
         run: printf '%s' "$ANSWER" | loop/runs.sh verdict "$PR" "$HEAD" "reviewer-$GITHUB_RUN_ID"
+
+  summary:
+    needs: [due, review, post]
+    if: always()
+    permissions:
+      actions: read
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Independently review a PR head
+      next: An approval enables the merge gate; a rejection goes to repair. No new product decision is required.

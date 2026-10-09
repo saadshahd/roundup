@@ -62,3 +62,14 @@ jobs:
           fi
           gh issue edit "$issue" --body-file "$RUNNER_TEMP/page.md"
           if [ "$DAILY" = true ]; then gh issue comment "$issue" --body-file "$RUNNER_TEMP/page.md"; fi
+
+  summary:
+    needs: [page]
+    if: always()
+    permissions:
+      actions: read
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Refresh the loop Status issue
+      next: The next scheduled refresh updates the Status issue; this report does not wait for an acknowledgement.

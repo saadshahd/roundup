@@ -34,7 +34,7 @@ jobs:
   reconcile:
     if: github.event_name != 'issues' || !contains(github.event.issue.labels.*.name, 'loop:status')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +51,8 @@ jobs:
           path: ${{ runner.temp }}/loop-ledger-cache
           key: loop-ledger-v1-${{ github.run_id }}
           restore-keys: loop-ledger-v1-
-      - if: steps.budget.outputs.available == 'true'
+      - name: Reconcile PRs and Builder queue
+        if: steps.budget.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           LOOP_DAILY_TOKENS: ${{ vars.LOOP_DAILY_TOKENS }}
@@ -59,5 +60,22 @@ jobs:
           CODEX_STATUS: ${{ vars.LOOP_CODEX_STATUS }}
         run: |
           gh auth setup-git
-          python3 loop/dispatch.py reconcile
-          python3 loop/feedback.py reconcile
+          python3 loop/outcome.py report python3 loop/dispatch.py reconcile
+      - name: Reconcile feedback publication and planning
+        if: always() && steps.budget.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOOP_DAILY_TOKENS: ${{ vars.LOOP_DAILY_TOKENS }}
+          LOOP_LEDGER_CACHE: ${{ runner.temp }}/loop-ledger-cache
+        run: python3 loop/outcome.py report python3 loop/feedback.py reconcile
+
+  summary:
+    needs: [reconcile]
+    if: always()
+    permissions:
+      actions: read
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Move eligible loop work forward
+      next: Queued runs act automatically; blocked publication stays visible and the next sweep retries.

@@ -202,6 +202,17 @@ class GitHub:
         return [result] if '--slurp' in args else result
 
     def run(self, *args, data=None, **kwargs):
+        if args[:2] == (sys.executable, 'loop/feedback.py') and args[2] in ('publish', 'resume'):
+            try:
+                number = int(args[3])
+                if args[2] == 'resume':
+                    old, record = f.read_claim(number)
+                    result = f.resume_publication(number, old, record)
+                    return str(result) if result else ''
+                f.publish(number)
+            except (ValueError, subprocess.CalledProcessError) as error:
+                raise subprocess.CalledProcessError(1, args, stderr=str(error)) from error
+            return ''
         if args[:2] == ('git', 'rev-parse'):
             return 'b' * 40 if args[2].endswith('tree}') else self.refs['refs/heads/main']
         if args[:3] == ('bash', 'loop/retro.sh', 'spent'):
@@ -370,6 +381,81 @@ class Lifecycle(unittest.TestCase):
         self.assertIn(dict(name='ready-for-agent'), self.hub.issues[356]['labels'])
         self.assertEqual(self.hub.issues[355]['body'], source()['body'])
         self.assertEqual(self.hub.issues[355]['state'], 'open')
+
+    def test_l90_unreviewed_merge_gets_a_fresh_plan_not_delivery(self):
+        pr = self.plan()
+        old = f.read_claim(355)[1]
+        self.hub.merge(pr, approve=False)
+        self.hub.runs[42] = dict(status='completed', conclusion='success')
+        f.reconcile()
+        record = f.read_claim(355)[1]
+        self.assertEqual(record['phase'], 'replan')
+        self.assertEqual(record['recovery']['pr'], pr)
+        self.assertEqual(self.hub.children, {})
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.start(355)
+        current = f.read_claim(355)[1]
+        self.assertEqual(current['phase'], 'issued')
+        self.assertNotEqual(f.proposal_path(current), f.proposal_path(old))
+        f.propose(355, answer())
+        replacement = f.read_claim(355)[1]['pr']
+        self.assertNotEqual(pr, replacement)
+        self.assertEqual(self.hub.children, {})
+        self.hub.merge(replacement)
+        f.publish(355)
+        self.assertEqual(f.read_claim(355)[1]['children'], [356])
+
+    def test_l90_unreviewed_verification_retains_original_goals(self):
+        record = self.published()
+        self.hub.issues[record['children'][0]].update(state='closed', state_reason='completed')
+        os.environ['GITHUB_RUN_ID'] = '43'
+        f.start(355)
+        f.propose(355, verification(True))
+        self.hub.merge(f.read_claim(355)[1]['pr'], approve=False)
+        self.hub.runs[43] = dict(status='completed', conclusion='success')
+        f.reconcile()
+        os.environ['GITHUB_RUN_ID'] = '44'
+        f.start(355)
+        current = f.read_claim(355)[1]
+        self.assertEqual(current['key'][0], 'verify')
+        self.assertEqual(current['previous']['answer']['goals'], record['plan']['answer']['goals'])
+        weaker = verification(True)
+        weaker['goals'][0]['statement'] = 'A weaker goal'
+        with self.assertRaisesRegex(ValueError, 'retain every original goal'):
+            f.propose(355, weaker)
+
+    def test_l93_publication_timeout_does_not_starve_later_feedback(self):
+        pr = self.plan()
+        self.hub.merge(pr)
+        self.hub.issues[356] = source(number=356)
+        run = self.hub.run
+        def timeout(*args, **kwargs):
+            if args[:3] == (sys.executable, 'loop/feedback.py', 'publish'):
+                raise subprocess.TimeoutExpired(args, 180)
+            return run(*args, **kwargs)
+        with patch.object(f.d, 'run', side_effect=timeout), self.assertRaisesRegex(ValueError, 'unknown'):
+            f.reconcile()
+        self.assertTrue(any('issue=356' in call for call, _ in self.hub.writes))
+
+    def test_l93_resumed_publication_failure_does_not_starve_later_feedback(self):
+        self.unpublished()
+        self.hub.runs[42] = dict(status='completed', conclusion='failure')
+        self.hub.pull_error = subprocess.CalledProcessError(1, ['gh'], stderr='denied')
+        self.hub.issues[356] = source(number=356)
+        with self.assertRaisesRegex(ValueError, 'resumed publication failed'):
+            f.reconcile()
+        self.assertTrue(any('issue=356' in call for call, _ in self.hub.writes))
+
+    def test_l90_blocked_publication_does_not_starve_later_feedback(self):
+        pr = self.plan(answer(issue=999))
+        self.hub.merge(pr)
+        self.hub.issues[356] = source(number=356, title='Another authorized request')
+        with self.assertRaisesRegex(ValueError, 'publication blocked'):
+            f.reconcile()
+        self.assertTrue(any(call[:4] == ('gh', 'workflow', 'run', 'feedback.yml')
+                            and 'issue=356' in call for call, _ in self.hub.writes))
+        self.assertEqual(f.read_claim(355)[1]['phase'], 'proposed')
+        self.assertEqual(self.hub.children, {})
 
     def test_l90_duplicate_and_competing_claims(self):
         f.start(355)
@@ -645,7 +731,7 @@ class Lifecycle(unittest.TestCase):
         self.unpublished()
         self.hub.pull_error = subprocess.CalledProcessError(1, ['gh'])
         os.environ['GITHUB_RUN_ID'] = '43'
-        with self.assertRaises(subprocess.CalledProcessError):
+        with self.assertRaisesRegex(ValueError, 'resumed publication failed'):
             f.reconcile()
         self.assertEqual(f.read_claim(355)[1]['phase'], 'publishing')
         self.hub.pull_error = None

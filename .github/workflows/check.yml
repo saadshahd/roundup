@@ -69,3 +69,14 @@ jobs:
           RUST: ${{ needs.rust.result }}
           WEB: ${{ needs.web.result }}
         run: test "$RUST" = success && test "$WEB" = success
+
+  summary:
+    needs: [rust, web, linux, check]
+    if: always()
+    permissions:
+      actions: read
+    uses: ./.github/workflows/summary.yml
+    with:
+      results: ${{ toJSON(needs) }}
+      purpose: Check Rust and web behavior
+      next: Review and reconciliation inspect this head; failures block merge and eligible Builder PRs receive repair.
