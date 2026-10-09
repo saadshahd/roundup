@@ -181,14 +181,29 @@ def ended(pr):
 
 
 def built(issue, slug, ran, run_url):
-    """After a build run: hand its PR on, or strike the Issue; STRIKES in a day wait on the user. A run that made no
-    tool call (`ran` false) records nothing."""
+    """After a build run: hand its PR on, or settle the Issue it left. A run that made no tool call (`ran` false)
+    records nothing. With no open PR, an Issue a person closed, one closed after its `build/<slug>` PR merged, or one a
+    dependency or PR holds, records nothing; one a bot closed otherwise reopens; one taken off the queue asks the user;
+    one still ready is struck, and STRIKES in a day wait on the user."""
     if not ran:
         print('the run made no tool call; nothing to record')
         return
     prs = orders.gh('pr', 'list', '--head', f'build/{slug}', '--state', 'open', '--json', 'number,headRefOid,isDraft,body')
     if prs:
         ended(prs[0])
+        return
+    current = orders.gh('api', f'repos/{{owner}}/{{repo}}/issues/{issue}')
+    if current['state'] == 'closed':
+        if (current.get('closed_by') or {}).get('type') != 'Bot' or \
+                orders.gh('pr', 'list', '--head', f'build/{slug}', '--state', 'merged', '--json', 'number'):
+            print(f'#{issue} closed by a person or after its build/{slug} PR merged; nothing to record')
+            return
+        call('issue', 'reopen', str(issue))
+    elif 'ready-for-agent' not in labels(issue):
+        flag(issue, 'A build run took this Issue off the queue without a PR; its last comment says what it needs.')
+        return
+    elif not orders.queued(issue):
+        print(f'#{issue} is no longer ready; nothing to record')
         return
     comment(issue, f'<!-- strike -->\nThe build run {run_url} ended without a PR.')
     if len(marked(issue, '<!-- strike -->', time.time() - DAY)) >= STRIKES:

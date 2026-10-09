@@ -34,16 +34,17 @@ def note(body, ago=0, login='github-actions[bot]'):
 class GitHub:
     """Answers builder.py's reads from fixed data and records its writes."""
 
-    def __init__(self, view=None, prs=(), notes=(), labels=(), diff='', runs=None, files=(), run=None):
+    def __init__(self, view=None, prs=(), notes=(), labels=(), diff='', runs=None, files=(), run=None, state='open',
+                 merged=(), queued=True, closer='Bot'):
         self.view, self.prs, self.notes, self.labels, self.diff, self.runs = view, list(prs), list(notes), labels, diff, runs or {}
-        self.files, self.run = files, run
+        self.files, self.run, self.state, self.merged, self.queued, self.closer = files, run, state, list(merged), queued, closer
         self.writes = []
 
     def read(self, *args):
         if args[:2] == ('pr', 'view'):
             return self.view
         if args[:2] == ('pr', 'list'):
-            return self.prs
+            return self.merged if 'merged' in args else self.prs
         if args[:2] == ('run', 'view'):
             return self.run
         if '/comments' in args[1]:
@@ -55,7 +56,7 @@ class GitHub:
             return dict(workflow_runs=[dict(id=run) for run, (state, _) in self.runs.items() if state == status])
         if '/jobs' in args[1]:
             return dict(jobs=self.runs[int(args[1].split('/runs/')[1].split('/')[0])][1])
-        return dict(labels=[dict(name=name) for name in self.labels])
+        return dict(state=self.state, closed_by=dict(type=self.closer), labels=[dict(name=name) for name in self.labels])
 
     def write(self, *args):
         if args[:2] == ('pr', 'diff'):
@@ -66,7 +67,8 @@ class GitHub:
         return ''
 
     def __enter__(self):
-        self.patches = [patch.object(builder.orders, 'gh', side_effect=self.read), patch.object(builder, 'call', side_effect=self.write)]
+        self.patches = [patch.object(builder.orders, 'gh', side_effect=self.read), patch.object(builder, 'call', side_effect=self.write),
+                        patch.object(builder.orders, 'queued', return_value=self.queued)]
         for p in self.patches:
             p.start()
         return self
@@ -93,6 +95,7 @@ def execution(*parts):
 
 
 WORKED = execution('text', 'tool_use')
+READY = ('ready-for-agent',)
 IDLE_RUN = execution('text')
 
 
@@ -163,14 +166,37 @@ class Built(unittest.TestCase):
 
     def test_l23_the_third_strike_in_a_day_stops_the_queue_building_the_issue(self):
         old = [note('<!-- strike -->\nold', ago=builder.DAY + 60), note('<!-- strike -->\nforged', login='someone')]
-        with GitHub(notes=old + [note('<!-- strike -->\nfirst')]) as github:
+        with GitHub(notes=old + [note('<!-- strike -->\nfirst')], labels=READY) as github:
             builder.built(1, 'U1', True, 'https://run/1')
         self.assertIn('<!-- strike -->\nThe build run https://run/1 ended without a PR.', github.bodies())
         self.assertFalse(github.flagged())
-        with GitHub(notes=old + [note('<!-- strike -->\nfirst'), note('<!-- strike -->\nsecond')]) as github:
+        with GitHub(notes=old + [note('<!-- strike -->\nfirst'), note('<!-- strike -->\nsecond')], labels=READY) as github:
             builder.built(1, 'U1', True, 'https://run/1')
         self.assertTrue(github.flagged())
         self.assertIn(('api', '-X', 'DELETE', 'repos/{owner}/{repo}/issues/1/labels/ready-for-agent'), github.writes)
+
+    def test_l23_an_issue_closed_by_a_person_or_after_its_build_pr_merged_or_held_by_a_dependency_records_nothing(self):
+        with GitHub(state='closed', labels=READY, merged=[dict(number=7)]) as github:
+            builder.built(1, 'U1', True, 'https://run/1')
+        self.assertEqual(github.writes, [])
+        with GitHub(state='closed', labels=READY, closer='User') as github:
+            builder.built(1, 'U1', True, 'https://run/1')
+        self.assertEqual(github.writes, [])
+        with GitHub(labels=READY, queued=False) as github:
+            builder.built(1, 'U1', True, 'https://run/1')
+        self.assertEqual(github.writes, [])
+
+    def test_l23_an_issue_a_bot_closed_without_a_merged_build_pr_reopens_and_is_struck(self):
+        with GitHub(state='closed', labels=READY) as github:
+            builder.built(1, 'U1', True, 'https://run/1')
+        self.assertEqual(github.writes[0], ('issue', 'reopen', '1'))
+        self.assertIn('<!-- strike -->\nThe build run https://run/1 ended without a PR.', github.bodies())
+
+    def test_l79_a_run_that_took_its_issue_off_the_queue_asks_the_user(self):
+        with GitHub() as github:
+            builder.built(1, 'U1', True, 'https://run/1')
+        self.assertTrue(github.flagged())
+        self.assertFalse(any(body.startswith('<!-- strike -->') for body in github.bodies()))
 
 
 class Fix(unittest.TestCase):
