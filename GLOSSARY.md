@@ -7,7 +7,7 @@ roundup supervises coding Agents in one Project from a macOS App. Names use thes
 ### Project and its nodes
 
 **Project**:
-A folder roundup is opened on; it owns its Rooms, Agents, Terminals, Todos, Pads and Routes.
+A folder roundup is opened on; it owns its Workstreams, Agents, Terminals, Todos, Pads and Routes.
 
 **Agent**:
 One supervised identity on the Rail, with a Status; each launch of its program is an Attempt, and at most one runs at a time.
@@ -26,15 +26,15 @@ One command the user runs from the overlay `⌘T` opens inside a Workstream; it 
 **Snapshot**:
 A bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.
 
-**Room**:
-The persistent place for one body of work, with exactly one Door and its Agents, Terminals, Todos and Sketches. Stopping its Door neither removes the Room nor moves its contents. Room nesting and cross-Room dependencies are open.
-_Avoid_: folder
+**Workstream**:
+The persistent place for one body of work, named for the work, with exactly one Door and its Agents, Terminals, Todos and Sketches. Stopping its Door neither removes the Workstream nor moves its contents. Workstream nesting and cross-Workstream dependencies are open.
+_Avoid_: room, folder
 
 **Home**:
-Where an item sits: a Room, or the Project root. Each item has one Home the user can change. The Shelf is still Project-wide; Room-scoped Todos and Sketches are follow-up work. `todo.move` is the method that changes it.
+Where an item sits: a Workstream, or the Project root. Each item has one Home the user can change. The Shelf is still Project-wide; Workstream-scoped Todos and Sketches are follow-up work. `todo.move` is the method that changes it.
 
 **Door**:
-The coordinating Agent role of one Room, with a system prompt tuned to that role. Its Rail id is the Room id; its program may be starting, running or stopped without changing the Room. Direct access to any Agent remains (P1).
+The coordinating Agent role of one Workstream, with a system prompt tuned to that role. Its Rail id is the Workstream id; its program may be starting, running or stopped without changing the Workstream. Direct access to any Agent remains (P1).
 _Avoid_: meta-agent, parent agent, lead
 
 **Attempt**:
@@ -70,10 +70,10 @@ The macOS window; it starts a Daemon for one Project and hosts the webview, a cl
 The few Tauri commands and events between the App and its webview (`scenarios/app.md`); not a Daemon contract.
 
 **Rail**:
-The tree of Rooms, Agents and Terminals.
+The tree of Workstreams, Agents and Terminals.
 
 **Shelf**:
-The Todo and Pad column, Project-wide for now; Room scoping is follow-up work.
+The Todo and Pad column, Project-wide for now; Workstream scoping is follow-up work.
 
 **Inbox**:
 The time-ordered Drawer of Messages to the user.
@@ -92,7 +92,7 @@ An item with an optional blocker list of other Todos, with a Home, in one order,
 _Avoid_: task, ticket
 
 **Sketch**:
-A Pad holding Mermaid or drawing blocks; the Pad contracts are unchanged. Room-scoped storage is still open.
+A Pad holding Mermaid or drawing blocks; the Pad contracts are unchanged. Workstream-scoped storage is still open.
 
 **Drawing**:
 A fenced ```excalidraw block in a Pad whose JSON body is a diagram the user edits in place and an Agent writes as text. It is Pad text, so the Pad contracts are unchanged.
@@ -174,7 +174,7 @@ A small model run inside the Daemon for a routine judgement at no frontier-model
 ### Messages and Cards
 
 **Thread**:
-The conversation with a Room's Door about that Room's work, not a second container; today it is the Door's Terminal.
+The conversation with a Workstream's Door about that Workstream's work, not a second container; today it is the Door's Terminal.
 _Avoid_: chat, main agent
 
 **Message**:
@@ -193,7 +193,7 @@ A Message waiting on an ask-first Route, the end of a Takeover, or the user's an
 The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone`, `not accepted` or `passed` (dropped).
 
 **Hop**:
-One Message of a bubbling question: sent to a Door, then to the Doors of the Rooms above it, nearest first, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
+One Message of a bubbling question: sent to a Door, then to the Doors of the Workstreams above it, nearest first, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
 
 **Landing**:
 The Message to the user that ends a bubbling question: `held` with the reason `escalated`, never `delivered` until the user answers it.

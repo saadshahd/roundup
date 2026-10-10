@@ -112,7 +112,7 @@ describe("u132 colour and Kind", () => {
 
     expect(shelfRows.length).toBeGreaterThan(0);
 
-    // A Room has no Kind, so its row draws a chevron and no Kind Glyph.
+    // A Workstream has no Kind, so its row draws a chevron and no Kind Glyph.
     for (const row of [...screen.getAllByRole("treeitem").filter((item) => !item.hasAttribute("aria-expanded")), ...shelfRows])
       expect(drawnIn(row), row.outerHTML.slice(0, 300)).toHaveLength(1);
 

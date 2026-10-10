@@ -5,7 +5,7 @@ import { asking, rpcCalls, card, cleared, decision, gate, mountApp, opened, sele
 
 const buttons = () => within(card()!).getAllByRole("button").map((button) => button.textContent?.trim());
 
-describe("u113 the Card for the selected Agent or Room's Door", () => {
+describe("u113 the Card for the selected Agent or Workstream's Door", () => {
   it("u113_selecting_an_agent_shows_its_decision_above_its_terminal", async () => {
     await mountApp([decision("d1", "a")]);
 
@@ -20,14 +20,16 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     expect(text).toContain("alpha");
     expect(text).toContain("Bash");
     expect(text).toContain("rm -rf build");
-    expect(card()!.nextElementSibling?.className).toContain("pane-body");
+    // O6: the order line sits between the Card and the Terminal.
+    expect(card()!.nextElementSibling?.className).toContain("order-line");
+    expect(card()!.nextElementSibling?.nextElementSibling?.className).toContain("pane-body");
 
     select("beta");
 
     expect(card()).toBeNull();
   });
 
-  it("u113_selecting_a_room_shows_its_doors_decision", async () => {
+  it("u113_selecting_a_workstream_shows_its_doors_decision", async () => {
     await mountApp([decision("d1", "r", { tool: "Edit" })]);
     select("harbor");
 

@@ -41,7 +41,7 @@ export const opened = (value: Decision) => event({ name: "decision.opened", data
 export const cleared = (id: string, outcome: "allow" | "deny" | "replaced" | "agent-gone" | "terminal" | "answered" = "terminal") =>
   event({ name: "decision.cleared", data: { id, outcome } });
 
-/** The real App over a fake Daemon holding agents alpha and beta and the Room "harbor" with a live Door. */
+/** The real App over a fake Daemon holding agents alpha and beta and the Workstream "harbor" with a live Door. */
 export const mountApp = async (listed: Decision[] | Promise<Decision[]> = [], prepare: (app: FakeApp) => void = () => {}) => {
   const app = createFakeApp();
   const emulators = fakeEmulators();

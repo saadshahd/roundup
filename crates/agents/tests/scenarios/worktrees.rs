@@ -330,8 +330,8 @@ async fn g2_two_spawns_have_different_cwds() {
 async fn g2_two_start_doors_have_different_cwds() {
     let f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
-    let g1 = f.room("g1", None).await;
-    let g2 = f.room("g2", None).await;
+    let g1 = f.workstream("g1", None).await;
+    let g2 = f.workstream("g2", None).await;
     let cwd_of = |f: &Fixture, node: &RailNode| {
         f.terminals
             .list()
@@ -402,19 +402,19 @@ async fn g2_failed_call_emits_no_event() {
 }
 
 #[tokio::test]
-async fn g2_failed_start_door_leaves_a_stopped_room() {
+async fn g2_failed_start_door_leaves_a_stopped_workstream() {
     let wrapper = tempfile::tempdir().unwrap();
     let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
-    let room = f.room("team", None).await;
+    let workstream = f.workstream("team", None).await;
     let before = git_state(f.dir.path());
 
-    let err = start_door(&f, &room).await.unwrap_err();
+    let err = start_door(&f, &workstream).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
     assert_eq!(tree.len(), 1);
-    assert_eq!(tree[0].kind, NodeKind::Room);
+    assert_eq!(tree[0].kind, NodeKind::Workstream);
     assert!(tree[0].terminal_id.is_none());
     assert_eq!(tree[0].worktree, None);
     assert_eq!(git_state(f.dir.path()), before);
@@ -425,19 +425,19 @@ async fn g2_failed_start_door_leaves_children_where_they_were() {
     let wrapper = tempfile::tempdir().unwrap();
     let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
-    let room = f.room("team", None).await;
-    let child = f.room("child", Some(&room)).await;
+    let workstream = f.workstream("team", None).await;
+    let child = f.workstream("child", Some(&workstream)).await;
     let before = git_state(f.dir.path());
 
-    let err = start_door(&f, &room).await.unwrap_err();
+    let err = start_door(&f, &workstream).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
-    let group_node = tree.iter().find(|node| node.id == room).unwrap();
-    assert_eq!(group_node.kind, NodeKind::Room);
+    let group_node = tree.iter().find(|node| node.id == workstream).unwrap();
+    assert_eq!(group_node.kind, NodeKind::Workstream);
     assert!(group_node.terminal_id.is_none());
     let child_node = tree.iter().find(|node| node.id == child).unwrap();
-    assert_eq!(child_node.parent.as_deref(), Some(room.as_str()));
+    assert_eq!(child_node.parent.as_deref(), Some(workstream.as_str()));
     assert_eq!(git_state(f.dir.path()), before);
 }
 
@@ -535,20 +535,20 @@ async fn g2_terminal_gets_no_worktree() {
 }
 
 #[tokio::test]
-async fn g2_start_failure_of_start_door_leaves_a_stopped_room() {
+async fn g2_start_failure_of_start_door_leaves_a_stopped_workstream() {
     let mut f = Fixture::in_git_project("sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
-    let room = f.room("team", None).await;
+    let workstream = f.workstream("team", None).await;
     let before = git_state(f.dir.path());
     f.changed();
     std::fs::remove_file(f.dir.path().join(".roundup/rup")).unwrap();
 
-    let err = start_door(&f, &room).await.unwrap_err();
+    let err = start_door(&f, &workstream).await.unwrap_err();
 
     assert_eq!(err.code, code::INTERNAL);
     let tree = f.tree().await;
     assert_eq!(tree.len(), 1);
-    assert_eq!(tree[0].kind, NodeKind::Room);
+    assert_eq!(tree[0].kind, NodeKind::Workstream);
     assert!(tree[0].terminal_id.is_none());
     assert_eq!(tree[0].worktree, None);
     assert_eq!(git_state(f.dir.path()), before);
@@ -792,10 +792,10 @@ async fn g2_a_failed_start_door_emits_no_event() {
     let wrapper = tempfile::tempdir().unwrap();
     let mut f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
     set_worktrees(&f, true, None).await;
-    let room = f.room("team", None).await;
+    let workstream = f.workstream("team", None).await;
     f.changed();
 
-    start_door(&f, &room).await.unwrap_err();
+    start_door(&f, &workstream).await.unwrap_err();
 
     assert_eq!(f.changed(), 0);
 }
@@ -832,11 +832,14 @@ async fn g2_g6_door_retry_reuses_recorded_worktree_and_preserves_uncommitted_fil
     f.call("project.setWorktrees", json!({"on":true,"check":null}))
         .await
         .unwrap();
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
+    let id = workstream["id"].as_str().unwrap();
     let first = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
     let path = std::path::PathBuf::from(first["worktree"]["path"].as_str().unwrap());
     std::fs::write(path.join("uncommitted.txt"), "keep me").unwrap();
@@ -870,11 +873,14 @@ async fn g5_removing_unlanded_work_refuses_before_stopping_the_door() {
     for (dirty, ahead) in [(true, false), (false, true), (true, true)] {
         let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
         set_worktrees(&f, true, None).await;
-        let room = f
-            .call("rail.createRoom", json!({"name":"room","parent":null}))
+        let workstream = f
+            .call(
+                "rail.createWorkstream",
+                json!({"name":"workstream","parent":null}),
+            )
             .await
             .unwrap();
-        let id = room["id"].as_str().unwrap();
+        let id = workstream["id"].as_str().unwrap();
         let node = start_door(&f, id).await.unwrap();
         let worktree = node.worktree.clone().unwrap();
         let path = Path::new(&worktree.path);
@@ -904,15 +910,18 @@ async fn g5_removing_unlanded_work_refuses_before_stopping_the_door() {
 }
 
 #[tokio::test]
-async fn g5_removing_clean_room_removes_only_its_worktree() {
+async fn g5_removing_clean_workstream_removes_only_its_worktree() {
     let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
     let before = git_state(f.dir.path());
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
+    let id = workstream["id"].as_str().unwrap();
     let node = start_door(&f, id).await.unwrap();
     f.call("rail.remove", json!({"id":id})).await.unwrap();
     assert_eq!(git_state(f.dir.path()), before);
@@ -926,11 +935,14 @@ async fn g5_a_write_during_stop_keeps_the_stopped_door_and_worktree() {
         Git::from_env(),
     );
     set_worktrees(&f, true, None).await;
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
+    let id = workstream["id"].as_str().unwrap();
     let node = start_door(&f, id).await.unwrap();
     let worktree = node.worktree.unwrap();
     let path = Path::new(&worktree.path);
@@ -957,11 +969,14 @@ async fn g5_a_write_during_stop_keeps_the_stopped_door_and_worktree() {
 async fn g5_missing_worktree_does_not_allow_deleting_an_ahead_branch() {
     let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
+    let id = workstream["id"].as_str().unwrap();
     let node = start_door(&f, id).await.unwrap();
     f.call("agent.stop", json!({"id":id})).await.unwrap();
     let worktree = node.worktree.unwrap();
@@ -988,11 +1003,14 @@ async fn g5_missing_worktree_does_not_allow_deleting_an_ahead_branch() {
 async fn g6_reopened_door_reuses_commits_and_dirty_files_without_launching_on_open() {
     let f = Fixture::in_git_project("exec sleep 30", Git::from_env());
     set_worktrees(&f, true, None).await;
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap().to_owned();
+    let id = workstream["id"].as_str().unwrap().to_owned();
     let node = start_door(&f, &id).await.unwrap();
     let worktree = node.worktree.unwrap();
     let path = Path::new(&worktree.path);
@@ -1065,7 +1083,7 @@ async fn g5_rejected_slow_precheck_keeps_the_live_door_watched() {
         git,
     ));
     set_worktrees(&f, true, None).await;
-    let id = f.room("room", None).await;
+    let id = f.workstream("workstream", None).await;
     let node = start_door(&f, &id).await.unwrap();
     let path = PathBuf::from(node.worktree.unwrap().path);
     crate::common::until_file(&path.join("ready")).await;
@@ -1139,7 +1157,7 @@ async fn g5_retry_finishes_a_partial_worktree_removal() {
     let f = Fixture::in_git_project("exec sleep 30", git);
     set_worktrees(&f, true, None).await;
     let before = git_state(f.dir.path());
-    let id = f.room("room", None).await;
+    let id = f.workstream("workstream", None).await;
     let node = start_door(&f, &id).await.unwrap();
     std::fs::write(fail, "once").unwrap();
     f.call("rail.remove", json!({"id":id})).await.unwrap_err();
@@ -1167,7 +1185,7 @@ async fn g5_branch_advance_after_safety_check_is_not_deleted() {
     );
     let f = Fixture::in_git_project("exec sleep 30", git);
     set_worktrees(&f, true, None).await;
-    let id = f.room("room", None).await;
+    let id = f.workstream("workstream", None).await;
     let node = start_door(&f, &id).await.unwrap();
     let worktree = node.worktree.unwrap();
     let commit = git_output(

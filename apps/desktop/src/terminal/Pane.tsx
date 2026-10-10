@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, Show, untrack } from "solid-js";
 import { DecisionCard } from "../decisions/DecisionCard";
+import { OrderLine } from "../orders/OrderLine";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
 import { doorStateOf, doorStateText } from "../rail/doorState";
@@ -34,11 +35,11 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
 
-  /** Why the selected Room's Door is not running, so a stopped, failed or still-starting Door each read differently. */
+  /** Why the selected Workstream's Door is not running, so a stopped, failed or still-starting Door each read differently. */
   const doorState = createMemo(() => {
-    const room = selected();
+    const workstream = selected();
 
-    return room?.kind === "room" ? doorStateOf(room, rail.exitOf(room), rail.doorPending(room.id), rail.doorFailure(room.id) !== null) : null;
+    return workstream?.kind === "workstream" ? doorStateOf(workstream, rail.exitOf(workstream), rail.doorPending(workstream.id), rail.doorFailure(workstream.id) !== null) : null;
   });
 
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
@@ -219,19 +220,20 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
             />
         )}
       </Show>
+      <Show when={selected()}>{(node) => <OrderLine node={node()} />}</Show>
       <div class="pane-body" ref={watch}>
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
           <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>
             <div class="pane-empty pane-door">
-              <p class="light">{rail.roomCreating() ? "creating Room…" : "no Room yet"}</p>
-              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} aria-disabled={rail.roomCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createRoom()}>
-                <Icon name="plus" /> start a Room
+              <p class="light">{rail.workstreamCreating() ? "creating Workstream…" : "no Workstream yet"}</p>
+              <button class="word pane-action" disabled={rail.workstreamCreating() || connected.daemonExit() !== null} aria-disabled={rail.workstreamCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createWorkstream()}>
+                <Icon name="plus" /> new Workstream
               </button>
             </div>
           </Show>
         </Show>
-        <Show when={selected()?.kind !== "room" && selected() !== null && terminalId() === null && notice() === null}>
+        <Show when={selected()?.kind !== "workstream" && selected() !== null && terminalId() === null && notice() === null}>
           <p class="pane-empty light">no output kept from an earlier run</p>
         </Show>
         <Show when={doorState()}>
@@ -254,7 +256,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         </Show>
       </div>
       <div class="pane-failure">
-        <Show when={notice() ?? rail.roomFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
+        <Show when={notice() ?? rail.workstreamFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
     </div>
   );

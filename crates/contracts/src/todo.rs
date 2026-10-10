@@ -20,7 +20,7 @@ pub struct Todo {
     pub created_at: i64,
     /// The Actor whose `todo.create` made this Todo. A Todo from before this field reads as `Actor::user()`.
     pub creator: Actor,
-    /// The Room (a Rail id) this Todo belongs to; `None` is the Project root. A Todo from before this field reads as `None`.
+    /// The Workstream (a Rail id) this Todo belongs to; `None` is the Project root. A Todo from before this field reads as `None`.
     pub home: Option<String>,
 }
 
@@ -54,7 +54,7 @@ pub struct SetBlockersParams {
     pub blockers: Vec<u32>,
 }
 
-/// Moves a Todo to a Room, or to the Project root when `home` is `None`.
+/// Moves a Todo to a Workstream, or to the Project root when `home` is `None`.
 #[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "todo/")]
 pub struct MoveParams {

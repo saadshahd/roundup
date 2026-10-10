@@ -100,7 +100,7 @@ async fn g7_a_rail_move_changes_only_parent_and_order() {
     commit_file(&path, "kept.txt");
     std::fs::write(path.join("README.md"), "edited\n").unwrap();
     std::fs::write(path.join("loose.txt"), "x").unwrap();
-    let room = f.room("elsewhere", None).await;
+    let workstream = f.workstream("elsewhere", None).await;
     let snapshot = |f: &Fixture| {
         let project = f.dir.path();
         (
@@ -118,9 +118,12 @@ async fn g7_a_rail_move_changes_only_parent_and_order() {
     let node_before = f.tree().await.into_iter().find(|n| n.id == id).unwrap();
     let state_before = state(&f, &id).await.unwrap();
 
-    f.call("rail.move", json!({"id": id, "parent": room, "index": 0}))
-        .await
-        .unwrap();
+    f.call(
+        "rail.move",
+        json!({"id": id, "parent": workstream, "index": 0}),
+    )
+    .await
+    .unwrap();
     f.call("rail.move", json!({"id": id, "parent": null, "index": 0}))
         .await
         .unwrap();
@@ -137,7 +140,10 @@ async fn g7_a_rail_move_changes_only_parent_and_order() {
         .unwrap_err();
     assert_eq!(missing.code, code::NOT_FOUND);
     let under_agent = f
-        .call("rail.move", json!({"id": room, "parent": id, "index": 0}))
+        .call(
+            "rail.move",
+            json!({"id": workstream, "parent": id, "index": 0}),
+        )
         .await
         .unwrap_err();
     assert_eq!(under_agent.code, code::CONFLICT);

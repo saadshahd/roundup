@@ -4,7 +4,7 @@ Every design and UX choice serves these. A PR body names the ids it serves; the 
 
 ## P1 Single front door
 
-The Room organizes the work; its Door is the default Agent the user speaks to, and the Thread is that conversation, not another container. The Door breaks objectives down, routes work, absorbs Agent chatter and gives one summary when the work settles; these remain goals until their observers pass. It is the default, never the only way in: the user can always type into any Agent, and during a Takeover the Door sends that Agent nothing (its Messages wait Held).
+The Workstream organizes the work; its Door is the default Agent the user speaks to, and the Thread is that conversation, not another container. The Door breaks objectives down, routes work, absorbs Agent chatter and gives one summary when the work settles; these remain goals until their observers pass. It is the default, never the only way in: the user can always type into any Agent, and during a Takeover the Door sends that Agent nothing (its Messages wait Held).
 
 - Gate: does a path make the user address an Agent instead of the Thread to start, route or read work; make an Agent reachable only through the Thread; or let the Thread send to an Agent under Takeover?
 - Observer: work started, routed and finished through the Thread alone; a Takeover whose Messages stay Held until it ends.
@@ -37,9 +37,9 @@ An Agent never pushes the shared branch: its changes rebase, pass `check` and fa
 - Gate: does a path write `main` other than rebase, green `check`, fast-forward; or does a rejected Agent leave an entry in `git worktree list` or `git branch`?
 - Observer: both lists compared before spawn and after reject.
 
-## P6 A Room holds its work
+## P6 A Workstream holds its work
 
-A Room holds its Door, Agents, Terminals, Todos, dependencies and Sketches, and survives its Door stopping. Each item has one Home the user can change at any time; the Door places the children it makes, and the user's move always wins. Room-scoped Todos and Sketches are required product work; the Project-wide Shelf does not satisfy this goal.
+A Workstream holds its Door, Agents, Terminals, Todos, dependencies and Sketches, and survives its Door stopping. Each item has one Home the user can change at any time; the Door places the children it makes, and the user's move always wins. Workstream-scoped Todos and Sketches are required product work; the Project-wide Shelf does not satisfy this goal.
 
 - Gate: does a new kind of item lack a Home the user can change, or does an Agent's placement override the user's?
 - Observer: one item of each kind made in Home A, moved to B, found only in B, the move in Provenance.

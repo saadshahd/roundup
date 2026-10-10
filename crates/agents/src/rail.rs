@@ -1,9 +1,9 @@
-//! The Rail: Rooms, Agents and Terminals as a tree in SQLite (WAL).
-//! Sibling `order` values are contiguous from 0; only Rooms hold children.
+//! The Rail: Workstreams, Agents and Terminals as a tree in SQLite (WAL).
+//! Sibling `order` values are contiguous from 0; only Workstreams hold children.
 
 use std::path::Path;
 
-use contracts::agent::{NodeKind, RailNode, Worktree};
+use contracts::agent::{NodeKind, Order, RailNode, Worktree};
 use contracts::project::Worktrees;
 use rpc::{OpenError, RpcError};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -50,11 +50,19 @@ impl Rail {
             // and `agent.resume`; no vendor id reaches a public name or the webview.
             ("conversation_id", "TEXT"),
             ("conversation_cwd", "TEXT"),
+            // O1: the node's order as JSON; NULL (a node from before O1) reads as the default
+            // Clarification order of its kind.
+            ("work", "TEXT"),
         ] {
             add_column_if_missing(&db, "nodes", column, decl)?;
         }
         // Terminal ids restart at 1 with the Daemon, so a stored id could name an unrelated Terminal.
         db.execute("UPDATE nodes SET terminal_id = NULL", [])?;
+        // A25: a Rail stored by an earlier Daemon holds `room` where this one writes `workstream`.
+        db.execute(
+            "UPDATE nodes SET kind = 'workstream' WHERE kind = 'room'",
+            [],
+        )?;
         Ok(Self { db })
     }
 
@@ -67,7 +75,7 @@ impl Rail {
         Ok(out)
     }
 
-    /// Append a node under `parent` (`None` is the root). Only a Room can be a parent.
+    /// Append a node under `parent` (`None` is the root). Only a Workstream can be a parent.
     pub fn insert(
         &mut self,
         kind: NodeKind,
@@ -75,18 +83,52 @@ impl Rail {
         parent: Option<&str>,
         terminal_id: Option<&str>,
     ) -> Result<RailNode, RpcError> {
+        self.insert_ordered(kind, name, parent, terminal_id, None)
+    }
+
+    /// `insert` with the node's order (O2, O3); `None` is the default of its kind. A Terminal
+    /// holds none.
+    pub fn insert_ordered(
+        &mut self,
+        kind: NodeKind,
+        name: &str,
+        parent: Option<&str>,
+        terminal_id: Option<&str>,
+        work: Option<&Order>,
+    ) -> Result<RailNode, RpcError> {
+        let work = (kind != NodeKind::Terminal)
+            .then(|| work.map_or_else(|| default_order(kind), Order::clone))
+            .map(|order| serde_json::to_string(&order).map_err(RpcError::internal))
+            .transpose()?;
         let tx = self.db.transaction().map_err(sql)?;
         let nodes = load(&tx)?;
         check_parent(&nodes, parent)?;
         let order = siblings(&nodes, parent).len() as i64;
         tx.execute(
-            "INSERT INTO nodes (kind, name, parent, ord, terminal_id) VALUES (?, ?, ?, ?, ?)",
-            params![kind_name(kind), name, parent, order, terminal_id],
+            "INSERT INTO nodes (kind, name, parent, ord, terminal_id, work)
+                VALUES (?, ?, ?, ?, ?, ?)",
+            params![kind_name(kind), name, parent, order, terminal_id, work],
         )
         .map_err(sql)?;
         let id = tx.last_insert_rowid().to_string();
         tx.commit().map_err(sql)?;
         self.node(&id)
+    }
+
+    /// O4: replace the order of an Agent or a Workstream. A Terminal holds none (`CONFLICT`).
+    pub fn set_order(&mut self, id: &str, order: &Order) -> Result<RailNode, RpcError> {
+        let node = self.node(id)?;
+        if node.kind == NodeKind::Terminal {
+            return Err(RpcError::conflict(format!("{id} is a Terminal")));
+        }
+        let json = serde_json::to_string(order).map_err(RpcError::internal)?;
+        self.db
+            .execute(
+                "UPDATE nodes SET work = ? WHERE id = ?",
+                params![json, node.id],
+            )
+            .map_err(sql)?;
+        self.node(id)
     }
 
     pub fn rename(&mut self, id: &str, name: &str) -> Result<RailNode, RpcError> {
@@ -178,7 +220,7 @@ impl Rail {
         Ok(())
     }
 
-    /// Delete `id`. Its children (only a Room, so a Door, ever has any) move to its own
+    /// Delete `id`. Its children (only a Workstream, so a Door, ever has any) move to its own
     /// parent, at its place, in order, first; one transaction, so a failed delete leaves them
     /// still under `id`.
     pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {
@@ -396,9 +438,17 @@ fn add_column_if_missing(
     Ok(())
 }
 
+/// O2, O3: the order a node holds when none was given.
+pub fn default_order(kind: NodeKind) -> Order {
+    Order::clarification(match kind {
+        NodeKind::Workstream => "What is this Workstream for?",
+        _ => "What should this Agent do?",
+    })
+}
+
 fn kind_name(kind: NodeKind) -> &'static str {
     match kind {
-        NodeKind::Room => "room",
+        NodeKind::Workstream => "workstream",
         NodeKind::Agent => "agent",
         NodeKind::Terminal => "terminal",
     }
@@ -408,13 +458,13 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let mut query = db
         .prepare(
             "SELECT id, kind, name, parent, ord, attempt, terminal_id,
-                worktree_path, worktree_branch, worktree_base FROM nodes",
+                worktree_path, worktree_branch, worktree_base, work FROM nodes",
         )
         .map_err(sql)?;
     let rows = query
         .query_map([], |row| {
             let kind = match row.get::<_, String>(1)?.as_str() {
-                "group" | "room" => NodeKind::Room,
+                "group" | "workstream" => NodeKind::Workstream,
                 "agent" => NodeKind::Agent,
                 _ => NodeKind::Terminal,
             };
@@ -425,6 +475,14 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
             ) {
                 (Some(path), Some(branch), Some(base)) => Some(Worktree { path, branch, base }),
                 _ => None,
+            };
+            let work = match kind {
+                NodeKind::Terminal => None,
+                _ => Some(
+                    row.get::<_, Option<String>>(10)?
+                        .and_then(|json| serde_json::from_str(&json).ok())
+                        .unwrap_or_else(|| default_order(kind)),
+                ),
             };
             Ok(RailNode {
                 id: row.get::<_, i64>(0)?.to_string(),
@@ -442,6 +500,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 worktree,
                 can_resume: false,
                 channel: None,
+                work,
             })
         })
         .map_err(sql)?;
@@ -474,8 +533,8 @@ fn descend(nodes: &[RailNode], parent: Option<&str>, out: &mut Vec<RailNode>) {
 
 fn check_parent(nodes: &[RailNode], parent: Option<&str>) -> Result<(), RpcError> {
     match parent.map(|id| find(nodes, id)).transpose()? {
-        Some(node) if node.kind != NodeKind::Room => Err(RpcError::conflict(format!(
-            "{} is not a Room: only Rooms hold children",
+        Some(node) if node.kind != NodeKind::Workstream => Err(RpcError::conflict(format!(
+            "{} is not a Workstream: only Workstreams hold children",
             node.id
         ))),
         _ => Ok(()),
@@ -523,7 +582,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_legacy_plain_and_live_groups_keep_ids_order_and_children_as_rooms() {
+    fn a8_legacy_plain_and_live_groups_keep_ids_order_and_children_as_workstreams() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("agents.db");
         let db = rusqlite::Connection::open(&path).unwrap();
@@ -541,8 +600,8 @@ mod tests {
                 ("3", "child", 0)
             ]
         );
-        assert_eq!(tree[0].kind, NodeKind::Room);
-        assert_eq!(tree[1].kind, NodeKind::Room);
+        assert_eq!(tree[0].kind, NodeKind::Workstream);
+        assert_eq!(tree[1].kind, NodeKind::Workstream);
         assert_eq!(tree[2].parent.as_deref(), Some("2"));
         assert!(
             tree.iter()
@@ -558,7 +617,9 @@ mod tests {
     #[test]
     fn a7_attempt_exhaustion_does_not_wrap_or_change_the_node() {
         let (_dir, mut rail) = rail();
-        let node = rail.insert(NodeKind::Room, "room", None, None).unwrap();
+        let node = rail
+            .insert(NodeKind::Workstream, "workstream", None, None)
+            .unwrap();
         rail.db
             .execute("UPDATE nodes SET attempt = ?", [i64::MAX])
             .unwrap();
@@ -573,11 +634,11 @@ mod tests {
     #[test]
     fn a6_nothing_nests_under_an_agent_or_a_terminal() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         for kind in [NodeKind::Agent, NodeKind::Terminal] {
             let leaf = rail.insert(kind, "leaf", None, Some("1")).unwrap();
             let inserted = rail
-                .insert(NodeKind::Room, "x", Some(&leaf.id), None)
+                .insert(NodeKind::Workstream, "x", Some(&leaf.id), None)
                 .unwrap_err();
             let moved = rail.move_node(&group.id, Some(&leaf.id), 0).unwrap_err();
             assert_eq!(
@@ -591,7 +652,7 @@ mod tests {
     #[test]
     fn a6_rename_needs_the_exact_id() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         let err = rail.rename(&format!("0{}", group.id), "other").unwrap_err();
         assert_eq!(err.code, code::NOT_FOUND);
         assert_eq!(rail.tree().unwrap()[0].name, "g");
@@ -620,7 +681,11 @@ mod tests {
     fn a6_removing_a_node_closes_the_gap_among_its_siblings() {
         let (_dir, mut rail) = rail();
         let ids: Vec<_> = ["a", "b", "c"]
-            .map(|name| rail.insert(NodeKind::Room, name, None, None).unwrap().id)
+            .map(|name| {
+                rail.insert(NodeKind::Workstream, name, None, None)
+                    .unwrap()
+                    .id
+            })
             .into();
         rail.remove(&ids[1]).unwrap();
         let tree = rail.tree().unwrap();
@@ -628,16 +693,16 @@ mod tests {
         assert_eq!(rest, [("a", 0), ("c", 1)]);
     }
 
-    /// A16: moving a Room's children and deleting the Room are one transaction. A trigger
+    /// A16: moving a Workstream's children and deleting the Workstream are one transaction. A trigger
     /// that only rejects the DELETE (the UPDATEs `place` runs are untouched) tells this apart
     /// from a mutant that commits the move before deleting in a second transaction: there, the
     /// move would survive even though the delete failed.
     #[test]
     fn a16_a_groups_delete_failing_after_a_successful_move_rolls_both_back() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         let child = rail
-            .insert(NodeKind::Room, "child", Some(&group.id), None)
+            .insert(NodeKind::Workstream, "child", Some(&group.id), None)
             .unwrap();
         rail.db
             .execute_batch(

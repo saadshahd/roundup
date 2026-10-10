@@ -161,6 +161,7 @@ async fn a15_agent_spawn_gives_the_program_a_clean_environment() {
                 cwd: served.dir.path().to_string_lossy().into_owned(),
                 prompt: None,
                 parent: None,
+                order: None,
             },
         )
         .await
