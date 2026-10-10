@@ -1,15 +1,16 @@
 //! The real `rupd` and `rup` on a temp Project, with the fake `claude` as every Agent's program.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use contracts::agent::{RailNode, SignalParams, SpawnParams, StatusEvent};
 use contracts::{EventData, Kind, Status};
 use rpc::Client;
 use serde_json::Value;
+
+#[path = "../../../rupd/tests/support/rupd_harness.rs"]
+mod rupd_harness;
 
 /// How long the Daemon, its Agents' hooks and their tools have to answer.
 const BOUND: Duration = Duration::from_secs(30);
@@ -19,9 +20,8 @@ const BOUND: Duration = Duration::from_secs(30);
 pub const TEN_IDLE_BOUND: Duration = Duration::from_secs(30);
 
 pub struct Project {
-    daemon: Child,
-    /// Held open: `--attached` makes the Daemon exit, and stop its Agents, when it closes.
-    stdin: Option<ChildStdin>,
+    /// Its stdin is held open: `--attached` makes the Daemon exit, and stop its Agents, when it closes.
+    daemon: rupd_harness::Rupd,
     pub dir: tempfile::TempDir,
 }
 
@@ -39,52 +39,29 @@ fn start_in(dir: tempfile::TempDir, fake: &[(&str, &str)]) -> Project {
         "{} is not built; run `cargo build -p rupd`",
         rupd.display()
     );
-    let mut daemon = Command::new(rupd)
-        .arg(dir.path())
-        .arg("--attached")
-        .env("RUPD_SOCKET", socket(dir.path()))
-        .env("CLAUDE_CONFIG_DIR", dir.path().join("claude-config"))
-        .env("ROUNDUP_RUP_BIN", rup)
-        .env(
-            "ROUNDUP_CLAUDE_BIN",
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e/fake_claude.py"),
-        )
-        .envs(fake.iter().copied())
-        .stdin(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    // The attached handshake (H18): the proof this Project's App would have created.
-    writeln!(
-        daemon.stdin.as_mut().unwrap(),
-        "roundup-proof 1 {}",
-        "0".repeat(64)
-    )
-    .unwrap();
-    let mut stderr = BufReader::new(daemon.stderr.take().unwrap());
-    let mut serving = String::new();
-    stderr.read_line(&mut serving).unwrap();
-    assert!(serving.contains("serving"), "unexpected: {serving:?}");
+    let mut daemon = rupd_harness::start(&rupd, dir.path(), true, |command| {
+        command
+            .env("CLAUDE_CONFIG_DIR", dir.path().join("claude-config"))
+            .env("ROUNDUP_RUP_BIN", &rup)
+            .env(
+                "ROUNDUP_CLAUDE_BIN",
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e/fake_claude.py"),
+            )
+            .envs(fake.iter().copied());
+    });
+    let mut stderr = daemon.stderr.take().unwrap();
     // Left unread, the pipe would fill and block the Daemon's logging.
     std::thread::spawn(move || std::io::copy(&mut stderr, &mut std::io::stderr()));
-    Project {
-        stdin: daemon.stdin.take(),
-        daemon,
-        dir,
-    }
-}
-
-fn socket(dir: &Path) -> PathBuf {
-    dir.join("rupd.sock")
+    Project { daemon, dir }
 }
 
 impl Project {
     pub fn crash(&mut self) {
-        if self.daemon.try_wait().unwrap().is_none() {
-            self.daemon.kill().unwrap();
+        if self.daemon.child.try_wait().unwrap().is_none() {
+            self.daemon.child.kill().unwrap();
         }
-        self.daemon.wait().unwrap();
-        self.stdin.take();
+        self.daemon.child.wait().unwrap();
+        self.daemon.stdin.take();
     }
 
     pub fn restart(&mut self, fake: &[(&str, &str)]) {
@@ -96,11 +73,11 @@ impl Project {
     }
 
     pub fn pid(&self) -> u32 {
-        self.daemon.id()
+        self.daemon.child.id()
     }
 
     pub async fn client(&self) -> Client {
-        Client::connect(&socket(self.dir.path())).await.unwrap()
+        Client::connect(&self.daemon.socket).await.unwrap()
     }
 
     /// A client that receives every event from now on.
@@ -127,13 +104,11 @@ impl Project {
 
 impl Drop for Project {
     fn drop(&mut self) {
-        drop(self.stdin.take());
+        drop(self.daemon.stdin.take());
         let deadline = Instant::now() + BOUND;
-        while Instant::now() < deadline && self.daemon.try_wait().unwrap().is_none() {
+        while Instant::now() < deadline && self.daemon.child.try_wait().unwrap().is_none() {
             std::thread::sleep(Duration::from_millis(50));
         }
-        let _ = self.daemon.kill();
-        let _ = self.daemon.wait();
     }
 }
 
