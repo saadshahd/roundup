@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../App";
+import { CHECK_IDS, runChecks } from "../testing/checks";
+import { underSettings } from "../testing/media";
 import { seedApp } from "../testing/seeds";
 import tokenCss from "../tokens.css?inline";
 import appCss from "../styles.css?inline";
@@ -18,11 +20,13 @@ afterEach(() => {
   cleanup();
 });
 
-const mount = async () => {
-  sheet = document.head.appendChild(document.createElement("style"));
-  sheet.textContent = [tokenCss, appCss, inkCss, padsCss, railCss, terminalCss, rowButtonCss, chipCss].join("\n");
+const sheets = [tokenCss, appCss, inkCss, padsCss, railCss, terminalCss, rowButtonCss, chipCss].join("\n");
 
-  window.matchMedia ??= (query) => ({ matches: false, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false });
+const mount = async (dark = false) => {
+  sheet = document.head.appendChild(document.createElement("style"));
+  sheet.textContent = dark ? underSettings(sheets, ["dark"]) : sheets;
+
+  window.matchMedia = (query) => ({ matches: dark && query.includes("prefers-color-scheme: dark"), media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false });
 
   const controls = seedApp("door-stopped", Date.now());
 
@@ -32,6 +36,9 @@ const mount = async () => {
 };
 
 const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
+
+// The Checks that pass on main for this screen in both schemes (artifacts/ux/U161/base); D1, D6, D7 and D10 fail there too.
+const PASSING_ON_MAIN = new Set(["D2", "D3", "D4", "D5", "D8", "D9"]);
 
 describe("u161 the first window reads as designed", () => {
   it("u161_a_hairline_on_the_rails_trailing_edge_and_the_shelfs_top_edge_and_no_other_region_edge", async () => {
@@ -81,4 +88,12 @@ describe("u161 the first window reads as designed", () => {
       expect(mark.getAttribute("stroke-linejoin")).toBe("round");
     }
   });
+
+  for (const [scheme, dark] of [["light", false], ["dark", true]] as const)
+    it(`u161_checks_${scheme}_regress_nothing_that_passed_on_main`, async () => {
+      await mount(dark);
+      const checks = runChecks();
+
+      for (const id of CHECK_IDS) if (PASSING_ON_MAIN.has(id)) expect(checks[id], `${id} ${JSON.stringify(checks[id])}`).toMatchObject({ status: "pass" });
+    });
 });

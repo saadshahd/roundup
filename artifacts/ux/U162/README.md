@@ -1,7 +1,13 @@
-# U162 / U163 captures (head only)
+# U162 / U163 captures
 
-`head-<seed>-<width>.png`: `empty-project`, `agents-10`, `tree-40`, `door-stopped` at 1280 and 700 wide, headless agent-browser against `just harness`.
+`base/` is `main` before #558 (the Rail with `+ agent + terminal + room`), `head/` is this branch. Each is `<seed>-<width>-<theme>.png` and `.checks.json` for `first-run`, `empty-project`, `door-stopped` and `agents-10` at 1280 and 700 wide, dark and light, headless agent-browser against `just harness`. `loop/rules.sh delta base head` reports no regressed Check.
 
-Observed in the DOM: the buttons named `agent`, `terminal` or `Workstream` are `new Workstream` alone on `empty-project`, `agents-10` and `tree-40` (no selected Workstream); `door-stopped` (selected Workstream) adds `agent` then `terminal` inside the group.
+The first head run regressed D2 on `door-stopped` (the inside line's `padding-left` was `2ch`, not a space step); the line now indents with a width, and `head/` is the run after that fix.
 
-Not done: before captures on `main` and the `window.__checks()` comparison against `main` (D1 reports a Vite overlay style on the dev server, not a Rail change); the light-theme captures; the 60-character name capture.
+`longname/`: `tree-40` with its 92-character Workstream selected, 1280 and 700 wide, dark. The inside line ends 32 px inside the Rail and the Rail's `scrollWidth` equals its `clientWidth`, so nothing overflows or resizes the pane.
+
+The inside line (`+ agent  + terminal`, in that order) shows in `door-stopped` and `longname` only, where a Workstream is selected; no other seed shows an add but `+ new Workstream`.
+
+`ring-*.png` and `ring-*.checks.json` are the drop-ring captures of the earlier PR.
+
+The real-Daemon run on a Rail stored with `"room"` is `artifacts/ux/A25/observer.txt`. The `bend proofs/messages/PROOF.bend` run is not made: `bend` is not installed on the runner.

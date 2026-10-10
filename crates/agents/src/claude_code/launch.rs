@@ -2,8 +2,9 @@
 //! `rup signal <agent-id>`, a per-Agent MCP config that runs `rup mcp <agent-id>`, and a pre-trusted
 //! working directory (no hook fires for the trust dialog).
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{ErrorKind, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -13,6 +14,14 @@ use serde_json::{Map, Value, json};
 use unicode_normalization::UnicodeNormalization;
 
 use super::brief::{self, Role};
+
+/// F2: the only tools a Door is started with. Every other tool Claude Code has, `Bash`, `Edit`,
+/// `Write` and `Agent` among them, is absent; the MCP servers' tools stay (F1).
+pub const DOOR_TOOLS: &str = "Read,Grep,Glob";
+
+/// F4: what the shim for a vendor program prints on stderr before it exits 1.
+const SHIM_MESSAGE: &str =
+    "roundup: start an agent with agent_spawn (a Meta-agent) or ask the user";
 
 /// The hook events that carry state. Notification and SubagentStop are left out on purpose: the
 /// first arrives about 6 s late, the second fires spuriously (ADR 0006). H15's replay rule would
@@ -110,7 +119,7 @@ impl Launcher {
                 _ => {}
             }
         }
-        Ok(())
+        remove_shims(dir, id)
     }
 
     /// Write Agent `id`'s settings, MCP config and Brief (E1, for its `role`) under `dir` (the Project's `.roundup/`), trust
@@ -173,8 +182,17 @@ impl Launcher {
         }
         let settings = settings_path(&dir, id);
         let mcp_config = mcp_config_path(&dir, id);
-        replace_file(&settings, &self.settings_json(id, attempt)).map_err(RpcError::internal)?;
-        replace_file(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
+        let shims = shim_dir(&dir, id);
+        if is_symlink(&shims) {
+            return Err(invalid(format!("{} is a symlink", shims.display())));
+        }
+        let path = (role == Role::Door).then(|| shim_path(&shims));
+        if role == Role::Door {
+            write_shims(&shims).map_err(RpcError::internal)?;
+        }
+        replace_file(&settings, &self.settings_json(id, attempt, path.as_deref()))
+            .map_err(RpcError::internal)?;
+        replace_file(&mcp_config, &self.mcp_json(id, role)).map_err(RpcError::internal)?;
         let brief_file = brief_path(&dir, id);
         replace_text(&brief_file, &brief::text(id, role)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
@@ -188,6 +206,10 @@ impl Launcher {
             "--append-system-prompt-file".into(),
             brief_file.to_string_lossy().into_owned(),
         ];
+        if role == Role::Door {
+            argv.push("--tools".into());
+            argv.push(DOOR_TOOLS.into());
+        }
         if let Some(conversation_id) = resume {
             argv.push("--resume".into());
             argv.push(conversation_id.to_owned());
@@ -223,7 +245,8 @@ impl Launcher {
     }
 
     /// A20: the hook command, not the program, carries the launch's Attempt.
-    fn settings_json(&self, id: u64, attempt: &str) -> Value {
+    /// F4: a Door's `path` puts its shims ahead of the Daemon's own `PATH` in Claude Code's `env`.
+    fn settings_json(&self, id: u64, attempt: &str, path: Option<&OsStr>) -> Value {
         let rup = shell_quote(&self.rup.to_string_lossy());
         let id = shell_quote(&id.to_string());
         // H9: `PermissionRequest` waits for the user's answer, so its hook outlives the 5 s of the rest.
@@ -254,15 +277,26 @@ impl Launcher {
             })
             .collect();
         // Allowed here so a roundup tool never raises a permission dialog.
-        json!({ "hooks": hooks, "permissions": { "allow": ["mcp__roundup__*"] } })
+        let mut settings =
+            json!({ "hooks": hooks, "permissions": { "allow": ["mcp__roundup__*"] } });
+        if let Some(path) = path {
+            settings["env"] = json!({ "PATH": path.to_string_lossy() });
+        }
+        settings
     }
 
     /// `RUPD_SOCKET` is left out: Claude Code's environment, which the server inherits, has it.
-    fn mcp_json(&self, id: u64) -> Value {
+    /// F3: a Door's server is started with `--door`, which adds `agent_spawn` to its tools; the
+    /// Daemon refuses `agent.spawn` from any other Agent whatever its shim offers.
+    fn mcp_json(&self, id: u64, role: Role) -> Value {
+        let mut args = vec!["mcp".to_owned(), id.to_string()];
+        if role == Role::Door {
+            args.push("--door".into());
+        }
         json!({ "mcpServers": { "roundup": {
             "type": "stdio",
             "command": self.rup.to_string_lossy(),
-            "args": ["mcp", id.to_string()],
+            "args": args,
         } } })
     }
 
@@ -410,6 +444,48 @@ fn settings_path(dir: &Path, id: u64) -> PathBuf {
 
 fn mcp_config_path(dir: &Path, id: u64) -> PathBuf {
     agents_dir(dir).join(format!("{id}.mcp.json"))
+}
+
+fn shim_dir(dir: &Path, id: u64) -> PathBuf {
+    agents_dir(dir).join(format!("{id}.bin"))
+}
+
+/// The first command-line word of a Door's Claude Code names this file, so a process table row
+/// that holds it is that Door's program (F5).
+pub fn settings_marker(dir: &Path, id: &str) -> Option<PathBuf> {
+    let dir = dir.canonicalize().ok()?;
+    Some(settings_path(&dir, parse_id(id)?))
+}
+
+/// `shims` followed by the `PATH` this process has.
+fn shim_path(shims: &Path) -> OsString {
+    let mut path = shims.as_os_str().to_owned();
+    if let Some(inherited) = std::env::var_os("PATH").filter(|inherited| !inherited.is_empty()) {
+        path.push(":");
+        path.push(inherited);
+    }
+    path
+}
+
+/// One executable in `shims` for each program name an Adapter supplies, each failing loud.
+fn write_shims(shims: &Path) -> std::io::Result<()> {
+    for program in super::programs() {
+        let script = format!(
+            "#!/bin/sh\necho {} >&2\nexit 1\n",
+            shell_quote(SHIM_MESSAGE)
+        );
+        let path = shims.join(program);
+        replace_text(&path, &script)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+
+fn remove_shims(dir: &Path, id: u64) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(shim_dir(dir, id)) {
+        Err(err) if err.kind() != ErrorKind::NotFound => Err(err),
+        _ => Ok(()),
+    }
 }
 
 fn brief_path(dir: &Path, id: u64) -> PathBuf {

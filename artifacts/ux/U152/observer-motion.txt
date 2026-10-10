@@ -1,0 +1,16 @@
+== 1280 light reduced=true
+U156 reduced: distinct top sets while sampling: "[\"81,134,187,334\",\"81,134,281,334\"]" (two sets = one frame)
+U156 interrupt: row-3 top around the second press (last-before, first-after, by frame): "[[187,81,169,183.5,333.5],[204,81,161.1,205.3,333.5],[220,81,154,225.1,333.5],[237,154,80.5,225.1,333.5],[254,141,106.6,234.9,333.5],[270,129.2,130.5,243.9,333.5],[287,118.4,152.2,252.1,333.5]]"
+U156 interrupt final ids: "[\"3\",\"1\",\"2\"]"
+== 1280 dark reduced=true
+U156 reduced: distinct top sets while sampling: "[\"81,134,187,334\",\"81,134,281,334\"]" (two sets = one frame)
+U156 interrupt: row-3 top around the second press (last-before, first-after, by frame): "[[183,81,177.6,159.6,333.5],[199,81,169,183.5,333.5],[216,81,161.1,205.3,333.5],[233,161.1,80.5,205.3,333.5],[249,146.9,106.6,218.7,333.5],[266,133.9,130.4,230.8,333.5],[283,121.9,152.4,242.1,333.5]]"
+U156 interrupt final ids: "[\"3\",\"1\",\"2\"]"
+== 700 light reduced=true
+U156 reduced: distinct top sets while sampling: "[\"575,628,681,783\",\"575,628,730,783\"]" (two sets = one frame)
+U156 interrupt: row-3 top around the second press (last-before, first-after, by frame): "[[181,575,671.6,645.6,782.5],[197,575,663,662.2,782.5],[214,575,655.1,677.4,782.5],[230,655.1,574.5,677.4,782.5],[247,640.9,592.5,686.6,782.5],[264,627.9,609.1,695.1,782.5],[280,616,624.3,702.8,782.5]]"
+U156 interrupt final ids: "[\"3\",\"1\",\"2\"]"
+== 700 dark reduced=true
+U156 reduced: distinct top sets while sampling: "[\"575,628,681,783\",\"575,628,730,783\"]" (two sets = one frame)
+U156 interrupt: row-3 top around the second press (last-before, first-after, by frame): "[[194,575,663,662.2,782.5],[211,575,655.1,677.3,782.5],[228,575,648,691,782.5],[244,648,574.5,691,782.5],[261,635,592.7,697.9,782.5],[277,623.1,609.2,704.1,782.5],[294,612.3,624.3,709.8,782.5]]"
+U156 interrupt final ids: "[\"3\",\"1\",\"2\"]"
