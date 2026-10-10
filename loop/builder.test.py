@@ -205,14 +205,37 @@ class Fix(unittest.TestCase):
             with GitHub(view=view):
                 self.assertIsNone(builder.fix_task(9, HEAD, 'check'))
 
-    def test_l82_the_fourth_fix_waits_on_the_user(self):
-        attempts = [note('<!-- fix-attempt -->\nrun')] * 3
-        with GitHub(view=pr(), notes=attempts) as github:
+    def test_l82_the_fourth_cause_hands_the_pr_to_its_issue_and_asks_nobody(self):
+        attempts = [note(f'<!-- fix-attempt -->\nFix run https://run/{n} answered `check`.', ago=300 - n * 100) for n in (1, 2, 3)]
+        commits = [dict(messageHeadline=f'fix {n}', committedDate=stamp(300 - n * 100 - 10)) for n in (1, 2, 3)]
+        view = pr(url='https://github.com/o/r/pull/9', body='Refs #5\nScenarios: U1\n', commits=commits)
+        with GitHub(view=view, notes=attempts[:2]) as github:
+            self.assertIn('`check` failed on this head', builder.fix_task(9, HEAD, 'check'))
+        self.assertEqual(github.writes, [])
+        with GitHub(view=view, notes=attempts + [note('VERDICT: reject\n\nbad name')], labels=READY) as github:
+            self.assertIsNone(builder.fix_task(9, HEAD, 'review'))
+            first = github.bodies()
+            self.assertEqual(len(first), 2)
+            self.assertTrue(first[0].startswith('<!-- fix-exhausted #9 -->'))
+            for text in ('https://github.com/o/r/pull/9', HEAD, 'fix 1', 'fix 3', 'review rejected: bad name'):
+                self.assertIn(text, first[1])
+            self.assertTrue(first[1].startswith('<!-- strike -->'))
+            self.assertIn(('pr', 'close', '9', '--delete-branch'), github.writes)
+            self.assertFalse(github.flagged())
+            self.assertIsNone(builder.fix_task(9, HEAD, 'review'))
+            self.assertEqual(github.bodies(), first)
+        with GitHub(view=pr(body='Scenarios: U1\n'), notes=attempts) as github:
             self.assertIsNone(builder.fix_task(9, HEAD, 'check'))
         self.assertTrue(github.flagged())
-        with GitHub(view=pr(), notes=attempts[:2]) as github:
-            self.assertIn('`check` failed on this head', builder.fix_task(9, HEAD, 'check'))
-        self.assertFalse(github.flagged())
+
+    def test_l23_the_third_strike_after_an_exhausted_pr_still_asks_the_user(self):
+        view = pr(url='u', body='Refs #5\n', commits=[])
+        strikes = [note('<!-- strike -->\na'), note('<!-- strike -->\nb')]
+        attempts = [note('<!-- fix-attempt -->\nFix run r answered `check`.')] * 3
+        with GitHub(view=view, notes=attempts + strikes, labels=READY) as github:
+            builder.fix_task(9, HEAD, 'check')
+        self.assertTrue(github.flagged())
+        self.assertIn(('api', '-X', 'DELETE', 'repos/{owner}/{repo}/issues/5/labels/ready-for-agent'), github.writes)
 
     def test_l82_a_reject_fix_carries_the_last_verdict(self):
         verdicts = [note('VERDICT: reject\nfirst'), note('VERDICT: reject\nlatest')]

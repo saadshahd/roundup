@@ -205,7 +205,12 @@ def built(issue, slug, ran, run_url):
     elif not orders.queued(issue):
         print(f'#{issue} is no longer ready; nothing to record')
         return
-    comment(issue, f'<!-- strike -->\nThe build run {run_url} ended without a PR.')
+    strike(issue, f'The build run {run_url} ended without a PR.')
+
+
+def strike(issue, why):
+    """Record one failed try on the Issue; STRIKES in a day take it off the queue and wait on the user."""
+    comment(issue, f'<!-- strike -->\n{why}')
     if len(marked(issue, '<!-- strike -->', time.time() - DAY)) >= STRIKES:
         flag(issue, f'{STRIKES} build runs in 24 hours ended without a PR, so the queue stops building this Issue until '
                     'you add `ready-for-agent` again. The strike comments link each run.')
@@ -213,7 +218,7 @@ def built(issue, slug, ran, run_url):
 
 
 def view(pr):
-    return orders.gh('pr', 'view', str(pr), '--json', 'number,state,headRefOid,headRefName,isDraft,isCrossRepository,body')
+    return orders.gh('pr', 'view', str(pr), '--json', 'number,url,state,headRefOid,headRefName,isDraft,isCrossRepository,body')
 
 
 def fix_task(pr, head, cause):
@@ -221,14 +226,44 @@ def fix_task(pr, head, cause):
     current = view(pr)
     if current['state'] != 'OPEN' or current['headRefOid'] != head or not current['headRefName'].startswith('build/'):
         return None
-    if len(marked(pr, '<!-- fix-attempt -->')) >= ATTEMPTS:
-        flag(pr, f'{ATTEMPTS} fix runs did not get this PR to merge; the last cause was `{cause}`.')
+    attempts = marked(pr, '<!-- fix-attempt -->')
+    if len(attempts) >= ATTEMPTS:
+        exhaust(current, attempts, cause)
         return None
     findings = [c['body'] for c in marked(pr, 'VERDICT:')][-1:] if cause == 'review' else []
     return '\n\n'.join([f"Fix PR #{pr} on branch `{current['headRefName']}`, head {head}. " +
                         CAUSES[cause].format(cause=cause, pr=pr), *findings,
                         'Push to that branch. End as `.agents/builder.md` says: a ready PR with auto-merge armed, or a '
                         'draft with a `Stopped:` line.'])
+
+
+def exhaust(current, attempts, cause):
+    """A Builder PR out of fix runs: tell its work Issue what failed, close the PR unmerged, delete its branch and strike
+    the Issue, once per PR. The closed PR keeps its diff at `refs/pull/<pr>/head`. A PR naming no Issue asks the user."""
+    pr, branch = current['number'], current['headRefName']
+    match = re.search(r'^(?:Refs|Closes|Fixes) #(\d+)', current['body'] or '', re.M)
+    if not match:
+        flag(pr, f'{ATTEMPTS} fix runs did not get this PR to merge, and its body names no Issue to record that on.')
+        return
+    issue = int(match[1])
+    if marked(issue, f'<!-- fix-exhausted #{pr} -->'):
+        return
+    commits = orders.gh('pr', 'view', str(pr), '--json', 'commits')['commits']
+    verdict = ([c['body'] for c in marked(pr, 'VERDICT:')] or [''])[-1].split('\n\n', 1)[-1].strip()
+    lines, since = [], 0
+    for attempt in attempts:
+        ended_at = created(attempt['created_at'])
+        cause_ran = re.search(r'answered `(\w+)`', attempt['body'])
+        subjects = [c['messageHeadline'] for c in commits if since < created(c['committedDate']) <= ended_at]
+        lines.append(f"- `{cause_ran[1] if cause_ran else '?'}`: " + ('; '.join(subjects) or 'no commit'))
+        since = ended_at
+    reason = {'check': 'check failed', 'rules': 'rules failed', 'review': f'review rejected: {verdict}'}.get(cause, cause)
+    comment(issue, f'<!-- fix-exhausted #{pr} -->\nPR #{pr} ({current["url"]}) used its {ATTEMPTS} fix runs and was closed '
+                   f'unmerged; its diff stays at that link, head `{current["headRefOid"]}`. Each line is a cause a fix '
+                   f'run answered and the commits it pushed; the last is the cause that found no run left.\n\n'
+                   + '\n'.join(lines) + f'\n- `{cause}` ({reason}): no fix run left\n\nTake another approach.')
+    strike(issue, f'PR #{pr} used its {ATTEMPTS} fix runs: {current["url"]}')
+    call('pr', 'close', str(pr), '--delete-branch')
 
 
 def fixed(pr, cause, ran, run_url):
