@@ -1,4 +1,5 @@
 import { Icon } from "../ink/Icon";
+import type { JSX } from "solid-js";
 import { createEffect, createMemo, on, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -25,6 +26,8 @@ export const rowAfter = (id: number, openIds: readonly number[]): number | null 
 /** One open Todo as U15 draws it, with U35's `complete` and `waits on`; `nested` is the Rail's copy (U60), which leaves `data-id` to the Agent rows. */
 export const OpenRow = (props: {
   nested?: boolean;
+  /** U153: the row whose Drawer is open. */
+  selected?: boolean;
   todo: Todo;
   known: ReadonlyMap<number, Todo>;
   onOpen: (todo: Todo) => void;
@@ -55,6 +58,8 @@ export const OpenRow = (props: {
       data-id={props.nested ? undefined : props.todo.id}
       data-todo={props.todo.id}
       data-shelf-row={props.nested ? undefined : ""}
+      data-selected={props.selected ? "true" : undefined}
+      class="todo-row"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocusIn={() => setFocused(true)}
@@ -93,7 +98,7 @@ export const OpenRow = (props: {
         when={failure()}
         fallback={
           <Show when={waitingOn().length > 0}>
-            <p class="light" data-todo-waits style={{ "padding-left": "2ch" }}>
+            <p class="light todo-line" data-todo-waits>
               waits on <For each={waitingOn()}>{(blocker, index) => (
                 <>
                   <Show when={index() > 0}>{", "}</Show>
@@ -108,7 +113,7 @@ export const OpenRow = (props: {
       >
         {(message) => <ErrorLine message={message()} />}
       </Show>
-      <p class="light" data-todo-home>
+      <p class="light todo-line" data-todo-home>
         in {homeNameOf(connected.rail.nodes, props.todo.home)}
       </p>
     </div>
@@ -181,7 +186,16 @@ export const Todos = () => {
     setCreateFailure(await failureOf(() => connected.app.rpc("todo.create", { title, body: null, blockers: null })));
   };
 
-  const show = (todo: Todo) => connected.drawer.open(() => <TodoDrawer id={todo.id} todos={todos} />);
+  // U153: a row is selected while the Drawer it opened is the one open.
+  const [shown, setShown] = createSignal<{ id: number; content: () => JSX.Element } | null>(null);
+  const selectedId = () => (shown() !== null && connected.drawer.content() === shown()?.content ? shown()?.id : undefined);
+
+  const show = (todo: Todo) => {
+    const content = () => <TodoDrawer id={todo.id} todos={todos} />;
+
+    setShown({ id: todo.id, content });
+    connected.drawer.open(content);
+  };
 
   const complete = async (todo: Todo) => {
     const target = rowAfter(todo.id, open().map((candidate) => candidate.id));
@@ -233,10 +247,12 @@ export const Todos = () => {
       <Show when={noneInRoom()}>
         <p>no todos in this room</p>
       </Show>
+      <div class="todo-list">
       <For each={open()}>
         {(todo) => (
           <OpenRow
             todo={todo}
+            selected={selectedId() === todo.id}
             known={todos.byId()}
             onOpen={show}
             onComplete={complete}
@@ -247,6 +263,7 @@ export const Todos = () => {
           />
         )}
       </For>
+      </div>
       <Show when={done().length > 0}>
         <RowButton onClick={() => setUnfolded(!unfolded())}>
           <KindGlyph kind="done" decorative /> {done().length} done
