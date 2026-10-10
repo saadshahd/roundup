@@ -262,7 +262,6 @@ button[aria-disabled="true"] {
   overflow: auto;
   background-color: var(--ground);
   border: 1px solid var(--hairline);
-  outline: none;
 }
 
 .help-line {
