@@ -1,0 +1,12 @@
+rail.createWorkstream {"name": "outer", "parent": null}
+  -> {"jsonrpc": "2.0", "id": 1, "result": {"id": "1", "kind": "workstream", "name": "outer", "parent": null, "order": 0, "status": {"kind": "done", "label": "terminal gone", "since": 1791650683149}, "attempt": null, "status_revision": null, "terminal_id": null, "worktree": null, "can_resume": false, "channel": null, "work": {"kind": "clarification", "question": "What is this Workstream for?"}, "stray": []}}
+rail.createWorkstream {"name": "inner", "parent": "1"}
+  -> {"jsonrpc": "2.0", "id": 1, "result": {"id": "2", "kind": "workstream", "name": "inner", "parent": "1", "order": 0, "status": {"kind": "done", "label": "terminal gone", "since": 1791650683149}, "attempt": null, "status_revision": null, "terminal_id": null, "worktree": null, "can_resume": false, "channel": null, "work": {"kind": "clarification", "question": "What is this Workstream for?"}, "stray": []}}
+rail.createRoom {"name": "x", "parent": null}
+  -> {"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "method not found: rail.createRoom"}}
+stored kinds null
+  -> [["outer", "room"], ["inner", "room"]]
+rail.tree null
+  -> {"jsonrpc": "2.0", "id": 1, "result": [{"id": "1", "kind": "workstream", "name": "outer", "parent": null, "order": 0, "status": {"kind": "done", "label": "terminal gone", "since": 1791650683175}, "attempt": null, "status_revision": null, "terminal_id": null, "worktree": null, "can_resume": false, "channel": null, "work": {"kind": "clarification", "question": "What is this Workstream for?"}, "stray": []}, {"id": "2", "kind": "workstream", "name": "inner", "parent": "1", "order": 0, "status": {"kind": "done", "label": "terminal gone", "since": 1791650683175}, "attempt": null, "status_revision": null, "terminal_id": null, "worktree": null, "can_resume": false, "channel": null, "work": {"kind": "clarification", "question": "What is this Workstream for?"}, "stray": []}]}
+stored kinds after reopen+close null
+  -> [["outer", "workstream"], ["inner", "workstream"]]

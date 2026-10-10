@@ -10,4 +10,4 @@ The inside line (`+ agent  + terminal`, in that order) shows in `door-stopped` a
 
 `ring-*.png` and `ring-*.checks.json` are the drop-ring captures of the earlier PR.
 
-Not done: the `bend proofs/messages/PROOF.bend` run (`bend` is not installed on the runner) and the real-Daemon run on a Rail stored with `"room"` (U144); `a25_a_stored_rail_with_kind_room_opens_as_workstreams_with_ids_and_children_intact` covers the migration in Rust.
+The real-Daemon run on a Rail stored with `"room"` is `artifacts/ux/A25/observer.txt`. The `bend proofs/messages/PROOF.bend` run is not made: `bend` is not installed on the runner.
