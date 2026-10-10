@@ -11,6 +11,8 @@ import { $prose } from "@milkdown/kit/utils";
 import { Plugin } from "@milkdown/kit/prose/state";
 import { replaceAll } from "@milkdown/kit/utils";
 import { sourceForDocument } from "./sourceForDocument";
+import { visualBlocks } from "./visualBlocks";
+import { visualKinds } from "./visualKinds";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
 
@@ -102,6 +104,8 @@ export default function PadRichEditor(props: {
           }),
       ),
     );
+
+    crepe.editor.use($prose(() => visualBlocks(visualKinds(), () => props.readonly)));
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {

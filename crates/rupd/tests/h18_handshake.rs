@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 
 use rupd::{HandshakeError, read_handshake};
 
+#[path = "support/rupd_harness.rs"]
+mod rupd_harness;
+
 const PROOF: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn line(proof: &str) -> Vec<u8> {
@@ -58,7 +61,8 @@ fn h18_an_error_and_a_handshake_never_print_the_proof() {
     assert!(!err.to_string().contains(&PROOF[..63]));
 }
 
-/// Starts an attached `rupd`, writes `bytes` and closes stdin; returns its status and stderr.
+/// Spawns `rupd` itself, not through the harness: a bad handshake makes the Daemon exit, so it
+/// never answers the ping the harness waits for. Starts an attached `rupd`, writes `bytes` and closes stdin; returns its status and stderr.
 fn attached_with(bytes: &[u8]) -> (std::process::ExitStatus, String) {
     let dir = tempfile::tempdir().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_rupd"))
@@ -113,23 +117,15 @@ fn h18_an_attached_daemon_given_a_bad_handshake_exits_with_a_diagnostic_without_
 #[tokio::test]
 async fn h18_a_daemon_without_a_handshake_rejects_every_answer() {
     let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("rupd.sock");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_rupd"))
-        .arg(dir.path())
-        .env("RUPD_SOCKET", &socket)
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let started = Instant::now();
-    let client = loop {
-        match rpc::Client::connect(&socket).await {
-            Ok(client) => break client,
-            Err(_) if started.elapsed() < Duration::from_secs(15) => {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            Err(err) => panic!("rupd never served: {err}"),
-        }
-    };
+    let daemon = rupd_harness::start(
+        std::path::Path::new(env!("CARGO_BIN_EXE_rupd")),
+        dir.path(),
+        false,
+        |command| {
+            command.stderr(Stdio::null());
+        },
+    );
+    let client = rpc::Client::connect(&daemon.socket).await.unwrap();
 
     let err = client
         .request(
@@ -140,6 +136,4 @@ async fn h18_a_daemon_without_a_handshake_rejects_every_answer() {
         .unwrap_err();
 
     assert_eq!(err.code, rpc::code::FORBIDDEN);
-    child.kill().unwrap();
-    child.wait().unwrap();
 }
