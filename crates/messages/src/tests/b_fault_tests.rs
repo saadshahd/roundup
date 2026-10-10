@@ -197,6 +197,8 @@ async fn b28_a_failure_in_on_status_or_settle_does_not_stop_delivery_or_the_cloc
     h.becomes_idle("3");
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert_eq!(h.typed.lock().unwrap().len(), 1);
+
+    a_hop_passes_at_the_bound(None).await;
 }
 
 #[tokio::test]
@@ -210,19 +212,23 @@ async fn b28_a_failure_in_the_clock_does_not_stop_it() {
     tokio::time::sleep(std::time::Duration::from_millis(1_600)).await;
     assert!(h.calls.load(Ordering::SeqCst) >= before + 3);
 
-    // The pass after the failed one still works: a hop passes at 60 000 ms, not at 59 999.
+    a_hop_passes_at_the_bound(Some("clock")).await;
+}
+
+/// A pending hop has not passed at 59 999 ms of the fake clock and has at 60 000 ms.
+async fn a_hop_passes_at_the_bound(arm: Option<&'static str>) {
     let dir = tempfile::tempdir().unwrap();
     let h = Faulty::over(dir.path(), super::b_hop_tests::tree());
     let ask = json!({"to": "sub", "kind": "question", "body": "which?"});
     let ctx = Ctx {
-        actor: Actor::user(),
+        actor: super::agent("c"),
         bus: h.bus.clone(),
         touches: Arc::clone(&h.touches),
     };
-    let actor = super::agent("c");
-    let ctx = Ctx { actor, ..ctx };
     h.messages.call(&ctx, "message.send", ask).await.unwrap();
-    h.arm("clock", Fail::Panic);
+    if let Some(op) = arm {
+        h.arm(op, Fail::Panic);
+    }
     h.clock.store(59_999, Ordering::SeqCst);
     tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
     assert_eq!(
