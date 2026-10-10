@@ -22,4 +22,4 @@ Data for Builder runs: a build or fix run writing a PR, a review run judging its
 
 ## Audit PR
 
-Every scenario id has a test prefixed with its lowercase id (`L` ids: `L<n>` in `loop/*.test.sh`), except W1 (`just check`) and F1, F7 (spike records). An audit adds one test per clause no test asserts, with an id, clause, test table in the PR; it changes no scenario or behaviour and creates or updates a work Issue for each unmet clause.
+Every scenario id has a test prefixed with its lowercase id (`L` ids: `L<n>` in `loop/*.test.sh`), except W1 (`just check`) and F1, F7 (spike records). An audit adds one test per clause no test asserts, with an id, clause, test table in the PR; it changes no scenario or behaviour and creates or updates a work Issue for each unmet clause. When merged PRs already assert every clause, of an audit or any other Issue, the PR is one empty commit with `Closes #<issue>` and that table.
