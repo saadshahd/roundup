@@ -207,7 +207,7 @@ class Fix(unittest.TestCase):
 
     def test_l82_the_fourth_cause_hands_the_pr_to_its_issue_and_asks_nobody(self):
         attempts = [note(f'<!-- fix-attempt -->\nFix run https://run/{n} answered `check`.', ago=300 - n * 100) for n in (1, 2, 3)]
-        commits = [dict(messageHeadline=f'fix {n}', committedDate=stamp(300 - n * 100 - 10)) for n in (1, 2, 3)]
+        commits = [dict(messageHeadline=f'fix {n}', committedDate=stamp(300 - n * 100 + 10)) for n in (1, 2, 3)]
         view = pr(url='https://github.com/o/r/pull/9', body='Refs #5\nScenarios: U1\n', commits=commits)
         with GitHub(view=view, notes=attempts[:2]) as github:
             self.assertIn('`check` failed on this head', builder.fix_task(9, HEAD, 'check'))
@@ -218,7 +218,7 @@ class Fix(unittest.TestCase):
             self.assertEqual(len(first), 2)
             self.assertTrue(first[0].startswith('<!-- fix-exhausted #9 -->'))
             for text in ('https://github.com/o/r/pull/9', HEAD, 'fix 1', 'fix 3', 'review rejected: bad name'):
-                self.assertIn(text, first[1])
+                self.assertIn(text, first[0])
             self.assertTrue(first[1].startswith('<!-- strike -->'))
             self.assertIn(('pr', 'close', '9', '--delete-branch'), github.writes)
             self.assertFalse(github.flagged())
