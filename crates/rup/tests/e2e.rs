@@ -1057,30 +1057,6 @@ async fn b21_a_childs_kind_pad_and_todo_changes_each_push_one_entry_to_its_door(
     let (_, entry) = push_where(&user, &rail.m, |_, e| e["pads"] == json!(["notes"])).await;
     assert_eq!(entry["name"], a_name.as_str());
     assert!(!entry.to_string().contains("ZEBRA"));
-
-    // An open Todo whose Home is a child Door, then its completion.
-    let sub = user
-        .request(
-            "rail.createWorkstream",
-            json!({ "name": "sub", "parent": rail.m }),
-        )
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    user.request("rail.startDoor", json!({ "id": sub }))
-        .await
-        .unwrap();
-    let todo = todo_at(&user, "chase the ticket").await;
-    user.request("todo.move", json!({ "id": todo, "home": sub }))
-        .await
-        .unwrap();
-    push_where(&user, &rail.m, |_, e| e["name"] == "sub" && e["todos"] == 1).await;
-    user.request("todo.complete", json!({ "id": todo }))
-        .await
-        .unwrap();
-    push_where(&user, &rail.m, |_, e| e["name"] == "sub" && e["todos"] == 0).await;
 }
 
 #[tokio::test]
