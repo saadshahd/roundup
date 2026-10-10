@@ -2881,3 +2881,770 @@ def m7_run(evs, fu, r, s, I):
 
 def Laws.m7_receiver_gone(evs, fu, r):
   m7_run(evs, fu, r, M.init(), inv7_init())
+
+# ---- M6: the lengths of the five lists add up to the ids handed out ----
+
+def T5(+a: Nat, +b: Nat, +c: Nat, +d: Nat, +e: Nat) -> Nat:
+  Nat.add(a, Nat.add(b, Nat.add(c, Nat.add(d, e))))
+
+law add_sr:
+  for +a: Nat
+  for +b: Nat
+  {Nat.add(a, 1n+b) == 1n+Nat.add(a, b) : Nat}
+
+def add_sr(a, b):
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      Equal.cong(Nat, Nat, z => 1n+z, Nat.add(p, 1n+b), 1n+Nat.add(p, b), add_sr(p, b))
+
+law add_zero_r:
+  for +a: Nat
+  {Nat.add(a, 0n) == a : Nat}
+
+def add_zero_r(a):
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      Equal.cong(Nat, Nat, z => 1n+z, Nat.add(p, 0n), p, add_zero_r(p))
+
+law add_assoc:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  {Nat.add(Nat.add(a, b), c) == Nat.add(a, Nat.add(b, c)) : Nat}
+
+def add_assoc(a, b, c):
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      Equal.cong(Nat, Nat, z => 1n+z, Nat.add(Nat.add(p, b), c), Nat.add(p, Nat.add(b, c)), add_assoc(p, b, c))
+
+law w3:
+  for +a: Nat
+  for +b: Nat
+  for +x: Nat
+  {Nat.add(a, Nat.add(b, 1n+x)) == 1n+Nat.add(a, Nat.add(b, x)) : Nat}
+
+def w3(a, b, x):
+  Equal.trans(Nat, Nat.add(a, Nat.add(b, 1n+x)), Nat.add(a, 1n+Nat.add(b, x)), 1n+Nat.add(a, Nat.add(b, x)), Equal.cong(Nat, Nat, z => Nat.add(a, z), Nat.add(b, 1n+x), 1n+Nat.add(b, x), add_sr(b, x)), add_sr(a, Nat.add(b, x)))
+
+law w4:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +y: Nat
+  {Nat.add(a, Nat.add(b, Nat.add(c, 1n+y))) == 1n+Nat.add(a, Nat.add(b, Nat.add(c, y))) : Nat}
+
+def w4(a, b, c, y):
+  Equal.trans(Nat, Nat.add(a, Nat.add(b, Nat.add(c, 1n+y))), Nat.add(a, Nat.add(b, 1n+Nat.add(c, y))), 1n+Nat.add(a, Nat.add(b, Nat.add(c, y))), Equal.cong(Nat, Nat, z => Nat.add(a, Nat.add(b, z)), Nat.add(c, 1n+y), 1n+Nat.add(c, y), add_sr(c, y)), w3(a, b, Nat.add(c, y)))
+
+law w5:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +z: Nat
+  {Nat.add(a, Nat.add(b, Nat.add(c, Nat.add(d, 1n+z)))) == 1n+Nat.add(a, Nat.add(b, Nat.add(c, Nat.add(d, z)))) : Nat}
+
+def w5(a, b, c, d, z):
+  Equal.trans(Nat, Nat.add(a, Nat.add(b, Nat.add(c, Nat.add(d, 1n+z)))), Nat.add(a, Nat.add(b, Nat.add(c, 1n+Nat.add(d, z)))), 1n+Nat.add(a, Nat.add(b, Nat.add(c, Nat.add(d, z)))), Equal.cong(Nat, Nat, y => Nat.add(a, Nat.add(b, Nat.add(c, y))), Nat.add(d, 1n+z), 1n+Nat.add(d, z), add_sr(d, z)), w4(a, b, c, Nat.add(d, z)))
+
+law t2:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(a, 1n+b, c, d, e) == 1n+T5(a, b, c, d, e) : Nat}
+
+def t2(a, b, c, d, e):
+  add_sr(a, Nat.add(b, Nat.add(c, Nat.add(d, e))))
+
+law t3:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(a, b, 1n+c, d, e) == 1n+T5(a, b, c, d, e) : Nat}
+
+def t3(a, b, c, d, e):
+  w3(a, b, Nat.add(c, Nat.add(d, e)))
+
+law t4:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(a, b, c, 1n+d, e) == 1n+T5(a, b, c, d, e) : Nat}
+
+def t4(a, b, c, d, e):
+  w4(a, b, c, Nat.add(d, e))
+
+law t5:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(a, b, c, d, 1n+e) == 1n+T5(a, b, c, d, e) : Nat}
+
+def t5(a, b, c, d, e):
+  w5(a, b, c, d, e)
+
+law mv13:
+  for +a: Nat
+  for +m: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(Nat.add(a, m), b, c, d, e) == T5(a, b, Nat.add(c, m), d, e) : Nat}
+
+def mv13(a, m, b, c, d, e):
+  match m:
+    case 0n:
+      Equal.trans(Nat, T5(Nat.add(a, 0n), b, c, d, e), T5(a, b, c, d, e), T5(a, b, Nat.add(c, 0n), d, e), Equal.cong(Nat, Nat, z => T5(z, b, c, d, e), Nat.add(a, 0n), a, add_zero_r(a)), Equal.cong(Nat, Nat, z => T5(a, b, z, d, e), c, Nat.add(c, 0n), Equal.sym(Nat, Nat.add(c, 0n), c, add_zero_r(c))))
+    case 1n+p:
+      Equal.trans(Nat, T5(Nat.add(a, 1n+p), b, c, d, e), T5(1n+Nat.add(a, p), b, c, d, e), T5(a, b, Nat.add(c, 1n+p), d, e), Equal.cong(Nat, Nat, z => T5(z, b, c, d, e), Nat.add(a, 1n+p), 1n+Nat.add(a, p), add_sr(a, p)), Equal.trans(Nat, T5(1n+Nat.add(a, p), b, c, d, e), T5(a, b, 1n+Nat.add(c, p), d, e), T5(a, b, Nat.add(c, 1n+p), d, e), Equal.trans(Nat, T5(1n+Nat.add(a, p), b, c, d, e), 1n+T5(a, b, Nat.add(c, p), d, e), T5(a, b, 1n+Nat.add(c, p), d, e), Equal.cong(Nat, Nat, z => 1n+z, T5(Nat.add(a, p), b, c, d, e), T5(a, b, Nat.add(c, p), d, e), mv13(a, p, b, c, d, e)), Equal.sym(Nat, T5(a, b, 1n+Nat.add(c, p), d, e), 1n+T5(a, b, Nat.add(c, p), d, e), t3(a, b, Nat.add(c, p), d, e))), Equal.cong(Nat, Nat, z => T5(a, b, z, d, e), 1n+Nat.add(c, p), Nat.add(c, 1n+p), Equal.sym(Nat, Nat.add(c, 1n+p), 1n+Nat.add(c, p), add_sr(c, p)))))
+
+law mv15:
+  for +a: Nat
+  for +m: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(Nat.add(a, m), b, c, d, e) == T5(a, b, c, d, Nat.add(e, m)) : Nat}
+
+def mv15(a, m, b, c, d, e):
+  match m:
+    case 0n:
+      Equal.trans(Nat, T5(Nat.add(a, 0n), b, c, d, e), T5(a, b, c, d, e), T5(a, b, c, d, Nat.add(e, 0n)), Equal.cong(Nat, Nat, z => T5(z, b, c, d, e), Nat.add(a, 0n), a, add_zero_r(a)), Equal.cong(Nat, Nat, z => T5(a, b, c, d, z), e, Nat.add(e, 0n), Equal.sym(Nat, Nat.add(e, 0n), e, add_zero_r(e))))
+    case 1n+p:
+      Equal.trans(Nat, T5(Nat.add(a, 1n+p), b, c, d, e), T5(1n+Nat.add(a, p), b, c, d, e), T5(a, b, c, d, Nat.add(e, 1n+p)), Equal.cong(Nat, Nat, z => T5(z, b, c, d, e), Nat.add(a, 1n+p), 1n+Nat.add(a, p), add_sr(a, p)), Equal.trans(Nat, T5(1n+Nat.add(a, p), b, c, d, e), T5(a, b, c, d, 1n+Nat.add(e, p)), T5(a, b, c, d, Nat.add(e, 1n+p)), Equal.trans(Nat, T5(1n+Nat.add(a, p), b, c, d, e), 1n+T5(a, b, c, d, Nat.add(e, p)), T5(a, b, c, d, 1n+Nat.add(e, p)), Equal.cong(Nat, Nat, z => 1n+z, T5(Nat.add(a, p), b, c, d, e), T5(a, b, c, d, Nat.add(e, p)), mv15(a, p, b, c, d, e)), Equal.sym(Nat, T5(a, b, c, d, 1n+Nat.add(e, p)), 1n+T5(a, b, c, d, Nat.add(e, p)), t5(a, b, c, d, Nat.add(e, p)))), Equal.cong(Nat, Nat, z => T5(a, b, c, d, z), 1n+Nat.add(e, p), Nat.add(e, 1n+p), Equal.sym(Nat, Nat.add(e, 1n+p), 1n+Nat.add(e, p), add_sr(e, p)))))
+
+law mv35:
+  for +c: Nat
+  for +m: Nat
+  for +a: Nat
+  for +b: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(a, b, Nat.add(c, m), d, e) == T5(a, b, c, d, Nat.add(e, m)) : Nat}
+
+def mv35(c, m, a, b, d, e):
+  match m:
+    case 0n:
+      Equal.trans(Nat, T5(a, b, Nat.add(c, 0n), d, e), T5(a, b, c, d, e), T5(a, b, c, d, Nat.add(e, 0n)), Equal.cong(Nat, Nat, z => T5(a, b, z, d, e), Nat.add(c, 0n), c, add_zero_r(c)), Equal.cong(Nat, Nat, z => T5(a, b, c, d, z), e, Nat.add(e, 0n), Equal.sym(Nat, Nat.add(e, 0n), e, add_zero_r(e))))
+    case 1n+p:
+      Equal.trans(Nat, T5(a, b, Nat.add(c, 1n+p), d, e), T5(a, b, 1n+Nat.add(c, p), d, e), T5(a, b, c, d, Nat.add(e, 1n+p)), Equal.cong(Nat, Nat, z => T5(a, b, z, d, e), Nat.add(c, 1n+p), 1n+Nat.add(c, p), add_sr(c, p)), Equal.trans(Nat, T5(a, b, 1n+Nat.add(c, p), d, e), T5(a, b, c, d, 1n+Nat.add(e, p)), T5(a, b, c, d, Nat.add(e, 1n+p)), Equal.trans(Nat, T5(a, b, 1n+Nat.add(c, p), d, e), 1n+T5(a, b, Nat.add(c, p), d, e), T5(a, b, c, d, 1n+Nat.add(e, p)), t3(a, b, Nat.add(c, p), d, e), Equal.trans(Nat, 1n+T5(a, b, Nat.add(c, p), d, e), 1n+T5(a, b, c, d, Nat.add(e, p)), T5(a, b, c, d, 1n+Nat.add(e, p)), Equal.cong(Nat, Nat, z => 1n+z, T5(a, b, Nat.add(c, p), d, e), T5(a, b, c, d, Nat.add(e, p)), mv35(c, p, a, b, d, e)), Equal.sym(Nat, T5(a, b, c, d, 1n+Nat.add(e, p)), 1n+T5(a, b, c, d, Nat.add(e, p)), t5(a, b, c, d, Nat.add(e, p))))), Equal.cong(Nat, Nat, z => T5(a, b, c, d, z), 1n+Nat.add(e, p), Nat.add(e, 1n+p), Equal.sym(Nat, Nat.add(e, 1n+p), 1n+Nat.add(e, p), add_sr(e, p)))))
+
+law len_snoc:
+  for +xs: +List<Nat>
+  for +x: Nat
+  {S.len(M.snoc(xs, x)) == 1n+S.len(xs) : Nat}
+
+def len_snoc(xs, x):
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      Equal.cong(Nat, Nat, z => 1n+z, S.len(M.snoc(rest, x)), 1n+S.len(rest), len_snoc(rest, x))
+
+law len_app:
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  {S.len(List.append(&2, Nat, a, b)) == Nat.add(S.len(a), S.len(b)) : Nat}
+
+def len_app(a, b):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      Equal.cong(Nat, Nat, z => 1n+z, S.len(List.append(&2, Nat, rest, b)), Nat.add(S.len(rest), S.len(b)), len_app(rest, b))
+
+law la_step:
+  for b: Bool
+  for +y: Nat
+  for +tl: +List<Nat>
+  for +rest: +List<Nat>
+  for +hb: {b == False{} : Bool}
+  for +ih: {S.len(tl) == S.len(rest) : Nat}
+  {S.len(M.remove_step(b, y, tl)) == 1n+S.len(rest) : Nat}
+
+def la_step(b, y, tl, rest, hb, ih):
+  match b:
+    case True{}:
+      Empty.absurd({S.len(M.remove_step(True{}, y, tl)) == 1n+S.len(rest) : Nat}, tt_ff(hb))
+    case False{}:
+      Equal.cong(Nat, Nat, z => 1n+z, S.len(tl), S.len(rest), ih)
+
+law len_abs:
+  for +x: Nat
+  for +xs: +List<Nat>
+  for +h: {Bool.not(M.mem(x, xs)) == True{} : Bool}
+  {S.len(M.remove(x, xs)) == S.len(xs) : Nat}
+
+def len_abs(x, xs, h):
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      la_step(Nat.is_eq(x, y), y, M.remove(x, rest), rest, nor_l(Nat.is_eq(x, y), M.mem(x, rest), h), len_abs(x, rest, nor_r(Nat.is_eq(x, y), M.mem(x, rest), h)))
+
+law abs_of_eq:
+  for +x: Nat
+  for +y: Nat
+  for +rest: +List<Nat>
+  for +k: {Nat.is_eq(x, y) == True{} : Bool}
+  for +hn: {Bool.not(M.mem(y, rest)) == True{} : Bool}
+  {Bool.not(M.mem(x, rest)) == True{} : Bool}
+
+def abs_of_eq(x, y, rest, k, hn):
+  %Equal.sym(Nat, x, y, eq_sound(x, y, k)) : {Bool.not(M.mem(_, rest)) == True{} : Bool}
+  hn
+
+law lr_step:
+  for b: Bool
+  for +x: Nat
+  for +y: Nat
+  for +rest: +List<Nat>
+  for +hb: {Nat.is_eq(x, y) == b : Bool}
+  for +hn: {Bool.not(M.mem(y, rest)) == True{} : Bool}
+  for +m: {Bool.or(b, M.mem(x, rest)) == True{} : Bool}
+  for ih: @k: {M.mem(x, rest) == True{} : Bool} -> {S.len(rest) == 1n+S.len(M.remove(x, rest)) : Nat}
+  {S.len(y <> rest) == 1n+S.len(M.remove_step(b, y, M.remove(x, rest))) : Nat}
+
+def lr_step(b, x, y, rest, hb, hn, m, ih):
+  match b:
+    case True{}:
+      Equal.cong(Nat, Nat, z => 1n+z, S.len(rest), S.len(M.remove(x, rest)), Equal.sym(Nat, S.len(M.remove(x, rest)), S.len(rest), len_abs(x, rest, abs_of_eq(x, y, rest, hb, hn))))
+    case False{}:
+      Equal.cong(Nat, Nat, z => 1n+z, S.len(rest), 1n+S.len(M.remove(x, rest)), ih(m))
+
+law len_remove:
+  for +x: Nat
+  for +xs: +List<Nat>
+  for +nd: {S.nodup(xs) == True{} : Bool}
+  for +m: {M.mem(x, xs) == True{} : Bool}
+  {S.len(xs) == 1n+S.len(M.remove(x, xs)) : Nat}
+
+def len_remove(x, xs, nd, m):
+  match xs:
+    case Nil{}:
+      Empty.absurd({0n == 1n+0n : Nat}, ff_tt(m))
+    case Con{+y, rest}:
+      lr_step(Nat.is_eq(x, y), x, y, rest, {==}, and_l(Bool.not(M.mem(y, rest)), S.nodup(rest), nd), m, k => len_remove(x, rest, and_r(Bool.not(M.mem(y, rest)), S.nodup(rest), nd), k))
+
+law kd_step:
+  for b: Bool
+  for +x: Nat
+  for +kk: +List<Nat>
+  for +dd: +List<Nat>
+  for +rest: +List<Nat>
+  for +ih: {Nat.add(S.len(kk), S.len(dd)) == S.len(rest) : Nat}
+  {Nat.add(S.len(M.keep_step(b, x, kk)), S.len(M.drop_step(b, x, dd))) == 1n+S.len(rest) : Nat}
+
+def kd_step(b, x, kk, dd, rest, ih):
+  match b:
+    case True{}:
+      Equal.cong(Nat, Nat, z => 1n+z, Nat.add(S.len(kk), S.len(dd)), S.len(rest), ih)
+    case False{}:
+      Equal.trans(Nat, Nat.add(S.len(kk), 1n+S.len(dd)), 1n+Nat.add(S.len(kk), S.len(dd)), 1n+S.len(rest), add_sr(S.len(kk), S.len(dd)), Equal.cong(Nat, Nat, z => 1n+z, Nat.add(S.len(kk), S.len(dd)), S.len(rest), ih))
+
+law len_kd:
+  for +q: +List<Nat>
+  for +u: +List<Nat>
+  {Nat.add(S.len(M.keep_users(q, u)), S.len(M.drop_users(q, u))) == S.len(q) : Nat}
+
+def len_kd(q, u):
+  match q:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      kd_step(M.mem(x, u), x, M.keep_users(rest, u), M.drop_users(rest, u), rest, len_kd(rest, u))
+
+law t_ex:
+  for +a: Nat
+  for +b: Nat
+  for +c: Nat
+  for +d: Nat
+  for +e: Nat
+  {T5(a, b, c, d, e) == T5(0n, b, 0n, d, Nat.add(e, Nat.add(a, c))) : Nat}
+
+def t_ex(a, b, c, d, e):
+  Equal.trans(Nat, T5(a, b, c, d, e), T5(0n, b, c, d, Nat.add(e, a)), T5(0n, b, 0n, d, Nat.add(e, Nat.add(a, c))), mv15(0n, a, b, c, d, e), Equal.trans(Nat, T5(0n, b, c, d, Nat.add(e, a)), T5(0n, b, 0n, d, Nat.add(Nat.add(e, a), c)), T5(0n, b, 0n, d, Nat.add(e, Nat.add(a, c))), mv35(0n, c, 0n, b, d, Nat.add(e, a)), Equal.cong(Nat, Nat, z => T5(0n, b, 0n, d, z), Nat.add(Nat.add(e, a), c), Nat.add(e, Nat.add(a, c)), add_assoc(e, a, c))))
+
+def S6(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Data:
+  {Nat.add(1n, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d))) == n : Nat}
+
+def S6W(s: M.World) -> Data:
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      S6(q, haf, htk, t, d, n)
+
+law s6_to:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +q2: +List<Nat>
+  for +h2: +List<Nat>
+  for +k2: +List<Nat>
+  for +t2: +List<Nat>
+  for +d2: +List<Nat>
+  for +eq: {T5(S.len(q2), S.len(h2), S.len(k2), S.len(t2), S.len(d2)) == T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)) : Nat}
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q2, h2, k2, t2, d2, n)
+
+def s6_to(q, h, k, t, d, n, q2, h2, k2, t2, d2, eq, Z):
+  Equal.trans(Nat, 1n+T5(S.len(q2), S.len(h2), S.len(k2), S.len(t2), S.len(d2)), 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), n, Equal.cong(Nat, Nat, z => 1n+z, T5(S.len(q2), S.len(h2), S.len(k2), S.len(t2), S.len(d2)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), eq), Z)
+
+law s6_up:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +q2: +List<Nat>
+  for +h2: +List<Nat>
+  for +k2: +List<Nat>
+  for +t2: +List<Nat>
+  for +d2: +List<Nat>
+  for +eq: {T5(S.len(q2), S.len(h2), S.len(k2), S.len(t2), S.len(d2)) == 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)) : Nat}
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q2, h2, k2, t2, d2, 1n+n)
+
+def s6_up(q, h, k, t, d, n, q2, h2, k2, t2, d2, eq, Z):
+  Equal.trans(Nat, 1n+T5(S.len(q2), S.len(h2), S.len(k2), S.len(t2), S.len(d2)), 1n+(1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d))), 1n+n, Equal.cong(Nat, Nat, z => 1n+z, T5(S.len(q2), S.len(h2), S.len(k2), S.len(t2), S.len(d2)), 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), eq), Equal.cong(Nat, Nat, z => 1n+z, 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), n, Z))
+
+law s6_init:
+  S6W(M.init())
+
+def s6_init():
+  {==}
+
+law s6_flush_c:
+  for +x: Nat
+  for +rest: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(x <> rest, h, k, t, d, n)
+  S6(rest, h, k, M.snoc(t, x), d, n)
+
+def s6_flush_c(x, rest, h, k, t, d, n, Z):
+  s6_to(x <> rest, h, k, t, d, n, rest, h, k, M.snoc(t, x), d, Equal.trans(Nat, T5(S.len(rest), S.len(h), S.len(k), S.len(M.snoc(t, x)), S.len(d)), T5(S.len(rest), S.len(h), S.len(k), 1n+S.len(t), S.len(d)), T5(S.len(x <> rest), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(rest), S.len(h), S.len(k), z, S.len(d)), S.len(M.snoc(t, x)), 1n+S.len(t), len_snoc(t, x)), t4(S.len(rest), S.len(h), S.len(k), S.len(t), S.len(d))), Z)
+
+law s6_flush:
+  for +s: M.World
+  for +Z: S6W(s)
+  S6W(M.flush(s))
+
+def s6_flush(s, Z):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      match q i:
+        case Nil{} False{}:
+          Z
+        case Nil{} True{}:
+          Z
+        case Con{+x, rest} False{}:
+          Z
+        case Con{+x, rest} True{}:
+          s6_flush_c(x, rest, haf, htk, t, d, n, Z)
+
+law s6_snoc_q:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(q, h, k, t, d, n)
+  S6(M.snoc(q, n), h, k, t, d, 1n+n)
+
+def s6_snoc_q(q, h, k, t, d, n, Z):
+  s6_up(q, h, k, t, d, n, M.snoc(q, n), h, k, t, d, Equal.cong(Nat, Nat, z => T5(z, S.len(h), S.len(k), S.len(t), S.len(d)), S.len(M.snoc(q, n)), 1n+S.len(q), len_snoc(q, n)), Z)
+
+law s6_snoc_h:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q, M.snoc(h, n), k, t, d, 1n+n)
+
+def s6_snoc_h(q, h, k, t, d, n, Z):
+  s6_up(q, h, k, t, d, n, q, M.snoc(h, n), k, t, d, Equal.trans(Nat, T5(S.len(q), S.len(M.snoc(h, n)), S.len(k), S.len(t), S.len(d)), T5(S.len(q), 1n+S.len(h), S.len(k), S.len(t), S.len(d)), 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), z, S.len(k), S.len(t), S.len(d)), S.len(M.snoc(h, n)), 1n+S.len(h), len_snoc(h, n)), t2(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d))), Z)
+
+law s6_snoc_k:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q, h, M.snoc(k, n), t, d, 1n+n)
+
+def s6_snoc_k(q, h, k, t, d, n, Z):
+  s6_up(q, h, k, t, d, n, q, h, M.snoc(k, n), t, d, Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(M.snoc(k, n)), S.len(t), S.len(d)), T5(S.len(q), S.len(h), 1n+S.len(k), S.len(t), S.len(d)), 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), S.len(h), z, S.len(t), S.len(d)), S.len(M.snoc(k, n)), 1n+S.len(k), len_snoc(k, n)), t3(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d))), Z)
+
+law s6_snoc_d:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q, h, k, t, M.snoc(d, n), 1n+n)
+
+def s6_snoc_d(q, h, k, t, d, n, Z):
+  s6_up(q, h, k, t, d, n, q, h, k, t, M.snoc(d, n), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(M.snoc(d, n))), T5(S.len(q), S.len(h), S.len(k), S.len(t), 1n+S.len(d)), 1n+T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), S.len(h), S.len(k), S.len(t), z), S.len(M.snoc(d, n)), 1n+S.len(d), len_snoc(d, n)), t5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d))), Z)
+
+law s6_send_route:
+  for fu: Bool
+  for tk: Bool
+  for +s: M.World
+  for +Z: S6W(s)
+  S6W(M.send_route(fu, tk, s))
+
+def s6_send_route(fu, tk, s, Z):
+  match fu:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_flush(M.W{M.snoc(q, n), haf, htk, t, d, M.snoc(u, n), tt, rl, 1n+n, tk, i, g}, s6_snoc_q(q, haf, htk, t, d, n, Z))
+    case False{}:
+      match tk:
+        case True{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              s6_snoc_k(q, haf, htk, t, d, n, Z)
+        case False{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              s6_flush(M.W{M.snoc(q, n), haf, htk, t, d, u, tt, rl, 1n+n, tk, i, g}, s6_snoc_q(q, haf, htk, t, d, n, Z))
+
+law s6_send_auto:
+  for fu: Bool
+  for +s: M.World
+  for +Z: S6W(s)
+  S6W(M.send_auto(fu, s))
+
+def s6_send_auto(fu, s, Z):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      s6_send_route(fu, tk, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, Z)
+
+law s6_exit:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(q, h, k, t, d, n)
+  S6([], h, [], t, List.append(&2, Nat, d, List.append(&2, Nat, q, k)), n)
+
+def s6_exit(q, h, k, t, d, n, Z):
+  s6_to(q, h, k, t, d, n, [], h, [], t, List.append(&2, Nat, d, List.append(&2, Nat, q, k)), Equal.trans(Nat, T5(0n, S.len(h), 0n, S.len(t), S.len(List.append(&2, Nat, d, List.append(&2, Nat, q, k)))), T5(0n, S.len(h), 0n, S.len(t), Nat.add(S.len(d), Nat.add(S.len(q), S.len(k)))), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(0n, S.len(h), 0n, S.len(t), z), S.len(List.append(&2, Nat, d, List.append(&2, Nat, q, k))), Nat.add(S.len(d), Nat.add(S.len(q), S.len(k))), Equal.trans(Nat, S.len(List.append(&2, Nat, d, List.append(&2, Nat, q, k))), Nat.add(S.len(d), S.len(List.append(&2, Nat, q, k))), Nat.add(S.len(d), Nat.add(S.len(q), S.len(k))), len_app(d, List.append(&2, Nat, q, k)), Equal.cong(Nat, Nat, z => Nat.add(S.len(d), z), S.len(List.append(&2, Nat, q, k)), Nat.add(S.len(q), S.len(k)), len_app(q, k)))), Equal.sym(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(0n, S.len(h), 0n, S.len(t), Nat.add(S.len(d), Nat.add(S.len(q), S.len(k)))), t_ex(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)))), Z)
+
+law s6_tb:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +u: +List<Nat>
+  for +Z: S6(q, h, k, t, d, n)
+  S6(M.keep_users(q, u), h, List.append(&2, Nat, k, M.drop_users(q, u)), t, d, n)
+
+def s6_tb(q, h, k, t, d, n, u, Z):
+  s6_to(q, h, k, t, d, n, M.keep_users(q, u), h, List.append(&2, Nat, k, M.drop_users(q, u)), t, d, Equal.trans(Nat, T5(S.len(M.keep_users(q, u)), S.len(h), S.len(List.append(&2, Nat, k, M.drop_users(q, u))), S.len(t), S.len(d)), T5(Nat.add(S.len(M.keep_users(q, u)), S.len(M.drop_users(q, u))), S.len(h), S.len(k), S.len(t), S.len(d)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(M.keep_users(q, u)), S.len(h), S.len(List.append(&2, Nat, k, M.drop_users(q, u))), S.len(t), S.len(d)), T5(S.len(M.keep_users(q, u)), S.len(h), Nat.add(S.len(k), S.len(M.drop_users(q, u))), S.len(t), S.len(d)), T5(Nat.add(S.len(M.keep_users(q, u)), S.len(M.drop_users(q, u))), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(M.keep_users(q, u)), S.len(h), z, S.len(t), S.len(d)), S.len(List.append(&2, Nat, k, M.drop_users(q, u))), Nat.add(S.len(k), S.len(M.drop_users(q, u))), len_app(k, M.drop_users(q, u))), Equal.sym(Nat, T5(Nat.add(S.len(M.keep_users(q, u)), S.len(M.drop_users(q, u))), S.len(h), S.len(k), S.len(t), S.len(d)), T5(S.len(M.keep_users(q, u)), S.len(h), Nat.add(S.len(k), S.len(M.drop_users(q, u))), S.len(t), S.len(d)), mv13(S.len(M.keep_users(q, u)), S.len(M.drop_users(q, u)), S.len(h), S.len(k), S.len(t), S.len(d)))), Equal.cong(Nat, Nat, z => T5(z, S.len(h), S.len(k), S.len(t), S.len(d)), Nat.add(S.len(M.keep_users(q, u)), S.len(M.drop_users(q, u))), S.len(q), len_kd(q, u))), Z)
+
+law s6_te:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +Z: S6(q, h, k, t, d, n)
+  S6(List.append(&2, Nat, q, k), h, [], t, d, n)
+
+def s6_te(q, h, k, t, d, n, Z):
+  s6_to(q, h, k, t, d, n, List.append(&2, Nat, q, k), h, [], t, d, Equal.trans(Nat, T5(S.len(List.append(&2, Nat, q, k)), S.len(h), 0n, S.len(t), S.len(d)), T5(Nat.add(S.len(q), S.len(k)), S.len(h), 0n, S.len(t), S.len(d)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(z, S.len(h), 0n, S.len(t), S.len(d)), S.len(List.append(&2, Nat, q, k)), Nat.add(S.len(q), S.len(k)), len_app(q, k)), mv13(S.len(q), S.len(k), S.len(h), 0n, S.len(t), S.len(d))), Z)
+
+law s6_dif:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +nd: {S.nodup(h) == True{} : Bool}
+  for +m: {M.mem(id, h) == True{} : Bool}
+  for +Z: S6(q, h, k, t, d, n)
+  S6(M.snoc(q, id), M.remove(id, h), k, t, d, n)
+
+def s6_dif(q, h, k, t, d, n, id, nd, m, Z):
+  s6_to(q, h, k, t, d, n, M.snoc(q, id), M.remove(id, h), k, t, d, Equal.trans(Nat, T5(S.len(M.snoc(q, id)), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), T5(1n+S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(z, S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), S.len(M.snoc(q, id)), 1n+S.len(q), len_snoc(q, id)), Equal.sym(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(1n+S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(S.len(q), 1n+S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), T5(1n+S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), z, S.len(k), S.len(t), S.len(d)), S.len(h), 1n+S.len(M.remove(id, h)), len_remove(id, h, nd, m)), t2(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d))))), Z)
+
+law s6_dtk:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +nd: {S.nodup(k) == True{} : Bool}
+  for +m: {M.mem(id, k) == True{} : Bool}
+  for +Z: S6(q, h, k, t, d, n)
+  S6(M.snoc(q, id), h, M.remove(id, k), t, d, n)
+
+def s6_dtk(q, h, k, t, d, n, id, nd, m, Z):
+  s6_to(q, h, k, t, d, n, M.snoc(q, id), h, M.remove(id, k), t, d, Equal.trans(Nat, T5(S.len(M.snoc(q, id)), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), T5(1n+S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(z, S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), S.len(M.snoc(q, id)), 1n+S.len(q), len_snoc(q, id)), Equal.sym(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(1n+S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(S.len(q), S.len(h), 1n+S.len(M.remove(id, k)), S.len(t), S.len(d)), T5(1n+S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), S.len(h), z, S.len(t), S.len(d)), S.len(k), 1n+S.len(M.remove(id, k)), len_remove(id, k, nd, m)), t3(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d))))), Z)
+
+law s6_drh:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +nd: {S.nodup(h) == True{} : Bool}
+  for +m: {M.mem(id, h) == True{} : Bool}
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q, M.remove(id, h), k, t, M.snoc(d, id), n)
+
+def s6_drh(q, h, k, t, d, n, id, nd, m, Z):
+  s6_to(q, h, k, t, d, n, q, M.remove(id, h), k, t, M.snoc(d, id), Equal.trans(Nat, T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(M.snoc(d, id))), 1n+T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(M.snoc(d, id))), T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), 1n+S.len(d)), 1n+T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), z), S.len(M.snoc(d, id)), 1n+S.len(d), len_snoc(d, id)), t5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d))), Equal.sym(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), 1n+T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(S.len(q), 1n+S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), 1n+T5(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), z, S.len(k), S.len(t), S.len(d)), S.len(h), 1n+S.len(M.remove(id, h)), len_remove(id, h, nd, m)), t2(S.len(q), S.len(M.remove(id, h)), S.len(k), S.len(t), S.len(d))))), Z)
+
+law s6_drk:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +nd: {S.nodup(k) == True{} : Bool}
+  for +m: {M.mem(id, k) == True{} : Bool}
+  for +Z: S6(q, h, k, t, d, n)
+  S6(q, h, M.remove(id, k), t, M.snoc(d, id), n)
+
+def s6_drk(q, h, k, t, d, n, id, nd, m, Z):
+  s6_to(q, h, k, t, d, n, q, h, M.remove(id, k), t, M.snoc(d, id), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(M.snoc(d, id))), 1n+T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(M.snoc(d, id))), T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), 1n+S.len(d)), 1n+T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), z), S.len(M.snoc(d, id)), 1n+S.len(d), len_snoc(d, id)), t5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d))), Equal.sym(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), 1n+T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), Equal.trans(Nat, T5(S.len(q), S.len(h), S.len(k), S.len(t), S.len(d)), T5(S.len(q), S.len(h), 1n+S.len(M.remove(id, k)), S.len(t), S.len(d)), 1n+T5(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d)), Equal.cong(Nat, Nat, z => T5(S.len(q), S.len(h), z, S.len(t), S.len(d)), S.len(k), 1n+S.len(M.remove(id, k)), len_remove(id, k, nd, m)), t3(S.len(q), S.len(h), S.len(M.remove(id, k)), S.len(t), S.len(d))))), Z)
+
+law s6_deliver_if:
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  for +m: {M.mem(id, S.held_af(s)) == True{} : Bool}
+  S6W(M.deliver_if(True{}, id, s))
+
+def s6_deliver_if(id, s, I, Z, m):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      s6_flush(M.W{M.snoc(q, id), M.remove(id, haf), htk, t, d, u, tt, M.snoc(rl, id), n, tk, i, g}, s6_dif(q, haf, htk, t, d, n, id, pnh(q, haf, htk, t, d, n, I), m, Z))
+
+law s6_deliver_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  S6W(M.deliver_tk(b, id, s))
+
+def s6_deliver_tk(b, id, s, I, Z, hb):
+  match b:
+    case False{}:
+      Z
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_flush(M.W{M.snoc(q, id), haf, M.remove(id, htk), t, d, u, tt, M.snoc(rl, id), n, tk, i, g}, s6_dtk(q, haf, htk, t, d, n, id, pnk(q, haf, htk, t, d, n, I), hb({==}), Z))
+
+law s6_deliver_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  for ha: @k: {a == True{} : Bool} -> {M.mem(id, S.held_af(s)) == True{} : Bool}
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  S6W(M.deliver_pick(a, b, id, s))
+
+def s6_deliver_pick(a, b, id, s, I, Z, ha, hb):
+  match a:
+    case True{}:
+      s6_deliver_if(id, s, I, Z, ha({==}))
+    case False{}:
+      s6_deliver_tk(b, id, s, I, Z, hb)
+
+law s6_drop_if:
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  for +m: {M.mem(id, S.held_af(s)) == True{} : Bool}
+  S6W(M.drop_if(True{}, id, s))
+
+def s6_drop_if(id, s, I, Z, m):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      s6_drh(q, haf, htk, t, d, n, id, pnh(q, haf, htk, t, d, n, I), m, Z)
+
+law s6_drop_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  S6W(M.drop_tk(b, id, s))
+
+def s6_drop_tk(b, id, s, I, Z, hb):
+  match b:
+    case False{}:
+      Z
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_drk(q, haf, htk, t, d, n, id, pnk(q, haf, htk, t, d, n, I), hb({==}), Z)
+
+law s6_drop_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  for ha: @k: {a == True{} : Bool} -> {M.mem(id, S.held_af(s)) == True{} : Bool}
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  S6W(M.drop_pick(a, b, id, s))
+
+def s6_drop_pick(a, b, id, s, I, Z, ha, hb):
+  match a:
+    case True{}:
+      s6_drop_if(id, s, I, Z, ha({==}))
+    case False{}:
+      s6_drop_tk(b, id, s, I, Z, hb)
+
+law s6_step:
+  for e: M.Ev
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  S6W(M.step(e, s))
+
+def s6_step(e, s, I, Z):
+  match e:
+    case M.Send{fu, r}:
+      match r:
+        case M.Auto{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  Z
+                case False{}:
+                  s6_send_auto(fu, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, False{}}, Z)
+        case M.AskFirst{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  Z
+                case False{}:
+                  s6_snoc_h(q, haf, htk, t, d, n, Z)
+        case M.RouteDrop{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  Z
+                case False{}:
+                  s6_snoc_d(q, haf, htk, t, d, n, Z)
+    case M.Idle{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              Z
+            case False{}:
+              s6_flush(M.W{q, haf, htk, t, d, u, tt, rl, n, tk, True{}, False{}}, Z)
+    case M.Busy{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          Z
+    case M.Exit{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_exit(q, haf, htk, t, d, n, Z)
+    case M.TakeoverBegin{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_tb(q, haf, htk, t, d, n, u, Z)
+    case M.TakeoverEnd{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_flush(M.W{List.append(&2, Nat, q, htk), haf, [], t, d, u, tt, rl, n, False{}, i, g}, s6_te(q, haf, htk, t, d, n, Z))
+    case M.UserDeliver{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_deliver_pick(Bool.and(M.mem(id, haf), Bool.not(g)), Bool.and(M.mem(id, htk), Bool.not(g)), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I, Z, k => and_l(M.mem(id, haf), Bool.not(g), k), k => and_l(M.mem(id, htk), Bool.not(g), k))
+    case M.UserDrop{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          s6_drop_pick(M.mem(id, haf), M.mem(id, htk), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I, Z, k => k, k => k)
+
+law m6_of:
+  for +s: M.World
+  for +Z: S6W(s)
+  {Nat.add(1n, Nat.add(S.len(S.queue(s)), Nat.add(S.len(S.held_af(s)), Nat.add(S.len(S.held_tk(s)), Nat.add(S.len(S.typed(s)), S.len(S.dropped(s))))))) == S.next_id(s) : Nat}
+
+def m6_of(s, Z):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      Z
+
+law m6_run:
+  for +evs: +List<M.Ev>
+  for +s: M.World
+  for +I: InvW(s)
+  for +Z: S6W(s)
+  {Nat.add(1n, Nat.add(S.len(S.queue(M.run(evs, s))), Nat.add(S.len(S.held_af(M.run(evs, s))), Nat.add(S.len(S.held_tk(M.run(evs, s))), Nat.add(S.len(S.typed(M.run(evs, s))), S.len(S.dropped(M.run(evs, s)))))))) == S.next_id(M.run(evs, s)) : Nat}
+
+def m6_run(evs, s, I, Z):
+  match evs:
+    case Nil{}:
+      m6_of(s, Z)
+    case Con{e, rest}:
+      m6_run(rest, M.step(e, s), invw_step(e, s, I), s6_step(e, s, I, Z))
+
+def Laws.m6_no_silent_loss(evs):
+  m6_run(evs, M.init(), invw_init(), s6_init())
