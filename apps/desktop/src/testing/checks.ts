@@ -277,6 +277,7 @@ const d6 = (page: Page): Measure => {
     if (!declares(stateRules(page, el, ":focus-visible"), "outline", "outline-color", "box-shadow")) return { ok: false, value: { missing: "focus" }, selector: selectorOf(el) };
 
     const cursor = el.hasAttribute("data-reorderable") ? "grab" : "pointer";
+
     if (style.cursor !== cursor) return { ok: false, value: { cursor: style.cursor }, selector: selectorOf(el) };
   }
 

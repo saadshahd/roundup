@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
+import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { agent, door, event, USER } from "../testing/nodes";
 import { message, mountThread, sent } from "./threadFixture";
