@@ -53,7 +53,7 @@ export const darkTerminalTheme: ITheme = {
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 /** The theme for the webview's current scheme. */
-export const terminalThemeFor = (dark: boolean): ITheme => (dark ? darkTerminalTheme : lightTerminalTheme);
+const terminalThemeFor = (dark: boolean): ITheme => (dark ? darkTerminalTheme : lightTerminalTheme);
 
 /** Calls `apply` with the current scheme's theme now and again whenever the scheme changes; returns the stop function. Without `matchMedia` the scheme is light. */
 export const followScheme = (apply: (theme: ITheme) => void): (() => void) => {
