@@ -49,3 +49,19 @@ Main: `caf5589` (holds U144; open PRs #461 and #468 are loop machinery only). Me
 ## Gap selected
 
 The first unproved behavior is Request: nothing makes a Door act on a Thread message. Specified as **U146** (`scenarios/ui-first-journey.md`): `FAKE_CLAUDE_ON_PROMPT` in the fake `claude`, the Message's `delivered` status in the Thread, and the Todo in the Shelf, observed by `u146_` tests on the real Daemon. U145 (#440) and U113 keep their owners. **J4** repeats this audit once U146 is on main.
+
+# J4 journey audit
+
+Main: `b2a75608` (holds U146; open PR #515 is U150 only). Method: `rupd <tmp project>` (not attached) with `RUPD_SOCKET`, `ROUNDUP_CLAUDE_BIN` the fake `claude` and `FAKE_CLAUDE_ON_PROMPT='{"name":"todo_create","arguments":{"title":"$prompt"}}'`, then `just harness-real`'s Vite on port 5199, agent-browser (Chromium, light), `window.__checks()` read after each step. `u146_a_message_to_a_started_door_is_delivered_and_its_todo_shows` passes on this main (`pnpm exec vitest run src/testing/u146_door_answers.test.tsx`). Captures: `j4-request-1280.png` and `.checks.json`, `j4-review-todo-1280.png`, `j4-review-reopen-1280` and `j4-review-reopen-700` (`.png` and `.checks.json`). The Request step was captured at 1280 only. Nothing here ran a real `claude` or the native App.
+
+| Stage | Observed | Verdict |
+|---|---|---|
+| Enter | `start a Room` created the Room and started its Door; the Rail row read `idle`. Not re-run by keyboard or on the failure states. | Unproved as a stage; the pointer path holds as in J3. |
+| Request | `ship j4` typed in the Thread and sent: the Thread read `you → room note ship j4 delivered`, the Shelf listed `#1 ship j4`, the Room read `idle`, with no reload. The Terminal shows the fake's raw `^[[200~[from you, note] ship j4^[[201~` (the fake's tty echo, not a product claim). D3, D4, D8, D9 pass; D1, D2, D5, D6, D7, D10 fail. | Proved on the real Daemon with the fake `claude`; a real `claude` is F7's. The result is a Todo only: no Door summary exists (no method, `ui-first-journey.md` Capability paragraph). |
+| Understand | Not driven: the real Daemon holds one Room. | Unproved. |
+| Intervene | Not driven; U113 (#380) owns the Decision Card. | Unproved. |
+| Review | The Todo opens in its Drawer (`ship j4`, `no body`). After `rupd` was killed and restarted and the page reloaded, the Rail read `done`, `terminal gone` with `start Door`, the centre `Door stopped`, the Thread still showed the Message `delivered` and the Shelf the Todo. D6, D7 pass; D1, D2, D5, D10 fail, at 1280 and 700. Nothing ties the Todo to the Room: `todo.create` has no Home (`Todo` has no Room field, T12 is specified but unbuilt), and the Shelf lists the whole Project. | Reopen proved. Finding the Door's work from its Room is unproved: no Home, no Room view. |
+
+## Gap selected
+
+The first unproved behavior is Review: the Door's work cannot be found from its Room. T12 and T13 (Home, `todo.move`) and U151, U157 and U158 (Home line, move, follow the Room) are specified with no implementation Issue; this audit files those two (#516, #517). T14 (#518: an Agent's Todo takes its Room as Home) and U159 (#519: the Shelf's `this room`) are new. Each Issue is blocked by the one before it. **J5** (#520) repeats this audit once they are on main. The D1, D2, D5, D10 failures predate this audit and keep their owners (#382, #385, #386).
