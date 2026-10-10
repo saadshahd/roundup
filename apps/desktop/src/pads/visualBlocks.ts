@@ -18,6 +18,8 @@ export type VisualKind = {
   mount: VisualMount;
   /** Mermaid shows its text while the cursor is in it; a Drawing is edited only on its canvas. */
   textWhenFocused: boolean;
+  /** Typing `command` alone in a paragraph and pressing Enter replaces it with an empty block of this kind. */
+  insert?: { command: string; language: string; body: string };
 };
 
 type Block = { node: DocumentNode; pos: number; kind: VisualKind };
@@ -56,6 +58,21 @@ export const visualBlocks = (kinds: ReadonlyMap<string, VisualKind>, readonly: (
   return new Plugin({
     props: {
       handleDOMEvents: { keydown: arm, mousedown: arm },
+      handleKeyDown(view, event) {
+        if (event.key !== "Enter" || readonly()) return false;
+
+        const { $from, empty } = view.state.selection;
+        const command = $from.parent.type.name === "paragraph" ? $from.parent.textContent : "";
+        const insert = [...kinds.values()].find((kind) => kind.insert?.command === command)?.insert;
+        const codeBlock = view.state.schema.nodes.code_block;
+
+        if (!insert || !empty || !codeBlock) return false;
+        const block = codeBlock.create({ language: insert.language }, view.state.schema.text(insert.body));
+
+        view.dispatch(view.state.tr.replaceWith($from.before(), $from.after(), block));
+
+        return true;
+      },
       decorations(state) {
         const decorations: Decoration[] = [];
         const locked = readonly();

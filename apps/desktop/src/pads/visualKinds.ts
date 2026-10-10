@@ -30,7 +30,7 @@ export const bundledRenderers: Renderers = {
       // SAFETY: CanvasProps lists the props this Pad passes, each a subset of what Excalidraw accepts and reports.
       Excalidraw: (props) => createElement(module.Excalidraw, props as never),
       // SAFETY: a skeleton is Excalidraw's own input shape, and its output elements all carry `id` and `version`.
-      convertToExcalidrawElements: (skeleton) => module.convertToExcalidrawElements(skeleton as never),
+      convertToExcalidrawElements: (skeleton, options) => module.convertToExcalidrawElements(skeleton as never, options),
     };
   },
 };
@@ -59,5 +59,5 @@ export const useRenderers = (next: Renderers) => {
 export const visualKinds = () =>
   new Map<string, VisualKind>([
     ["mermaid", { textWhenFocused: true, mount: lazy(renderers.mermaid, mountMermaid) }],
-    ["excalidraw", { textWhenFocused: false, mount: lazy(renderers.canvas, mountDrawing) }],
+    ["excalidraw", { textWhenFocused: false, insert: { command: "/drawing", language: "excalidraw", body: '{"type":"excalidraw","version":2,"elements":[]}' }, mount: lazy(renderers.canvas, mountDrawing) }],
   ]);

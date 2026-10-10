@@ -10,9 +10,11 @@ type Props = CanvasProps;
 
 let props: Props | undefined;
 
+let loads: unknown[] = [];
+
 const fake: CanvasApi = {
   // The skeleton expands to full elements.
-  convertToExcalidrawElements: (skeleton) => skeleton.map((element, index) => ({ id: String(element.id ?? `e${index}`), version: 1 })),
+  convertToExcalidrawElements: (skeleton, options) => (loads.push(options), skeleton).map((element, index) => ({ id: String(element.id ?? `e${index}`), version: 1 })),
   Excalidraw: (next) => {
     props = next;
 
@@ -31,6 +33,7 @@ afterEach(() => {
   cleanup();
   useRenderers(bundledRenderers);
   props = undefined;
+  loads = [];
 });
 
 const current = () => {
@@ -155,5 +158,88 @@ describe("u149 a Drawing renders and edits in the Pad", () => {
 
     await screen.findByTestId("canvas");
     expect(document.querySelector("[onerror], .visual-drawing img")).toBeNull();
+  });
+
+  it("u149_a_stored_scene_reloads_without_new_ids_so_bindings_hold", async () => {
+    await openShelf([padOf("note", USER, block)]);
+    await openPad("note");
+    await screen.findByTestId("canvas");
+
+    expect(loads).toEqual([{ regenerateIds: false }]);
+  });
+
+  it("u149_adding_a_shape_then_leaving_writes_once_with_only_the_block_changed", async () => {
+    const { app, connected } = await openShelf([padOf("note", USER, `before\n\n${block}\nafter\n`)]);
+    const field = await openPad("note");
+    const host = (await screen.findByTestId("canvas")).closest(".visual-drawing")!;
+
+    fireEvent.pointerDown(host);
+    current().onChange([...current().initialData.elements, { id: "new", version: 1 }]);
+    fireEvent.pointerUp(window);
+    fireEvent.focusOut(field);
+    connected.drawer.close();
+
+    await waitFor(() => expect(writes(app.calls)).toHaveLength(1));
+    const text = String(Object.entries(writes(app.calls)[0]?.params ?? {}).find(([key]) => key === "text")?.[1]);
+    const body = text.split("\n").find((line) => line.startsWith("{")) ?? "";
+
+    expect(text.startsWith("before\n\n```excalidraw\n")).toBe(true);
+    expect(text.endsWith("```\n\nafter\n")).toBe(true);
+    expect(JSON.parse(body).elements).toHaveLength(4);
+  });
+
+  it("u149_a_load_time_version_bump_is_not_an_edit", async () => {
+    const source = `${block}`;
+    const { app, connected } = await openShelf([padOf("note", USER, source)]);
+    const field = await openPad("note");
+    const host = (await screen.findByTestId("canvas")).closest(".visual-drawing")!;
+    const [first, ...rest] = current().initialData.elements;
+
+    current().onChange([{ ...first!, version: 5 }, ...rest]);
+    fireEvent.pointerDown(host);
+    fireEvent.pointerUp(window);
+    fireEvent.focusOut(field);
+    connected.drawer.close();
+
+    await new Promise((done) => setTimeout(done, 0));
+    expect(writes(app.calls)).toHaveLength(0);
+  });
+
+  it("u149_a_dirty_draft_shows_the_conflict_line_after_pad_changed", async () => {
+    const { app, state } = await openShelf([padOf("note", USER, `plain\n\n${block}`)]);
+    const field = await openPad("note");
+
+    fireEvent.focus(field);
+    fireEvent.input(field, { target: { value: "plain edited" } });
+    state.pads = [padOf("note", USER, `plain\n\n${block}\nagent line\n`)];
+    app.emit({ actor: AGENT, name: "pad.changed", data: { name: "note" } });
+
+    await screen.findByText("changed by auth-refactor");
+  });
+
+  it("u149_an_unsafe_link_in_a_scene_makes_no_live_link", async () => {
+    await openShelf([padOf("note", AGENT, '```excalidraw\n{"type":"excalidraw","version":2,"elements":[{"type":"rectangle","id":"r","link":"javascript:alert(1)"}]}\n```\n')]);
+    await openPad("note");
+
+    await screen.findByTestId("canvas");
+    expect(document.querySelector('.visual-drawing a[href^="javascript"]')).toBeNull();
+  });
+
+  it("u149_invalid_json_leaves_the_rest_of_the_pad_editable", async () => {
+    await openShelf([padOf("note", USER, "before\n\n```excalidraw\n{not json\n```\n\nafter\n")]);
+    const field = await openPad("note");
+
+    await waitFor(() => expect(document.querySelectorAll(".visual-error")).toHaveLength(1));
+    expect(screen.getByRole("textbox", { name: "Pad body" }).getAttribute("contenteditable")).toBe("true");
+    expect(field.readOnly).toBe(false);
+  });
+
+  it("u149_a_rejected_scene_leaves_the_rest_of_the_pad_editable", async () => {
+    await openShelf([padOf("note", USER, 'before\n\n```excalidraw\n{"type":"other"}\n```\n')]);
+    const field = await openPad("note");
+
+    await waitFor(() => expect(document.querySelectorAll(".visual-error")).toHaveLength(1));
+    expect(screen.getByRole("textbox", { name: "Pad body" }).getAttribute("contenteditable")).toBe("true");
+    expect(field.readOnly).toBe(false);
   });
 });

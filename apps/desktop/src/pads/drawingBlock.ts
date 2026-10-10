@@ -17,8 +17,8 @@ export type CanvasProps = {
 /** The calls the Pad makes of Excalidraw. */
 export type CanvasApi = {
   Excalidraw: ComponentType<CanvasProps>;
-  /** Expands skeletons: a shape with a `label`, an arrow with `start` and `end` ids. */
-  convertToExcalidrawElements(skeleton: Skeleton[]): CanvasElement[];
+  /** Expands skeletons: a shape with a `label`, an arrow with `start` and `end` ids. Ids are kept, so a stored scene's bindings still point at their elements. */
+  convertToExcalidrawElements(skeleton: Skeleton[], options: { regenerateIds: false }): CanvasElement[];
 };
 
 export type Skeleton = { type: string; id?: string | undefined };
@@ -67,7 +67,7 @@ export const mountDrawing = (canvas: CanvasApi): VisualMount => (host, { text, r
   window.addEventListener("pointerup", up);
 
   try {
-    const elements = canvas.convertToExcalidrawElements(parse(text));
+    const elements = canvas.convertToExcalidrawElements(parse(text), { regenerateIds: false });
     let last = signature(elements);
 
     root = createRoot(host);
@@ -78,7 +78,15 @@ export const mountDrawing = (canvas: CanvasApi): VisualMount => (host, { text, r
         theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
         UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, export: false, saveAsImage: false } },
         onChange: (current) => {
-          if (readonly || !touched || signature(current) === last) return;
+          if (readonly) return;
+
+          if (!touched) {
+            last = signature(current);
+
+            return;
+          }
+
+          if (signature(current) === last) return;
           last = signature(current);
           pending = JSON.stringify({ type: "excalidraw", version: 2, elements: current.filter((element) => !element.isDeleted) });
 
