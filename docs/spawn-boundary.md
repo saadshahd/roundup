@@ -17,7 +17,7 @@ If a Door runs Claude Code, it can start children with `bash -c 'claude -p ...'`
 | Process-tree scan | Nothing; it flags a vendor binary not registered as a Terminal | A renamed binary | not run here; best effort detection |
 | OS sandbox (Seatbelt) with a network allowlist | Could stop a vendor CLI reaching its API from Bash | Escapes, MCP servers and hooks run outside it; it restricts the Agent's real network use | not run: not chosen now |
 
-Scope: Doors only, as the user decided. Chosen: the tool allowlist as the guarantee (F2), `agent_spawn` as the way (F3), and the shim (F4) and the scan (F5) as best effort that fails loud. Dropped: the deny rule (the shim covers its case better) and the hook (it adds only absolute-path calls and costs a process per call). Left for the user: the sandbox.
+Scope: F2 to F5 cover Doors only, as the user decided; every Agent calls `agent_spawn` (F3). Chosen: the tool allowlist as the guarantee (F2), `agent_spawn` as the way (F3), and the shim (F4) and the scan (F5) as best effort that fails loud. Dropped: the deny rule (the shim covers its case better) and the hook (it adds only absolute-path calls and costs a process per call). Left for the user: the sandbox.
 
 ## Honest limits
 
@@ -35,7 +35,7 @@ No new RPC method. `agent.spawn` gains a caller rule for Actors of kind `agent` 
 
 - **P2.** A child started by `agent_spawn` gets a Worktree when the setting is on (G2), so with it on two Agents do not share a cwd; with it off they may.
 - **P4.** The flag, the shim names and `PATH` belong to `claude_code/`; the scan and the caller rule are vendor-neutral; `AgentAdapter` gains no seam.
-- **P6.** The child's Home is its Door's node, set by the Daemon, not by the caller (a `parent` param from an Agent is ignored).
+- **P6.** The Subagent's Home is the node of the Agent that started it, set by the Daemon, not by the caller (a `parent` param from an Agent is ignored).
 
 ## Open for the user
 
