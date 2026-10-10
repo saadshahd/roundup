@@ -259,7 +259,7 @@ const declares = (rules: CSSStyleRule[], ...properties: string[]) => rules.some(
 
 const clickTargets = (page: Page) => page.elements.filter((el) => el.matches(CLICK_TARGET) && !el.hasAttribute("disabled") && el.getAttribute("aria-disabled") !== "true");
 
-// D6: each click target has a hover and a focus style and a hit area of at least 24 px.
+// D6: each click target has a hover and a focus style, a pointer cursor (`grab` on a reorderable row) and a hit area of at least 24 px.
 const d6 = (page: Page): Measure => {
   const targets = clickTargets(page);
   let measured = 0;
@@ -276,6 +276,7 @@ const d6 = (page: Page): Measure => {
 
     if (!declares(stateRules(page, el, ":focus-visible"), "outline", "outline-color", "box-shadow")) return { ok: false, value: { missing: "focus" }, selector: selectorOf(el) };
 
+    // U155: a Todo row can be dragged, so its cursor is `grab`.
     if (style.cursor !== (el.hasAttribute("data-reorderable") ? "grab" : "pointer")) return { ok: false, value: { cursor: style.cursor }, selector: selectorOf(el) };
   }
 
