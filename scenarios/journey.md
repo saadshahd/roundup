@@ -1,6 +1,6 @@
 # First journey: keep the next work ready
 
-Module: `scenarios/` and `.agents/data/journey.md`. Ids: J1, J2, J3, J4, J5. The destination and acceptance evidence are defined once in `.agents/data/journey.md`; this row makes its existing next-gap rule runnable.
+Module: `scenarios/` and `.agents/data/journey.md`. Ids: J1, J2, J3, J4, J5, J6. The destination and acceptance evidence are defined once in `.agents/data/journey.md`; this row makes its existing next-gap rule runnable.
 
 **J1 audit the journey and queue its next missing behavior (policy).** Given current `origin/main` and the open PRs, inspect the five stages of `.agents/data/journey.md` in order. Audit the current UI even while prerequisite implementation is running. Run the applicable existing behavioral and rendered observers; record the main SHA, commands and artifact paths or run links for what actually passed. A test name, declared RPC, screenshot of a seeded success, or merged PR alone is not proof of a stage. State the first unproved behavior and the exact missing implementation or observer. Keep unobserved stages unproved. For each stage, inspect the rendered App at both journey viewports against the accepted product and design documents; show the failing interaction or screen and its user consequence. A missing backend capability does not prevent inspecting the UI already present.
 
@@ -17,3 +17,5 @@ Observer: independent review compares the cited evidence with the stage acceptan
 **J4 audit the journey after U146 (policy).** Follows J1's policy on the main that holds U146: it drives Request through `just harness-real` with a Door that acts on a Thread message, puts its evidence under `artifacts/ux/journey/`, and leaves a successor only as J1 says.
 
 **J5 audit the journey after the Room's work is findable (policy).** Follows J1's policy on the main that holds T12, T13, T14, U157, U158 and U159: it drives Request and Review through `just harness-real`, reads the Todo a Door made from its Room, puts its evidence under `artifacts/ux/journey/`, and leaves a successor only as J1 says.
+
+**J6 audit the journey after the Thread is Room-scoped (policy).** Follows J1's policy on the main that holds U160 and U113: it drives Understand and Intervene through `just harness-real` with more than one Room and a Door that asks for a permission, reads each Room's Thread and its Todos from the Room, puts its evidence under `artifacts/ux/journey/`, and leaves a successor only as J1 says.

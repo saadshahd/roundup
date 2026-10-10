@@ -65,3 +65,19 @@ Main: `b2a75608` (holds U146; open PR #515 is U150 only). Method: `rupd <tmp pro
 ## Gap selected
 
 The first unproved behavior is Review: the Door's work cannot be found from its Room. T12 and T13 (Home, `todo.move`) and U151, U157 and U158 (Home line, move, follow the Room) are specified with no implementation Issue; this audit files those two (#516, #517). T14 (#518: an Agent's Todo takes its Room as Home) and U159 (#519: the Shelf's `this room`) are new. Each Issue is blocked by the one before it. **J5** (#520) repeats this audit once they are on main. The D1, D2, D5, D10 failures predate this audit and keep their owners (#382, #385, #386).
+
+# J5 journey audit
+
+Main: `0a507eea` (holds T12, T13, T14, U157, U158, U159; open PRs are loop machinery only). Method: `rupd <tmp project>` (not attached) with `RUPD_SOCKET`, `ROUNDUP_CLAUDE_BIN` the fake `claude` and `FAKE_CLAUDE_ON_PROMPT='{"name":"todo_create","arguments":{"title":"$prompt"}}'`, then `just harness-real`'s Vite on port 5199, agent-browser (headless Chromium, light), `window.__checks()` read after each step. Captures: `j5-request-1280.png`; `j5-review-this-room-1280`, `j5-review-todo-1280`, `j5-review-reopen-1280`, `j5-review-reopen-700`, `j5-two-rooms-1280` (`.png` and `.checks.json`); `j5-door-reply-1280` and `-700` (a second `rupd` whose fake answers with `message_send {to: "you"}`). Nothing here ran a real `claude` or the native App.
+
+| Stage | Observed | Verdict |
+|---|---|---|
+| Enter | `start a Room` created a Room and started its Door; a second and third Room came from `+ room`. A stopped Room's `start Door` ended as `retry Door` after a Daemon restart (#351 owns the stopped-Room start). Keyboard and failure states not re-run. | Unproved as a stage; the pointer path holds. |
+| Request | `ship j5` typed in the Thread: the Thread read `you → room note ship j5 delivered`, the Shelf listed `#1 ship j5`, the Room read `idle`. With the fake calling `message_send {to: "you"}`, `room → you note done j5` reached the Thread. A fake Door's reply and Todo are proved; a real `claude` stays F7's. | Proved on the real Daemon with the fake `claude`. |
+| Understand | Three Rooms exist on the real Daemon. All three read `room` on the Rail, and the Thread of the newest Room listed Messages sent to the other two (`j5-door-reply-1280.png`). Ten Agents and routine-progress silence were not driven. | Unproved: the Thread is not Room-scoped (U160). |
+| Intervene | Not driven; U113 (#380) owns the Decision Card. | Unproved; owned by U113. |
+| Review | The Todo the Door made showed under `this room` and its Drawer read `in room` (T14, U158); moving it to `project root` emptied `this room` (`no todos in this room`) and moving it back restored it; a second Room's `this room` read `no todos in this room`. After `rupd` was restarted and the page reloaded the Rail read `done`, `terminal gone`, `start Door`, the Thread kept the Message and the Todo was found again (the choice is back to `all`, as U159 says). D3, D4, D8, D9 pass; D1, D2, D5, D6, D7, D10 fail at 1280 and 700, in every capture. With the Drawer open the row title is missing and the move control overlaps the `pads` header at 1280 (`j5-review-todo-1280.png`); the Todos panel is #398's. | Proved: the Door's work is found from its Room and again after reopen. The Door's summary when work settles (P1) has no method and is not claimed. |
+
+## Gap selected
+
+The first unproved behavior is Understand: with more than one Room the Thread mixes every Room's Messages, so the Door's outcome is not read from its Room. Specified as **U160** (`scenarios/ui-first-journey.md`) with one implementation Issue; no prerequisite is missing. Intervene stays with U113 (#380) and the stopped-Room start with #351. **J6** repeats the audit once U160 and U113 are on main. The D1, D2, D5, D6, D7, D10 failures predate this audit and keep their owners (#382, #385, #386).
