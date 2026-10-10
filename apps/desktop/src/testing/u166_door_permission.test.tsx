@@ -63,8 +63,12 @@ const settle = async (answer: "allow" | "deny", prompt: string) => {
   await waitFor(async () => expect((await rooms()).find((room) => room.id === first?.id)?.status?.kind).toBe("needs-you"), { timeout: 30_000 });
 
   const otherBefore = (await rooms()).find((room) => room.id === second?.id)?.status?.kind;
+  const toSecond = async () => (await app.rpc("message.list", { to: null, status: null })).filter((message) => message.to === second?.id);
+  const secondThread = await toSecond();
+  const decisionsBefore = await app.rpc("decision.list", null);
 
   expect(otherBefore).not.toBe("needs-you");
+  expect(decisionsBefore).toHaveLength(1);
 
   fireEvent.click(within(card).getByRole("button", { name: answer }));
 
@@ -72,8 +76,22 @@ const settle = async (answer: "allow" | "deny", prompt: string) => {
   await waitFor(async () => expect((await rooms()).find((room) => room.id === first?.id)?.status?.kind).toBe("idle"), { timeout: 30_000 });
   expect(await messages()).toContainEqual([prompt, "delivered"]);
   expect((await rooms()).find((room) => room.id === second?.id)?.status?.kind).toBe(otherBefore);
+  expect(await toSecond()).toEqual(secondThread);
+  expect(await app.rpc("decision.list", null)).toHaveLength(0);
 
-  if (answer === "allow") await waitFor(async () => expect((await app.rpc("todo.list", null)).map((todo) => todo.title)).toContain(prompt), { timeout: 30_000 });
+  // The rendered App, not only the Daemon, shows the Room idle with no reload.
+  await waitFor(() => expect(rail.querySelector(`[data-id="${first?.id}"]`)?.getAttribute("data-kind")).toBe("idle"), { timeout: 30_000 });
+  await waitFor(() => expect(screen.getByRole("log", { name: "thread" }).querySelector("[data-message][data-status]")?.getAttribute("data-status")).toBe("delivered"));
+
+  if (answer === "allow") {
+    await waitFor(async () => expect((await app.rpc("todo.list", null)).map((todo) => todo.title)).toContain(prompt), { timeout: 30_000 });
+    expect(await screen.findByText(new RegExp(prompt), { selector: "[data-todo] *" }, { timeout: 30_000 })).toBeTruthy();
+  }
+
+  // The other Room's Thread holds no Message and no Decision card.
+  fireEvent.click(rail.querySelector(`[data-id="${second?.id}"] .name`) ?? rail);
+  await waitFor(() => expect(screen.getByRole("log", { name: "thread" }).textContent).not.toContain(prompt));
+  expect(screen.queryByRole("region", { name: /Decision for/ })).toBeNull();
 
   cleanup();
 
