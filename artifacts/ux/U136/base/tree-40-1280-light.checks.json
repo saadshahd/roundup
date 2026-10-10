@@ -1,0 +1,119 @@
+{
+ "D1": {
+  "status": "fail",
+  "value": [
+   "background: rgba(0, 0, 0, 0.05)",
+   "background: rgb(0, 0, 0)",
+   "color: rgb(255, 255, 255)",
+   "background-color: rgb(0, 0, 0)",
+   "font-size: 11px !important",
+   "background: rgba(0, 0, 0, 0)",
+   "transition: opacity 100ms linear",
+   "transition: opacity 800ms linear",
+   "box-shadow: var(--vscode-scrollbar-shadow, #000) 0 6px 6px -6px inset",
+   "box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset",
+   "box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset",
+   "border-radius: unset",
+   "border-end-end-radius: unset",
+   "border-end-start-radius: unset",
+   "border-start-end-radius: unset",
+   "border-start-start-radius: unset",
+   "box-shadow: unset",
+   "border-radius: unset",
+   "border-end-end-radius: unset",
+   "border-end-start-radius: unset",
+   "border-start-end-radius: unset",
+   "border-start-start-radius: unset",
+   "box-shadow: unset",
+   "border-radius: unset",
+   "border-end-end-radius: unset",
+   "border-end-start-radius: unset",
+   "border-start-end-radius: unset",
+   "border-start-start-radius: unset",
+   "box-shadow: unset",
+   "border-radius: unset",
+   "border-end-end-radius: unset",
+   "border-end-start-radius: unset",
+   "border-start-end-radius: unset",
+   "border-start-start-radius: unset",
+   "box-shadow: unset",
+   "border-radius: unset",
+   "border-end-end-radius: unset",
+   "border-end-start-radius: unset",
+   "border-start-end-radius: unset",
+   "border-start-start-radius: unset",
+   "box-shadow: unset",
+   "transition: transform 180ms ease-out"
+  ],
+  "selector": ".rail-row[data-selected=\"true\"]"
+ },
+ "D2": {
+  "status": "fail",
+  "value": {
+   "padding-left": "15.6533px"
+  },
+  "selector": "div.rail-row[data-id=\"auth\"]"
+ },
+ "D3": {
+  "status": "fail",
+  "value": "not measurable",
+  "selector": ""
+ },
+ "D4": {
+  "status": "pass",
+  "value": {
+   "rows": 34
+  },
+  "selector": ""
+ },
+ "D5": {
+  "status": "fail",
+  "value": {
+   "text": 2.572269808033037
+  },
+  "selector": "button.word"
+ },
+ "D6": {
+  "status": "fail",
+  "value": {
+   "height": 15
+  },
+  "selector": "button.word"
+ },
+ "D7": {
+  "status": "fail",
+  "value": {
+   "pressed": 0,
+   "instant": false
+  },
+  "selector": "button.word"
+ },
+ "D8": {
+  "status": "fail",
+  "value": "not measurable",
+  "selector": ""
+ },
+ "D9": {
+  "status": "pass",
+  "value": [],
+  "selector": ""
+ },
+ "D10": {
+  "status": "fail",
+  "value": {
+   "failing": [
+    "D1",
+    "D2",
+    "D3",
+    "D5",
+    "D6",
+    "D7",
+    "D8"
+   ],
+   "scheme": "light",
+   "contrast": "no-preference",
+   "viewport": "1280x800"
+  },
+  "selector": ""
+ }
+}

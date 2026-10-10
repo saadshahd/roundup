@@ -3,6 +3,7 @@ import type { Status } from "../Status";
 import type { Channel } from "./Channel";
 import type { NodeKind } from "./NodeKind";
 import type { Order } from "./Order";
+import type { Stray } from "./Stray";
 import type { Worktree } from "./Worktree";
 
 export type RailNode = { id: string, kind: NodeKind, name: string, parent: string | null, 
@@ -44,4 +45,9 @@ channel: Channel | null,
  * O1: the order of an Agent or a Workstream's Door; `None` for a Terminal. Named `work` because
  * `order` is the position among siblings.
  */
-work: Order | null, };
+work: Order | null, 
+/**
+ * F5: processes in a Door's Terminal tree that carry a vendor program's name and that the
+ * Daemon did not register. Empty for every other node, and for a Door with none.
+ */
+stray: Array<Stray>, };

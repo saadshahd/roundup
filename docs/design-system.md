@@ -112,7 +112,7 @@ A check is public; the screens it runs on are not all the Builder's. The critic 
 
 ## Ideas
 
-The critic's report ends with an `ideas` list of at most three things that look wrong and no check covers. An idea is never a Todo and never a gate. The Architect reads the ideas each batch. An idea that comes back three times becomes a check (`.agents/architect.md`).
+The critic's report ends with an `ideas` list of at most three things that look wrong and no check covers. An idea is never a Todo and never a gate. The Builder run reads the ideas each batch. An idea that comes back three times becomes a check (`.agents/builder.md`).
 
 ## Baseline protocol
 

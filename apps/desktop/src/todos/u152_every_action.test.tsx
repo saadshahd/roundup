@@ -149,6 +149,32 @@ for (const by of ["pointer", "keyboard"] as const) {
   });
 }
 
+describe("u152 focus stays in the Drawer", () => {
+  it("u152_choosing_an_offered_blocker_by_keyboard_leaves_focus_off_the_body", async () => {
+    await mountTodos([todo(1), todo(2)]);
+    await openDrawerOf(2);
+    press(within(drawer()).getByRole("button", { name: /blocker/ }), "keyboard");
+    press(await within(drawer()).findByRole("button", { name: /#1 / }), "keyboard");
+
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    expect(drawer().contains(document.activeElement)).toBe(true);
+  });
+
+  it("u152_remove_by_keyboard_leaves_focus_off_the_body", async () => {
+    const mounted = await mountTodos([todo(1), todo(3), todo(2, { blocked: true, blockers: [1, 3] })]);
+
+    await openDrawerOf(2);
+    press(within(drawer()).getByRole("button", { name: "remove blocker #1" }), "keyboard");
+    await waitFor(() => expect(callsTo(mounted.app, "todo.setBlockers")).toHaveLength(1));
+    mounted.store.todos = mounted.store.todos.map((t) => (t.id === 2 ? { ...t, blockers: [3] } : t));
+    refetch(mounted);
+
+    await waitFor(() => expect(rowOf(2).querySelector("[data-todo-waits]")?.textContent).toBe("waits on #3"));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(drawer().contains(document.activeElement)).toBe(true);
+  });
+});
+
 describe("u152 remove a blocker", () => {
   it("u152_remove_names_each_blocker_done_or_open_and_keeps_the_waits_on_listing", async () => {
     await mountTodos([todo(1, { done: true }), todo(3), todo(2, { blocked: true, blockers: [1, 3] })]);
