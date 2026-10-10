@@ -49,7 +49,10 @@ describe("u159 a Workstream's Todos are found from the Workstream on the real Da
     fireEvent.click(await within(shelf).findByRole("radio", { name: "this one" }));
     await waitFor(() => expect([...shelf.querySelectorAll("[data-shelf-row]")].map((row) => row.textContent).join("\n")).toContain("ship j4"));
 
-    fireEvent.click(await within(rail).findByRole("button", { name: /^\s*new Workstream$/ }));
+    const add = await within(rail).findByRole("button", { name: /^\s*new Workstream$/ });
+
+    await waitFor(() => expect(add.getAttribute("aria-disabled")).toBeNull());
+    fireEvent.click(add);
     await waitFor(async () => expect((await app.rpc("rail.tree", null)).filter((node) => node.kind === "workstream")).toHaveLength(2));
     await waitFor(() => expect(within(shelf).getByRole("radio", { name: "all" })).toHaveProperty("checked", true));
     fireEvent.click(within(shelf).getByRole("radio", { name: "this one" }));
