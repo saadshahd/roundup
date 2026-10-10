@@ -61,6 +61,12 @@ const TOOLS: [(&str, &str); 20] = [
     ),
 ];
 
+/// B20: the one tool only a Door is offered.
+const DOOR_TOOL: (&str, &str) = (
+    "agent_digest",
+    "ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told",
+);
+
 const DOOR: &str = "\
 ## Your role
 
@@ -84,6 +90,8 @@ pub fn text(id: u64, role: Role) -> String {
         text.push_str(&format!("- `{name}`: {when}.\n"));
     }
     if role == Role::Door {
+        let (name, when) = DOOR_TOOL;
+        text.push_str(&format!("- `{name}`: {when}.\n"));
         text.push('\n');
         text.push_str(DOOR);
     }

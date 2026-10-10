@@ -11,6 +11,7 @@ messages = { path = "../messages" }
 pads = { path = "../pads" }
 provenance = { path = "../provenance" }
 rpc = { path = "../rpc" }
+serde.workspace = true
 serde_json.workspace = true
 terminal = { path = "../terminal" }
 todos = { path = "../todos" }
