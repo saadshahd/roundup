@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use contracts::agent::{NodeKind, RailNode, Worktree};
+use contracts::agent::{NodeKind, Order, RailNode, Worktree};
 use contracts::project::Worktrees;
 use rpc::{OpenError, RpcError};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -50,6 +50,9 @@ impl Rail {
             // and `agent.resume`; no vendor id reaches a public name or the webview.
             ("conversation_id", "TEXT"),
             ("conversation_cwd", "TEXT"),
+            // O1: the node's order as JSON; NULL (a node from before O1) reads as the default
+            // Clarification order of its kind.
+            ("work", "TEXT"),
         ] {
             add_column_if_missing(&db, "nodes", column, decl)?;
         }
@@ -75,18 +78,52 @@ impl Rail {
         parent: Option<&str>,
         terminal_id: Option<&str>,
     ) -> Result<RailNode, RpcError> {
+        self.insert_ordered(kind, name, parent, terminal_id, None)
+    }
+
+    /// `insert` with the node's order (O2, O3); `None` is the default of its kind. A Terminal
+    /// holds none.
+    pub fn insert_ordered(
+        &mut self,
+        kind: NodeKind,
+        name: &str,
+        parent: Option<&str>,
+        terminal_id: Option<&str>,
+        work: Option<&Order>,
+    ) -> Result<RailNode, RpcError> {
+        let work = (kind != NodeKind::Terminal)
+            .then(|| work.map_or_else(|| default_order(kind), Order::clone))
+            .map(|order| serde_json::to_string(&order).map_err(RpcError::internal))
+            .transpose()?;
         let tx = self.db.transaction().map_err(sql)?;
         let nodes = load(&tx)?;
         check_parent(&nodes, parent)?;
         let order = siblings(&nodes, parent).len() as i64;
         tx.execute(
-            "INSERT INTO nodes (kind, name, parent, ord, terminal_id) VALUES (?, ?, ?, ?, ?)",
-            params![kind_name(kind), name, parent, order, terminal_id],
+            "INSERT INTO nodes (kind, name, parent, ord, terminal_id, work)
+                VALUES (?, ?, ?, ?, ?, ?)",
+            params![kind_name(kind), name, parent, order, terminal_id, work],
         )
         .map_err(sql)?;
         let id = tx.last_insert_rowid().to_string();
         tx.commit().map_err(sql)?;
         self.node(&id)
+    }
+
+    /// O4: replace the order of an Agent or a Room. A Terminal holds none (`CONFLICT`).
+    pub fn set_order(&mut self, id: &str, order: &Order) -> Result<RailNode, RpcError> {
+        let node = self.node(id)?;
+        if node.kind == NodeKind::Terminal {
+            return Err(RpcError::conflict(format!("{id} is a Terminal")));
+        }
+        let json = serde_json::to_string(order).map_err(RpcError::internal)?;
+        self.db
+            .execute(
+                "UPDATE nodes SET work = ? WHERE id = ?",
+                params![json, node.id],
+            )
+            .map_err(sql)?;
+        self.node(id)
     }
 
     pub fn rename(&mut self, id: &str, name: &str) -> Result<RailNode, RpcError> {
@@ -396,6 +433,14 @@ fn add_column_if_missing(
     Ok(())
 }
 
+/// O2, O3: the order a node holds when none was given.
+pub fn default_order(kind: NodeKind) -> Order {
+    Order::clarification(match kind {
+        NodeKind::Room => "What is this Room for?",
+        _ => "What should this Agent do?",
+    })
+}
+
 fn kind_name(kind: NodeKind) -> &'static str {
     match kind {
         NodeKind::Room => "room",
@@ -408,7 +453,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let mut query = db
         .prepare(
             "SELECT id, kind, name, parent, ord, attempt, terminal_id,
-                worktree_path, worktree_branch, worktree_base FROM nodes",
+                worktree_path, worktree_branch, worktree_base, work FROM nodes",
         )
         .map_err(sql)?;
     let rows = query
@@ -426,6 +471,14 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 (Some(path), Some(branch), Some(base)) => Some(Worktree { path, branch, base }),
                 _ => None,
             };
+            let work = match kind {
+                NodeKind::Terminal => None,
+                _ => Some(
+                    row.get::<_, Option<String>>(10)?
+                        .and_then(|json| serde_json::from_str(&json).ok())
+                        .unwrap_or_else(|| default_order(kind)),
+                ),
+            };
             Ok(RailNode {
                 id: row.get::<_, i64>(0)?.to_string(),
                 kind,
@@ -442,6 +495,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 worktree,
                 can_resume: false,
                 channel: None,
+                work,
             })
         })
         .map_err(sql)?;

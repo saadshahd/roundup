@@ -20,7 +20,9 @@ describe("u113 the Card for the selected Agent or Room's Door", () => {
     expect(text).toContain("alpha");
     expect(text).toContain("Bash");
     expect(text).toContain("rm -rf build");
-    expect(card()!.nextElementSibling?.className).toContain("pane-body");
+    // O6: the order line sits between the Card and the Terminal.
+    expect(card()!.nextElementSibling?.className).toContain("order-line");
+    expect(card()!.nextElementSibling?.nextElementSibling?.className).toContain("pane-body");
 
     select("beta");
 
