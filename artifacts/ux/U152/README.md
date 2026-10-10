@@ -10,4 +10,6 @@ Headless agent-browser, one session per size and theme, on `just harness tree-40
 
 `observe-motion.sh W theme` adds U156 (`observer-motion.txt`, four runs): under `prefers-reduced-motion` the moved rows take their places in one frame; for a second `⌥↑` fired 75 ms into the first move, the moved row continues from where it showed on screen (154 → 141 → 129 → 118 px at 1280 light) and the list ends `[3, 1, 2]`.
 
-Not shown: a `rupd` restart and reload (the fake Daemon starts again from its seed), the Agent-created variant of U155 (`u155_` covers it), and Percy before and after (the Percy build of the PR holds them).
+`crates/rup/tests/e2e.rs` `t11_reordered_list_survives_a_restart`: `todo.reorder {id: 3, before: 1}` on three Todos, then `rupd` restarts and `todo.list` gives `[3, 1, 2]` (U155's restart clause; the page reads `todo.list`, so the DOM order follows).
+
+Not shown: the Agent-created variant of U155 on the harness (`u155_` covers it on the fake App seam), and Percy before and after (the Percy build of the PR holds them).

@@ -61,7 +61,7 @@ describe("u162 one add opens a Workstream", () => {
 
     expect(line.previousElementSibling?.getAttribute("data-id")).toBe("a");
     expect(line.nextElementSibling?.getAttribute("data-id")).toBe("h");
-    expect([line.style.paddingLeft, line.querySelector<HTMLElement>(".rail-adds-indent")?.style.width]).toEqual(["", "calc(2ch - var(--space-2))"]);
+    expect(line.style.paddingLeft).toBe("calc(1 * var(--space-4))");
   });
 
   it("u162_the_inside_adds_spawn_with_that_workstream_as_parent", async () => {

@@ -205,7 +205,13 @@ impl Store {
         self.db
             .execute_batch("BEGIN IMMEDIATE")
             .map_err(RpcError::internal)?;
-        match f(self) {
+        // A panic in `f` rolls back too, so the next transaction can begin (B28).
+        let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self)));
+        let ran = ran.unwrap_or_else(|panic| {
+            let _ = self.db.execute_batch("ROLLBACK");
+            std::panic::resume_unwind(panic)
+        });
+        match ran {
             Ok(value) => {
                 if let Err(err) = self.db.execute_batch("COMMIT") {
                     let _ = self.db.execute_batch("ROLLBACK");
