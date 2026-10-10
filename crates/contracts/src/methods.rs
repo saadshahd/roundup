@@ -168,4 +168,85 @@ mod tests {
         );
         std::fs::write(path, render_typescript()).unwrap();
     }
+
+    fn method(name: &str) -> &'static Method {
+        METHODS.iter().find(|m| m.name == name).unwrap()
+    }
+
+    fn generated(path: &str) -> String {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/generated/");
+        std::fs::read_to_string(format!("{root}{path}")).unwrap()
+    }
+
+    #[test]
+    fn g8_project_methods_are_registered() {
+        let set = method("project.setWorktrees");
+        assert_eq!((set.params, set.result), ("project_Worktrees", "null"));
+        let get = method("project.get");
+        assert_eq!(
+            (get.params, get.result),
+            ("null", "project_ProjectSettings")
+        );
+        assert!(generated("project/Worktrees.ts").contains("on: boolean"));
+        assert!(generated("project/Worktrees.ts").contains("check: string | null"));
+        assert!(generated("project/ProjectSettings.ts").contains("worktrees: Worktrees"));
+    }
+
+    #[test]
+    fn g8_worktree_state_and_land_shapes() {
+        let state = method("agent.worktreeState");
+        assert_eq!(
+            (state.params, state.result),
+            ("agent_NodeId", "agent_WorktreeState")
+        );
+        let land = method("agent.land");
+        assert_eq!((land.params, land.result), ("agent_NodeId", "agent_Landed"));
+        assert!(
+            generated("agent/WorktreeState.ts")
+                .contains("{ ahead: number, behind: number, dirty: boolean, }")
+        );
+        assert!(generated("agent/Landed.ts").contains("{ base: string, }"));
+    }
+
+    #[test]
+    fn g8_discard_is_registered() {
+        let discard = method("agent.discard");
+        assert_eq!((discard.params, discard.result), ("agent_NodeId", "null"));
+    }
+
+    #[test]
+    fn g8_rail_node_worktree_is_required() {
+        assert!(generated("agent/RailNode.ts").contains("worktree: Worktree | null,"));
+        assert!(
+            generated("agent/Worktree.ts")
+                .contains("{ path: string, branch: string, base: string, }")
+        );
+    }
+
+    #[test]
+    fn g8_no_new_rpc_code() {
+        let source = include_str!("../../rpc/src/error.rs");
+        let names: Vec<&str> = source
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("pub const "))
+            .filter_map(|l| l.split(':').next())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "PARSE_ERROR",
+                "METHOD_NOT_FOUND",
+                "INVALID_PARAMS",
+                "INTERNAL",
+                "NOT_FOUND",
+                "FORBIDDEN",
+                "CONFLICT",
+                "UNKNOWN_OUTCOME",
+                "BUSY",
+                "NOT_ACCEPTED",
+                "NOT_RUNNING",
+                "NOT_ACKED",
+            ]
+        );
+    }
 }

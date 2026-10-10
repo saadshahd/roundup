@@ -10,6 +10,7 @@ import { useConnectedProject } from "../../state/connectedProject";
 import { OpenRow } from "../../todos/Todos";
 import { failureOf } from "../../todos/failureOf";
 import { TodoDrawer } from "../../todos/TodoDrawer";
+import { createReorder } from "../../todos/reorder";
 import { useTodoList } from "../../todos/todoList";
 import { openTodosBy, padsOwnedBy } from "./owned";
 import { usePadList } from "./padList";
@@ -22,6 +23,15 @@ export const createAgentPads = (node: Accessor<RailNode>) => {
   const [failure, setFailure] = createSignal<string | null>(null);
   const owned = createMemo(() => (node().kind === "agent" ? padsOwnedBy(all(), node().id) : []));
   const ownedTodos = createMemo(() => (node().kind === "agent" ? openTodosBy(todos.all(), node().id) : []));
+  const connected = useConnectedProject();
+
+  const reorder = createReorder({
+    ids: () => ownedTodos().map((todo) => todo.id),
+    all: todos.all,
+    call: (params) => failureOf(() => connected.app.rpc("todo.reorder", params)),
+    reducedMotion: connected.reducedMotion,
+  });
+
   const count = () => owned().length + ownedTodos().length;
 
   return {
@@ -29,6 +39,7 @@ export const createAgentPads = (node: Accessor<RailNode>) => {
     owned,
     todos,
     ownedTodos,
+    reorder,
     n: count,
     shown: () => shown() && count() > 0,
     toggle: () => setShown((open) => !open),
@@ -90,6 +101,7 @@ export const PadRows = (props: { pads: AgentPads; depth: number }) => {
                 todo={todo}
                 known={props.pads.todos.byId()}
                 onOpen={(opened) => connected.drawer.open(() => <TodoDrawer id={opened.id} todos={props.pads.todos} />)}
+                reorder={props.pads.reorder}
                 onComplete={(done) => failureOf(() => connected.app.rpc("todo.complete", { id: done.id }))}
               />
             )}

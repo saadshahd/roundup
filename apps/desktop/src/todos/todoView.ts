@@ -5,9 +5,10 @@ const byId = (a: Todo, b: Todo): number => a.id - b.id;
 
 export const kindOf = (todo: Todo): Kind => (todo.done ? "done" : todo.blocked ? "blocked" : "idle");
 
-export const openTodos = (all: readonly Todo[]): Todo[] => all.filter((todo) => !todo.done).toSorted(byId);
+/** T10: the Daemon's order, never sorted here. */
+export const openTodos = (all: readonly Todo[]): Todo[] => all.filter((todo) => !todo.done);
 
-export const doneTodos = (all: readonly Todo[]): Todo[] => all.filter((todo) => todo.done).toSorted(byId);
+export const doneTodos = (all: readonly Todo[]): Todo[] => all.filter((todo) => todo.done);
 
 /** Every blocker of `todo` still in the list, done or not, in id order. */
 export const blockersOf = (todo: Todo, known: ReadonlyMap<number, Todo>): Todo[] =>
