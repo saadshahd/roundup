@@ -50,6 +50,7 @@ pub const METHODS: &[Method] = &[
     m("todo.update", "todo_UpdateParams", "todo_Todo"),
     m("todo.complete", "todo_TodoId", "todo_Todo"),
     m("todo.setBlockers", "todo_SetBlockersParams", "todo_Todo"),
+    m("todo.move", "todo_MoveParams", "todo_Todo"),
     m("todo.delete", "todo_TodoId", "null"),
     m("pad.create", "pad_CreateParams", "pad_Pad"),
     m("pad.read", "pad_PadName", "pad_Pad"),

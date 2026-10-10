@@ -1335,3 +1335,168 @@ async fn e6_only_an_agent_with_a_live_terminal_has_a_channel() {
         assert_eq!(terminal.channel, None);
     }
 }
+
+async fn todo_at(client: &rpc::Client, title: &str) -> u32 {
+    let todo = client
+        .request("todo.create", json!({ "title": title }))
+        .await
+        .unwrap();
+    serde_json::from_value::<Todo>(todo).unwrap().id
+}
+
+async fn home_of(client: &rpc::Client, id: u32) -> Value {
+    client
+        .request("todo.get", json!({ "id": id }))
+        .await
+        .unwrap()["home"]
+        .clone()
+}
+
+/// T12, T13: a Todo moves to a Room, the Daemon checks the Rail, and the Home survives a restart.
+#[tokio::test]
+async fn t13_move_checks_the_rail_and_survives_a_restart() {
+    let mut project = start(&[]);
+    let mut events = project.subscribed().await;
+    let client = project.client().await;
+    let r1 = room(&client, "r1").await;
+    let agent = agent_in(&project, &client, None).await;
+    let id = todo_at(&client, "a").await;
+    assert_eq!(home_of(&client, id).await, Value::Null);
+    next(&mut events, |data| {
+        matches!(data, EventData::TodoCreated(_)).then_some(())
+    })
+    .await;
+
+    let history = || async {
+        client
+            .request(
+                "provenance.history",
+                json!({ "item": format!("todo:{id}") }),
+            )
+            .await
+            .unwrap()
+    };
+    let touched = history().await;
+    let missing = client
+        .request("todo.move", json!({ "id": id, "home": "nope" }))
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, rpc::code::NOT_FOUND);
+    let not_a_room = client
+        .request("todo.move", json!({ "id": id, "home": agent }))
+        .await
+        .unwrap_err();
+    assert_eq!(not_a_room.code, rpc::code::INVALID_PARAMS);
+    assert_eq!(history().await, touched);
+    assert_eq!(home_of(&client, id).await, Value::Null);
+
+    client
+        .request("todo.move", json!({ "id": id, "home": r1 }))
+        .await
+        .unwrap();
+    // The first Todo event after the rejections is the move that succeeded.
+    let first = next(&mut events, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo.home.clone()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(first, Some(r1.clone()));
+    assert_eq!(home_of(&client, id).await, json!(r1));
+
+    project.restart(&[]);
+    assert_eq!(home_of(&project.client().await, id).await, json!(r1));
+}
+
+#[tokio::test]
+async fn t13_room_removal_resets_homes_and_emits_in_id_order() {
+    let project = start(&[]);
+    let mut events = project.subscribed().await;
+    let client = project.client().await;
+    let r1 = room(&client, "r1").await;
+    let r2 = room(&client, "r2").await;
+    let (a, b, c, d) = (
+        todo_at(&client, "a").await,
+        todo_at(&client, "b").await,
+        todo_at(&client, "c").await,
+        todo_at(&client, "d").await,
+    );
+    for (id, home) in [(d, &r1), (b, &r1), (c, &r2)] {
+        client
+            .request("todo.move", json!({ "id": id, "home": home }))
+            .await
+            .unwrap();
+    }
+    // Drain the events of the setup.
+    for _ in 0..7 {
+        next(&mut events, |data| {
+            matches!(data, EventData::TodoUpdated(_) | EventData::TodoCreated(_)).then_some(())
+        })
+        .await;
+    }
+
+    client
+        .request("rail.remove", json!({ "id": r1 }))
+        .await
+        .unwrap();
+
+    let first = next(&mut events, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo.id),
+        _ => None,
+    })
+    .await;
+    let second = next(&mut events, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo.id),
+        _ => None,
+    })
+    .await;
+    assert_eq!([first, second], [b, d]);
+    assert!(rail_tree(&client).await.iter().all(|node| node.id != r1));
+    assert_eq!(home_of(&client, b).await, Value::Null);
+    assert_eq!(home_of(&client, d).await, Value::Null);
+    assert_eq!(home_of(&client, c).await, json!(r2));
+    assert_eq!(home_of(&client, a).await, Value::Null);
+    let listed = client.request("todo.list", json!(null)).await.unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn t13_a_failed_rail_remove_leaves_every_home() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let r1 = room(&client, "r1").await;
+    let id = todo_at(&client, "a").await;
+    client
+        .request("todo.move", json!({ "id": id, "home": r1 }))
+        .await
+        .unwrap();
+    let mut events = project.subscribed().await;
+
+    let err = client
+        .request("rail.remove", json!({ "id": "nope" }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, rpc::code::NOT_FOUND);
+    assert_eq!(home_of(&client, id).await, json!(r1));
+    let none = tokio::time::timeout(
+        Duration::from_millis(300),
+        next(&mut events, |data| {
+            matches!(data, EventData::TodoUpdated(_)).then_some(())
+        }),
+    )
+    .await;
+    assert!(none.is_err());
+}
+
+/// T12: a Todo made by an Agent or an Extension is at the Project root, whatever its params say.
+#[tokio::test]
+async fn t12_every_caller_creates_at_the_project_root_on_a_real_daemon() {
+    let project = start(&[]);
+    for who in [actor(ActorKind::Agent, "a1"), actor(ActorKind::Ext, "x")] {
+        let client = client_as(&project, who).await;
+        let made = client
+            .request("todo.create", json!({ "title": "t", "home": "r1" }))
+            .await
+            .unwrap();
+        assert_eq!(made["home"], Value::Null);
+    }
+}
