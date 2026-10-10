@@ -46,9 +46,7 @@ describe("u153 the row surface and rhythm", () => {
     const list = rowOf(1).parentElement!;
 
     expect([style(list).display, style(list).flexDirection, style(list).rowGap]).toEqual(["flex", "column", "var(--space-1)"]);
-    const section = style(list.parentElement!);
-
-    expect([section.paddingTop, section.paddingBottom, section.paddingLeft, section.paddingRight]).toEqual(Array(4).fill("var(--space-2)"));
+    expect([style(list).paddingTop, style(list).paddingBottom, style(list).paddingLeft, style(list).paddingRight]).toEqual(Array(4).fill("var(--space-2)"));
   });
 
   it("u153_the_row_button_is_at_least_28px_and_body_text", async () => {

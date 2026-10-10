@@ -43,20 +43,17 @@
 }
 
 /* U153: a row is a `--ground` surface on the Shelf's `--sunken`, spaced by Tokens. The hover and selected washes are gradients over the ground, so `background-color` stays `--ground`. No transition: the surface answers at once (D6, D7). */
-.shelf section[aria-label="todos"] {
+.todo-list {
   padding-top: var(--space-2);
   padding-bottom: var(--space-2);
   padding-left: var(--space-2);
   padding-right: var(--space-2);
-}
-
-.todo-list {
   display: flex;
   flex-direction: column;
   row-gap: var(--space-1);
 }
 
-.shelf [data-shelf-row] {
+.shelf .todo-row[data-shelf-row] {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
   padding-left: var(--space-2);
@@ -65,15 +62,15 @@
   border-radius: var(--radius-row);
 }
 
-.shelf [data-shelf-row]:hover {
+.shelf .todo-row[data-shelf-row]:hover {
   background-image: linear-gradient(var(--hover), var(--hover));
 }
 
-.shelf [data-shelf-row][data-selected="true"] {
+.shelf .todo-row[data-shelf-row][data-selected="true"] {
   background-image: linear-gradient(var(--selected), var(--selected));
 }
 
-.shelf [data-shelf-row] .todo-row-button {
+.shelf .todo-row[data-shelf-row] .todo-row-button {
   min-height: 28px;
   font-size: var(--text-body);
   color: var(--text);
