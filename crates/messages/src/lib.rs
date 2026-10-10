@@ -2,6 +2,7 @@
 //! Builder. Stores Messages and Routes, answers the user's and an Actor's calls, and on an `idle`
 //! hands one Message to `Deliver` (slice 3 maps that to H11's `Agents::prompt`).
 
+pub mod digest;
 mod hops;
 mod step;
 mod store;

@@ -908,6 +908,58 @@ async fn context_of(client: &rpc::Client, id: &str) -> Result<Context, rpc::RpcE
     Ok(serde_json::from_value(reply).unwrap())
 }
 
+async fn digest_of(client: &rpc::Client, id: &str) -> Result<Value, rpc::RpcError> {
+    client.request("agent.digest", json!({ "id": id })).await
+}
+
+#[tokio::test]
+async fn b20_a_door_and_the_user_ask_for_its_children_and_no_one_else_does() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let as_m = client_as(&project, actor(ActorKind::Agent, &rail.m)).await;
+    let as_a = client_as(&project, actor(ActorKind::Agent, &rail.a)).await;
+
+    let asked = digest_of(&as_m, &rail.m).await.unwrap();
+    assert_eq!(digest_of(&user, &rail.m).await.unwrap(), asked);
+    let children = asked["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    for child in children {
+        let mut keys: Vec<_> = child.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["kind", "last", "name", "pads", "todos"]);
+    }
+
+    let code = |result: Result<Value, rpc::RpcError>| result.unwrap_err().code;
+    assert_eq!(code(digest_of(&as_a, &rail.m).await), rpc::code::FORBIDDEN);
+    assert_eq!(code(digest_of(&user, "nobody").await), rpc::code::NOT_FOUND);
+    assert_eq!(code(digest_of(&user, &rail.a).await), rpc::code::CONFLICT);
+}
+
+#[tokio::test]
+async fn b19_a_childs_pads_reach_the_digest_once_and_terminal_output_never() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let as_a = client_as(&project, actor(ActorKind::Agent, &rail.a)).await;
+    as_a.request("pad.create", json!({ "name": "notes", "text": "ZEBRA" }))
+        .await
+        .unwrap();
+
+    let as_m = client_as(&project, actor(ActorKind::Agent, &rail.m)).await;
+
+    let by_user = digest_of(&user, &rail.m).await.unwrap();
+    let by_user_again = digest_of(&user, &rail.m).await.unwrap();
+    let first = digest_of(&as_m, &rail.m).await.unwrap();
+    let second = digest_of(&as_m, &rail.m).await.unwrap();
+
+    assert_eq!(by_user["children"][0]["pads"], json!(["notes"]));
+    assert_eq!(by_user_again["children"][0]["pads"], json!(["notes"]));
+    assert_eq!(first["children"][0]["pads"], json!(["notes"]));
+    assert_eq!(second["children"][0]["pads"], json!([]));
+    assert!(!first.to_string().contains("ZEBRA"));
+}
+
 #[tokio::test]
 async fn e2_an_agent_reads_its_own_context_and_no_one_elses() {
     let project = start(&[]);
@@ -1052,6 +1104,39 @@ async fn e4_agent_context_returns_the_callers_context_after_a_move() {
     assert_eq!(before.ask.to, rail.m);
     assert_eq!(after.parent.unwrap().id, rail.g);
     assert_eq!(after.ask.to, "you");
+}
+
+async fn tool_names(shim: &mut Shim) -> Vec<String> {
+    let listed = shim.request("tools/list", json!({})).await;
+    listed["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn m1_offers_agent_digest_to_a_meta_agent_and_to_no_other_agent() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+
+    let mut door = Shim::start(&project, &rail.m).await;
+    let mut plain = Shim::start(&project, &rail.a).await;
+
+    assert!(
+        tool_names(&mut door)
+            .await
+            .contains(&"agent_digest".to_owned())
+    );
+    assert!(
+        !tool_names(&mut plain)
+            .await
+            .contains(&"agent_digest".to_owned())
+    );
+    let digest = door.call("agent_digest", json!({})).await;
+    assert_eq!(digest["children"].as_array().unwrap().len(), 2);
 }
 
 async fn question_to(shim: &mut Shim, project: &Project, to: &str) -> Value {
@@ -1802,7 +1887,7 @@ async fn f2_a_doors_brief_and_tools_hold_agent_spawn_and_an_agents_hold_none() {
         .map(|t| t.as_str().unwrap())
         .collect();
     assert!(listed.contains(&"agent_spawn"));
-    assert_eq!(listed.len(), 21);
+    assert_eq!(listed.len(), 22);
     assert!(seen["brief"].as_str().unwrap().contains("no shell"));
 }
 
