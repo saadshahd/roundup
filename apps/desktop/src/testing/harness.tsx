@@ -43,8 +43,12 @@ if (query.get("daemon") === "1") {
 
   const controls = seedApp(seed, Date.now());
 
-  if (seed === "door-stopped" || seed === "earlier-run") {
-    const failure = railStorage(controls.app.opened.project!.path).write({ selected: seed === "earlier-run" ? "earlier-agent" : "first-room", collapsed: [] });
+  const SELECTED = new Map([["door-stopped", "first-room"], ["earlier-run", "earlier-agent"], ["decisions", "agent-1"]]);
+
+  const selected = SELECTED.get(seed);
+
+  if (selected) {
+    const failure = railStorage(controls.app.opened.project!.path).write({ selected, collapsed: [] });
 
     if (failure !== null) throw new Error(failure);
   }
