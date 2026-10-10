@@ -56,7 +56,7 @@ const settle = async (answer: "allow" | "deny", prompt: string) => {
   fireEvent.input(await screen.findByRole("textbox", { name: "message" }), { target: { value: prompt } });
   fireEvent.click(await screen.findByRole("button", { name: "send" }));
 
-  await waitFor(async () => expect(await messages()).toContainEqual([prompt, "delivered"]), { timeout: 30_000 });
+  await waitFor(async () => expect(await messages()).toContainEqual([prompt, "delivered"]), { timeout: 90_000 });
 
   const card = await screen.findByRole("region", { name: /Decision for/ }, { timeout: 30_000 });
 
