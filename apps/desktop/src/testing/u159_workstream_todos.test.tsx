@@ -47,7 +47,7 @@ describe("u159 a Workstream's Todos are found from the Workstream on the real Da
     const shelf = await screen.findByRole("region", { name: "todos" });
 
     fireEvent.click(await within(shelf).findByRole("radio", { name: "this one" }));
-    await waitFor(() => expect(shelf.querySelector("[data-shelf-row]")?.textContent).toContain("ship j4"));
+    await waitFor(() => expect([...shelf.querySelectorAll("[data-shelf-row]")].map((row) => row.textContent).join("\n")).toContain("ship j4"));
 
     fireEvent.click(await within(rail).findByRole("button", { name: /^\s*new Workstream$/ }));
     await waitFor(async () => expect((await app.rpc("rail.tree", null)).filter((node) => node.kind === "workstream")).toHaveLength(2));

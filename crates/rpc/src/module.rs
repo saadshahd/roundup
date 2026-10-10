@@ -47,7 +47,7 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    /// Log a read or write of `item` (`todo:<id>` or `pad:<name>`) by the caller.
+    /// Log a read or write of `item` (`todo:<id>`, `pad:<name>` or `agent:<id>`) by the caller.
     pub fn touch(&self, verb: Verb, item: &str) -> Result<(), RpcError> {
         self.touches
             .record(&self.actor, verb, item)

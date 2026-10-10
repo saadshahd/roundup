@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, Show, untrack } from "solid-js";
 import { DecisionCard } from "../decisions/DecisionCard";
+import { OrderLine } from "../orders/OrderLine";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
 import { doorStateOf, doorStateText } from "../rail/doorState";
@@ -219,6 +220,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
             />
         )}
       </Show>
+      <Show when={selected()}>{(node) => <OrderLine node={node()} />}</Show>
       <div class="pane-body" ref={watch}>
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>

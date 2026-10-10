@@ -127,6 +127,14 @@ impl Messages {
         Ok(Self { inner })
     }
 
+    /// O4: whether a Takeover (B6) of `agent` is active.
+    pub fn takeover_active(&self, agent: &str) -> bool {
+        self.inner
+            .store
+            .lock()
+            .is_ok_and(|store| store.is_takeover_active(agent))
+    }
+
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
         if is_receiver(&ctx.actor, &p.to) {
             return Err(RpcError::new(
@@ -1163,6 +1171,7 @@ mod tests {
             worktree: None,
             can_resume: false,
             channel: None,
+            work: None,
         }
     }
 

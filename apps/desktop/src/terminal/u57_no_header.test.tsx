@@ -18,8 +18,12 @@ describe("u57 no pane header", () => {
     const pane = container.querySelector(".pane");
     const body = container.querySelector(".pane-body");
 
-    expect(pane?.textContent).toBe("t-a");
-    expect(pane?.firstElementChild).toBe(body);
+    // O6 narrows this: an Agent or Door has its order line above the Terminal; a Terminal has none.
+    const orderLine = container.querySelector(".order-line");
+
+    expect(pane?.textContent).toBe(`${orderLine?.textContent ?? ""}t-a`);
+    expect(pane?.firstElementChild).toBe(orderLine ?? body);
+    expect(orderLine === null || orderLine.nextElementSibling === body).toBe(true);
     expect(body?.firstElementChild).toBe(container.querySelector(".pane-screen"));
     expect(callsTo(app, "terminal.resize")).toEqual([{ id: "t-a", cols: 100, rows: 30 }]);
   });
@@ -45,7 +49,7 @@ describe("u57 no pane header", () => {
     connected.rail.select("a");
     app.emit(event({ name: "agent.status", data: { status_revision: "2", attempt: "1", id: "a", status: { kind: "needs-you", label: "asks", since: 0 } } }));
 
-    expect(container.querySelector(".pane")?.textContent).toBe("t-a");
+    expect(container.querySelector(".pane")?.textContent).toBe(`${container.querySelector(".order-line")?.textContent}t-a`);
     expect(callsTo(app, "terminal.resize")).toHaveLength(1);
   });
 });

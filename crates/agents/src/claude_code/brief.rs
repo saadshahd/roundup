@@ -14,7 +14,7 @@ pub enum Role {
 }
 
 /// The tools `rup mcp` offers, with when to use each.
-const TOOLS: [(&str, &str); 19] = [
+const TOOLS: [(&str, &str); 20] = [
     ("todo_create", "record a piece of work that is not done yet"),
     ("todo_get", "read one Todo before changing it"),
     ("todo_list", "see all the work already recorded"),
@@ -40,6 +40,10 @@ const TOOLS: [(&str, &str); 19] = [
     (
         "agent_context",
         "ask where you stand now: who you report to, whom to ask, your peers and your open Todos, for instance after you were moved",
+    ),
+    (
+        "agent_set_order",
+        "replace your own order: a Work order once the ask is clear, or a Clarification order while a question is open",
     ),
     (
         "message_send",

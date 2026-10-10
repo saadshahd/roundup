@@ -197,6 +197,8 @@ async fn m1_offers_one_tool_per_method_and_ask_user_and_no_others() {
     let mut expected: Vec<_> = M1_METHODS.iter().map(|m| m.replace('.', "_")).collect();
     // H14: `ask_user` is the one tool that is not a method's name.
     expected.push("ask_user".into());
+    // O4: and `agent_set_order`, which keeps the snake case of the order it sets.
+    expected.push("agent_set_order".into());
     names.sort();
     expected.sort();
     assert_eq!(names, expected);
@@ -585,10 +587,10 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let result = raw_tools_list(&socket, None).await;
 
     assert_matches_tools_list_schema(&result);
-    // The methods' tools and `ask_user` (H14).
+    // The methods' tools, `ask_user` (H14) and `agent_set_order` (O4).
     assert_eq!(
         result["tools"].as_array().unwrap().len(),
-        M1_METHODS.len() + 1
+        M1_METHODS.len() + 2
     );
     assert_eq!(result["cacheScope"], "public", "{result}");
 }
@@ -698,4 +700,34 @@ async fn h14_ask_user_schema_is_the_contract_schema() {
         Value::Object((*tool.input_schema).clone()),
         serde_json::to_value(schemars::schema_for!(contracts::decision::AskParams)).unwrap()
     );
+}
+
+#[tokio::test]
+async fn o4_agent_set_order_fills_its_own_id_and_takes_only_the_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("fake.sock");
+    let mut requests = fake_daemon(
+        &socket,
+        &["daemon.identify", "agent.channelUp", "agent.setOrder"],
+    );
+    let shim = spawn_shim(&socket, "a1").await;
+
+    let tools = shim.client.list_all_tools().await.unwrap();
+    let tool = tools.iter().find(|t| t.name == "agent_set_order").unwrap();
+    let schema = Value::Object((*tool.input_schema).clone());
+    assert!(schema["properties"].get("id").is_none(), "{schema}");
+    assert!(schema["properties"].get("order").is_some(), "{schema}");
+
+    let order = json!({"kind": "work", "ask": "fix it", "limits": ["push"], "id": "other"});
+    shim.call("agent_set_order", json!({ "order": order }))
+        .await;
+
+    while let Some(request) = requests.recv().await {
+        if request["method"] == "agent.setOrder" {
+            assert_eq!(request["params"]["id"], "a1");
+            assert_eq!(request["params"]["order"]["ask"], "fix it");
+            return;
+        }
+    }
+    panic!("agent.setOrder was never sent");
 }

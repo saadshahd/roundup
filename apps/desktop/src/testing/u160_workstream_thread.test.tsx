@@ -47,7 +47,8 @@ describe("u160 a Workstream's Thread holds only its own Messages on the real Dae
     fireEvent.click(await screen.findByRole("button", { name: "send" }));
     await waitFor(async () => expect((await app.rpc("message.list", { to: null, status: null })).map((message) => message.body)).toContain("done b"), { timeout: 30_000 });
 
-    const bodies = async () => (await app.rpc("message.list", { to: null, status: null })).map((message) => message.body).toSorted();
+    // O2: a Door started with no message first hears its Clarification order, and the stub answers that too.
+    const bodies = async () => (await app.rpc("message.list", { to: null, status: null })).map((message) => message.body).filter((body) => !body.includes("What is this Workstream for?") && !body.includes("agent_set_order")).toSorted();
 
     expect(await bodies()).toEqual(["a", "b", "done a", "done b"]);
 

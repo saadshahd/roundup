@@ -2,6 +2,7 @@
 import type { Status } from "../Status";
 import type { Channel } from "./Channel";
 import type { NodeKind } from "./NodeKind";
+import type { Order } from "./Order";
 import type { Worktree } from "./Worktree";
 
 export type RailNode = { id: string, kind: NodeKind, name: string, parent: string | null, 
@@ -38,4 +39,9 @@ can_resume: boolean,
  * E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Workstream that is
  * no Door, a Terminal, and an Agent with no live Terminal.
  */
-channel: Channel | null, };
+channel: Channel | null, 
+/**
+ * O1: the order of an Agent or a Workstream's Door; `None` for a Terminal. Named `work` because
+ * `order` is the position among siblings.
+ */
+work: Order | null, };

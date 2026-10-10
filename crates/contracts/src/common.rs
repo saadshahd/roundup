@@ -69,7 +69,7 @@ pub enum Verb {
     Wrote,
 }
 
-/// One logged read or write of a Todo or Pad. `item` is `todo:<id>` or `pad:<name>`.
+/// One logged read or write of a Todo, Pad or Agent order. `item` is `todo:<id>`, `pad:<name>` or `agent:<id>`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Touch {
