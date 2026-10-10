@@ -32,7 +32,7 @@
   box-sizing: border-box;
 }
 
-.rail-row:hover {
+.rail-row:hover:not([data-selected="true"]) {
   background-color: var(--hover);
 }
 
