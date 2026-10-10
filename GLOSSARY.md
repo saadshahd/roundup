@@ -206,7 +206,7 @@ A Message waiting on an ask-first Route, the end of a Takeover, or the user's an
 The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone`, `not accepted` or `passed` (dropped).
 
 **Hop**:
-One Message of a bubbling question: sent to an Agent, then to each Agent above it in its Workstream, nearest first, ending with the Door, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
+One Message of a bubbling question: sent to an Agent, then to each Agent above it in its Workstream, nearest first, ending with the Door, each linked to the one before by `passedFrom`. A hop passes when its Agent answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
 
 **Landing**:
 The Message to the user that ends a bubbling question: `held` with the reason `escalated`, never `delivered` until the user answers it.
