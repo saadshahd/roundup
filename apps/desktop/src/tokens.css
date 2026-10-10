@@ -8,10 +8,10 @@
   --selected: rgba(0, 0, 0, 0.05);
   --pressed: rgba(0, 0, 0, 0.1);
   --text: #1d1d1f;
-  --grey: #6e6e73;
-  --disabled: #6e6e73;
+  --grey: #68686d;
+  --disabled: #68686d;
   --accent: #0a60d8;
-  --amber: #9a5b00;
+  --amber: #975900;
   --red: #c4262e;
   --hairline: rgba(0, 0, 0, 0.1);
   --shadow-drawer: 0 8px 32px rgba(0, 0, 0, 0.14);

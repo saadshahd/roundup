@@ -144,6 +144,7 @@ export const resolveToken = (value: string, tokens: ReadonlyMap<string, string>)
 export const loadTokens = () => {
   const tokens = tokensFrom(tokenStyles, appStyles);
   const ground = resolveToken("var(--ground)", tokens);
+  const sunken = resolveToken("var(--sunken)", tokens);
 
   const band = /\.rail-row\[data-selected="true"\]\s*\{\s*background:\s*var\(--([\w-]+)\)/.exec(railStyles);
 
@@ -154,7 +155,13 @@ export const loadTokens = () => {
 
   if (!alpha) throw new Error(`--${band[1]!} is not an rgba(0, 0, 0, alpha) colour: ${selectedValue}`);
 
-  return { tokens, ground, selected: blendBlackOver(ground, Number(alpha)) };
+  return {
+    tokens,
+    ground,
+    sunken,
+    selected: blendBlackOver(ground, Number(alpha)),
+    selectedOnSunken: blendBlackOver(sunken, Number(alpha)),
+  };
 };
 
 /** Injects the real stylesheets into jsdom, as the Drawer tests already do, so `getComputedStyle` reflects the shipped rules. */

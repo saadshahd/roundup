@@ -30,10 +30,10 @@ Starting values. The thresholds in the checks are fixed; a value that fails a th
 | `--selected` | `rgba(0,0,0,.05)` | `rgba(255,255,255,.10)` | the selected row |
 | `--pressed` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.16)` | a button while the pointer is down |
 | `--text` | `#1d1d1f` | `#f5f5f7` | body text |
-| `--grey` | `#6e6e73` | `#a1a1a6` | secondary text, Glyph tone of `blocked`, `idle`, `done` |
-| `--disabled` | `#6e6e73` | `#8e8e93` | the label of a button that cannot act |
+| `--grey` | `#68686d` | `#a1a1a6` | secondary text, Glyph tone of `blocked`, `idle`, `done` |
+| `--disabled` | `#68686d` | `#8e8e93` | the label of a button that cannot act |
 | `--accent` | `#0a60d8` | `#4d9bff` | focus ring, Glyph tone of `working`, the primary action |
-| `--amber` | `#9a5b00` | `#f0a030` | `needs-you` |
+| `--amber` | `#975900` | `#f0a030` | `needs-you` |
 | `--red` | `#c4262e` | `#ff6b6b` | `error` |
 | `--hairline` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.12)` | the one permitted border |
 | `--shadow-drawer` | `0 8px 32px rgba(0,0,0,.14)` | `0 8px 32px rgba(0,0,0,.5)` | the Drawer only |
