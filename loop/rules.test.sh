@@ -323,6 +323,38 @@ expect fail 'L2 trusted checkout initially lacks PR objects' git cat-file -e "$p
 expect_exit 0 'L2 ci-trailers fetches missing PR objects as data' gate ci-trailers 12
 expect_output main 'L2 ci-trailers leaves the trusted branch checked out' git branch --show-current
 
+# L41 tokens
+src_repo() { new_repo; mkdir -p apps/desktop/src/terminal apps/desktop/src/testing; }
+tokens_out() { loop/rules.sh tokens 2>&1 || true; }
+expect_tokens() { # <name> <want output, "" for none>
+  local got; got=$(tokens_out)
+  if [ "$got" != "$2" ]; then echo "FAIL: $1 (wanted '$2', got '$got')"; failures=$((failures + 1)); else echo "ok:   $1"; fi
+}
+src_repo; printf 'a {\n  color: #fff;\n}\n' >apps/desktop/src/a.css
+expect_tokens l41_a_hex_colour_fails_naming_file_line_and_property 'apps/desktop/src/a.css:2 color'
+src_repo; printf 'a { background: rgba(0,0,0,.5); }\nb {\n border-color: hsl(1 2 3);\n outline: 1px solid red;\n}\n' >apps/desktop/src/a.css
+expect_tokens l41_rgba_hsl_and_a_bare_colour_name_fail $'apps/desktop/src/a.css:1 background\napps/desktop/src/a.css:3 border-color\napps/desktop/src/a.css:4 outline'
+src_repo; printf 'a { font-size: 12px; }\nb { border-radius: 0.5rem; }\n' >apps/desktop/src/a.css
+expect_tokens l41_a_unit_font_size_and_radius_fail $'apps/desktop/src/a.css:1 font-size\napps/desktop/src/a.css:2 border-radius'
+src_repo; printf 'a { box-shadow: 0 0 4px black; }\nb { transition: opacity 150ms; }\nc { animation-duration: 1s; }\n' >apps/desktop/src/a.css
+expect_tokens l41_a_box_shadow_and_a_duration_fail $'apps/desktop/src/a.css:1 box-shadow\napps/desktop/src/a.css:2 transition\napps/desktop/src/a.css:3 animation-duration'
+src_repo; printf 'a { color: var(--fg); font-size: var(--text-s); border: 1px solid var(--line); box-shadow: var(--lift); transition: opacity var(--fast); }\n' >apps/desktop/src/a.css
+expect_tokens l41_var_reads_pass ''
+src_repo; printf 'a { color: transparent; background: inherit; fill: currentColor; stroke: none; outline: initial; caret-color: unset; transition: none 0s; box-shadow: none; }\n' >apps/desktop/src/a.css
+expect_tokens l41_transparent_inherit_currentcolor_none_and_0s_pass ''
+src_repo; echo 'a { color: #fff; font-size: 9px; }' >apps/desktop/src/tokens.css
+expect_tokens l41_tokens_css_is_not_read ''
+src_repo; echo 'export const x = { style: <p style={{ color: "#fff" }} /> };' >apps/desktop/src/terminal/emulator.ts
+cp apps/desktop/src/terminal/emulator.ts apps/desktop/src/a.test.tsx; cp apps/desktop/src/a.test.tsx apps/desktop/src/testing/b.tsx
+echo 'a { color: red; }' >apps/desktop/src/a.test.css
+expect_tokens l41_emulator_ts_and_test_files_are_not_read ''
+src_repo; printf 'export const A = () => <p\n  style={{ fontSize: "12px", color: "var(--fg)", borderColor: "#abc", margin: 4 }} />;\nexport const B = () => <p style={{ color: `var(--x)` }} />;\n' >apps/desktop/src/a.tsx
+expect_tokens l41_an_inline_style_literal_fails_and_a_var_passes $'apps/desktop/src/a.tsx:2 fontSize\napps/desktop/src/a.tsx:2 borderColor'
+src_repo; printf '/* color: #fff; */\na { color: var(--x); }\n' >apps/desktop/src/a.css; printf '// style={{ color: "red" }}\n/* style={{ color: "red" }} */\nexport const x = 1;\n' >apps/desktop/src/a.ts
+expect_tokens l41_a_literal_in_a_comment_passes ''
+src_repo
+expect_exit 2 l41_an_argument_exits_2 loop/rules.sh tokens extra
+
 # L34 Issue queue behavior is exercised by loop/orders.test.py.
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

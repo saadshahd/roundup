@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref] | tokens
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -46,6 +46,112 @@ vocab() {
     done <<<"$names"
   done <<<"$phrases"
   return "$bad"
+}
+
+# L41: a look literal (colour, size, radius, shadow, duration) outside tokens.css, read from apps/desktop/src/.
+tokens() {
+  [ -d apps/desktop/src ] || return 0
+  python3 - apps/desktop/src <<'PY'
+import os
+import re
+import sys
+
+root = sys.argv[1]
+COLOURS = set("""aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood
+cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen
+darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray
+darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia
+gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender
+lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink
+lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon
+mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise
+mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid
+palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red
+rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow
+springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen""".split())
+COLOUR_PROPS = {'color', 'background', 'background-color', 'fill', 'stroke', 'caret-color', 'text-decoration-color',
+                'backgroundcolor', 'bordercolor'}
+VAR = re.compile(r'var\((?:[^()]|\([^()]*\))*\)')
+URL = re.compile(r'url\([^)]*\)')
+FUNC = re.compile(r'(?<![\w-])(rgba?|hsla?|oklch|color-mix)\(')
+HEX = re.compile(r'#[0-9a-fA-F]{3,8}(?![\w-])')
+UNIT = re.compile(r'(?<![\w.-])-?(?:\d+\.?\d*|\.\d+)(?:[a-zA-Z]+|%)')
+TIME = re.compile(r'(?<![\w.-])(?:\d+\.?\d*|\.\d+)m?s(?![\w-])')
+SKIP = {'transparent', 'inherit', 'currentcolor', 'none', 'initial', 'unset'}
+STRING = r"""("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)"""
+
+def blank(text, line_comments):
+    pattern = STRING + r'|/\*.*?\*/' + (r'|//[^\n]*' if line_comments else '')
+    return re.sub(pattern, lambda m: m.group(1) or re.sub(r'[^\n]', ' ', m.group(0)), text, flags=re.S)
+
+def is_colour(prop):
+    return prop in COLOUR_PROPS or (prop.startswith(('border', 'outline')) and not prop.endswith(('radius', 'width', 'style', 'collapse', 'spacing', 'image')))
+
+def literal(prop, value):
+    p = prop.lower()
+    plain = URL.sub('', VAR.sub('', value))
+    if is_colour(p):
+        if HEX.search(plain) or FUNC.search(plain):
+            return True
+        words = [w.lower() for w in re.findall(r'(?<![\w#-])[A-Za-z]+(?![\w(-])', plain)]
+        if any(w in COLOURS for w in words if w not in SKIP):
+            return True
+    if p in ('font-size', 'border-radius', 'fontsize', 'borderradius') and UNIT.search(plain):
+        return True
+    if p in ('box-shadow', 'boxshadow') and 'var(' not in value and value.strip().strip('\'"`').strip() not in ('none', ''):
+        return True
+    if p.startswith(('transition', 'animation')):
+        return any(t.lower() != '0s' for t in TIME.findall(plain))
+    return False
+
+found = []
+
+def report(path, text, offset, prop):
+    found.append(f'{path}:{text.count(chr(10), 0, offset) + 1} {prop}')
+
+def scan_css(path, text):
+    for m in re.finditer(r'([a-zA-Z-]+)\s*:\s*([^;{}]*)', text):
+        if literal(m.group(1), m.group(2)):
+            report(path, text, m.start(1), m.group(1))
+
+def style_bodies(text):
+    for m in re.finditer(r'style\s*=\s*\{\s*\{', text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            c = text[i]
+            if c in '"\'`':
+                j = i + 1
+                while j < len(text) and text[j] != c:
+                    j += 2 if text[j] == '\\' else 1
+                i = j
+            else:
+                depth += (c == '{') - (c == '}')
+            i += 1
+        yield m.end(), text[m.end():i - 1]
+
+TS_VALUE = STRING + r"""|\((?:[^()]|\([^()]*\))*\)|[^,\n]"""
+
+def scan_ts(path, text):
+    for start, body in style_bodies(text):
+        pattern = r'(?<![\w$])(fontSize|borderRadius|boxShadow|color|background|backgroundColor|borderColor)\s*:\s*((?:' + TS_VALUE + ')*)'
+        for m in re.finditer(pattern, body):
+            if literal(m.group(1), m.group(2)):
+                report(path, text, start + m.start(1), m.group(1))
+
+for here, dirs, files in os.walk(root):
+    dirs[:] = sorted(d for d in dirs if d != 'testing')
+    for name in sorted(files):
+        path = os.path.join(here, name)
+        if name == 'tokens.css' or os.path.relpath(path, root) == 'terminal/emulator.ts' or '.test.' in name:
+            continue
+        if name.endswith('.css'):
+            scan_css(path, blank(open(path, encoding='utf-8').read(), False))
+        elif name.endswith(('.ts', '.tsx')):
+            scan_ts(path, blank(open(path, encoding='utf-8').read(), True))
+if found:
+    print('\n'.join(found))
+sys.exit(1 if found else 0)
+PY
 }
 
 visual_check_ids="D1 D2 D3 D4 D5 D6 D7 D8 D9 D10"
@@ -249,6 +355,8 @@ case "${1:-}" in
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   vocab) vocab ;;
+  tokens) [ $# -eq 1 ] || { echo "usage: loop/rules.sh tokens" >&2; exit 2; }
+    tokens ;;
   delta) delta "${2:-}" "${3:-}" ;;
   clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
     clean_merge "$2" "${3:-origin/main}" ;;
