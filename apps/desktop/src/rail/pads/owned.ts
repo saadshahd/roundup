@@ -15,6 +15,6 @@ export const padsOwnedBy = (pads: readonly Pad[], agent: Actor["id"]): Pad[] =>
 export const isTodoOnRail = (todo: Todo, nodes: readonly RailNode[]): boolean =>
   !todo.done && todo.creator.kind === "agent" && nodes.some((node) => node.kind === "agent" && node.id === todo.creator.id);
 
-/** The open Todos `agent` created, in id order. */
+/** The open Todos `agent` created, in the Daemon's order (T10). */
 export const openTodosBy = (todos: readonly Todo[], agent: Actor["id"]): Todo[] =>
-  todos.filter((todo) => !todo.done && todo.creator.kind === "agent" && todo.creator.id === agent).toSorted((a, b) => a.id - b.id);
+  todos.filter((todo) => !todo.done && todo.creator.kind === "agent" && todo.creator.id === agent);

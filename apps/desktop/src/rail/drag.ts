@@ -96,7 +96,7 @@ const stateAt = (snapshot: Snapshot, id: string, base: DOMRect, pointer: { x: nu
 export type RailDrag = { state: Accessor<DragState | null>; start: (id: string, press: PointerEvent) => void };
 
 /** The click the browser sends after a release would clear the failure line a rejected `rail.move` has already shown. */
-const swallowNextClick = (): (() => void) => {
+export const swallowNextClick = (): (() => void) => {
   const swallow = (click: Event) => click.stopPropagation();
   const forget = () => window.removeEventListener("click", swallow, { capture: true });
 

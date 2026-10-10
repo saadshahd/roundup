@@ -47,8 +47,14 @@ const changeTodos = (store: TodoStore, announce: Announce, id: number, change: (
   return { ...updated };
 };
 
-/** The Todo methods over `store.todos`; each write also sends the Events the real Daemon sends. */
-export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => ({
+/** The Todo methods over `store.todos`, which start in id order as T2 says and change it only by `todo.reorder` (T11); each write also sends the Events the real Daemon sends. */
+export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => {
+  store.todos = store.todos.toSorted((a, b) => a.id - b.id);
+
+  return todoMethods(store, announce);
+};
+
+const todoMethods = (store: TodoStore, announce: Announce): Handlers => ({
   "todo.list": () => store.todos.map((todo) => ({ ...todo })),
   "todo.get": ({ id }) => ({ ...find(store.todos, (todo) => todo.id === id, `todo ${id}`) }),
   "todo.create": ({ title, body, blockers }) => {
@@ -70,6 +76,21 @@ export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => 
     changeTodos(store, announce, id, (todos) => todos.map((todo) => (todo.id === id ? { ...todo, blockers } : todo))),
   "todo.move": ({ id, home }) =>
     changeTodos(store, announce, id, (todos) => todos.map((todo) => (todo.id === id ? { ...todo, home } : todo))),
+  "todo.reorder": ({ id, before }) => {
+    const moved = find(store.todos, (todo) => todo.id === id, `todo ${id}`);
+
+    if (before !== null) find(store.todos, (todo) => todo.id === before, `todo ${before}`);
+
+    if (before === id) throw new RpcError(CONFLICT, `todo ${id} cannot go before itself`);
+
+    const others = store.todos.filter((todo) => todo.id !== id);
+    const at = before === null ? others.length : others.findIndex((todo) => todo.id === before);
+    const index = store.todos.findIndex((todo) => todo.id === id);
+
+    if (at === index) return { ...moved };
+
+    return changeTodos(store, announce, id, () => [...others.slice(0, at), moved, ...others.slice(at)]);
+  },
   "todo.delete": ({ id }) => {
     find(store.todos, (todo) => todo.id === id, `todo ${id}`);
     store.todos = withBlocked(store.todos.filter((todo) => todo.id !== id).map((todo) => ({ ...todo, blockers: todo.blockers.filter((blocker) => blocker !== id) })));
