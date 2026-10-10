@@ -21,7 +21,7 @@ def stamp(seconds_ago):
 
 HOUR = 3600
 READY = dict(number=7, title='Build U1', html_url='https://x/7', state='open', body='', created_at=stamp(HOUR * 20),
-             labels=[dict(name='loop:work'), dict(name='ready-for-agent')])
+             labels=[], user=dict(login='saadshahd'))
 BUILD_PR = dict(number=9, headRefName='build/U1', isCrossRepository=False, labels=[])
 
 
@@ -78,7 +78,8 @@ def stalled(**changes):
 
 def stall_issue(ago=HOUR, labels=()):
     return dict(number=50, title='Loop stall', html_url='https://x/50', state='open', created_at=stamp(ago),
-                body='Key: stall-20261010-03\n', labels=[dict(name=n) for n in ('loop:work', 'ready-for-agent', *labels)])
+                body='Key: stall-20261010-03\n', labels=[dict(name=n) for n in ('loop:work', *labels)],
+                user=dict(login='github-actions[bot]'))
 
 
 def run(id, workflow, conclusion, ago=HOUR):
@@ -107,6 +108,14 @@ class Stall(unittest.TestCase):
         pr = dict(BUILD_PR, labels=[dict(name='flag:needs-user')])
         self.assertEqual(self.go(GitHub(merged_ago=HOUR * 4, prs=[pr])).writes, [])
 
+    def test_l94_an_issue_waiting_on_the_user_or_filed_outside_is_not_waiting_work(self):
+        flagged = dict(READY, labels=[dict(name='flag:needs-user')])
+        outside = dict(READY, user=dict(login='stranger'))
+        pull = dict(READY, pull_request={})
+        for issue in (flagged, outside, pull):
+            with self.subTest(issue=issue):
+                self.assertEqual(self.go(GitHub(merged_ago=HOUR * 4, issues=[issue])).writes, [])
+
     def test_l94_a_cross_repository_pr_is_not_waiting_work(self):
         pr = dict(BUILD_PR, isCrossRepository=True)
         self.assertEqual(self.go(GitHub(merged_ago=HOUR * 4, prs=[pr])).writes, [])
@@ -120,10 +129,10 @@ class Stall(unittest.TestCase):
         for line in ('Scenarios: L94', f'Key: {key}', 'Priority: 0', 'Mode: implement'):
             self.assertIn('\n' + line + '\n', '\n' + body)
         self.assertIn('loop:work', create[0])
-        self.assertIn('ready-for-agent', create[0])
+        self.assertNotIn('ready-for-agent', create[0])
         os.chdir(ROOT)
         issue = dict(number=100, title='Loop stall', html_url='https://x/100', state='open', body=body,
-                     labels=[dict(name='loop:work'), dict(name='ready-for-agent')])
+                     labels=[dict(name='loop:work')], user=dict(login='github-actions[bot]'))
         row = orders.classify([issue], {}, [])[0]
         self.assertEqual((row['state'], row['mode']), ('ready', 'implement'))
 

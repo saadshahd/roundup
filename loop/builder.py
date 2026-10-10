@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import orders  # noqa: E402
 
 BOT = 'github-actions[bot]'
-NEEDS_USER = 'flag:needs-user'
+NEEDS_USER = orders.NEEDS_USER
 ATTEMPTS = 3
 STRIKES = 3
 DAY = 24 * 3600
@@ -183,8 +183,8 @@ def ended(pr):
 def built(issue, slug, ran, run_url):
     """After a build run: hand its PR on, or settle the Issue it left. A run that made no tool call (`ran` false)
     records nothing. With no open PR, an Issue a person closed, one closed after its `build/<slug>` PR merged, or one a
-    dependency or PR holds, records nothing; one a bot closed otherwise reopens; one taken off the queue asks the user;
-    one still ready is struck, and STRIKES in a day wait on the user."""
+    dependency, PR or `flag:needs-user` holds, records nothing; one a bot closed otherwise reopens; one still ready is
+    struck, and STRIKES in a day wait on the user."""
     if not ran:
         print('the run made no tool call; nothing to record')
         return
@@ -199,8 +199,8 @@ def built(issue, slug, ran, run_url):
             print(f'#{issue} closed by a person or after its build/{slug} PR merged; nothing to record')
             return
         call('issue', 'reopen', str(issue))
-    elif 'ready-for-agent' not in labels(issue):
-        flag(issue, 'A build run took this Issue off the queue without a PR; its last comment says what it needs.')
+    elif NEEDS_USER in labels(issue):
+        print(f'#{issue} waits on the user; nothing to record')
         return
     elif not orders.queued(issue):
         print(f'#{issue} is no longer ready; nothing to record')
@@ -213,8 +213,7 @@ def strike(issue, why):
     comment(issue, f'<!-- strike -->\n{why}')
     if len(marked(issue, '<!-- strike -->', time.time() - DAY)) >= STRIKES:
         flag(issue, f'{STRIKES} tries in 24 hours (build runs that ended without a PR, or PRs that used their fix runs) failed, so the queue stops building this Issue until '
-                    'you add `ready-for-agent` again. The strike comments link each run.')
-        call('api', '-X', 'DELETE', f'repos/{{owner}}/{{repo}}/issues/{issue}/labels/ready-for-agent')
+                    f'you remove `{NEEDS_USER}`. The strike comments link each run.')
 
 
 def view(pr):

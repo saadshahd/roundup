@@ -13,7 +13,7 @@ spec.loader.exec_module(orders)
 
 def issue(number=1, key='U83', **changes):
     return dict(dict(number=number, title='Explain missing prior output', html_url=f'https://github.com/a/b/issues/{number}',
-                     state='open', labels=[{'name':'ready-for-agent'}],
+                     state='open', labels=[], user=dict(login='saadshahd'),
                      body=f'Scenarios: U83\nSpecification: [scenarios/ui.md](https://github.com/a/b/blob/main/scenarios/ui.md)\nKey: {key}\nPriority: 2\n'), **changes)
 
 
@@ -58,8 +58,44 @@ class Orders(unittest.TestCase):
     def test_l34_ready_issue_does_not_consult_test_names_or_work_tables(self):
         self.assertEqual(orders.classify([issue()], {}, [])[0]['state'], 'ready')
 
-    def test_l34_an_unapproved_issue_cannot_authorize_execution(self):
-        self.assertEqual(orders.classify([issue(labels=[])], {}, [])[0]['state'], 'unspecified')
+    def test_l34_every_open_issue_the_user_or_a_loop_app_filed_is_work(self):
+        for login in ('saadshahd', 'claude[bot]', 'github-actions[bot]'):
+            with self.subTest(login=login):
+                self.assertEqual(orders.classify([issue(user=dict(login=login))], {}, [])[0]['state'], 'ready')
+
+    def test_l34_no_one_elses_issue_runs_whatever_its_labels(self):
+        for author in ('COLLABORATOR', 'MEMBER', 'NONE'):
+            with self.subTest(author=author):
+                other = issue(author_association=author, user=dict(login='someone'), labels=[{'name': 'loop:work'}])
+                self.assertEqual(orders.classify([other], {}, [])[0]['state'], 'unspecified')
+        outside = issue(user=dict(login='stranger'))
+        self.assertEqual([r['state'] for r in orders.classify([issue(), dict(outside, number=2)], {}, [])],
+                         ['ready', 'unspecified'])
+        with patch.object(orders, 'gh', return_value=outside):
+            with self.assertRaisesRegex(orders.NotReady, 'no longer authorized'):
+                orders.task(1)
+
+    def test_l79_an_issue_waiting_on_the_user_is_held_except_a_stall(self):
+        held = [{'name': 'flag:needs-user'}]
+        row = orders.classify([issue(labels=held)], {}, [])[0]
+        self.assertEqual((row['state'], row['reason']), ('waiting', 'waits on the user (flag:needs-user)'))
+        stall = issue(key='stall-20261010-03', labels=held, body=issue(key='stall-20261010-03')['body'].replace(
+            'U83', 'L94').replace('ui.md', 'loop-rules.md'))
+        self.assertEqual(orders.classify([stall], {}, [])[0]['state'], 'ready')
+
+    def test_l34_an_implementation_without_acceptance_on_main_is_specified_first(self):
+        for scenarios, file in [('U9999', 'ui.md'), ('U83', 'nowhere.md'), ('the drawer flow', 'ui.md')]:
+            with self.subTest(scenarios=scenarios, file=file):
+                body = issue()['body'].replace('Scenarios: U83', f'Scenarios: {scenarios}').replace('ui.md', file)
+                row = orders.classify([issue(body=body)], {}, [])[0]
+                self.assertEqual((row['state'], row['mode'], row['respecify']), ('ready', 'specify', True))
+                output = io.StringIO()
+                with patch.object(orders, 'gh', return_value=issue(body=body)), \
+                     patch.object(orders, 'read_orders', return_value=[row]), redirect_stdout(output):
+                    orders.task(1)
+                self.assertIn('Mode: specify', output.getvalue())
+                self.assertIn('keeps Mode: implement', output.getvalue())
+                self.assertNotIn('Closes #1', output.getvalue())
 
     def test_l34_explicit_pr_link_preserves_a_manual_agents_owner(self):
         prs=[dict(number=12,headRefName='codex/fix',body='Refs #1',isCrossRepository=False)]
@@ -91,7 +127,6 @@ class Orders(unittest.TestCase):
         request = issue(7, body='The send button stays enabled without a Door.')
         row = orders.classify([request],{},[])[0]
         self.assertEqual((row['state'],row['mode'],row['slug'],row['priority']),('ready','specify','issue-7',50))
-        self.assertEqual(orders.classify([issue(7, body='a bug', labels=[])],{},[])[0]['state'],'unspecified')
         output = io.StringIO()
         with patch.object(orders, 'gh', return_value=request), \
              patch.object(orders, 'read_orders', return_value=[row]), \
