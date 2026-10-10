@@ -47,8 +47,14 @@ const changeTodos = (store: TodoStore, announce: Announce, id: number, change: (
   return { ...updated };
 };
 
-/** The Todo methods over `store.todos`; each write also sends the Events the real Daemon sends. */
-export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => ({
+/** The Todo methods over `store.todos`, which start in id order as T2 says and change it only by `todo.reorder` (T11); each write also sends the Events the real Daemon sends. */
+export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => {
+  store.todos = store.todos.toSorted((a, b) => a.id - b.id);
+
+  return todoMethods(store, announce);
+};
+
+const todoMethods = (store: TodoStore, announce: Announce): Handlers => ({
   "todo.list": () => store.todos.map((todo) => ({ ...todo })),
   "todo.get": ({ id }) => ({ ...find(store.todos, (todo) => todo.id === id, `todo ${id}`) }),
   "todo.create": ({ title, body, blockers }) => {
