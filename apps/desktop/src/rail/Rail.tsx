@@ -295,7 +295,7 @@ export const Rail = () => {
                     </Show>
                     <Show when={fold()}>
                       {(view) => (
-                        <div class="rail-fold" style={{ "padding-left": `${view().depth * 2}ch` }}>
+                        <div class="rail-fold" style={{ "padding-left": `calc(${view().depth} * var(--space-4))` }}>
                           <button
                             class="word"
                             onClick={() => setUnfolded((open) => toggled(open, view().parent))}
@@ -307,8 +307,7 @@ export const Rail = () => {
                     </Show>
                     <Show when={addsAfter()?.key === key ? addsAfter() : undefined}>
                       {(adds) => (
-                        <div class="rail-adds">
-                          <span class="rail-adds-indent" aria-hidden="true" style={{ width: `calc(${adds().depth * 2}ch - var(--space-2))` }} />
+                        <div class="rail-adds" style={{ "padding-left": `calc(${adds().depth} * var(--space-4))` }}>
                           <button
                             class="word"
                             disabled={!canSpawn()}

@@ -7,12 +7,12 @@ const ROW_HEIGHT = 20;
 /** The extra height a row's Live line adds (motion.md "follows pointer": hiding it at drag start must not move the dragged row off the pointer). */
 const LIVE_HEIGHT = 16;
 
-/** One indent step (2ch) in pixels. */
+/** One indent step (--space-4) in pixels. */
 const STEP = 20;
 
 const rect = (left: number, top: number, width: number, height: number): DOMRect => new DOMRect(left, top, width, height);
 
-/** jsdom has no layout: rows stack at `ROW_HEIGHT` in document order, the Rail starts at the origin, and anything else (the 2ch probe) is `STEP` wide. */
+/** jsdom has no layout: rows stack at `ROW_HEIGHT` in document order, the Rail starts at the origin, and anything else (the --space-4 probe) is `STEP` wide. */
 export const stubLayout = () =>
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.getAttribute("role") === "treeitem") {

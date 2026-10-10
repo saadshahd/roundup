@@ -1,0 +1,11 @@
+--- model.bend
++++ model.bend
+@@ -70,7 +70,7 @@
+     case Con{+x, rest}:
+       match s:
+         case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+-          W{rest, haf, htk, snoc(t, x), d, u, record(tk, x, tt), rl, n, tk, False{}, g}
++          W{x <> rest, haf, htk, snoc(t, x), d, u, record(tk, x, tt), rl, n, tk, False{}, g}
+ 
+ def flush_b(i: Bool, s: World) -> World:
+   match i:
