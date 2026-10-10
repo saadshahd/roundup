@@ -174,6 +174,12 @@ What `agent.context` returns for one Agent: its own Status, its parent, whom to 
 **Channel**:
 Whether one Agent's `roundup` MCP server (`rup mcp <id>`) has reported to the Daemon: `pending`, `up` or `missing`. Not the vendor's own channels feature.
 
+**Stray**:
+A process under a Door's Terminal whose program name is one an Adapter supplies and that the Daemon did not register, found by name (F5). `RailNode.stray` lists them and the event `agent.stray` announces a change; it only detects.
+
+**Shim**:
+The executable a Door's `PATH` finds first for each vendor program name; it prints that the Door starts an Agent with `agent_spawn` and exits 1 (F4). It stops a lookup by name and nothing else.
+
 **Evaluator**:
 A small model run inside the Daemon for a routine judgement at no frontier-model cost; a spike (B27), not yet built.
 

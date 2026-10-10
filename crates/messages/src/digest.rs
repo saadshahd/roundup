@@ -215,6 +215,7 @@ mod tests {
             can_resume: false,
             channel: None,
             work: None,
+            stray: Vec::new(),
         }
     }
 

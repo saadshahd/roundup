@@ -323,6 +323,37 @@ expect fail 'L2 trusted checkout initially lacks PR objects' git cat-file -e "$p
 expect_exit 0 'L2 ci-trailers fetches missing PR objects as data' gate ci-trailers 12
 expect_output main 'L2 ci-trailers leaves the trusted branch checked out' git branch --show-current
 
+# L41
+src_repo() { new_repo; mkdir -p apps/desktop/src/rail apps/desktop/src/terminal apps/desktop/src/testing; }
+tokens_with() { src_repo; printf '%b\n' "$2" >"apps/desktop/src/$1"; commit x; }
+tokens_out() { loop/rules.sh tokens 2>&1 || true; }
+tokens_says() { [ "$(tokens_out)" = "$1" ]; }
+tokens_pass() { [ -z "$(tokens_out)" ] && loop/rules.sh tokens; }
+tokens_fail() { ! loop/rules.sh tokens >/dev/null 2>&1; }
+tokens_fail_all() { local f=$1 d; shift; for d in "$@"; do tokens_with "$f" "$d"; tokens_fail || return 1; done; }
+tokens_pass_all() { local f=$1 d; shift; for d in "$@"; do tokens_with "$f" "$d"; tokens_pass || return 1; done; }
+
+tokens_with rail/a.css '.a {\n  margin: 0;\n  color: #fff;\n}'
+expect pass 'l41_a_hex_colour_fails_naming_file_line_and_property' tokens_says 'apps/desktop/src/rail/a.css:3 color'
+expect pass 'l41_rgba_hsl_and_a_bare_colour_name_fail' tokens_fail_all rail/a.css '.a { background: rgba(0,0,0,.5); }' '.a { fill: hsl(0 0% 0%); }' '.a { border: 1px solid red; }' '.a { outline-color: oklch(0.5 0 0); }'
+expect pass 'l41_a_unit_font_size_and_radius_fail' tokens_fail_all rail/a.css '.a { font-size: 12px; }' '.a { border-radius: 50%; }'
+expect pass 'l41_a_box_shadow_and_a_duration_fail' tokens_fail_all rail/a.css '.a { box-shadow: 0 1px 2px #000; }' '.a { box-shadow: 0 1px 2px; }' '.a { transition: color 120ms; }' '.a { animation-duration: .2s; }'
+expect pass 'l41_var_reads_pass' tokens_pass_all rail/a.css '.a { color: var(--text); border: 1px solid var(--hairline); font-size: var(--size); box-shadow: var(--shadow); transition: color var(--dur); }'
+expect pass 'l41_transparent_inherit_currentcolor_none_and_0s_pass' tokens_pass_all rail/a.css '.a { background: transparent; color: inherit; fill: currentColor; border: none; box-shadow: none; transition: color 0s; }'
+tokens_with tokens.css ':root { --text: #1d1d1f; font-size: 12px; box-shadow: 0 0 1px red; transition: 1s; }'
+expect pass 'l41_tokens_css_is_not_read' tokens_pass
+src_repo; echo 'const o = { fontSize: 12 };' >apps/desktop/src/terminal/emulator.ts; echo '.a { color: #fff; }' >apps/desktop/src/testing/a.css; echo 'x = <b style={{ color: "red" }} />;' >apps/desktop/src/rail/a.test.tsx; commit x
+expect pass 'l41_emulator_ts_and_test_files_are_not_read' tokens_pass
+tokens_with rail/a.tsx 'const a = <b style={{ color: "var(--text)", fontSize: "var(--s)" }} />;'
+tokens_pass_ok=$(tokens_pass && echo y || echo n)
+tokens_with rail/a.tsx 'const a = (\n  <b style={{ color: "var(--text)", borderRadius: "4px" }} />\n);'
+expect pass 'l41_an_inline_style_literal_fails_and_a_var_passes' bash -c "[ '$tokens_pass_ok' = y ] && [ \"\$(loop/rules.sh tokens 2>&1)\" = 'apps/desktop/src/rail/a.tsx:2 borderRadius' ]"
+tokens_with rail/a.css '/* color: #fff; */\n.a { color: var(--x); /* font-size: 12px */ }'
+comment_css=$(tokens_pass && echo y || echo n)
+tokens_with rail/a.tsx '// <b style={{ color: "red" }} />\nconst a = 1;'
+expect pass 'l41_a_literal_in_a_comment_passes' bash -c "[ '$comment_css' = y ] && loop/rules.sh tokens"
+expect_exit 2 'l41_an_argument_exits_2' loop/rules.sh tokens x
+
 # L34 Issue queue behavior is exercised by loop/orders.test.py.
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

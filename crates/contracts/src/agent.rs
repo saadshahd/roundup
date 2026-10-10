@@ -125,6 +125,25 @@ pub struct RailNode {
     /// O1: the order of an Agent or a Workstream's Door; `None` for a Terminal. Named `work` because
     /// `order` is the position among siblings.
     pub work: Option<Order>,
+    /// F5: processes in a Door's Terminal tree that carry a vendor program's name and that the
+    /// Daemon did not register. Empty for every other node, and for a Door with none.
+    pub stray: Vec<Stray>,
+}
+
+/// F5: one process found by name under a Door, by its pid and the command line `ps` printed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Stray {
+    pub pid: u32,
+    pub command: String,
+}
+
+/// The `agent.stray` event: the Door `id` now holds exactly `stray`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct StrayEvent {
+    pub id: String,
+    pub stray: Vec<Stray>,
 }
 
 /// E6: `pending` from the start, `up` once `agent.channelUp` arrived, `missing` when it had not
@@ -245,7 +264,7 @@ pub struct Context {
     pub todos: Vec<ContextTodo>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(export, export_to = "agent/")]
 pub struct SpawnParams {
     pub cwd: String,

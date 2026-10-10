@@ -1,8 +1,7 @@
 //! E1: the Brief, the text file Claude Code appends to its system prompt. It holds only what never
 //! changes for an Agent id: who it is, that roundup supervises it, the tools `rup mcp` offers and,
 //! for a Door, B24's role guidance. A name, Terminal id, parent, peer or Todo changes, so none is
-//! written here. A tool is described only once `crates/rup` offers it: landing `agent_spawn`
-//! updates this list and its test together.
+//! written here. A tool is described only once `crates/rup` offers it, and `agent_spawn` only to a Door.
 
 /// What an Agent is to roundup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,11 +60,17 @@ const TOOLS: [(&str, &str); 20] = [
     ),
 ];
 
-/// B20: the one tool only a Door is offered.
-const DOOR_TOOL: (&str, &str) = (
-    "agent_digest",
-    "ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told",
-);
+/// The tools beyond `TOOLS` that only a Door is offered: B20's digest and F3's spawn.
+const DOOR_TOOLS_EXTRA: [(&str, &str); 2] = [
+    (
+        "agent_digest",
+        "ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told",
+    ),
+    (
+        "agent_spawn",
+        "start a child Agent in a folder of this Project, with an optional first prompt; it becomes your child",
+    ),
+];
 
 const DOOR: &str = "\
 ## Your role
@@ -73,8 +78,8 @@ const DOOR: &str = "\
 You are this Workstream's coordinating Door. Use the Todo tools to record the work and update it as it changes. \
 Report the outcome to the user when the work ends. \
 When the user's goal or a taste limit is unclear, ask in this Terminal and wait for the answer. \
-You cannot start other Agents or message them: \
-do not claim or promise any of that.
+You have no shell and cannot edit files: your children do the work. \
+Start a child with `agent_spawn` and talk to it with `message_send`.
 ";
 
 /// The Brief text for Agent `id` in `role`: the same text every time for the same two.
@@ -86,12 +91,15 @@ pub fn text(id: u64, role: Role) -> String {
          ## Tools\n\n\
          The `roundup` MCP server offers these tools:\n\n"
     );
-    for (name, when) in TOOLS {
+    let door: &[(&str, &str)] = if role == Role::Door {
+        &DOOR_TOOLS_EXTRA
+    } else {
+        &[]
+    };
+    for &(name, when) in TOOLS.iter().chain(door) {
         text.push_str(&format!("- `{name}`: {when}.\n"));
     }
     if role == Role::Door {
-        let (name, when) = DOOR_TOOL;
-        text.push_str(&format!("- `{name}`: {when}.\n"));
         text.push('\n');
         text.push_str(DOOR);
     }
