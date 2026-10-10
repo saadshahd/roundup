@@ -5,19 +5,7 @@
   display: contents;
 }
 
-.todo-move {
-  min-width: var(--space-5);
-  min-height: var(--space-5);
-}
-
-/* Out of flow, left of `complete` (8 characters and its 1ch pad), so showing it moves no row (U112). */
-.shelf .row-head .todo-move {
-  position: absolute;
-  top: 0;
-  right: 9ch;
-  padding-left: 1ch;
-  background: var(--sunken);
-}
+/* The `row-actions` wrapper is out of flow (styles.css), so showing `move` and `complete` moves no row (U112). */
 
 .todo-homes {
   display: flex;
@@ -26,7 +14,6 @@
 }
 
 .todo-home-offer {
-  min-height: var(--space-5);
   text-align: left;
   overflow-wrap: anywhere;
 }
@@ -34,9 +21,26 @@
 .todo-homes-popover {
   position: absolute;
   top: 100%;
-  left: 0;
   right: 0;
   z-index: 1;
+  width: max-content;
+  max-width: 252px;
   background: var(--sunken);
   border: 1px solid var(--hairline);
+}
+
+/* U172: an item's title is bold by default, and the line below it is its description, grey, two lines at most. */
+.row-head .todo-row-button {
+  font-weight: 600;
+}
+
+.item-description {
+  display: -webkit-box;
+  padding-left: calc(var(--space-4) + 1ch);
+  overflow: hidden;
+  font-size: var(--text-caption);
+  color: var(--grey);
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }

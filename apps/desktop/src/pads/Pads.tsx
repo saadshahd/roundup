@@ -11,6 +11,8 @@ import { cutName, markedLine, wholeWord } from "./nameLine";
 import { USER } from "./owner";
 import { isOwnedOnRail } from "../rail/pads/owned";
 import { usePadList } from "../rail/pads/padList";
+import { Button } from "../ink/Button";
+import { GroupHead } from "../ink/GroupHead";
 
 /** The Shelf's `pads` list; `pad.list` logs no Touch, so refetching it on every `pad.changed` leaves no trace in Provenance. One fetch serves the list and any open Drawer. */
 export const Pads = () => {
@@ -39,10 +41,9 @@ export const Pads = () => {
 
   return (
     <section aria-label="pads">
-      <p>
-        <span class="light">pads</span>{" "}
-        <button
-          type="button"
+      <GroupHead group="shelf:pads" label="pads" shown={shown().length} total={pads().length}>
+        <Button
+          kind="icon"
           aria-label="add pad"
           class="word"
           onClick={() => {
@@ -51,8 +52,9 @@ export const Pads = () => {
           }}
         >
           <Icon name="plus" />
-        </button>
-      </p>
+        </Button>
+      </GroupHead>
+      <Show when={!connected.rail.collapsed().has("shelf:pads")}>
       <Show
         when={failure.message()}
         fallback={
@@ -75,6 +77,7 @@ export const Pads = () => {
         onMakeYours={(name) => void makeYours(name)}
         onLateFailure={failure.show}
       />
+      </Show>
     </section>
   );
 };
@@ -94,15 +97,15 @@ const PadRows = (props: {
           <Show
             when={pad.owner.kind === "user"}
             fallback={
-              <button
-                type="button"
+              <Button
+                kind="icon"
                 class="word"
                 style={wholeWord}
                 aria-label={`make ${pad.name} yours`}
                 onClick={() => props.onMakeYours(pad.name)}
               >
                 <OwnerMark owner={pad.owner} />
-              </button>
+              </Button>
             }
           >
             <span class="light" style={wholeWord}>
@@ -113,6 +116,7 @@ const PadRows = (props: {
             type="button"
             title={pad.name}
             class="pad-name"
+            data-row
             style={cutName}
             onClick={() =>
               connected.drawer.open(() => (

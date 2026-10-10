@@ -4,6 +4,7 @@ import type { Decision } from "@contracts/decision/Decision";
 import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import "./styles.css";
+import { Button } from "../ink/Button";
 
 const json = v.pipe(v.string(), v.parseJson());
 
@@ -62,15 +63,15 @@ export const DecisionCard = (props: { decision: Decision; name: string; focusTer
       <div class="decision-buttons">
         <For each={answers()}>
           {(each) => (
-            <button type="button" class="word" disabled={stuck()} onClick={() => void decisions.answer(id(), each)}>
+            <Button kind="quiet" class="word" unavailable={stuck()} onClick={() => void decisions.answer(id(), each)}>
               {each}
-            </button>
+            </Button>
           )}
         </For>
         <Show when={answers().length === 0}>
-          <button type="button" class="word" onClick={props.focusTerminal}>
+          <Button kind="quiet" class="word" onClick={props.focusTerminal}>
             focus Terminal
-          </button>
+          </Button>
         </Show>
       </div>
     </section>

@@ -60,7 +60,7 @@ describe("u37 reopen after the Daemon exits", () => {
     await waitFor(() => expect(screen.getByRole("banner").textContent).toBe("roundup   payments-api"));
 
     for (const button of screen.getAllByRole("button", { name: "new Workstream" })) {
-      expect(button.hasAttribute("disabled")).toBe(false);
+      expect(button.hasAttribute("aria-disabled")).toBe(false);
     }
   });
 
@@ -141,7 +141,7 @@ describe("u37 reopen after the Daemon exits", () => {
     reopen(header);
 
     expect(asked.count).toBe(1);
-    expect(within(header).getByRole("button", { name: "reopen" }).hasAttribute("disabled")).toBe(true);
+    expect(within(header).getByRole("button", { name: "reopen" }).hasAttribute("aria-disabled")).toBe(true);
   });
 
   it("u37_a_reopen_after_a_failed_one_can_succeed", async () => {

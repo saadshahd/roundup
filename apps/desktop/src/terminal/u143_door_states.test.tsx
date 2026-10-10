@@ -34,7 +34,7 @@ describe("u143 empty Project", () => {
   it("u143_an_empty_project_offers_start_a_workstream_in_place_of_the_select_line", async () => {
     await emptyProject();
 
-    expect([screen.getByText("no Workstream yet"), startWorkstream().hasAttribute("disabled"), screen.queryByText("select an agent or a terminal")]).toEqual([expect.anything(), false, null]);
+    expect([screen.getByText("no Workstream yet"), startWorkstream().hasAttribute("aria-disabled"), screen.queryByText("select an agent or a terminal")]).toEqual([expect.anything(), false, null]);
   });
 
   it("u143_the_start_a_workstream_button_is_a_native_tab_stop", async () => {
@@ -76,7 +76,7 @@ describe("u143 empty Project", () => {
     fireEvent.click(startWorkstream());
     fireEvent.click(screen.getByText("new Workstream", { selector: ".rail-actions button" }));
 
-    expect([calls(app, "rail.createWorkstream").length, startWorkstream().hasAttribute("disabled"), screen.queryByText("no Workstream yet")]).toEqual([1, true, null]);
+    expect([calls(app, "rail.createWorkstream").length, startWorkstream().hasAttribute("aria-disabled"), screen.queryByText("no Workstream yet")]).toEqual([1, true, null]);
   });
 
   it("u143_a_failed_creation_shows_the_message_keeps_the_button_and_selects_nothing", async () => {
@@ -87,7 +87,7 @@ describe("u143 empty Project", () => {
 
     fireEvent.click(startWorkstream());
 
-    expect([(await screen.findAllByRole("alert")).map((line) => line.textContent), startWorkstream().hasAttribute("disabled"), connected.rail.selected(), calls(app, "rail.startDoor")]).toEqual([["no space", "no space"], false, null, []]);
+    expect([(await screen.findAllByRole("alert")).map((line) => line.textContent), startWorkstream().hasAttribute("aria-disabled"), connected.rail.selected(), calls(app, "rail.startDoor")]).toEqual([["no space", "no space"], false, null, []]);
   });
 
   it("u143_a_failed_creation_can_be_tried_again_from_the_same_button", async () => {
@@ -162,7 +162,7 @@ describe("u143 a selected Workstream whose Door is not running", () => {
     await screen.findByText("starting Door…");
     fireEvent.click(paneStart());
 
-    expect([calls(app, "rail.startDoor").length, paneStart().hasAttribute("disabled"), screen.queryByText("Door not started")]).toEqual([1, true, null]);
+    expect([calls(app, "rail.startDoor").length, paneStart().hasAttribute("aria-disabled"), screen.queryByText("Door not started")]).toEqual([1, true, null]);
   });
 
   it("u143_a_failed_start_reads_did_not_start_with_the_message_and_retry", async () => {

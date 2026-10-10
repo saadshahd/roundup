@@ -40,11 +40,11 @@ describe("u20 open and edit", () => {
     );
   });
 
-  it("u20_the_drawer_offers_a_light_export_word", async () => {
+  it("u20_the_drawer_offers_a_quiet_export_word", async () => {
     await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
 
-    expect(screen.getByText("export .md").className).toContain("light");
+    expect(screen.getByText("export .md").getAttribute("data-button")).toBe("quiet");
   });
 
   it("u20_opening_calls_provenance_history_then_pad_read_once", async () => {

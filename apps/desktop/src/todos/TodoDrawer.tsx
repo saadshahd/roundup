@@ -12,6 +12,7 @@ import { homeNameOf } from "./homes";
 import { RowButton } from "./RowButton";
 import type { TodosState } from "./state";
 import { blockedBy, blockersOf, kindOf, offeredAsBlockers } from "./todoView";
+import { Button } from "../ink/Button";
 
 const TodoLine = (props: { todo: Todo }) => (
   <p style={{ "white-space": "pre-wrap" }}>
@@ -114,9 +115,9 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   <HomeMove id={props.id} home={current().home} choose={(home) => failureOf(() => app.rpc("todo.move", { id: props.id, home }))} />
                 </div>
                 <p>
-                  <button type="button" class="word" onClick={() => setOffering(!offering())}>
+                  <Button kind="add" class="word" onClick={() => setOffering(!offering())}>
                     <Icon name="plus" /> blocker
-                  </button>
+                  </Button>
                 </p>
                 <Show when={offering()}>
                   <For each={offeredAsBlockers(answered() ?? current(), props.todos.all())}>
@@ -149,12 +150,12 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
           when={asking()}
           fallback={
             <p>
-              <button type="button" class="word light" onClick={() => void attempt(() => app.rpc("todo.complete", { id: props.id }))}>
+              <Button kind="primary" class="word" onClick={() => void attempt(() => app.rpc("todo.complete", { id: props.id }))}>
                 complete
-              </button>{" "}
-              <button
-                type="button"
-                class="word light"
+              </Button>{" "}
+              <Button
+                kind="quiet"
+                class="word"
                 ref={(button) => (deleteButton = button)}
                 onClick={() => {
                   setFailure(null);
@@ -162,15 +163,15 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                 }}
               >
                 delete
-              </button>
+              </Button>
             </p>
           }
         >
           <p class="light">
             {`delete #${props.id}?  `}
-            <button
-              type="button"
-              class="word light"
+            <Button
+              kind="quiet"
+              class="word"
               onClick={() =>
                 void attempt(async () => {
                   await app.rpc("todo.delete", { id: props.id });
@@ -180,10 +181,10 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
               }
             >
               delete
-            </button>{" "}
-            <button
-              type="button"
-              class="word light"
+            </Button>{" "}
+            <Button
+              kind="quiet"
+              class="word"
               ref={(button) => queueMicrotask(() => button.focus())}
               onClick={() => {
                 setAsking(false);
@@ -191,7 +192,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
               }}
             >
               keep
-            </button>
+            </Button>
           </p>
         </Show>
       </Show>

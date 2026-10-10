@@ -14,6 +14,8 @@ import { useTodoList } from "./todoList";
 import { TodoDrawer } from "./TodoDrawer";
 import { WorkstreamChoice } from "./WorkstreamChoice";
 import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
+import { Button } from "../ink/Button";
+import { GroupHead } from "../ink/GroupHead";
 
 /** U138: the row to focus once a completed Todo leaves the open list — the next one, else the previous, else none (the `+` button). */
 export const rowAfter = (id: number, openIds: readonly number[]): number | null => {
@@ -71,6 +73,7 @@ export const OpenRow = (props: {
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
         <Show when={hovered() || focused() || listOpen()}>
+          <span class="row-actions">
           <HomeMove
             id={props.todo.id}
             home={props.todo.home}
@@ -84,11 +87,17 @@ export const OpenRow = (props: {
               return message;
             }}
           />
-          <button type="button" class="word complete" onClick={() => void complete()}>
+          <Button kind="row-action" class="word complete" onClick={() => void complete()}>
             complete
-          </button>
+          </Button>
+          </span>
         </Show>
       </div>
+      <Show when={props.todo.body.trim() !== ""}>
+        <p class="item-description" title={props.todo.body}>
+          {props.todo.body}
+        </p>
+      </Show>
       <Show
         when={failure()}
         fallback={
@@ -97,9 +106,9 @@ export const OpenRow = (props: {
               waits on <For each={waitingOn()}>{(blocker, index) => (
                 <>
                   <Show when={index() > 0}>{", "}</Show>
-                  <button type="button" class="word" onClick={() => props.onOpen(blocker)}>
+                  <Button kind="quiet" class="word" onClick={() => props.onOpen(blocker)}>
                     #{blocker.id}
-                  </button>
+                  </Button>
                 </>
               )}</For>
             </p>
@@ -194,10 +203,9 @@ export const Todos = () => {
 
   return (
     <section aria-label="todos">
-      <p>
-        todos{" "}
-        <button
-          type="button"
+      <GroupHead group="shelf:todos" label="todos" shown={open().length} total={onShelf().length}>
+        <Button
+          kind="icon"
           aria-label="add todo"
           class="word"
           ref={(button) => (plusButton = button)}
@@ -207,11 +215,12 @@ export const Todos = () => {
           }}
         >
           <Icon name="plus" />
-        </button>
+        </Button>
         <Show when={selectedWorkstream()}>
           {(workstream) => <WorkstreamChoice thisWorkstream={thisWorkstream()} onChange={(value) => setChoice({ workstream: workstream(), thisWorkstream: value })} />}
         </Show>
-      </p>
+      </GroupHead>
+      <Show when={!connected.rail.collapsed().has("shelf:todos")}>
       <Show when={todos.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <Show when={createFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <Show when={typing()}>
@@ -260,6 +269,7 @@ export const Todos = () => {
             )}
           </For>
         </Show>
+      </Show>
       </Show>
     </section>
   );

@@ -4,6 +4,7 @@ import { useConnectedProject } from "../state/connectedProject";
 import { homesToOffer } from "./homes";
 import type { Home } from "./homes";
 import "./rowButton.styles.css";
+import { Button } from "../ink/Button";
 
 /**
  * U157: the light `move` word and the one list of Homes it opens. From a row the list is a popover below it (`popover`); from the Drawer it is inline.
@@ -64,9 +65,9 @@ export const HomeMove = (props: {
 
   return (
     <span ref={setWrap} class="todo-move-wrap">
-      <button
-        type="button"
-        class={`word light todo-move ${props.class ?? ""}`}
+      <Button
+        kind="row-action"
+        class={`word todo-move ${props.class ?? ""}`}
         aria-label={`move #${props.id}`}
         aria-expanded={open()}
         ref={setWord}
@@ -76,14 +77,14 @@ export const HomeMove = (props: {
         }}
       >
         move
-      </button>
+      </Button>
       <Show when={open()}>
         <div class="todo-homes" classList={{ "todo-homes-popover": props.popover }} role="group" aria-label={`homes for #${props.id}`}>
           <For each={homesToOffer(rail.nodes, props.home)}>
             {(offer) => (
-              <button type="button" class="word todo-home-offer" onClick={() => void pick(offer)}>
+              <Button kind="quiet" class="word todo-home-offer" onClick={() => void pick(offer)}>
                 {offer.name}
-              </button>
+              </Button>
             )}
           </For>
           <Show when={failure()}>{(message) => <ErrorLine message={message()} />}</Show>

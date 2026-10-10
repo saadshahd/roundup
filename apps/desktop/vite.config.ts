@@ -40,7 +40,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     // Vitest returns empty CSS by default; the Drawer and tokens tests need the real rules.
-    css: { include: [/styles\.css/, /tokens\.css/] },
+    css: { include: [/styles\.css/, /tokens\.css/, /buttons\.css/] },
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/testing/domStubs.ts"],
     // jsdom resolves the server build of solid-js unless told to use the browser one.

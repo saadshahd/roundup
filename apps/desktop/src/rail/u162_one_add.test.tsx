@@ -72,7 +72,7 @@ describe("u162 one add opens a Workstream", () => {
 
     fireEvent.click(await screen.findByText("agent", { selector: ".rail-adds button" }));
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
-    await waitFor(() => expect(screen.getByText("terminal", { selector: ".rail-adds button" }).hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(screen.getByText("terminal", { selector: ".rail-adds button" }).hasAttribute("aria-disabled")).toBe(false));
     fireEvent.click(screen.getByText("terminal", { selector: ".rail-adds button" }));
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: "g" }]));
@@ -111,7 +111,7 @@ describe("u162 one add opens a Workstream", () => {
 
     chord("n");
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
-    await waitFor(() => expect(pinnedAdd().hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(pinnedAdd().hasAttribute("aria-disabled")).toBe(false));
     chord("t");
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]));

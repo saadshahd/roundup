@@ -2,7 +2,6 @@ import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { AGENT, openPad, openShelf, padOf } from "./padsFixture";
 import { USER } from "../testing/nodes";
-import { withStylesheets } from "../testing/contrast";
 
 afterEach(cleanup);
 
@@ -65,11 +64,11 @@ describe("u50 the Pad's text fills its Drawer", () => {
     ]).toEqual([true, true, true]);
   });
 
-  it("u50_the_export_md_button_reads_in_grey", async () => {
+  it("u50_the_export_md_button_is_quiet", async () => {
     await openShelf([padOf("auth-notes", AGENT)]);
     await openPad("auth-notes");
 
-    await withStylesheets(() => expect(getComputedStyle(screen.getByText("export .md")).color).toBe("var(--grey)"));
+    expect(screen.getByText("export .md").getAttribute("data-button")).toBe("quiet");
   });
 
   it("u50_the_drawer_rule_is_a_flex_column_so_the_fields_flex_1_can_fill_it", () => {

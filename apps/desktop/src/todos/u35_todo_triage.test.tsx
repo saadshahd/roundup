@@ -262,7 +262,7 @@ describe("u35 Todo triage without the Drawer", () => {
       fireEvent.mouseEnter(rowOf(6));
       const complete = await screen.findByText("complete");
       const head = getComputedStyle(rowOf(6).querySelector(".row-head")!);
-      const button = getComputedStyle(complete);
+      const button = getComputedStyle(complete.closest(".row-actions")!);
 
       expect([parseFloat(head.paddingRight) || 0, head.position, button.position, button.top, button.right]).toEqual([
         0,
@@ -286,12 +286,11 @@ describe("u35 Todo triage without the Drawer", () => {
       fireEvent.mouseEnter(rowOf(6));
       const complete = await screen.findByText("complete");
 
-      const button = getComputedStyle(complete);
+      const button = getComputedStyle(complete.closest(".row-actions")!);
 
-      // jsdom turns 1ch into pixels in this property and leaves it as written in others; since U130 moved font-size to
-      // `var(--text-body)`, which jsdom cannot resolve, it converts ch against its own default font size instead of styles.css's.
+      // U170: the buttons take no surface of their own, so the ground sits behind them on their `row-actions` wrapper.
       expect(button.background).toContain("--sunken");
-      expect(button.paddingLeft).toMatch(/^(1ch|8px)$/);
+      expect(button.paddingLeft).toBe("var(--space-1)");
     } finally {
       sheet.remove();
     }

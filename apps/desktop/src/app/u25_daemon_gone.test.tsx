@@ -51,7 +51,7 @@ describe("u25 the Daemon is gone", () => {
     app.exitDaemon({ code: 1 });
 
     for (const button of screen.getAllByRole("button", { name: "new Workstream" })) {
-      expect(button.hasAttribute("disabled")).toBe(true);
+      expect(button.hasAttribute("aria-disabled")).toBe(true);
     }
   });
 });

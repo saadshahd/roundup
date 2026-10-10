@@ -284,7 +284,7 @@ describe("u9 actions", () => {
     fireEvent.click(button);
     finish(SPAWNED);
 
-    await waitFor(() => expect(button).toHaveProperty("disabled", false));
+    await waitFor(() => expect(button.hasAttribute("aria-disabled")).toBe(false));
     expect(railCallsTo(mounted.app, "agent.spawn")).toHaveLength(1);
   });
 
@@ -298,7 +298,7 @@ describe("u9 actions", () => {
 
     fireEvent.click(terminalButton);
 
-    expect([terminalButton, pinnedAdd()].map((button) => button.hasAttribute("disabled"))).toEqual([
+    expect([terminalButton, pinnedAdd()].map((button) => button.hasAttribute("aria-disabled"))).toEqual([
       true,
       true,
     ]);
@@ -345,7 +345,7 @@ it("u62_failed_start_retries_the_same_workstream_and_focuses_its_terminal", asyn
   fireEvent.click(retry);
   fireEvent.click(retry);
   await waitFor(() => expect(railCallsTo(mounted.app, "rail.startDoor")).toHaveLength(2));
-  expect(retry.hasAttribute("disabled")).toBe(true);
+  expect(retry.hasAttribute("aria-disabled")).toBe(true);
   const live = door("actual", "working", "starting");
   tree.splice(0, 1, live);
   finish!(live);

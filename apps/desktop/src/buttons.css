@@ -1,0 +1,112 @@
+/* The five button kinds (docs/design-system.md, "Click targets"; U170, U171): the only stylesheet that sets a background, colour, radius or padding on a button. A kind is named by `data-button`; its states are the same five for all of them. */
+
+[data-button],
+:where(.milkdown) button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--space-5);
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 400;
+  text-align: left;
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+[data-button="primary"] {
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+[data-button="quiet"],
+:where(.milkdown) button {
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
+  color: var(--grey);
+}
+
+[data-button="add"] {
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
+  color: var(--grey);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+[data-button="row-action"] {
+  padding-right: var(--space-1);
+  padding-left: var(--space-1);
+  color: var(--grey);
+  font-size: var(--text-caption);
+}
+
+[data-button="icon"] {
+  justify-content: center;
+  min-width: var(--space-5);
+  padding: 0;
+  color: var(--grey);
+}
+
+[data-button="primary"]:hover:not([aria-disabled="true"]),
+[data-button="quiet"]:hover:not([aria-disabled="true"]),
+[data-button="add"]:hover:not([aria-disabled="true"]),
+[data-button="row-action"]:hover:not([aria-disabled="true"]),
+[data-button="icon"]:hover:not([aria-disabled="true"]),
+:where(.milkdown) button:hover {
+  background-color: var(--hover);
+}
+
+[data-button="quiet"]:hover:not([aria-disabled="true"]),
+[data-button="add"]:hover:not([aria-disabled="true"]),
+[data-button="row-action"]:hover:not([aria-disabled="true"]),
+[data-button="icon"]:hover:not([aria-disabled="true"]),
+:where(.milkdown) button:hover {
+  color: var(--text);
+}
+
+/* Takes effect at `pointerdown` and is instant: a press answers at once (U133, U171). */
+[data-button="primary"]:active:not([aria-disabled="true"]),
+[data-button="quiet"]:active:not([aria-disabled="true"]),
+[data-button="add"]:active:not([aria-disabled="true"]),
+[data-button="row-action"]:active:not([aria-disabled="true"]),
+[data-button="icon"]:active:not([aria-disabled="true"]),
+:where(.milkdown) button:active {
+  background-color: var(--pressed);
+  transition-duration: 0s;
+}
+
+[data-button][aria-disabled="true"] {
+  color: var(--disabled);
+  cursor: default;
+}
+
+/* A button that is a row's whole face is the row (U170): it takes the row's look, and the row's own rules style it. */
+button[data-row] {
+  box-sizing: border-box;
+  min-height: var(--space-5);
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 400;
+  cursor: pointer;
+  justify-content: flex-start;
+  color: inherit;
+  text-align: left;
+  background-color: transparent;
+  border: 0;
+}
+
+button[data-row]:hover {
+  background-color: var(--hover);
+}
+
+button[data-row]:active {
+  background-color: var(--pressed);
+  transition-duration: 0s;
+}

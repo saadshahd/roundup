@@ -28,8 +28,10 @@ Starting values. The thresholds in the checks are fixed; a value that fails a th
 | `--sunken` | `#f5f5f7` | `#141416` | the Rail and the Shelf |
 | `--hover` | `rgba(0,0,0,.04)` | `rgba(255,255,255,.06)` | a row or button under the pointer |
 | `--selected` | `rgba(0,0,0,.05)` | `rgba(255,255,255,.10)` | the selected row |
+| `--pressed` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.16)` | a button while the pointer is down |
 | `--text` | `#1d1d1f` | `#f5f5f7` | body text |
 | `--grey` | `#6e6e73` | `#a1a1a6` | secondary text, Glyph tone of `blocked`, `idle`, `done` |
+| `--disabled` | `#6e6e73` | `#8e8e93` | the label of a button that cannot act |
 | `--accent` | `#0a60d8` | `#4d9bff` | focus ring, Glyph tone of `working`, the primary action |
 | `--amber` | `#9a5b00` | `#f0a030` | `needs-you` |
 | `--red` | `#c4262e` | `#ff6b6b` | `error` |
@@ -71,22 +73,42 @@ A click target is any element with a click, press or key handler, a `button`, `a
 
 | State | Looks like | When |
 |---|---|---|
-| rest | its resting surface; a button also has a label in `--text` or `--grey` and a hit height of at least 24 px | always |
+| rest | its resting surface and its kind's label; a hit height of at least 24 px | always |
 | hover | `--hover` surface, cursor `pointer` | pointer over it |
-| pressed | one step darker than hover, with no transition | from `pointerdown`, before `pointerup` |
+| pressed | `--pressed` surface, with no transition | from `pointerdown`, before `pointerup` |
 | focus | 2 px `--accent` outline, offset 1 px | `:focus-visible` |
-| disabled | `--grey` text, cursor `default`, `aria-disabled` | when it cannot act |
+| disabled | `--disabled` text, cursor `default`, `aria-disabled`, no hover or pressed change | when it cannot act |
 
-A word such as `stop`, `close` or `promote` is a button, not text: it has the hover surface and a 24 px hit height even though it rests as plain `--grey`.
+A row is not a button: a Rail row (`treeitem`), a Shelf row and a Todo's title take the hover, selected and focus looks of "The sidebar" below and no kind. Every other click target is one of five kinds, named by its `data-button` attribute and drawn by the one rule of that name in `apps/desktop/src/buttons.css`, which is the only stylesheet that sets a `background`, `color`, `border-radius` or `padding` on a `button`:
+
+| `data-button` | Rest | Used for |
+|---|---|---|
+| `primary` | `--accent` label, weight 600 | the one action of a state: `start Door`, `new Workstream`, `send`, `complete` in a Todo's Drawer |
+| `quiet` | `--grey` label, `--text` on hover, no surface at rest | every other word: `stop`, `export .md`, `retry`, a menu item |
+| `add` | `--grey`, `--text-small`, a `+` mark and a label | trailing a list or group: `+ agent`, `+ terminal`, `+ new Workstream` |
+| `row-action` | `--grey`, `--text-caption`, a word or mark | on a row, shown on its hover, focus or selection and always reachable by keyboard: `complete`, `start Door`, a Todo's home |
+| `icon` | a 16 px mark in a 24 px square, `--grey`, with an `aria-label` | `close`, the chevron, `+` in a group head, `remove` on an attachment |
+
+Pressed, focus and disabled are the same for the five: a disabled button stays focusable and keeps `aria-disabled`, never the `disabled` attribute, so its reason can be read as its `title`. A word such as `stop`, `close` or `promote` is a button, not text: it has the hover surface and a 24 px hit height even though it rests as plain `--grey`.
+
+## The sidebar
+
+The Rail and the Shelf follow one hierarchy (U172), after the reference the user named:
+
+- A **Workstream row** reads a square badge of the Workstream's first two letters, its name in bold, a disclosure chevron and a quiet right-aligned value (its Agents that are not `done`).
+- A **group** (the Shelf's `todos` and `pads`) has a head: a 16 px mark, a spaced uppercase label, a `--hairline` rule and a count `<shown>/<total>`; it collapses, and the collapse is kept across a restart (U100).
+- An **item** reads its Kind Glyph, a bold title and, below, a grey description clamped to two lines. No key hint is drawn, since no chord addresses a single row.
+- The **selected** row has one mark: a `--selected` band with a 2 px `--accent` bar on its leading edge. Hover is `--hover` and never reads as selected.
+- One `--hairline` sits between each block of the Rail. Rows have at least `--space-2` of vertical and `--space-4` of horizontal padding.
 
 ## Surfaces and depth
 
-The Rail and the Shelf sit on `--sunken`; the pane and the Drawer on `--ground`. Regions are told apart by that change of ground and by space, and by one hairline on the Rail's trailing edge and one on the Shelf's top edge. The only borders allowed are `1px solid var(--hairline)`, on the Rail's trailing edge and the Shelf's top edge, and the Drawer's leading edge (U134). Only the Drawer casts a shadow. A translucent surface (`backdrop-filter`) is never placed over another (apple-design: never stack light materials), and the terminal never sits under one (U5).
+The Rail and the Shelf sit on `--sunken`; the pane and the Drawer on `--ground`. Regions are told apart by that change of ground and by space, and by one hairline on the Rail's trailing edge and one on the Shelf's top edge. The only borders allowed are `1px solid var(--hairline)`, on the Rail's trailing edge, the Shelf's top edge, the Drawer's leading edge and between the blocks of the Rail (U134, U172). Only the Drawer casts a shadow. A translucent surface (`backdrop-filter`) is never placed over another (apple-design: never stack light materials), and the terminal never sits under one (U5).
 
 Three user settings change the look. Each has a rule in `tokens.css`:
 
 - `prefers-color-scheme: dark` uses the dark column.
-- `prefers-contrast: more` makes every `--hairline` 40% opaque and every `--grey` text `--text`.
+- `prefers-contrast: more` makes every `--hairline` 40% opaque and every `--grey` and `--disabled` text `--text`.
 - `prefers-reduced-transparency: reduce` removes every `backdrop-filter`.
 
 ## The checks

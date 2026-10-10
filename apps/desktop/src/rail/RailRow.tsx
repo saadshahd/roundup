@@ -2,6 +2,7 @@ import { createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { Kind } from "@contracts/Kind";
+import { Button } from "../ink/Button";
 import { glyphOf, hasInk } from "../ink/glyph";
 import { Icon } from "../ink/Icon";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -31,6 +32,9 @@ const MarkView = (props: { mark: Mark }) => (
   </Show>
 );
 
+/** The Workstream's first two letters, uppercase. */
+const badgeOf = (name: string): string => [...name.trim()].slice(0, 2).join("").toUpperCase();
+
 const NameField = (props: { node: RailNode; onCommit: (name: string) => void; onCancel: () => void }) => (
   <input
     aria-label="name"
@@ -58,6 +62,8 @@ const NameField = (props: { node: RailNode; onCommit: (name: string) => void; on
 export const RailRowView = (props: {
   row: NodeRow;
   exit: ExitState | null;
+  /** The Workstream row's quiet value: its Agents that are not `done` (U172). */
+  agentsLive: number;
   selected: boolean;
   /** Roving tabindex: exactly one row in the Rail is reachable by Tab. */
   tabbable: boolean;
@@ -128,17 +134,7 @@ export const RailRowView = (props: {
           when={isWorkstream(props.row.node)}
           fallback={<MarkView mark={mark()} />}
         >
-          <button
-            class="word"
-            aria-label="collapse"
-            onClick={(click) => {
-              click.stopPropagation();
-              props.onToggle();
-            }}
-          >
-            <Icon name={props.row.collapsed ? "right" : "down"} />
-          </button>
-          <MarkView mark={mark()} />
+          <span class="badge" aria-hidden="true">{badgeOf(props.row.node.name)}</span>
         </Show>
         <Show
           when={editing()}
@@ -162,6 +158,20 @@ export const RailRowView = (props: {
             onCancel={() => setEditing(false)}
           />
         </Show>
+        <Show when={isWorkstream(props.row.node)}>
+          <Button
+            kind="icon"
+            class="word"
+            aria-label="collapse"
+            onClick={(click) => {
+              click.stopPropagation();
+              props.onToggle();
+            }}
+          >
+            <Icon name={props.row.collapsed ? "right" : "down"} />
+          </Button>
+          <MarkView mark={mark()} />
+        </Show>
         <Show when={showsLiveLine() ? liveLine() : null}>
           {(line) => (
             <span class="live light" title={liveTitleOf(line())}>
@@ -177,10 +187,10 @@ export const RailRowView = (props: {
           {(collapsed) => <span class="light">{collapsed().children}</span>}
         </Show>
         <Show when={(hovered() || props.selected) && isWorkstream(props.row.node) && props.exit !== null}>
-          <button
+          <Button
+            kind="row-action"
             class="word"
-            disabled={props.doorPending}
-            aria-disabled={props.doorPending ? true : undefined}
+            unavailable={props.doorPending}
             onClick={(click) => {
               click.stopPropagation();
               props.onStartDoor();
@@ -188,7 +198,10 @@ export const RailRowView = (props: {
           >
             <Icon name="right" />
             {props.doorFailure ? "retry Door" : "start Door"}
-          </button>
+          </Button>
+        </Show>
+        <Show when={isWorkstream(props.row.node)}>
+          <span class="value light" title={`${props.agentsLive} not done`}>{props.agentsLive}</span>
         </Show>
         <PadsControl pads={pads} />
       </p>

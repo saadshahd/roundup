@@ -21,15 +21,6 @@ p.ink > .icon {
   margin-right: var(--space-1);
 }
 
-.word:has(.icon) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  min-width: var(--space-5);
-  min-height: var(--space-5);
-  border-radius: var(--radius-control);
-}
 
 .rail-row .line {
   min-height: var(--space-5);

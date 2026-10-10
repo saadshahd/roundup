@@ -69,14 +69,17 @@ describe("u132 colour and Kind", () => {
     }
   });
 
-  it("u132_only_needs_you_and_error_rows_are_bold", async () => {
+  // U172 replaces "only `needs-you` and `error` rows are bold": a title is bold by default, and Ink, told by tone and Glyph, stays on those two.
+  it("u132_only_needs_you_and_error_rows_are_ink_and_every_title_is_bold", async () => {
     await mountSeed("agents-10");
 
     for (const row of screen.getAllByRole("treeitem")) {
       const kind = row.querySelector('.glyph[role="img"]')!.getAttribute("aria-label")!;
-      const bold = [row, ...row.querySelectorAll("*")].some((el) => Number(getComputedStyle(el).fontWeight === "bold" ? 700 : getComputedStyle(el).fontWeight) >= 600);
+      const name = row.querySelector(".name")!;
+      const weight = getComputedStyle(name).fontWeight;
 
-      expect(bold, kind).toBe(INK.has(kind));
+      expect(Number(weight === "bold" ? 700 : weight), kind).toBeGreaterThanOrEqual(600);
+      expect(name.classList.contains("ink"), kind).toBe(INK.has(kind));
     }
   });
 

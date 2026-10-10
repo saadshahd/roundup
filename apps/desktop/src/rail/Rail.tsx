@@ -1,4 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import type { RailNode } from "@contracts/agent/RailNode";
+import { Button } from "../ink/Button";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
 import { Icon } from "../ink/Icon";
@@ -8,7 +10,7 @@ import { createRailDrag } from "./drag";
 import { adjacentId } from "./keys";
 import { RailMenu } from "./menu/RailMenu";
 import { createRailMenu } from "./menu/model";
-import { layoutRail, resolvedWorkstream } from "./layout";
+import { descendantsOf, layoutRail, resolvedWorkstream } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
 import { SpawnPromptField } from "./SpawnPromptField";
@@ -16,6 +18,10 @@ import "./styles.css";
 
 const toggled = <T,>(set: ReadonlySet<T>, member: T): ReadonlySet<T> =>
   new Set(set.has(member) ? [...set].filter((each) => each !== member) : [...set, member]);
+
+/** The Workstream row's quiet value (U172): its Agents that are not `done`. */
+const liveAgentsIn = (nodes: readonly RailNode[], id: string): number =>
+  descendantsOf(nodes, id).filter((node) => node.kind === "agent" && node.status?.kind !== "done").length;
 
 export const Rail = () => {
   const { app, project, rail, now, reducedMotion, daemonExit } = useConnectedProject();
@@ -274,6 +280,7 @@ export const Rail = () => {
                         <RailRowView
                           row={view()}
                           exit={rail.exitOf(view().node)}
+                          agentsLive={liveAgentsIn(rail.nodes, view().node.id)}
                           selected={rail.selected() === view().node.id}
                           tabbable={tabbableId() === view().node.id}
                           now={now}
@@ -296,34 +303,21 @@ export const Rail = () => {
                     <Show when={fold()}>
                       {(view) => (
                         <div class="rail-fold" style={{ "padding-left": `${view().depth * 2}ch` }}>
-                          <button
-                            class="word"
-                            onClick={() => setUnfolded((open) => toggled(open, view().parent))}
-                          >
+                          <Button kind="quiet" class="word" onClick={() => setUnfolded((open) => toggled(open, view().parent))}>
                             <KindGlyph kind="done" decorative /> {view().count} done
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </Show>
                     <Show when={addsAfter()?.key === key ? addsAfter() : undefined}>
                       {(adds) => (
                         <div class="rail-adds" style={{ "padding-left": `${adds().depth * 2}ch` }}>
-                          <button
-                            class="word"
-                            disabled={!canSpawn()}
-                            aria-disabled={canSpawn() ? undefined : true}
-                            onClick={() => (composing() ? field()?.focus() : spawnAgentWith(null, adds().workstream))}
-                          >
+                          <Button kind="add" class="word" unavailable={!canSpawn()} onClick={() => (composing() ? field()?.focus() : spawnAgentWith(null, adds().workstream))}>
                             <Icon name="plus" /> agent
-                          </button>
-                          <button
-                            class="word"
-                            disabled={!canSpawn()}
-                            aria-disabled={canSpawn() ? undefined : true}
-                            onClick={() => spawnTerminalUnder(adds().workstream)}
-                          >
+                          </Button>
+                          <Button kind="add" class="word" unavailable={!canSpawn()} onClick={() => spawnTerminalUnder(adds().workstream)}>
                             <Icon name="plus" /> terminal
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </Show>
@@ -346,14 +340,9 @@ export const Rail = () => {
       <Show when={failure() ?? rail.workstreamFailure() ?? rail.doorFailure(rail.selected() ?? "") ?? rail.storageFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <RailMenu menu={menu} />
       <div class="rail-actions">
-        <button
-          class="word"
-          disabled={!canSpawn()}
-          aria-disabled={canSpawn() ? undefined : true}
-          onClick={() => guarded(() => rail.createWorkstream())}
-        >
+        <Button kind="add" class="word" unavailable={!canSpawn()} onClick={() => guarded(() => rail.createWorkstream())}>
           <Icon name="plus" /> new Workstream
-        </button>
+        </Button>
       </div>
     </div>
   );

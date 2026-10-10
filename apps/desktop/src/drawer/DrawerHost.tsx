@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js";
 import { Icon } from "../ink/Icon";
 import { DRAWER_EASING } from "./drawer";
 import type { DrawerContent, DrawerState } from "./drawer";
+import { Button } from "../ink/Button";
 
 /**
  * An overlay: absolutely positioned over the centre and the Shelf, so opening it moves no
@@ -70,9 +71,9 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
         if (!isOpen()) setMounted(null);
       }}
     >
-      <button type="button" class="word close" aria-label="close" onClick={() => props.drawer.close()}>
+      <Button kind="icon" class="word close" aria-label="close" onClick={() => props.drawer.close()}>
         <Icon name="x" />
-      </button>
+      </Button>
       <Show when={mounted()} keyed>
         {(content) => content()}
       </Show>

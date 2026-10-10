@@ -13,6 +13,7 @@ import { TodoDrawer } from "../../todos/TodoDrawer";
 import { useTodoList } from "../../todos/todoList";
 import { openTodosBy, padsOwnedBy } from "./owned";
 import { usePadList } from "./padList";
+import { Button } from "../../ink/Button";
 
 /** The Pads and open Todos under one Rail row (U58, U60): `n` is how many its Agent owns and created together (0 for any other row), `shown` is whether the control is open. */
 export const createAgentPads = (node: Accessor<RailNode>) => {
@@ -42,7 +43,8 @@ export type AgentPads = ReturnType<typeof createAgentPads>;
 /** `◈ <n>` at the right end of an Agent's row; absent at 0. */
 export const PadsControl = (props: { pads: AgentPads }) => (
   <Show when={props.pads.n() > 0}>
-    <button
+    <Button
+      kind="quiet"
       class="word rail-pads-control"
       data-pads-control
       aria-label={`${props.pads.n()} pads`}
@@ -53,7 +55,7 @@ export const PadsControl = (props: { pads: AgentPads }) => (
       }}
     >
       <Icon name="owned" /> {props.pads.n()}
-    </button>
+    </Button>
   </Show>
 );
 
@@ -70,6 +72,7 @@ export const PadRows = (props: { pads: AgentPads; depth: number }) => {
               <button
                 type="button"
                 class="rail-pad"
+                data-row
                 title={pad.name}
                 onClick={() => {
                   props.pads.setFailure(null);

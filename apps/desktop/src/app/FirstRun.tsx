@@ -1,6 +1,7 @@
 import { Icon } from "../ink/Icon";
 import { Show } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
+import { Button } from "../ink/Button";
 
 /** Screen 11 of `docs/wireframes.md`: each region says what will live there; there is no tutorial. */
 export const EmptyRail = () => (
@@ -16,9 +17,9 @@ export const ChooseProject = (props: { failure: string | null; onChoose: () => v
     <Show when={props.failure} fallback={<p>open a folder to start</p>}>
       {(message) => <ErrorLine message={message()} />}
     </Show>
-    <button type="button" class="word" onClick={() => props.onChoose()}>
+    <Button kind="primary" class="word" onClick={() => props.onChoose()}>
       choose folder…
-    </button>
+    </Button>
   </>
 );
 

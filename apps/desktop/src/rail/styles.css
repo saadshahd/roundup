@@ -10,8 +10,11 @@
 }
 
 .rail-row {
+  box-sizing: border-box;
+  position: relative;
   min-height: 28px;
-  padding-right: 8px;
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
   cursor: pointer;
   scroll-margin-bottom: var(--rail-actions-height);
 }
@@ -29,9 +32,58 @@
   box-sizing: border-box;
 }
 
+.rail-row:hover {
+  background-color: var(--hover);
+}
+
+/* Takes effect at `pointerdown` and is instant (U133). */
+.rail-row:active {
+  background-color: var(--selected);
+  transition-duration: 0s;
+}
+
+/* U172: the one selection mark, a band and a 2px bar on the leading edge, drawn as backgrounds and never a border (D8). */
 .rail-row[data-selected="true"] {
   background: var(--selected);
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-size: 2px 100%;
 }
+
+/* U172: the Workstream row's badge, bold name, chevron and quiet value; each block of rows is told from the next by one hairline and `--space-3`. */
+.rail-row[aria-expanded] {
+  margin-top: var(--space-3);
+  border-top-width: 1px;
+  border-top-style: solid;
+  border-top-color: var(--hairline);
+  font-weight: 600;
+}
+
+.rail-row[aria-expanded]:first-child {
+  margin-top: 0;
+  border-top-style: none;
+}
+
+.rail-row .badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  background: var(--selected);
+  border-radius: var(--radius-row);
+}
+
+.rail-row .value {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-weight: 400;
+}
+
+
 
 .rail-row .line {
   min-height: inherit;
@@ -180,12 +232,14 @@
   border-radius: var(--radius-row);
 }
 
-.rail-menu button {
-  min-height: 28px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-row);
-}
-
 .rail-menu-question {
   padding: var(--space-2);
+}
+
+.rail-row .name {
+  font-weight: 600;
+}
+
+.rail-row .name.ink {
+  font-weight: 700;
 }

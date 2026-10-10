@@ -11,6 +11,7 @@ import { foldedLine, fullLine, isBetweenAgents } from "./lines";
 import { quotedLines, quoteOf } from "./quote";
 import type { Quote } from "./quote";
 import "./styles.css";
+import { Button } from "../ink/Button";
 
 type Preview = { attachment: Attachment; left: number; top: number };
 
@@ -30,9 +31,9 @@ const AttachmentChip = (props: { attachment: Attachment; onPreview: (preview: Pr
     {props.attachment.name} <span class="light">{sizeText(props.attachment.size)}</span>
     <Show when={props.onRemove}>
       {(remove) => (
-        <button type="button" class="word" aria-label={`remove ${props.attachment.name}`} onClick={remove()}>
+        <Button kind="icon" class="word" aria-label={`remove ${props.attachment.name}`} onClick={remove()}>
           <Icon name="x" />
-        </button>
+        </Button>
       )}
     </Show>
   </span>
@@ -270,9 +271,9 @@ const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: s
           {(quote, index) => (
             <span class="thread-quote" data-quote title={quote.text}>
               <span class="light">{quote.source}</span> {quote.text}
-              <button type="button" class="word" aria-label={`remove quote from ${quote.source}`} onClick={() => setQuotes((now) => now.filter((_, at) => at !== index()))}>
+              <Button kind="icon" class="word" aria-label={`remove quote from ${quote.source}`} onClick={() => setQuotes((now) => now.filter((_, at) => at !== index()))}>
                 <Icon name="x" />
-              </button>
+              </Button>
             </span>
           )}
         </For>
@@ -305,16 +306,9 @@ const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: s
             addFiles(files);
           }}
         />
-        <button
-          type="button"
-          class="word thread-send"
-          aria-disabled={nothingToSend() || sending() ? true : undefined}
-          onClick={() => {
-            if (!nothingToSend() && !sending()) void submit();
-          }}
-        >
+        <Button kind="primary" class="word thread-send" unavailable={nothingToSend() || sending()} onClick={() => void submit()}>
           send
-        </button>
+        </Button>
       </div>
       <Show when={preview()}>
         {(shown) => (

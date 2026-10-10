@@ -1,6 +1,7 @@
 import tokenStyles from "../tokens.css?inline";
 import appStyles from "../styles.css?inline";
 import railStyles from "../rail/styles.css?inline";
+import buttonStyles from "../buttons.css?inline";
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -159,7 +160,7 @@ export const loadTokens = () => {
 /** Injects the real stylesheets into jsdom, as the Drawer tests already do, so `getComputedStyle` reflects the shipped rules. */
 export const withStylesheets = async <T,>(run: () => T | Promise<T>): Promise<T> => {
   const sheet = document.head.appendChild(document.createElement("style"));
-  sheet.textContent = `${tokenStyles}\n${appStyles}\n${railStyles}`;
+  sheet.textContent = `${tokenStyles}\n${appStyles}\n${railStyles}\n${buttonStyles}`;
 
   try {
     return await run();

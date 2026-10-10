@@ -58,21 +58,6 @@
   font-size: var(--text-body);
 }
 
-.pad-rich-editor .milkdown button {
-  min-height: var(--space-5);
-  cursor: pointer;
-  border-radius: var(--radius-control);
-}
-
-.pad-rich-editor .milkdown button:hover {
-  background: var(--hover);
-}
-
-.pad-rich-editor .milkdown button:active {
-  background: var(--selected);
-  transition-duration: 0s;
-}
-
 .pad-rich-editor .milkdown .ProseMirror {
   min-height: 100%;
   padding: var(--space-4);

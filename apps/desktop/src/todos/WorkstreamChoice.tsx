@@ -10,7 +10,7 @@ export const WorkstreamChoice = (props: { thisWorkstream: boolean; onChange: (th
         { label: "all", value: false },
         { label: "this one", value: true },
       ].map((option) => (
-        <label class="word shown-word">
+        <label class="word shown-word" data-button="quiet">
           <input
             type="radio"
             name={name}

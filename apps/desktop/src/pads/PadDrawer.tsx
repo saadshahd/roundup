@@ -12,6 +12,7 @@ import { cutName, markedLine, wholeWord } from "./nameLine";
 
 import type { PadEditorHandle } from "./PadRichEditor";
 import "./styles.css";
+import { Button } from "../ink/Button";
 
 const PadRichEditor = lazy(() => import("./PadRichEditor"));
 
@@ -212,9 +213,9 @@ const PadBody = (props: {
         <Show
           when={ownedByUser()}
           fallback={
-            <button type="button" class="word" style={wholeWord} aria-label="make yours" onClick={() => void takeIt()}>
+            <Button kind="icon" class="word" style={wholeWord} aria-label="make yours" onClick={() => void takeIt()}>
               <OwnerMark owner={pad().owner} decorative />
-            </button>
+            </Button>
           }
         >
           <span style={wholeWord}><OwnerMark owner={pad().owner} decorative /></span>
@@ -230,9 +231,9 @@ const PadBody = (props: {
         when={asking()}
         fallback={
           <p style={{ "text-align": "right" }}>
-            <button
-              type="button"
-              class="word light"
+            <Button
+              kind="quiet"
+              class="word"
               ref={(button) => (deleteButton = button)}
               onClick={() => {
                 actionFailure.clear();
@@ -240,10 +241,10 @@ const PadBody = (props: {
               }}
             >
               delete
-            </button>{" "}
-            <button type="button" class="word light" onClick={() => void exportToFile()}>
+            </Button>{" "}
+            <Button kind="quiet" class="word" onClick={() => void exportToFile()}>
               export .md
-            </button>
+            </Button>
           </p>
         }
       >
@@ -251,12 +252,12 @@ const PadBody = (props: {
           {`delete ${name}?  `}
           <Show when={pad().owner.kind !== "user"}>{`${connected.rail.nameOf(pad().owner)} owns it; you may delete any Pad  `}</Show>
           <Show when={currentDraft() !== origin()}>{"unsaved changes are lost  "}</Show>
-          <button type="button" class="word light" onClick={() => void remove()}>
+          <Button kind="quiet" class="word" onClick={() => void remove()}>
             delete
-          </button>{" "}
-          <button
-            type="button"
-            class="word light"
+          </Button>{" "}
+          <Button
+            kind="quiet"
+            class="word"
             ref={(button) => queueMicrotask(() => button.focus())}
             onClick={() => {
               setAsking(false);
@@ -264,7 +265,7 @@ const PadBody = (props: {
             }}
           >
             keep
-          </button>
+          </Button>
         </p>
       </Show>
       <Show when={actionFailure.message()}>
@@ -295,22 +296,22 @@ const PadBody = (props: {
             <span class="light" style={wholeWord}>
               changed by {connected.rail.nameOf(actor())}
             </span>
-            <button
-              type="button"
+            <Button
+              kind="quiet"
               class="word"
               style={wholeWord}
               onClick={() => void keepMine()}
             >
               keep mine
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              kind="quiet"
               class="word"
               style={wholeWord}
               onClick={useTheirs}
             >
               use theirs
-            </button>
+            </Button>
           </p>
         )}
       </Show>

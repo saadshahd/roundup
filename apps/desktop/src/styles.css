@@ -25,37 +25,6 @@ p {
   outline-offset: 1px;
 }
 
-button {
-  box-sizing: border-box;
-  min-height: var(--space-5);
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  background-color: transparent;
-  border: 0;
-  border-radius: var(--radius-control);
-  cursor: pointer;
-}
-
-button:hover:not(:disabled),
-.rail-row:hover {
-  background-color: var(--hover);
-}
-
-/* Takes effect at `pointerdown` and is instant: a press answers at once (U133). */
-button:active:not(:disabled),
-.rail-row:active {
-  background-color: var(--selected);
-  transition-duration: 0s;
-}
-
-button:disabled,
-button[aria-disabled="true"] {
-  color: var(--grey);
-  cursor: default;
-}
-
 .window {
   display: flex;
   flex-direction: column;
@@ -135,24 +104,18 @@ button[aria-disabled="true"] {
   position: relative;
 }
 
-.shelf .complete {
+.shelf .row-actions {
   position: absolute;
   top: 0;
   right: 0;
-  padding-left: 1ch;
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-1);
   background: var(--sunken);
 }
 
 .centre {
   background-color: var(--ground);
-}
-
-.word {
-  color: var(--grey);
-}
-
-.word:hover:not(:disabled) {
-  color: var(--text);
 }
 
 .light {
@@ -229,9 +192,7 @@ button[aria-disabled="true"] {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: var(--space-5);
   margin-left: var(--space-2);
-  cursor: pointer;
 }
 
 .shown-choice {
@@ -248,4 +209,34 @@ button[aria-disabled="true"] {
 
 .shown-word:has(input:checked) {
   color: var(--text);
+}
+
+/* U172: the one head of the Shelf's collapsible lists: mark, label in capitals, a hairline rule filling the line, the count. */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.group-label {
+  font-size: var(--text-caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.group-rule {
+  flex: 1;
+  height: 0;
+  border-top-width: 1px;
+  border-top-style: solid;
+  border-top-color: var(--hairline);
+}
+
+.group-count {
+  font-size: var(--text-caption);
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
 }

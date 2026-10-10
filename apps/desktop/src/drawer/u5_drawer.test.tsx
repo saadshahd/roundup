@@ -240,7 +240,7 @@ describe("u5 Drawer and last touch", () => {
     ]);
   });
 
-  it("u5_the_close_word_is_light_and_clear_of_the_content", () => {
+  it("u5_the_close_button_is_an_icon_and_clear_of_the_content", () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     const { panel } = drawerSetup();
@@ -248,6 +248,6 @@ describe("u5 Drawer and last touch", () => {
     const [color, padding] = [getComputedStyle(close).color, getComputedStyle(panel).paddingTop];
     sheet.remove();
 
-    expect([close.classList.contains("word"), color, padding]).toEqual([true, "var(--grey)", "var(--space-6)"]);
+    expect([close.getAttribute("data-button"), color, padding]).toEqual(["icon", "var(--grey)", "var(--space-6)"]);
   });
 });

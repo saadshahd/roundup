@@ -10,6 +10,7 @@ import type { EmulatorFactory } from "./emulator";
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, fontSizeStorage } from "./fontSize";
 import { createScreens } from "./screens";
 import "./styles.css";
+import { Button } from "../ink/Button";
 
 /**
  * The selected row's Terminal. Every error line of the centre lives in the pane's one fixed-height slot, so the
@@ -201,7 +202,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         {(message) => (
           <div class="decision-list-failure">
             <ErrorLine message={message()} />
-            <button type="button" class="word" onClick={() => connected.decisions.retryList()}>retry</button>
+            <Button kind="quiet" class="word" onClick={() => connected.decisions.retryList()}>retry</Button>
           </div>
         )}
       </Show>
@@ -227,9 +228,9 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
           <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>
             <div class="pane-empty pane-door">
               <p class="light">{rail.workstreamCreating() ? "creating Workstream…" : "no Workstream yet"}</p>
-              <button class="word pane-action" disabled={rail.workstreamCreating() || connected.daemonExit() !== null} aria-disabled={rail.workstreamCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createWorkstream()}>
+              <Button kind="primary" class="word pane-action" unavailable={rail.workstreamCreating() || connected.daemonExit() !== null} onClick={() => void rail.createWorkstream()}>
                 <Icon name="plus" /> new Workstream
-              </button>
+              </Button>
             </div>
           </Show>
         </Show>
@@ -240,18 +241,18 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
           {(state) => (
             <div class="pane-empty pane-door">
               <p class="light">{doorStateText(state())}</p>
-              <button class="word pane-action" disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} aria-disabled={rail.doorPending(selected()!.id) || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.startDoor(selected()!.id)}>
+              <Button kind="primary" class="word pane-action" unavailable={rail.doorPending(selected()!.id) || connected.daemonExit() !== null} onClick={() => void rail.startDoor(selected()!.id)}>
                 <Icon name="right" />
                 {rail.doorFailure(selected()!.id) ? "retry Door" : "start Door"}
-              </button>
+              </Button>
             </div>
           )}
         </Show>
         <Show when={latest()}>
           {(id) => (
-            <button type="button" class="word pane-latest" onClick={() => screens.returnToBottom(id())}>
+            <Button kind="quiet" class="word pane-latest" onClick={() => screens.returnToBottom(id())}>
               ↓ latest
-            </button>
+            </Button>
           )}
         </Show>
       </div>

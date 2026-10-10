@@ -5,7 +5,7 @@ import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
 
-const rows = () => within(screen.getByRole("region", { name: "todos" })).getAllByRole("button").map((row) => row.textContent?.trim());
+const rows = () => within(screen.getByRole("region", { name: "todos" })).getAllByRole("button").filter((row) => !row.hasAttribute("aria-expanded")).map((row) => row.textContent?.trim());
 
 describe("u15 Todo list", () => {
   it("u15_open_todos_are_listed_in_id_order_as_glyph_hash_id_title", async () => {

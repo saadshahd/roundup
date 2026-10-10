@@ -1,5 +1,6 @@
 import { createEffect, onCleanup, onMount, Show } from "solid-js";
 import type { RailMenuModel } from "./model";
+import { Button } from "../../ink/Button";
 
 export const RailMenu = (props: { menu: RailMenuModel }) => {
   let element: HTMLDivElement | undefined;
@@ -67,18 +68,18 @@ export const RailMenu = (props: { menu: RailMenuModel }) => {
             fallback={
               <>
                 <Show when={props.menu.canStop(current())}>
-                  <button role="menuitem" onClick={props.menu.chooseStop}>stop</button>
+                  <Button kind="quiet" role="menuitem" onClick={props.menu.chooseStop}>stop</Button>
                 </Show>
                 <Show when={props.menu.canResume(current())}>
-                  <button role="menuitem" onClick={props.menu.chooseResume}>resume</button>
+                  <Button kind="quiet" role="menuitem" onClick={props.menu.chooseResume}>resume</Button>
                 </Show>
-                <button role="menuitem" onClick={props.menu.chooseRemove}>remove</button>
+                <Button kind="quiet" role="menuitem" onClick={props.menu.chooseRemove}>remove</Button>
               </>
             }
           >
             <span class="rail-menu-question">{`stop and remove ${current().node.name}?`}</span>
-            <button role="menuitem" onClick={props.menu.chooseRemove}>remove</button>
-            <button role="menuitem" onClick={closeAndFocusRow}>keep</button>
+            <Button kind="quiet" role="menuitem" onClick={props.menu.chooseRemove}>remove</Button>
+            <Button kind="quiet" role="menuitem" onClick={closeAndFocusRow}>keep</Button>
           </Show>
         </div>
       )}

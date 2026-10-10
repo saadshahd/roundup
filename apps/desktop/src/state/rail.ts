@@ -110,7 +110,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
         if (saved) {
           setSelected(tree.some((node) => node.id === saved.selected) ? saved.selected : null);
-          setCollapsed(new Set(saved.collapsed.filter((id) => tree.some((node) => node.id === id && isWorkstream(node)))));
+          setCollapsed(new Set(saved.collapsed.filter((id) => id.startsWith("shelf:") || tree.some((node) => node.id === id && isWorkstream(node)))));
           reveal(selected());
           setRestored(selected() !== null);
           save();

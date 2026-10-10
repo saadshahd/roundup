@@ -6,6 +6,7 @@ import { driveStates, outlineRulesIn, styleIn } from "../testing/pointerStates";
 import { seedApp } from "../testing/seeds";
 import tokenCss from "../tokens.css?inline";
 import appCss from "../styles.css?inline";
+import buttonCss from "../buttons.css?inline";
 import inkCss from "../ink/styles.css?inline";
 import padsCss from "../pads/styles.css?inline";
 import railCss from "./styles.css?inline";
@@ -21,10 +22,10 @@ const resolved = (value: string) => value.replace(/var\(--([\w-]+)\)/g, (_, name
 
 let undrive = () => {};
 
-// main.tsx loads these two; the test mounts the App without it.
+// main.tsx loads these; the test mounts the App without it.
 const shell = (() => {
   const sheet = document.createElement("style");
-  sheet.textContent = `${tokenCss}\n${appCss}`;
+  sheet.textContent = `${tokenCss}\n${appCss}\n${railCss}\n${buttonCss}`;
 
   return sheet;
 })();
@@ -104,7 +105,7 @@ describe("u133 click targets", () => {
   });
 
   it("u133_one_bare_focus_visible_rule_draws_a_2px_accent_ring_and_no_stylesheet_sets_another", async () => {
-    const sheets = { "styles.css": appCss, "ink/styles.css": inkCss, "pads/styles.css": padsCss, "rail/styles.css": railCss, "terminal/styles.css": terminalCss, "todos/rowButton.styles.css": rowButtonCss, "rail/attentionChip.styles.css": chipCss, "tokens.css": tokenCss };
+    const sheets = { "styles.css": appCss, "buttons.css": buttonCss, "ink/styles.css": inkCss, "pads/styles.css": padsCss, "rail/styles.css": railCss, "terminal/styles.css": terminalCss, "todos/rowButton.styles.css": rowButtonCss, "rail/attentionChip.styles.css": chipCss, "tokens.css": tokenCss };
     const withOutline = Object.entries(sheets).flatMap(([file, css]) => [...css.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*(?<![\w-])outline(?:-[a-z]+)?\s*:[^{}]*)\}/g)].map((rule) => ({ file, selector: rule[1]!.trim(), body: rule[2]! })));
     const ring = withOutline.filter((rule) => /outline-color\s*:/.test(rule.body) && !/outline-width\s*:\s*0\s*;?\s*$/.test(rule.body.trim()));
 
@@ -146,20 +147,20 @@ describe("u133 click targets", () => {
     for (const el of named) expect(px(getComputedStyle(el).minHeight), `${el.getAttribute("aria-label") ?? el.textContent}`).toBeGreaterThanOrEqual(24);
   });
 
-  it("u133_a_disabled_button_has_grey_text_cursor_default_and_aria_disabled", async () => {
+  it("u133_a_disabled_button_has_the_disabled_tone_cursor_default_and_aria_disabled", async () => {
     const controls = await mount("daemon-exits");
     controls.app.exitDaemon({ code: 1 });
-    await waitFor(() => expect(document.querySelectorAll("button:disabled").length).toBeGreaterThan(0));
+    await waitFor(() => expect(document.querySelectorAll('button[aria-disabled="true"]').length).toBeGreaterThan(0));
     undrive = driveStates();
-    const disabled = [...document.querySelectorAll("button:disabled")];
+    const disabled = [...document.querySelectorAll('button[aria-disabled="true"]')];
 
     expect(disabled.length).toBeGreaterThan(0);
 
     for (const el of disabled) {
-      expect(el.getAttribute("aria-disabled"), el.textContent ?? "").toBe("true");
-      expect(styleIn(el, "rest").getPropertyValue("color")).toBe("var(--grey)");
+      expect(el.hasAttribute("disabled"), el.textContent ?? "").toBe(false);
+      expect(styleIn(el, "rest").getPropertyValue("color")).toBe("var(--disabled)");
       expect(styleIn(el, "rest").getPropertyValue("cursor")).toBe("default");
-      expect(styleIn(el, "hover").getPropertyValue("color")).toBe("var(--grey)");
+      expect(styleIn(el, "hover").getPropertyValue("color")).toBe("var(--disabled)");
       expect(styleIn(el, "hover").getPropertyValue("cursor")).toBe("default");
     }
   });

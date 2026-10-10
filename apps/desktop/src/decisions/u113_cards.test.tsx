@@ -114,8 +114,8 @@ describe("u113 the Card for the selected Agent or Workstream's Door", () => {
     fireEvent.click(allow);
 
     expect(rpcCalls(app, "decision.answer")).toEqual([{ id: "d1", answer: "allow", proof: "proof-1" }]);
-    expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("disabled")).toBe(true);
-    expect(within(card()!).getByRole("button", { name: "deny" }).hasAttribute("disabled")).toBe(true);
+    expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("aria-disabled")).toBe(true);
+    expect(within(card()!).getByRole("button", { name: "deny" }).hasAttribute("aria-disabled")).toBe(true);
 
     pending.resolve(null);
 
@@ -176,7 +176,7 @@ describe("u113 the Card for the selected Agent or Workstream's Door", () => {
     await pending.promise;
 
     await waitFor(() => expect(card()?.textContent).toContain("Write"));
-    expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("disabled")).toBe(false);
+    expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("aria-disabled")).toBe(false);
   });
 
   it("u113_an_external_clear_removes_the_card", async () => {
@@ -220,7 +220,7 @@ describe("u113 the Card for the selected Agent or Workstream's Door", () => {
     await waitFor(() => expect(card()).not.toBeNull());
     app.exitDaemon({ code: 1 });
 
-    await waitFor(() => expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("disabled")).toBe(true));
+    await waitFor(() => expect(within(card()!).getByRole("button", { name: "allow" }).hasAttribute("aria-disabled")).toBe(true));
     expect(screen.getByRole("banner").textContent).toContain("daemon exited 1");
   });
 });
