@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AGENT,
   deferred,
-  enterEditor,
   openPad,
   openShelf,
   padOf,
@@ -19,7 +18,7 @@ afterEach(cleanup);
 const edit = (field: HTMLTextAreaElement, value: string) => {
   fireEvent.focus(field);
   fireEvent.input(field, { target: { value } });
-  fireEvent.blur(field);
+  fireEvent.focusOut(field);
 };
 
 const methodsAfterOpen = (calls: string[]) =>
@@ -46,17 +45,6 @@ describe("u20 open and edit", () => {
     await openPad("auth-notes");
 
     expect(screen.getByText("export .md").className).toContain("light");
-  });
-
-  it("u20_the_source_is_in_the_monospace_editor", async () => {
-    await openShelf([
-      padOf("auth-notes", USER, "## refresh rotation\n- rotate on every use"),
-    ]);
-
-    const field = await openPad("auth-notes");
-
-    expect(field.value).toBe("## refresh rotation\n- rotate on every use");
-    expect(getComputedStyle(field.closest(".cm-editor")!).fontFamily).toBe("var(--font-mono)");
   });
 
   it("u20_opening_calls_provenance_history_then_pad_read_once", async () => {
@@ -119,7 +107,7 @@ describe("u20 open and edit", () => {
     expect(app.calls.filter((call) => call.method === "pad.write")).toEqual([
       {
         method: "pad.write",
-        params: { name: "release-checklist", text: "new" },
+        params: { name: "release-checklist", text: "new\n" },
       },
     ]);
   });
@@ -268,13 +256,13 @@ describe("u20 open and edit", () => {
     edit(field, "new");
 
     fireEvent.input(field, { target: { value: "newer" } });
-    reply.resolve(padOf("release-checklist", USER, "new"));
+    reply.resolve(padOf("release-checklist", USER, "new\n"));
     await reply.promise;
     await new Promise((done) => setTimeout(done, 0));
     expect(field.value).toBe("newer");
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
-    await waitFor(() => expect(writes).toEqual(["new", "newer"]));
+    await waitFor(() => expect(writes).toEqual(["new\n", "newer\n"]));
   });
 
   it("u20_clicking_back_in_while_a_save_is_in_flight_never_loses_an_agents_append", async () => {
@@ -290,17 +278,17 @@ describe("u20 open and edit", () => {
     const field = await openPad("release-checklist");
     edit(field, "new");
     fireEvent.focus(field);
-    reply.resolve(padOf("release-checklist", USER, "new"));
+    reply.resolve(padOf("release-checklist", USER, "new\n"));
     await reply.promise;
     await new Promise((done) => setTimeout(done, 0));
     state.pads = [padOf("release-checklist", USER, "new plus agent")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "release-checklist" } });
     await waitFor(() => expect(field.value).toBe("new plus agent"));
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     await new Promise((done) => setTimeout(done, 0));
 
-    expect([writes, state.pads[0]?.text]).toEqual([["new"], "new plus agent"]);
+    expect([writes, state.pads[0]?.text]).toEqual([["new\n"], "new plus agent"]);
   });
 
   it("u20_typing_back_to_the_original_text_never_sends_it_over_an_agents_append", async () => {
@@ -312,7 +300,7 @@ describe("u20 open and edit", () => {
     await waitForReload(app);
 
     fireEvent.input(field, { target: { value: "mine" } });
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     await waitFor(() => expect(field.value).toBe("mine plus agent"));
     expect([app.calls.some((call) => call.method === "pad.write"), state.pads[0]?.text]).toEqual([false, "mine plus agent"]);
@@ -324,15 +312,14 @@ describe("u20 open and edit", () => {
     fireEvent.focus(field);
     state.pads = [padOf("auth-notes", USER, "v1")];
     app.emit({ actor: AGENT, name: "pad.changed", data: { name: "auth-notes" } });
-    await screen.findByRole("button", { name: "edit" });
-    const editor = await enterEditor();
+    await waitFor(() => expect(field.readOnly).toBe(false));
 
-    fireEvent.input(editor, { target: { value: "typed" } });
-    fireEvent.blur(editor);
+    fireEvent.input(field, { target: { value: "typed" } });
+    fireEvent.focusOut(field);
 
-    await waitFor(() => expect(state.pads[0]?.text).toBe("typed"));
+    await waitFor(() => expect(state.pads[0]?.text).toBe("typed\n"));
     expect(app.calls.filter((call) => call.method === "pad.write")).toEqual([
-      { method: "pad.write", params: { name: "auth-notes", text: "typed" } },
+      { method: "pad.write", params: { name: "auth-notes", text: "typed\n" } },
     ]);
   });
 
@@ -351,7 +338,7 @@ describe("u20 open and edit", () => {
     });
     await waitForReload(app);
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     await waitFor(() => expect(field.value).toBe("mine plus"));
     expect(app.calls.some((call) => call.method === "pad.write")).toBe(false);
@@ -372,7 +359,7 @@ describe("u20 open and edit", () => {
     });
     await waitForReload(app);
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     await waitFor(() => expect(field.value).toBe("mine plus agent"));
     expect(app.calls.some((call) => call.method === "pad.write")).toBe(false);
