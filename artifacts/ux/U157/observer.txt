@@ -1,0 +1,64 @@
+== 1280 light
+theme false
+start: "in project root"
+tops hovered, move hidden/shown: "[64,103,142,249,312,351,390,477,501]"
+tops rest: "[64,103,142,249,312,351,390,477,501]"
+tops list open: "[64,103,142,249,312,351,390,477,501]"
+offers: "[\"backend\",\"auth-refactor\",\"payments room with a very long name that overflows the rail\"]"
+after pointer move: "in auth-refactor" active="BUTTON"
+drawer offers: "[\"project root\",\"backend\",\"payments room with a very long name that overflows the rail\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+todo.move calls: "[{\"id\":2,\"home\":\"auth\"},{\"id\":2,\"home\":null}]"
+again: "in auth-refactor"
+after rename: "in renamed-room"
+after remove: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 1280 dark
+theme true
+start: "in project root"
+tops hovered, move hidden/shown: "[64,103,142,249,312,351,390,477,501]"
+tops rest: "[64,103,142,249,312,351,390,477,501]"
+tops list open: "[64,103,142,249,312,351,390,477,501]"
+offers: "[\"backend\",\"auth-refactor\",\"payments room with a very long name that overflows the rail\"]"
+after pointer move: "in auth-refactor" active="BUTTON"
+drawer offers: "[\"project root\",\"backend\",\"payments room with a very long name that overflows the rail\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+todo.move calls: "[{\"id\":2,\"home\":\"auth\"},{\"id\":2,\"home\":null}]"
+again: "in auth-refactor"
+after rename: "in renamed-room"
+after remove: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 700 light
+theme false
+start: "in project root"
+tops hovered, move hidden/shown: "[558,597,636,713,776,815,854,941,965]"
+tops rest: "[558,597,636,713,776,815,854,941,965]"
+tops list open: "[558,597,636,713,776,815,854,941,965]"
+offers: "[\"backend\",\"auth-refactor\",\"payments room with a very long name that overflows the rail\"]"
+after pointer move: "in auth-refactor" active="BUTTON"
+drawer offers: "[\"project root\",\"backend\",\"payments room with a very long name that overflows the rail\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+todo.move calls: "[{\"id\":2,\"home\":\"auth\"},{\"id\":2,\"home\":null}]"
+again: "in auth-refactor"
+after rename: "in renamed-room"
+after remove: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 700 dark
+theme true
+start: "in project root"
+tops hovered, move hidden/shown: "[558,597,636,713,776,815,854,941,965]"
+tops rest: "[558,597,636,713,776,815,854,941,965]"
+tops list open: "[558,597,636,713,776,815,854,941,965]"
+offers: "[\"backend\",\"auth-refactor\",\"payments room with a very long name that overflows the rail\"]"
+after pointer move: "in auth-refactor" active="BUTTON"
+drawer offers: "[\"project root\",\"backend\",\"payments room with a very long name that overflows the rail\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+todo.move calls: "[{\"id\":2,\"home\":\"auth\"},{\"id\":2,\"home\":null}]"
+again: "in auth-refactor"
+after rename: "in renamed-room"
+after remove: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
