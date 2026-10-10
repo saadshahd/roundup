@@ -27,7 +27,7 @@ One command the user runs from the overlay `⌘T` opens inside a Workstream; it 
 A bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.
 
 **Workstream**:
-The persistent place for one body of work, named for the work, with exactly one Door and its Agents, Terminals, Todos and Sketches. Stopping its Door neither removes the Workstream nor moves its contents. Workstream nesting and cross-Workstream dependencies are open.
+The persistent place for one body of work, named for the work, with exactly one Door and its Agents, Terminals, Todos and Sketches. Stopping its Door neither removes the Workstream nor moves its contents. Workstreams are flat: one never sits under another. Its Agents nest under the Door and under each other (Subagent). Cross-Workstream dependencies are open.
 _Avoid_: room, folder
 
 **Home**:
@@ -36,6 +36,10 @@ Where an item sits: a Workstream, or the Project root. Each item has one Home th
 **Door**:
 The coordinating Agent role of one Workstream, with a system prompt tuned to that role. Its Rail id is the Workstream id; its program may be starting, running or stopped without changing the Workstream. Direct access to any Agent remains (P1).
 _Avoid_: meta-agent, parent agent, lead
+
+**Subagent**:
+An Agent that another Agent, the Door or a Subagent, started. The Rail shows it nested under the Agent that started it, to any depth, within that Agent's Workstream. Claude Code's own in-process subagents are not on the Rail and are not Subagents.
+_Avoid_: child agent, sub-agent, meta-agent, parent agent
 
 **Attempt**:
 One launch of an Agent's program, numbered per Agent from `1` in launch order (A20). It travels in the hook command, `SignalParams`, `StatusEvent` and `RailNode.attempt` as a canonical positive decimal string within SQLite's signed 64-bit range; a client may compare two of one Agent and reads nothing else from it. Never a Rail identity or a vendor conversation id; the last one survives stop, failure and reopen.
@@ -202,7 +206,7 @@ A Message waiting on an ask-first Route, the end of a Takeover, or the user's an
 The word on a held or dropped Message saying why: `ask-first`, `takeover` or `escalated` (held); `receiver gone`, `not accepted` or `passed` (dropped).
 
 **Hop**:
-One Message of a bubbling question: sent to a Door, then to the Doors of the Workstreams above it, nearest first, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
+One Message of a bubbling question: sent to an Agent, then to each Agent above it in its Workstream, nearest first, ending with the Door, each linked to the one before by `passedFrom`. A hop passes when its Door answers nothing within 60 000 ms or calls `message.pass`; the chain ends at the Landing.
 
 **Landing**:
 The Message to the user that ends a bubbling question: `held` with the reason `escalated`, never `delivered` until the user answers it.
