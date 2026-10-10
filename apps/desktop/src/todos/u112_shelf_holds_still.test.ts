@@ -145,13 +145,14 @@ afterAll(async () => {
 
 type Metrics = { top: number; height: number; lines: number }[];
 
-/** Page-side: every Shelf row's top edge, height and the title's line count (distinct line tops of its text). */
+/** Page-side: every Shelf row's top edge (in the Shelf's own content, so a scroll of the Shelf is no move), height and the title's line count (distinct line tops of its text). */
 const MEASURE = `() => [...document.querySelectorAll(".shelf [data-id]")].map((row) => {
   const title = row.querySelector(".todo-row-button");
   const range = document.createRange();
   range.selectNodeContents(title);
   const box = row.getBoundingClientRect();
-  return { top: Math.round(box.top * 100) / 100, height: Math.round(box.height * 100) / 100, lines: new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size };
+  const top = box.top + row.closest(".shelf").scrollTop;
+  return { top: Math.round(top * 100) / 100, height: Math.round(box.height * 100) / 100, lines: new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size };
 })`;
 
 /** Page-side: the first Shelf row's title grows until one more character would wrap it, so it nearly fills the row. */
@@ -176,7 +177,7 @@ const load = async (width: number, height: number) => {
 /** The point at the middle of the n-th Shelf row's title. */
 const centreOf = (nth: number) =>
   call<{ x: number; y: number }>(
-    `(nth) => { const box = document.querySelectorAll(".shelf [data-id] .todo-row-button")[nth].getBoundingClientRect(); return { x: box.left + 3, y: box.top + box.height / 2 }; }`,
+    `(nth) => { const title = document.querySelectorAll(".shelf [data-id] .todo-row-button")[nth]; title.scrollIntoView({ block: "nearest" }); const box = title.getBoundingClientRect(); return { x: box.left + 3, y: box.top + box.height / 2 }; }`,
     nth,
   );
 

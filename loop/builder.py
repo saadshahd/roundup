@@ -194,7 +194,7 @@ def built(issue, slug, ran, run_url):
         return
     current = orders.gh('api', f'repos/{{owner}}/{{repo}}/issues/{issue}')
     if current['state'] == 'closed':
-        if (current.get('closed_by') or {}).get('type') != 'Bot' or \
+        if slug.startswith('stall-') or (current.get('closed_by') or {}).get('type') != 'Bot' or \
                 orders.gh('pr', 'list', '--head', f'build/{slug}', '--state', 'merged', '--json', 'number'):
             print(f'#{issue} closed by a person or after its build/{slug} PR merged; nothing to record')
             return

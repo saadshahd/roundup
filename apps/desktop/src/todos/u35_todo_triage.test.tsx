@@ -156,7 +156,8 @@ describe("u35 Todo triage without the Drawer", () => {
     await mountTodos([todo(3)]);
     await screen.findByText(/todo 3/);
 
-    expect(rowOf(3).textContent).toBe(" #3 todo 3");
+    expect(rowOf(3).querySelector(".todo-row-button")?.textContent).toBe(" #3 todo 3");
+    expect(rowOf(3).textContent).not.toContain("complete");
     expect(screen.queryByText("complete")).toBeNull();
   });
 
@@ -168,7 +169,7 @@ describe("u35 Todo triage without the Drawer", () => {
     fireEvent.click(screen.getByText("complete"));
     await waitFor(() => expect(callsTo(app, "todo.complete")).toHaveLength(1));
 
-    expect([callsTo(app, "todo.list"), screen.getByRole("button", { name: /#3/ }).textContent]).toEqual([
+    expect([callsTo(app, "todo.list"), screen.getByRole("button", { name: /todo 3/ }).textContent]).toEqual([
       [{ method: "todo.list", params: null }],
       " #3 todo 3",
     ]);

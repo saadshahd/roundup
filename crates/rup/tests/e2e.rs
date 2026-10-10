@@ -791,7 +791,7 @@ async fn b24_a_door_reads_its_brief_then_creates_and_updates_a_todo_over_mcp() {
         .unwrap();
 
     let updated = next(&mut client, |data| match data {
-        EventData::TodoUpdated(todo) => Some(todo),
+        EventData::TodoUpdated(todo) if !todo.body.is_empty() => Some(todo),
         _ => None,
     })
     .await;
@@ -1498,5 +1498,67 @@ async fn t12_every_caller_creates_at_the_project_root_on_a_real_daemon() {
             .await
             .unwrap();
         assert_eq!(made["home"], Value::Null);
+    }
+}
+
+#[tokio::test]
+async fn t14_an_agent_under_a_room_creates_todos_with_the_nearest_room_as_home() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let outer = room(&client, "outer").await;
+    let inner = client
+        .request(
+            "rail.createRoom",
+            json!({ "name": "inner", "parent": outer }),
+        )
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let nested = agent_in(&project, &client, Some(&inner)).await;
+    let bare = agent_in(&project, &client, None).await;
+
+    let create = |who: rpc::Client| async move {
+        let todo = who
+            .request("todo.create", json!({ "title": "t", "home": "ignored" }))
+            .await
+            .unwrap();
+        todo["home"].clone()
+    };
+    let by_nested = client_as(&project, actor(ActorKind::Agent, &nested)).await;
+    assert_eq!(create(by_nested).await, json!(inner));
+    let by_bare = client_as(&project, actor(ActorKind::Agent, &bare)).await;
+    assert_eq!(create(by_bare).await, Value::Null);
+    assert_eq!(create(project.client().await).await, Value::Null);
+    let by_ext = client_as(&project, actor(ActorKind::Ext, "x")).await;
+    assert_eq!(create(by_ext).await, Value::Null);
+    let listed = client.request("todo.list", json!(null)).await.unwrap();
+    assert_eq!(listed[0]["home"], json!(inner));
+}
+
+/// T14: a Door's Rail id is its Room's id, so its Todo's Home is that Room, top-level or nested.
+#[tokio::test]
+async fn t14_a_door_creates_todos_at_its_own_room() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let outer = room(&client, "outer").await;
+    let inner = client
+        .request(
+            "rail.createRoom",
+            json!({ "name": "inner", "parent": outer }),
+        )
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for door in [&outer, &inner] {
+        let who = client_as(&project, actor(ActorKind::Agent, door)).await;
+        let todo = who
+            .request("todo.create", json!({ "title": "ship j4" }))
+            .await
+            .unwrap();
+        assert_eq!(todo["home"], json!(door));
     }
 }

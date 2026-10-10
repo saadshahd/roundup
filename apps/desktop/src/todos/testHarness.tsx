@@ -1,6 +1,7 @@
 import { expect } from "vitest";
 import { within, render } from "@solidjs/testing-library";
 import type { Event as DaemonEvent } from "@contracts/Event";
+import type { RailNode } from "@contracts/agent/RailNode";
 import type { Todo } from "@contracts/todo/Todo";
 import { Layout } from "../app/Layout";
 import { DrawerHost } from "../drawer/DrawerHost";
@@ -27,8 +28,9 @@ export const todo = (id: number, over: Partial<Todo> = {}): Todo => ({
 export const todoEvent = (name: "todo.created" | "todo.updated", data: Todo): DaemonEvent => event({ name, data });
 
 /** The Shelf's Todos and the Drawer host over a fake Daemon whose `todo.list` answers `store.todos`. */
-export const mountTodos = async (initial: Todo[], reducedMotion = true) => {
+export const mountTodos = async (initial: Todo[], reducedMotion = true, rail: RailNode[] = []) => {
   const app = createFakeApp();
+  app.handlers["rail.tree"] = () => rail;
   const store: TodoStore = { todos: initial };
   Object.assign(app.handlers, todoHandlers(store, () => {}));
 
