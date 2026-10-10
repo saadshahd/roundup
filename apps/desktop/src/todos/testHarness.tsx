@@ -34,7 +34,7 @@ export const mountTodos = async (initial: Todo[], reducedMotion = true, rail: Ra
   const store: TodoStore = { todos: initial };
   Object.assign(app.handlers, todoHandlers(store, () => {}));
 
-  const connected = await connectProject(app, { name: "p", path: "/p" }, () => false, () => 0);
+  const connected = await connectProject(app, { name: "p", path: "/p" }, () => reducedMotion, () => 0);
 
   const { unmount } = render(() => (
     <ConnectedProjectContext.Provider value={connected}>

@@ -266,7 +266,7 @@ const d6 = (page: Page): Measure => {
 
   for (const el of targets) {
     const style = page.style(el);
-    const height = Math.max(el.getBoundingClientRect().height, px(style.height) ?? 0, px(style.minHeight) ?? 0);
+    const height = Math.max(el.getBoundingClientRect().height, px(page.resolve(style.height)) ?? 0, px(page.resolve(style.minHeight)) ?? 0);
 
     if (height > 0) measured += 1;
 
