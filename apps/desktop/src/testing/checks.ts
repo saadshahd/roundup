@@ -276,8 +276,7 @@ const d6 = (page: Page): Measure => {
 
     if (!declares(stateRules(page, el, ":focus-visible"), "outline", "outline-color", "box-shadow")) return { ok: false, value: { missing: "focus" }, selector: selectorOf(el) };
 
-    // U155: a reorderable Todo row reads as grabbable.
-    if (style.cursor !== (el.hasAttribute("data-reorderable") ? "grab" : "pointer")) return { ok: false, value: { cursor: style.cursor }, selector: selectorOf(el) };
+    if (style.cursor !== "pointer") return { ok: false, value: { cursor: style.cursor }, selector: selectorOf(el) };
   }
 
   return targets.length > 0 && measured === 0 ? { ok: false, value: NOT_MEASURABLE, selector: "" } : { ok: true, value: { targets: targets.length }, selector: "" };
