@@ -23,12 +23,10 @@ it("u86_todo_rows_keep_the_hit_area_token_after_the_button_reset", async () => {
   const folded = await screen.findByRole("button", { name: "1 done" });
   fireEvent.click(folded);
 
-  for (const row of [
-    screen.getByRole("button", { name: "idle #1 todo 1" }),
-    folded,
-    screen.getByRole("button", { name: "done #2 todo 2" }),
-  ]) {
-    // jsdom has no layout; the browser proof measures the token's 24px hit height.
+  // jsdom has no layout; the browser proof measures the token's 24px hit height. An open row is 28px (U153).
+  expect(getComputedStyle(screen.getByRole("button", { name: "idle #1 todo 1" })).minHeight).toBe("28px");
+
+  for (const row of [folded, screen.getByRole("button", { name: "done #2 todo 2" })]) {
     expect(getComputedStyle(row).minHeight).toBe("var(--space-5)");
   }
 });
