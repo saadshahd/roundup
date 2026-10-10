@@ -1,5 +1,5 @@
 import { KindGlyph } from "../ink/KindGlyph";
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { CrepeBuilder } from "@milkdown/crepe/builder";
 import { linkTooltip } from "@milkdown/crepe/feature/link-tooltip";
 import { listItem } from "@milkdown/crepe/feature/list-item";
@@ -7,11 +7,20 @@ import { placeholder } from "@milkdown/crepe/feature/placeholder";
 import { toolbar } from "@milkdown/crepe/feature/toolbar";
 import { topBar } from "@milkdown/crepe/feature/top-bar";
 import { editorViewCtx } from "@milkdown/kit/core";
+import { $prose } from "@milkdown/kit/utils";
+import { Plugin } from "@milkdown/kit/prose/state";
 import { replaceAll } from "@milkdown/kit/utils";
-import type { PadEditorHandle } from "./PadEditor";
 import { sourceForDocument } from "./sourceForDocument";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
+
+export type PadEditorHandle = {
+  getText(): string;
+  setText(text: string): void;
+  focus(): void;
+  /** The document equals the one last loaded, whatever Markdown it would serialize to. */
+  unchanged(): boolean;
+};
 
 const topBarNames = new Map([
   ["bold", "Bold"],
@@ -27,8 +36,12 @@ const topBarNames = new Map([
   ["hr", "Horizontal rule"],
 ]);
 
+/** U147: the Pad's one surface. `readonly` is ownership (P2), never a mode; `onChange` fires on every document change the user makes, `onText` follows with the settled Markdown. */
 export default function PadRichEditor(props: {
   text: string;
+  readonly: boolean;
+  onChange: () => void;
+  onScroller: (element: HTMLDivElement) => void;
   onText: (text: string) => void;
   onBlur: (next: EventTarget | null) => void;
   onReady: (editor: PadEditorHandle) => void;
@@ -39,6 +52,7 @@ export default function PadRichEditor(props: {
   let original = props.text;
   let applying = false;
   let closed = false;
+  let ready = false;
   let topBarLabels: string[] = [];
   const [failure, setFailure] = createSignal<string | null>(null);
 
@@ -49,6 +63,7 @@ export default function PadRichEditor(props: {
       root: host,
       defaultValue: props.text,
     })
+      .setReadonly(props.readonly)
       .addFeature(listItem)
       .addFeature(linkTooltip)
       .addFeature(placeholder)
@@ -74,6 +89,19 @@ export default function PadRichEditor(props: {
           { label: "Heading 3", level: 3 },
         ],
       });
+
+    crepe.editor.use(
+      $prose(
+        () =>
+          new Plugin({
+            view: () => ({
+              update: (view, previous) => {
+                if (!applying && !closed && !view.state.doc.eq(previous.doc)) props.onChange();
+              },
+            }),
+          }),
+      ),
+    );
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
@@ -105,12 +133,15 @@ export default function PadRichEditor(props: {
       });
 
       field.setAttribute("role", "textbox");
-      field.setAttribute("aria-label", "Editor");
+      field.setAttribute("aria-label", "Pad body");
       field.setAttribute("aria-multiline", "true");
 
       const document = () => crepe!.editor.action((ctx) => ctx.get(editorViewCtx).state.doc);
       let originalDocument = document();
       const getText = () => sourceForDocument(original, originalDocument, document(), () => crepe!.getMarkdown());
+
+      ready = true;
+      crepe.setReadonly(props.readonly);
 
       props.onReady({
         getText,
@@ -133,11 +164,19 @@ export default function PadRichEditor(props: {
           }
         },
         focus: () => field.focus(),
+        unchanged: () => document().eq(originalDocument),
       });
-      field.focus();
+
+      if (!props.readonly) field.focus();
     }).catch((error) => {
       if (!closed) setFailure(error instanceof Error ? error.message : String(error));
     });
+  });
+
+  createEffect(() => {
+    const readonly = props.readonly;
+
+    if (ready) crepe?.setReadonly(readonly);
   });
 
   onCleanup(() => {
@@ -152,7 +191,11 @@ export default function PadRichEditor(props: {
   });
 
   return (
-    <div class="pad-editor pad-rich-editor" onFocusOut={(event) => props.onBlur(event.relatedTarget)}>
+    <div
+      class="pad-editor pad-rich-editor"
+      classList={{ "pad-readonly": props.readonly }}
+      ref={props.onScroller}
+      onFocusOut={(event) => props.onBlur(event.relatedTarget)}>
       <Show when={failure()}>
         {(message) => <p role="alert" class="pad-editor-failure"><KindGlyph kind="error" decorative /> {message()}</p>}
       </Show>

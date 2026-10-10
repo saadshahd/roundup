@@ -113,7 +113,7 @@ describe("u133 click targets", () => {
     expect(ring[0]!.selector).toBe(":focus-visible");
     expect(ring[0]!.body).toMatch(/outline-width:\s*2px;\s*outline-style:\s*solid;\s*outline-color:\s*var\(--accent\)/);
     expect(withOutline.some((rule) => /outline(-style)?\s*:\s*none/.test(rule.body))).toBe(false);
-    expect(withOutline.filter((rule) => rule !== ring[0])).toEqual([{ file: "pads/styles.css", selector: ".pad-editor .cm-editor.cm-focused", body: expect.stringMatching(/outline-width:\s*0/) }]);
+    expect(withOutline.filter((rule) => rule !== ring[0])).toEqual([]);
   });
 
   it("u133_the_ring_is_3_to_1_against_the_ground_and_the_sunken_surface", () => {
