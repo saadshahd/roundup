@@ -3,12 +3,12 @@ import type { RailNode } from "@contracts/agent/RailNode";
 import { dropAt, isInPlace, remainingRows } from "./dragTarget";
 import { layoutRail } from "./layout";
 import type { NodeRow } from "./layout";
-import { agent, room, MINUTE, NOW } from "../testing/nodes";
+import { agent, workstream, MINUTE, NOW } from "../testing/nodes";
 
 /** a, g { x, y }, b */
 const TREE: RailNode[] = [
   agent("a", "idle", "i", { order: 0 }),
-  room("g", { order: 1 }),
+  workstream("g", { order: 1 }),
   agent("x", "idle", "i", { parent: "g", order: 0 }),
   agent("y", "idle", "i", { parent: "g", order: 1 }),
   agent("b", "idle", "i", { order: 2 }),
@@ -72,7 +72,7 @@ describe("u22 drop target", () => {
   });
 
   it("u22_a_pointer_further_right_than_any_row_nests_under_an_empty_group", () => {
-    const nodes = [room("g"), agent("a", "idle", "i", { order: 1 })];
+    const nodes = [workstream("g"), agent("a", "idle", "i", { order: 1 })];
 
     expect(dropOf("a", 1, 5, nodes)).toEqual({ parent: "g", index: 0, depth: 1 });
   });
@@ -82,7 +82,7 @@ describe("u22 drop target", () => {
   });
 
   it("u22_a_meta_agent_can_be_nested_under", () => {
-    const nodes = [room("m", { attempt: "1" }), agent("a", "idle", "i", { order: 1 })];
+    const nodes = [workstream("m", { attempt: "1" }), agent("a", "idle", "i", { order: 1 })];
 
     expect(dropOf("a", 1, 5, nodes)).toEqual({ parent: "m", index: 0, depth: 1 });
   });

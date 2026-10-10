@@ -33,11 +33,11 @@ fn names(tree: &[RailNode], parent: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-/// A Room `team` between two other Rooms, holding two running Agents.
+/// A Workstream `team` between two other Workstreams, holding two running Agents.
 async fn team(f: &Fixture) -> (String, Vec<String>) {
-    f.room("before", None).await;
-    let team = f.room("team", None).await;
-    f.room("after", None).await;
+    f.workstream("before", None).await;
+    let team = f.workstream("team", None).await;
+    f.workstream("after", None).await;
     let mut agents = vec![];
     for _ in 0..2 {
         agents.push(f.spawn(Some(&team), None).await.unwrap().id);
@@ -46,14 +46,14 @@ async fn team(f: &Fixture) -> (String, Vec<String>) {
 }
 
 #[tokio::test]
-async fn a7_start_door_makes_a_room_a_door_with_a_live_agent() {
+async fn a7_start_door_makes_a_workstream_a_door_with_a_live_agent() {
     let mut f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
     f.changed();
 
     let node = f.start_door(&team).await.unwrap();
 
-    assert_eq!(node.kind, NodeKind::Room);
+    assert_eq!(node.kind, NodeKind::Workstream);
     assert!(node.terminal_id.is_some());
     assert_eq!(node.status.as_ref().map(|s| s.kind), Some(Kind::Working));
     let tree = f.tree().await;
@@ -70,7 +70,7 @@ async fn a7_two_concurrent_start_doors_start_one_agent_and_one_loses() {
     let f = std::sync::Arc::new(Fixture::running(
         "echo started >> \"$(dirname \"$0\")/starts\"; sleep 30",
     ));
-    let team = f.room("team", None).await;
+    let team = f.workstream("team", None).await;
     let start_door = || {
         let (f, team) = (std::sync::Arc::clone(&f), team.clone());
         tokio::spawn(async move { f.start_door(&team).await })
@@ -90,9 +90,9 @@ async fn a7_two_concurrent_start_doors_start_one_agent_and_one_loses() {
 }
 
 #[tokio::test]
-async fn a7_a_start_door_whose_agent_cannot_start_leaves_the_room_plain() {
+async fn a7_a_start_door_whose_agent_cannot_start_leaves_the_workstream_plain() {
     let f = Fixture::running("sleep 30");
-    let team = f.room("team", None).await;
+    let team = f.workstream("team", None).await;
     let rup = f.dir.path().join("rup");
     std::fs::remove_file(&rup).unwrap();
 
@@ -100,13 +100,16 @@ async fn a7_a_start_door_whose_agent_cannot_start_leaves_the_room_plain() {
     assert!(f.tree().await[0].terminal_id.is_none());
 
     std::fs::write(&rup, "").unwrap();
-    assert_eq!(f.start_door(&team).await.unwrap().kind, NodeKind::Room);
+    assert_eq!(
+        f.start_door(&team).await.unwrap().kind,
+        NodeKind::Workstream
+    );
 }
 
 #[tokio::test]
 async fn a7_a_start_door_whose_claude_is_missing_leaves_no_settings_file() {
     let f = Fixture::running("sleep 30");
-    let team = f.room("team", None).await;
+    let team = f.workstream("team", None).await;
     std::fs::remove_file(f.dir.path().join("fake-claude")).unwrap();
 
     assert!(f.start_door(&team).await.is_err());
@@ -118,7 +121,7 @@ async fn a7_a_start_door_whose_claude_is_missing_leaves_no_settings_file() {
 }
 
 #[tokio::test]
-async fn a7_only_a_stopped_room_can_start_its_door() {
+async fn a7_only_a_stopped_workstream_can_start_its_door() {
     let f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
     f.start_door(&team).await.unwrap();
@@ -133,7 +136,7 @@ async fn a7_only_a_stopped_room_can_start_its_door() {
 }
 
 #[tokio::test]
-async fn a7_stopping_a_door_keeps_its_children_in_the_room_and_running() {
+async fn a7_stopping_a_door_keeps_its_children_in_the_workstream_and_running() {
     let mut f = Fixture::running("sleep 30");
     let (team, agents) = team(&f).await;
     f.start_door(&team).await.unwrap();
@@ -144,7 +147,7 @@ async fn a7_stopping_a_door_keeps_its_children_in_the_room_and_running() {
     let tree = f.until(|t| status_of(t, &team).kind == Kind::Done).await;
     assert_eq!(names(&tree, None), ["before:0", "team:1", "after:2"]);
     let meta = tree.iter().find(|n| n.id == team).unwrap();
-    assert_eq!(meta.kind, NodeKind::Room);
+    assert_eq!(meta.kind, NodeKind::Workstream);
     for id in &agents {
         let child = tree.iter().find(|n| &n.id == id).unwrap();
         assert_eq!(child.parent.as_deref(), Some(team.as_str()));
@@ -209,9 +212,9 @@ async fn a7_stopping_a_door_that_is_still_starting_is_a_conflict_and_moves_nothi
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a7_a_room_whose_door_is_starting_reads_working_starting_not_done() {
+async fn a7_a_workstream_whose_door_is_starting_reads_working_starting_not_done() {
     let f = std::sync::Arc::new(Fixture::running("sleep 30"));
-    let team = f.room("team", None).await;
+    let team = f.workstream("team", None).await;
     let config = hold_starts(&f);
     let promoting = {
         let (f, team) = (std::sync::Arc::clone(&f), team.clone());
@@ -302,20 +305,23 @@ async fn a7_stopping_a_door_twice_announces_the_move_once() {
 #[tokio::test]
 async fn a7_start_door_names_a_node_by_its_exact_id() {
     let f = Fixture::running("sleep 30");
-    let team = f.room("team", None).await;
+    let team = f.workstream("team", None).await;
 
     let err = f.start_door(&format!("0{team}")).await.unwrap_err();
 
     assert_eq!(err.code, code::NOT_FOUND);
     assert!(f.tree().await[0].terminal_id.is_none());
-    assert_eq!(f.start_door(&team).await.unwrap().kind, NodeKind::Room);
+    assert_eq!(
+        f.start_door(&team).await.unwrap().kind,
+        NodeKind::Workstream
+    );
 }
 
 #[tokio::test]
 async fn a7_stop_only_applies_to_agents_and_doors() {
     let f = Fixture::new();
-    let room = f.room("plain", None).await;
-    assert_eq!(f.stop(&room).await.unwrap(), Value::Null);
+    let workstream = f.workstream("plain", None).await;
+    assert_eq!(f.stop(&workstream).await.unwrap(), Value::Null);
     assert_eq!(f.stop("999").await.unwrap_err().code, code::NOT_FOUND);
 }
 
@@ -328,7 +334,7 @@ async fn a8_a_door_keeps_its_flag_across_reopening_and_comes_back_done() {
     let tree = f.reopen().tree().await;
 
     let meta = tree.iter().find(|n| n.id == team).unwrap();
-    assert_eq!(meta.kind, NodeKind::Room);
+    assert_eq!(meta.kind, NodeKind::Workstream);
     assert_eq!(meta.terminal_id, None);
     assert_eq!(meta.status.as_ref().map(|s| s.kind), Some(Kind::Done));
 }
@@ -376,13 +382,13 @@ fn hook_attempt(f: &Fixture, id: &str) -> String {
 #[tokio::test]
 async fn a20_each_launch_gets_its_own_attempt_and_an_earlier_one_changes_nothing() {
     let f = Fixture::running("sleep 30");
-    let room = f.room("room", None).await;
-    let first = f.start_door(&room).await.unwrap();
-    assert_eq!(hook_attempt(&f, &room), "1");
-    f.stop(&room).await.unwrap();
+    let workstream = f.workstream("workstream", None).await;
+    let first = f.start_door(&workstream).await.unwrap();
+    assert_eq!(hook_attempt(&f, &workstream), "1");
+    f.stop(&workstream).await.unwrap();
 
-    let second = f.start_door(&room).await.unwrap();
-    assert_eq!(hook_attempt(&f, &room), "2");
+    let second = f.start_door(&workstream).await.unwrap();
+    assert_eq!(hook_attempt(&f, &workstream), "2");
     assert_ne!(first.terminal_id, second.terminal_id);
     let before = f.tree().await;
     for payload in [
@@ -392,7 +398,7 @@ async fn a20_each_launch_gets_its_own_attempt_and_an_earlier_one_changes_nothing
         let ignored = f
             .call(
                 "agent.signal",
-                json!({"id": room, "attempt": "1", "payload": payload}),
+                json!({"id": workstream, "attempt": "1", "payload": payload}),
             )
             .await
             .unwrap();
@@ -400,9 +406,9 @@ async fn a20_each_launch_gets_its_own_attempt_and_an_earlier_one_changes_nothing
     }
     assert_eq!(f.tree().await, before);
     let missing = f
-        .call("agent.signal", json!({"id": room, "payload": {}}))
+        .call("agent.signal", json!({"id": workstream, "payload": {}}))
         .await
         .unwrap_err();
     assert_eq!(missing.code, code::INVALID_PARAMS);
-    f.stop(&room).await.unwrap();
+    f.stop(&workstream).await.unwrap();
 }

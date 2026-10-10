@@ -12,7 +12,7 @@ const NOT_FOUND = -32001;
 
 const UNKNOWN_OUTCOME = -32004;
 
-/** U68: an Agent runs while its Terminal does, whatever its Kind; a Room keeps U56's Kind rule. */
+/** U68: an Agent runs while its Terminal does, whatever its Kind; a Workstream keeps U56's Kind rule. */
 const isRunning = (node: RailNode, exit: ExitState | null) =>
   exit === null && (node.kind === "terminal" || (node.kind === "agent" ? true : node.status?.kind !== "done"));
 

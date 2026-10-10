@@ -1,6 +1,6 @@
 # First complete journey
 
-User-selected goal: first Project → start Agents → understand Status → intervene → review results. The product destination is `PRINCIPLES.md` P1/P3/P6 and the accepted Room/Door slice in `docs/wireframes.md`. Complete that journey before expanding into Sketch storage, Room nesting or cross-Room dependencies.
+User-selected goal: first Project → start Agents → understand Status → intervene → review results. The product destination is `PRINCIPLES.md` P1/P3/P6 and the accepted Workstream/Door slice in `docs/wireframes.md`. Complete that journey before expanding into Sketch storage, Workstream nesting or cross-Workstream dependencies.
 
 Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`). An open PR keeps its Issue regardless of priority.
 
@@ -8,13 +8,13 @@ Priority and dependencies live in the GitHub work Issues (`.agents/data/work.md`
 
 | Stage | Evidence required |
 |---|---|
-| Enter | From `first-run`, choose a Project, create a Room, start its Door and reach the Thread using keyboard and pointer. Empty, starting, stopped and failure states explain the next available action. A failed call preserves the user's input. |
+| Enter | From `first-run`, choose a Project, create a Workstream, start its Door and reach the Thread using keyboard and pointer. Empty, starting, stopped and failure states explain the next available action. A failed call preserves the user's input. |
 | Request | Ask the Door for one concrete action. Observe that action through the real Daemon and the tools it actually offers, including the resulting Todo and outcome; a seeded success message is not evidence. Direct Agent access remains available. |
-| Understand | With ten Agents, distinguish working, blocked, needs-you, done and error without relying on colour; identify the selected Room and the Agent requiring attention. Routine progress does not interrupt the user. |
-| Intervene | Answer one real Decision or enter an Agent directly, then observe it resume. An error remains actionable; stopping a Door preserves its Room and contents. |
-| Review | Read the action's outcome and inspect its resulting work from the Room. Reopen the Project and find that work again. Do not claim Room-scoped storage before its contract and behavior exist. |
+| Understand | With ten Agents, distinguish working, blocked, needs-you, done and error without relying on colour; identify the selected Workstream and the Agent requiring attention. Routine progress does not interrupt the user. |
+| Intervene | Answer one real Decision or enter an Agent directly, then observe it resume. An error remains actionable; stopping a Door preserves its Workstream and contents. |
+| Review | Read the action's outcome and inspect its resulting work from the Workstream. Reopen the Project and find that work again. Do not claim Workstream-scoped storage before its contract and behavior exist. |
 
-The latest audit evidence is `artifacts/ux/journey/README.md` (J5, main `0a507eea`): Request and the Review of a Room's Todo are proved on the real Daemon with the fake `claude`; Understand, Intervene and the Door's summary are not.
+The latest audit evidence is `artifacts/ux/journey/README.md` (J5, main `0a507eea`): Request and the Review of a Workstream's Todo are proved on the real Daemon with the fake `claude`; Understand, Intervene and the Door's summary are not.
 
 ## How a Builder closes a gap
 

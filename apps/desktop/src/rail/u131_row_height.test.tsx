@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, room, door, MINUTE, NOW, terminal } from "../testing/nodes";
+import { agent, workstream, door, MINUTE, NOW, terminal } from "../testing/nodes";
 import { withStylesheets } from "../testing/contrast";
 import styles from "./styles.css?inline";
 import { mountRail, rowOf } from "./railFixture";
@@ -23,7 +23,7 @@ describe("u131 a Rail row is 28 px high", () => {
     sheet.textContent = styles;
     const kinds = ["working", "idle", "done", "blocked", "needs-you", "error"] as const;
     await mountRail([
-      room("g"),
+      workstream("g"),
       door("m", "working", "w"),
       terminal("t"),
       ...kinds.map((kind) => agent(kind, kind, "w")),

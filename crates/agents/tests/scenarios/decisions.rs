@@ -485,8 +485,8 @@ async fn b18_a_permission_request_does_not_bubble_to_the_parent() {
 
 async fn a_childs_decision_reaches_only_the_user() {
     let f = Arc::new(Fixture::running("sleep 30").with_proof(PROOF));
-    // A Door is the parent Agent of the Agents in its Room.
-    let parent = f.room("team", None).await;
+    // A Door is the parent Agent of the Agents in its Workstream.
+    let parent = f.workstream("team", None).await;
     let child = f.spawn(Some(&parent), None).await.unwrap().id;
     f.call("rail.startDoor", json!({"id": parent}))
         .await

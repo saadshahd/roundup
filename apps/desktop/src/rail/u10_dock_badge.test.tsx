@@ -1,7 +1,7 @@
 import { cleanup } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { mountRail } from "./railFixture";
-import { agent, event, room, door, terminal } from "../testing/nodes";
+import { agent, event, workstream, door, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -18,7 +18,7 @@ describe("u10 Dock badge", () => {
   });
 
   it("u10_there_is_no_badge_at_zero", async () => {
-    const { app } = await mountRail([agent("a", "working", "x"), terminal("t"), room("g")]);
+    const { app } = await mountRail([agent("a", "working", "x"), terminal("t"), workstream("g")]);
 
     expect(app.badges).toEqual([0]);
   });

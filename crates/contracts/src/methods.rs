@@ -70,6 +70,7 @@ pub const METHODS: &[Method] = &[
     m("agent.discard", "agent_NodeId", "null"),
     m("agent.context", "agent_NodeId", "agent_Context"),
     m("agent.brief", "agent_NodeId", "agent_Brief"),
+    m("agent.setOrder", "agent_SetOrderParams", "agent_RailNode"),
     m("agent.channelUp", "agent_NodeId", "null"),
     m("agent.signal", "agent_SignalParams", "null"),
     m(
@@ -82,8 +83,8 @@ pub const METHODS: &[Method] = &[
     m("decision.answer", "decision_AnswerParams", "null"),
     m("rail.tree", "null", "agent_RailNode[]"),
     m(
-        "rail.createRoom",
-        "agent_CreateRoomParams",
+        "rail.createWorkstream",
+        "agent_CreateWorkstreamParams",
         "agent_RailNode",
     ),
     m("rail.move", "agent_MoveParams", "null"),

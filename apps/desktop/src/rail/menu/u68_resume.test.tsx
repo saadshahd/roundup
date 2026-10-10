@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { RpcError } from "../../app/seam";
-import { agent, door, event, room, terminal } from "../../testing/nodes";
+import { agent, door, event, workstream, terminal } from "../../testing/nodes";
 import { fakeEmulators } from "../../terminal/paneHarness";
 import { exitedTerminal, mountRail, railCallsTo, rowOf } from "../railFixture";
 
@@ -32,7 +32,7 @@ describe("u68 resume from the Rail menu", () => {
         agent("live-error", "error", "failed"),
         agent("gone", "done", "done"),
         resumable("run", { status: { kind: "working", label: "busy", since: 0 } }),
-        room("g"),
+        workstream("g"),
         door("d", "done", "done", { can_resume: true }),
         terminal("t"),
       ],

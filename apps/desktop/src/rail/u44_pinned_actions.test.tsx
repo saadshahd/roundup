@@ -1,8 +1,8 @@
-import { cleanup, screen } from "@solidjs/testing-library";
+import { cleanup } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { agent } from "../testing/nodes";
 import styles from "./styles.css?inline";
-import { mountRail, rowOf } from "./railFixture";
+import { mountRail, pinnedAdd, rowOf } from "./railFixture";
 
 afterEach(cleanup);
 
@@ -12,7 +12,7 @@ describe("u44 a row brought into view is never under the pinned actions", () => 
     sheet.textContent = styles;
     await mountRail([agent("a", "idle", "i")]);
 
-    const bar = getComputedStyle(screen.getByText("agent").closest(".rail-actions") ?? document.body);
+    const bar = getComputedStyle(pinnedAdd().closest(".rail-actions") ?? document.body);
     const row = getComputedStyle(rowOf("a"));
 
     const values = [

@@ -173,7 +173,7 @@ impl Store {
         self.get(id)
     }
 
-    /// Sets the Home. The caller has checked that a Room exists on the Rail.
+    /// Sets the Home. The caller has checked that a Workstream exists on the Rail.
     pub(crate) fn set_home(&self, id: u32, home: Option<&str>) -> Result<Todo, RpcError> {
         self.get(id)?;
         self.db

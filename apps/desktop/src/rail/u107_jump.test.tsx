@@ -5,10 +5,10 @@ import { mountThread, threadInput } from "../thread/threadFixture";
 import { agent, door, event, terminal } from "../testing/nodes";
 
 const tree = () => [
-  door("room", "idle", "idle", { name: "lead" }),
-  agent("a", "working", "x", { parent: "room", name: "ann" }),
-  terminal("sh", { name: "shell", parent: "room" }),
-  agent("b", "working", "x", { parent: "room", name: "bob" }),
+  door("workstream", "idle", "idle", { name: "lead" }),
+  agent("a", "working", "x", { parent: "workstream", name: "ann" }),
+  terminal("sh", { name: "shell", parent: "workstream" }),
+  agent("b", "working", "x", { parent: "workstream", name: "bob" }),
 ];
 
 const alt = (digit: number, target: Element = document.body) => fireEvent.keyDown(target, { key: "¡", code: `Digit${digit}`, altKey: true });
@@ -34,8 +34,8 @@ describe("u107 jump to an Agent", () => {
 
     alt(1);
 
-    expect(connected.rail.selected()).toBe("room");
-    await vi.waitFor(() => expect(takeoverCalls(app)).toEqual(["takeover.begin room"]));
+    expect(connected.rail.selected()).toBe("workstream");
+    await vi.waitFor(() => expect(takeoverCalls(app)).toEqual(["takeover.begin workstream"]));
   });
 
   it("u107_a_second_jump_ends_the_first_takeover_before_the_next_begins", async () => {

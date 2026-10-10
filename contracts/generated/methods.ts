@@ -1,13 +1,14 @@
 // Generated from crates/contracts/src/methods.rs. Do not edit.
 import type { Brief as agent_Brief } from "./agent/Brief";
 import type { Context as agent_Context } from "./agent/Context";
-import type { CreateRoomParams as agent_CreateRoomParams } from "./agent/CreateRoomParams";
+import type { CreateWorkstreamParams as agent_CreateWorkstreamParams } from "./agent/CreateWorkstreamParams";
 import type { Landed as agent_Landed } from "./agent/Landed";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
 import type { NodeId as agent_NodeId } from "./agent/NodeId";
 import type { PromptParams as agent_PromptParams } from "./agent/PromptParams";
 import type { RailNode as agent_RailNode } from "./agent/RailNode";
 import type { RenameParams as agent_RenameParams } from "./agent/RenameParams";
+import type { SetOrderParams as agent_SetOrderParams } from "./agent/SetOrderParams";
 import type { SignalParams as agent_SignalParams } from "./agent/SignalParams";
 import type { SpawnParams as agent_SpawnParams } from "./agent/SpawnParams";
 import type { SpawnTerminalParams as agent_SpawnTerminalParams } from "./agent/SpawnTerminalParams";
@@ -90,6 +91,7 @@ export type RpcMethods = {
   "agent.discard": { params: agent_NodeId; result: null };
   "agent.context": { params: agent_NodeId; result: agent_Context };
   "agent.brief": { params: agent_NodeId; result: agent_Brief };
+  "agent.setOrder": { params: agent_SetOrderParams; result: agent_RailNode };
   "agent.channelUp": { params: agent_NodeId; result: null };
   "agent.signal": { params: agent_SignalParams; result: null };
   "agent.permission": { params: decision_PermissionParams; result: decision_PermissionOutput };
@@ -97,7 +99,7 @@ export type RpcMethods = {
   "decision.list": { params: null; result: decision_Decision[] };
   "decision.answer": { params: decision_AnswerParams; result: null };
   "rail.tree": { params: null; result: agent_RailNode[] };
-  "rail.createRoom": { params: agent_CreateRoomParams; result: agent_RailNode };
+  "rail.createWorkstream": { params: agent_CreateWorkstreamParams; result: agent_RailNode };
   "rail.move": { params: agent_MoveParams; result: null };
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
   "rail.startDoor": { params: agent_NodeId; result: agent_RailNode };
