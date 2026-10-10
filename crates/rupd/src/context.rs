@@ -64,6 +64,7 @@ pub(crate) fn compose(nodes: &[RailNode], todos: &[Todo], id: &str) -> Result<Co
             id: node.id.clone(),
             name: node.name.clone(),
             status: status(node)?,
+            order: node.work.clone(),
         },
         parent: parent.map(|parent| ContextParent {
             id: parent.id.clone(),
@@ -173,6 +174,7 @@ mod tests {
             worktree: None,
             can_resume: false,
             channel: None,
+            work: (kind != NodeKind::Terminal).then(|| contracts::agent::Order::clarification("?")),
         }
     }
 
@@ -215,7 +217,7 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&context).unwrap(),
             json!({
-                "self": {"id": "2", "name": "a", "status": {"kind": "idle", "label": "x", "since": 1}},
+                "self": {"id": "2", "name": "a", "status": {"kind": "idle", "label": "x", "since": 1}, "order": {"kind": "clarification", "question": "?"}},
                 "parent": {"id": "1", "name": "m", "node": "meta-agent"},
                 "ask": {"to": "1"},
                 "peers": [{"id": "3", "name": "b", "status": {"kind": "idle", "label": "x", "since": 1}}],

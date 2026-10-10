@@ -3,6 +3,6 @@ import type { Actor } from "./Actor";
 import type { Verb } from "./Verb";
 
 /**
- * One logged read or write of a Todo or Pad. `item` is `todo:<id>` or `pad:<name>`.
+ * One logged read or write of a Todo, Pad or Agent order. `item` is `todo:<id>`, `pad:<name>` or `agent:<id>`.
  */
 export type Touch = { actor: Actor, verb: Verb, item: string, at: number, };

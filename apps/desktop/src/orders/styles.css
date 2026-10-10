@@ -1,0 +1,26 @@
+/* Keep "styles.css" in the name: vite.config.ts loads only CSS files matching it. */
+
+.order-line {
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--space-5);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--sunken);
+}
+
+.order-ask {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.order-limits {
+  margin: 0;
+  padding-left: var(--space-3);
+  overflow-wrap: anywhere;
+}

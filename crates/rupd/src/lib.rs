@@ -53,8 +53,18 @@ impl Daemon {
             bus.clone(),
             &agents::claude_code::MARKERS,
         )?);
+        // O4: the Agents ask whether a Takeover is active before they Steer a changed order; the
+        // Messages that know are made after them.
+        let messages = Arc::new(std::sync::OnceLock::<Arc<messages::Messages>>::new());
+        let probe = Arc::clone(&messages);
         let agents = Arc::new(
-            agents::Agents::open(dir, bus.clone(), Arc::clone(&terminals))?.with_proof(proof),
+            agents::Agents::open(dir, bus.clone(), Arc::clone(&terminals))?
+                .with_proof(proof)
+                .with_takeover(move |agent| {
+                    probe
+                        .get()
+                        .is_some_and(|messages| messages.takeover_active(agent))
+                }),
         );
         let agents_module: Arc<dyn Module> = agents.clone();
         let mut daemon = Self {
@@ -79,13 +89,15 @@ impl Daemon {
                     })
             })
         });
-        daemon.register(Arc::new(messages::Messages::open_with(
+        let opened = Arc::new(messages::Messages::open_with(
             dir,
             bus,
             agents_module,
             deliver,
             messages::Env::system(Arc::clone(&daemon.touches)),
-        )?));
+        )?);
+        let _ = messages.set(Arc::clone(&opened));
+        daemon.register(opened);
         daemon.register(agents);
         daemon.register(terminals);
         Ok(daemon)
