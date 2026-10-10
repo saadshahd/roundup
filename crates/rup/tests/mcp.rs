@@ -204,6 +204,17 @@ async fn m1_offers_one_tool_per_method_and_ask_user_and_no_others() {
     assert_eq!(names, expected);
 }
 
+/// T10, T11: the order is the user's, so neither `todo.reorder` nor `todo.delete` is a tool.
+#[tokio::test]
+async fn t11_the_tool_list_lacks_todo_reorder() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+
+    let tools = shim.client.list_all_tools().await.unwrap();
+
+    assert!(tools.iter().all(|t| t.name != "todo_reorder"));
+}
+
 #[tokio::test]
 async fn m1_input_schemas_are_the_contract_schemas() {
     let project = start_daemon();
@@ -699,6 +710,102 @@ async fn h14_ask_user_schema_is_the_contract_schema() {
     assert_eq!(
         Value::Object((*tool.input_schema).clone()),
         serde_json::to_value(schemars::schema_for!(contracts::decision::AskParams)).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn u148_a_block_written_through_the_tools_is_stored_byte_exact() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+    let block = "```mermaid\ngraph TD\n  A[\"<b>x</b>\"] --> B\n```\n";
+    let drawing = "```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[]}\n```\n";
+    let user = client_as(&project.socket, Actor::user()).await;
+    let stored = |name: &'static str| {
+        let user = &user;
+        async move {
+            user.request("pad.read", json!({ "name": name }))
+                .await
+                .unwrap()["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+    };
+
+    let created = shim
+        .call("pad_create", json!({ "name": "notes", "text": block }))
+        .await;
+    assert_eq!(created.is_error, Some(false));
+    assert_eq!(stored("notes").await, block);
+
+    let written = shim
+        .call("pad_write", json!({ "name": "notes", "text": drawing }))
+        .await;
+    assert_eq!(written.is_error, Some(false));
+    assert_eq!(stored("notes").await, drawing);
+
+    let appended = shim
+        .call("pad_append", json!({ "name": "notes", "text": block }))
+        .await;
+    assert_eq!(appended.is_error, Some(false));
+    assert_eq!(stored("notes").await, format!("{drawing}{block}"));
+
+    let out = tempfile::tempdir().unwrap();
+    let target = out.path().join("notes.md");
+    user.request("pad.export", json!({ "name": "notes", "path": target }))
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        format!("{drawing}{block}")
+    );
+}
+
+#[tokio::test]
+async fn u149_a_drawing_written_through_the_tools_is_stored_byte_exact() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+    let block = "```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[{\"type\":\"rectangle\",\"id\":\"a\",\"x\":0,\"y\":0,\"width\":160,\"height\":80,\"label\":{\"text\":\"plan\"}},{\"type\":\"text\",\"id\":\"t\",\"x\":220,\"y\":28,\"text\":\"ship\"},{\"type\":\"arrow\",\"x\":160,\"y\":40,\"width\":60,\"height\":0,\"start\":{\"id\":\"a\"},\"end\":{\"id\":\"t\"}}]}\n```\n";
+    let drawing = "```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[]}\n```\n";
+    let user = client_as(&project.socket, Actor::user()).await;
+    let stored = |name: &'static str| {
+        let user = &user;
+        async move {
+            user.request("pad.read", json!({ "name": name }))
+                .await
+                .unwrap()["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+    };
+
+    let created = shim
+        .call("pad_create", json!({ "name": "notes", "text": block }))
+        .await;
+    assert_eq!(created.is_error, Some(false));
+    assert_eq!(stored("notes").await, block);
+
+    let written = shim
+        .call("pad_write", json!({ "name": "notes", "text": drawing }))
+        .await;
+    assert_eq!(written.is_error, Some(false));
+    assert_eq!(stored("notes").await, drawing);
+
+    let appended = shim
+        .call("pad_append", json!({ "name": "notes", "text": block }))
+        .await;
+    assert_eq!(appended.is_error, Some(false));
+    assert_eq!(stored("notes").await, format!("{drawing}{block}"));
+
+    let out = tempfile::tempdir().unwrap();
+    let target = out.path().join("notes.md");
+    user.request("pad.export", json!({ "name": "notes", "path": target }))
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        format!("{drawing}{block}")
     );
 }
 

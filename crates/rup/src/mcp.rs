@@ -150,7 +150,7 @@ fn agent_set_order() -> Offered {
     }
 }
 
-/// `todo.delete` (a Todo has no owner to guard it), `pad.export` (writes outside the Project) and `pad.setStorage` (the user's setting) are left out on purpose.
+/// `todo.delete` (a Todo has no owner to guard it), `todo.reorder` (the order is the user's), `pad.export` (writes outside the Project) and `pad.setStorage` (the user's setting) are left out on purpose.
 fn offered_tools() -> Vec<Offered> {
     vec![
         offered::<todo::CreateParams>("todo.create", "Create a Todo."),

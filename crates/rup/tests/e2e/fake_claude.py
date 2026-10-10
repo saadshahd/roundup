@@ -20,6 +20,10 @@ file. What it does comes from the environment, so one script serves every scenar
   FAKE_CLAUDE_ON_PROMPT    JSON {"name", "arguments"} (U146): after SessionStart, once per prompt line typed into
                            the Terminal, play UserPromptSubmit, then this tool call with "$prompt" in a
                            string argument replaced by the typed text, then Stop
+  FAKE_CLAUDE_ON_PROMPT_ASK JSON {"tool_name", "tool_input"} (U166), set with FAKE_CLAUDE_ON_PROMPT: after
+                           UserPromptSubmit, play this PermissionRequest ("$prompt" in a string of
+                           `tool_input` replaced by the typed text) and wait for its hook command to exit;
+                           the tool call is made only when the Decision was allowed
   FAKE_CLAUDE_GATE         a file path: after the played PermissionRequest hook command (which waits for
                            the user's answer, H9) is started, the next event waits until the file exists,
                            as the user's own act in the Terminal (H7a) happens in its own time
@@ -123,10 +127,22 @@ def typed_prompts():
                 yield text
 
 
+def ask_permission(ask, prompt):
+    """Play a PermissionRequest and wait for `rup permission` to exit; whether the Decision was allowed."""
+    command = json.load(open(flag("--settings")))["hooks"]["PermissionRequest"][0]["hooks"][0]["command"]
+    tool_input = {key: value.replace("$prompt", prompt) if isinstance(value, str) else value for key, value in ask.get("tool_input", {}).items()}
+    payload = {"hook_event_name": "PermissionRequest", "tool_name": ask["tool_name"], "tool_input": tool_input}
+    ran = subprocess.run(command, shell=True, input=json.dumps(payload), text=True, check=True, stdout=subprocess.PIPE)
+    return json.loads(ran.stdout or "{}").get("hookSpecificOutput", {}).get("decision", {}).get("behavior") == "allow"
+
+
 def play_prompts(tool):
     hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
     for prompt in typed_prompts():
         hook("UserPromptSubmit", {"prompt": prompt})
+        if "FAKE_CLAUDE_ON_PROMPT_ASK" in os.environ and not ask_permission(json.loads(os.environ["FAKE_CLAUDE_ON_PROMPT_ASK"]), prompt):
+            hook("Stop")
+            continue
         arguments = {key: value.replace("$prompt", prompt) if isinstance(value, str) else value for key, value in tool.get("arguments", {}).items()}
         mcp_session([{**tool, "arguments": arguments}])
         hook("Stop")
