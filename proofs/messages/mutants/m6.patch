@@ -1,0 +1,11 @@
+--- model.bend
++++ model.bend
+@@ -181,7 +181,7 @@
+ def exit_(s: World) -> World:
+   match s:
+     case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+-      W{[], haf, [], t, List.append(&2, Nat, d, List.append(&2, Nat, q, htk)), u, tt, rl, n, tk, False{}, True{}}
++      W{[], haf, [], t, List.append(&2, Nat, d, q), u, tt, rl, n, tk, False{}, True{}}
+ 
+ def deliver_if(b: Bool, +id: Nat, s: World) -> World:
+   match b:

@@ -6,7 +6,7 @@ import { agent, event, workstream, terminal } from "../testing/nodes";
 afterEach(cleanup);
 
 describe("u6 rows", () => {
-  it("u6_each_node_is_one_row_in_order_indented_2_per_depth_under_its_parent", async () => {
+  it("u6_each_node_is_one_row_in_order_indented_space_4_per_depth_under_its_parent", async () => {
     await mountRail([
       workstream("migrate", { order: 1 }),
       agent("rename-cols", "working", "writing", { parent: "migrate", order: 1 }),
@@ -15,7 +15,7 @@ describe("u6 rows", () => {
     ]);
 
     expect(rowNames()).toEqual(["checkout", "migrate", "backfill", "rename-cols"]);
-    expect(screen.getAllByRole("treeitem").map((row) => row.style.paddingLeft)).toEqual(["0ch", "0ch", "2ch", "2ch"]);
+    expect(screen.getAllByRole("treeitem").map((row) => row.style.paddingLeft)).toEqual(["calc(0 * var(--space-4))", "calc(0 * var(--space-4))", "calc(1 * var(--space-4))", "calc(1 * var(--space-4))"]);
   });
 
   it("u6_an_agent_shows_the_glyph_of_its_status_kind", async () => {

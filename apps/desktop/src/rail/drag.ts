@@ -33,7 +33,7 @@ type Snapshot = {
   /** The gap the dragged row came from, in the numbering of `rows`. */
   origin: number;
   room: number;
-  /** One indent step (2ch) in pixels. */
+  /** One indent step (--space-4) in pixels. */
   step: number;
 };
 
@@ -54,7 +54,7 @@ const measured = (container: HTMLElement, nodes: readonly RailNode[], rows: read
 
   const probe = container.appendChild(document.createElement("span"));
   probe.style.display = "inline-block";
-  probe.style.width = "2ch";
+  probe.style.width = "var(--space-4)";
   const step = probe.getBoundingClientRect().width;
   probe.remove();
 

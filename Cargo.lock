@@ -2978,6 +2978,7 @@ dependencies = [
  "pads",
  "provenance",
  "rpc",
+ "serde",
  "serde_json",
  "tempfile",
  "terminal",

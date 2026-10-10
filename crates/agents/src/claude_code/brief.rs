@@ -60,11 +60,17 @@ const TOOLS: [(&str, &str); 20] = [
     ),
 ];
 
-/// F3: the one tool beyond `TOOLS` that a Door is offered.
-const DOOR_TOOL: (&str, &str) = (
-    "agent_spawn",
-    "start a child Agent in a folder of this Project, with an optional first prompt; it becomes your child",
-);
+/// The tools beyond `TOOLS` that only a Door is offered: B20's digest and F3's spawn.
+const DOOR_TOOLS_EXTRA: [(&str, &str); 2] = [
+    (
+        "agent_digest",
+        "ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told",
+    ),
+    (
+        "agent_spawn",
+        "start a child Agent in a folder of this Project, with an optional first prompt; it becomes your child",
+    ),
+];
 
 const DOOR: &str = "\
 ## Your role
@@ -85,8 +91,12 @@ pub fn text(id: u64, role: Role) -> String {
          ## Tools\n\n\
          The `roundup` MCP server offers these tools:\n\n"
     );
-    let door = (role == Role::Door).then_some(DOOR_TOOL);
-    for (name, when) in TOOLS.into_iter().chain(door) {
+    let door: &[(&str, &str)] = if role == Role::Door {
+        &DOOR_TOOLS_EXTRA
+    } else {
+        &[]
+    };
+    for &(name, when) in TOOLS.iter().chain(door) {
         text.push_str(&format!("- `{name}`: {when}.\n"));
     }
     if role == Role::Door {

@@ -29,6 +29,8 @@ pub struct Daemon {
     modules: HashMap<&'static str, Arc<dyn Module>>,
     bus: Bus,
     touches: Arc<Touches>,
+    /// B19: which Pads each Meta-agent's earlier digests already named.
+    digests: messages::digest::Seen,
 }
 
 /// Per-connection state.
@@ -71,6 +73,7 @@ impl Daemon {
             modules: HashMap::new(),
             touches: Arc::new(Touches::open(&dir.join("provenance.db"))?),
             bus: bus.clone(),
+            digests: messages::digest::Seen::default(),
         };
         daemon.register(Arc::new(todos::Todos::open(dir, bus.clone())?));
         daemon.register(Arc::new(pads::Pads::open(dir, bus.clone())?));
@@ -94,7 +97,7 @@ impl Daemon {
             bus,
             agents_module,
             deliver,
-            messages::Env::system(Arc::clone(&daemon.touches)),
+            messages_env(Arc::clone(&daemon.touches)),
         )?);
         let _ = messages.set(Arc::clone(&opened));
         daemon.register(opened);
@@ -132,6 +135,9 @@ impl Daemon {
         let namespace = method.split('.').next().unwrap_or_default();
         if matches!(method, "agent.context" | "agent.brief") {
             return self.awareness(conn, method, params).await;
+        }
+        if method == "agent.digest" {
+            return self.digest(conn, params).await;
         }
         if let Some(outcome) = builtin::call(self, conn, namespace, method, &params) {
             return outcome;
@@ -261,6 +267,53 @@ impl Daemon {
             "agent.context" => rpc::reply(&context),
             _ => rpc::reply(&context::brief(&context)),
         }
+    }
+
+    /// B19, B20: the digest of a Meta-agent's children. Everything is read as the user or the
+    /// Daemon, so the call changes nothing and logs no Touch.
+    async fn digest(&self, conn: &Conn, params: Value) -> Result<Value, RpcError> {
+        let NodeId { id } = rpc::params(params)?;
+        let daemon = Actor::daemon;
+        let nodes: Vec<contracts::agent::RailNode> = self
+            .read("rail", "rail.tree", Value::Null, daemon())
+            .await?;
+        let todos: Vec<contracts::todo::Todo> = self
+            .read("todo", "todo.list", Value::Null, daemon())
+            .await?;
+        let pads: Vec<contracts::pad::Pad> =
+            self.read("pad", "pad.list", Value::Null, daemon()).await?;
+        // The user sees every Message; `message.list` shows the Daemon only its own.
+        let messages: Vec<contracts::message::Message> = self
+            .read(
+                "message",
+                "message.list",
+                json!({ "to": id }),
+                Actor::user(),
+            )
+            .await?;
+        let from = messages::digest::Sources {
+            nodes: &nodes,
+            todos: &todos,
+            pads: &pads,
+            messages: &messages,
+        };
+        rpc::reply(&self.digests.ask(&conn.actor, &id, &from)?)
+    }
+
+    /// One call to a module as `actor`, its result read as `T`.
+    async fn read<T: serde::de::DeserializeOwned>(
+        &self,
+        namespace: &'static str,
+        method: &'static str,
+        params: Value,
+        actor: Actor,
+    ) -> Result<T, RpcError> {
+        let module = self
+            .modules
+            .get(namespace)
+            .ok_or_else(|| RpcError::internal(format!("{namespace} module is not registered")))?;
+        let value = module.call(&self.ctx(actor), method, params).await?;
+        serde_json::from_value(value).map_err(RpcError::internal)
     }
 
     fn ctx(&self, actor: Actor) -> Ctx {
@@ -610,3 +663,20 @@ mod tests {
 
 #[cfg(test)]
 mod workstream_door;
+
+/// `RUPD_MESSAGES_FAULT=<operation>` makes the first such Messages operation fail with an error
+/// (B28's observer through a real Daemon).
+fn messages_env(touches: Arc<provenance::Touches>) -> messages::Env {
+    let mut env = messages::Env::system(touches);
+    if let Ok(op) = std::env::var("RUPD_MESSAGES_FAULT") {
+        let armed = std::sync::atomic::AtomicBool::new(true);
+        env.fault = Arc::new(move |name| {
+            if name == op && armed.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                Err(format!("injected failure in {name}"))
+            } else {
+                Ok(())
+            }
+        });
+    }
+    env
+}
