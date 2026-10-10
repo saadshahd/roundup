@@ -38,3 +38,9 @@ Builder and QA runs are one-shot GitHub Actions jobs, and an event ends every wa
 - Regenerate `contracts/generated/` from `crates/contracts`, never hand-edit it.
 - No run pushes to `main`; every change merges through a PR.
 - What the user reads (a needs-you comment, a PR body, a report): `reduce`, then the `show-me` layout. A verdict is for agents.
+
+## Agent skills
+
+- **Issue tracker**: GitHub Issues, as work orders; see `docs/agents/issue-tracker.md`.
+- **Triage labels**: `flag:needs-user`, `loop:work` and `wontfix` stand for the five triage roles; see `docs/agents/triage-labels.md`.
+- **Domain docs**: single-context, `GLOSSARY.md` and `docs/adr/`; see `docs/agents/domain.md`.
