@@ -10,7 +10,7 @@ Module: `crates/agents` (the order on each Agent, set at spawn and at a Door's s
 - With neither, it is `{kind: "clarification", question: "What should this Agent do?"}`.
 - Both `prompt` and `order`, or an order that breaks O1's shape, is `INVALID_PARAMS` and changes nothing (A18).
 
-At the first `SessionStart`, the Agent gets one Steer in place of A4's prompt Steer:
+Once H19's gate opens (the first `SessionStart` and the first star title), the Agent gets one Steer in place of A4's prompt Steer:
 - For a Work order, the ask, then `Must not:` and one line per limit (the section is left out when `limits` is empty).
 - For a Clarification order, the question and an instruction to find the intent, elicit what is missing (from whom `agent.context` says to ask) and record a Work order with `agent_set_order`.
 
