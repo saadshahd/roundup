@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | tokens | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | tokens | delta <base-dir> <head-dir> | base|ci-trailers <pr> | architect-words | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -46,6 +46,41 @@ vocab() {
     done <<<"$names"
   done <<<"$phrases"
   return "$bad"
+}
+
+# L95: the role word "architect" in scenarios/ or docs/ fails as `<file>:<line>`; a branch `architect/…`, a host `architect-swarm|-b|-c` and the L95 block are exempt.
+architect_words() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "architect-words: not a git checkout" >&2; return 2; }
+  python3 -I - <<'PY'
+import os
+import re
+import sys
+
+WORD = re.compile(r'\b[Aa]rchitects?\b')
+EXEMPT = re.compile(r'/|-(swarm|b|c)(?![\w-])')
+bad = 0
+for root in ('scenarios', 'docs'):
+    for dirpath, _, names in os.walk(root):
+        for name in sorted(names):
+            path = os.path.join(dirpath, name)
+            try:
+                lines = open(path, encoding='utf-8').read().split('\n')
+            except (UnicodeDecodeError, OSError):
+                continue
+            in_block = False
+            for number, line in enumerate(lines, 1):
+                if line.startswith('**L95 '):
+                    in_block = True
+                if in_block:
+                    in_block = not line.startswith('Tests:')
+                    continue
+                for match in WORD.finditer(line):
+                    if not EXEMPT.match(line, match.end()):
+                        print(f'{path}:{number}')
+                        bad = 1
+                        break
+sys.exit(bad)
+PY
 }
 
 # L41: a look literal (colour, size, radius, shadow, duration) outside tokens.css fails as `<file>:<line> <property>`.
@@ -433,6 +468,8 @@ case "${1:-}" in
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   vocab) vocab ;;
+  architect-words) [ $# -eq 1 ] || { echo "usage: loop/rules.sh architect-words" >&2; exit 2; }
+    architect_words ;;
   tokens) [ $# -eq 1 ] || { echo "usage: loop/rules.sh tokens" >&2; exit 2; }
     tokens ;;
   delta) delta "${2:-}" "${3:-}" ;;
