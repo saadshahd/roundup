@@ -3,6 +3,8 @@ import { render } from "solid-js/web";
 import { App } from "../App";
 import { railStorage } from "../rail/persist/storage";
 import { createReducedMotion } from "../app/reducedMotion";
+import { runAxe } from "./axe";
+import type { AxeResult } from "./axe";
 import { runChecks } from "./checks";
 import type { Checks } from "./checks";
 import { createServedApp } from "./realSeam";
@@ -16,6 +18,7 @@ declare global {
   interface Window {
     __fake: Controls;
     __checks: () => Checks;
+    __axe: () => Promise<AxeResult>;
   }
 }
 
@@ -32,6 +35,8 @@ const mount = (app: AppSeam) => {
 };
 
 window.__checks = () => runChecks();
+
+window.__axe = () => runAxe();
 
 if (query.get("daemon") === "1") {
   // `just harness-real` (U144): the same App on a running `rupd`, so there is no `window.__fake`.
