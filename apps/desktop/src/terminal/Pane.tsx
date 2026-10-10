@@ -171,6 +171,52 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     if (current !== null) screens.emulatorFor(current).focus();
   };
 
+  // U162: the window's native File drop, reported by the App seam. The ring shows only while a drop would be taken.
+  const [dropOver, setDropOver] = createSignal(false);
+  let body: HTMLElement | undefined;
+
+  const takesDrop = (): string | null => {
+    const id = terminalId();
+
+    return id !== null && connected.daemonExit() === null && !screens.exited(id) ? id : null;
+  };
+
+  const inBody = (x: number, y: number): boolean => {
+    const box = body?.getBoundingClientRect();
+
+    return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom;
+  };
+
+  let unlistenDrop: (() => void) | undefined;
+  let closed = false;
+
+  void connected.app.onFileDrop((drop) => {
+    const id = takesDrop();
+
+    if (drop.phase === "leave" || id === null || !inBody(drop.x, drop.y)) {
+      setDropOver(false);
+
+      return;
+    }
+
+    setDropOver(drop.phase === "over");
+
+    if (drop.phase === "drop") {
+      screens.pastePaths(id, drop.paths);
+      screens.emulatorFor(id).focus();
+    }
+  }).then((stop) => {
+    if (closed) stop();
+    else unlistenDrop = stop;
+  });
+
+  createEffect(on(terminalId, () => setDropOver(false)));
+  createEffect(() => { if (takesDrop() === null) setDropOver(false); });
+  onCleanup(() => {
+    closed = true;
+    unlistenDrop?.();
+  });
+
   let watched: ResizeObserver | undefined;
 
   // A Card appearing, growing or going changes the Terminal's room without a window resize.
@@ -219,7 +265,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
             />
         )}
       </Show>
-      <div class="pane-body" ref={watch}>
+      <div class="pane-body" classList={{ "drop-over": dropOver() }} ref={(element) => { body = element; watch(element); }}>
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
           <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>

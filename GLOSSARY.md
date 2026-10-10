@@ -63,6 +63,9 @@ The macOS window; it starts a Daemon for one Project and hosts the webview, a cl
 **App seam**:
 The few Tauri commands and events between the App and its webview (`scenarios/app.md`); not a Daemon contract.
 
+**File drop**:
+The window's native drop of files, which the Tauri shell takes before the webview sees a DOM `drop`; the App seam reports it as `onFileDrop` and a Terminal pane pastes the dropped paths (U162).
+
 **Rail**:
 The tree of Rooms, Agents and Terminals.
 
