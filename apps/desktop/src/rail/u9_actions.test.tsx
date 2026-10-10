@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { fakeEmulators } from "../terminal/paneHarness";
 import { RpcError } from "../app/seam";
@@ -358,4 +358,68 @@ it("u9_selecting_a_reopened_room_offers_start_without_launching", async () => {
   expect(screen.getByText("start Door")).toBeDefined();
   expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([]);
   expect(railCallsTo(mounted.app, "rail.createRoom")).toEqual([]);
+});
+
+it("a24_a_pending_start_keeps_the_rail_interactive_and_the_pane_size", async () => {
+  const mounted = await mountRail([room("closed", { attempt: "2" }), room("other")]);
+  mounted.app.handlers["rail.startDoor"] = () => new Promise<RailNode>(() => {});
+  mounted.rail.select("closed");
+  const pane = document.querySelector<HTMLElement>(".pane");
+  const before = pane?.getAttribute("style") ?? null;
+
+  fireEvent.click(screen.getByText("start Door"));
+  await waitFor(() => expect(mounted.rail.doorPending("closed")).toBe(true));
+  fireEvent.click(screen.getByText("other"));
+
+  expect(mounted.rail.selected()).toBe("other");
+  expect(document.querySelector<HTMLElement>(".pane")?.getAttribute("style") ?? null).toBe(before);
+});
+
+it("a24_a_late_failure_shows_the_error_and_retry_door", async () => {
+  const mounted = await mountRail([room("closed", { attempt: "2" })]);
+  mounted.app.handlers["rail.startDoor"] = () => { throw new RpcError(-32003, "closed: no acknowledgement within 8s"); };
+
+  mounted.rail.select("closed");
+
+  fireEvent.click(screen.getByText("start Door"));
+
+  await waitFor(() => expect(mounted.rail.doorFailure("closed")).toBe("closed: no acknowledgement within 8s"));
+  expect(screen.getAllByText("retry Door").length).toBeGreaterThan(0);
+  expect(mounted.rail.doorPending("closed")).toBe(false);
+});
+
+it("a24_a_start_the_daemon_never_answers_fails_within_the_bound", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+  try {
+    const mounted = await mountRail([room("closed", { attempt: "2" })]);
+    mounted.app.handlers["rail.startDoor"] = () => new Promise<RailNode>(() => {});
+    mounted.rail.select("closed");
+
+    fireEvent.click(screen.getByText("start Door"));
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await waitFor(() => expect(mounted.rail.doorFailure("closed")).not.toBeNull());
+    expect(mounted.rail.doorPending("closed")).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("a24_a_start_that_succeeds_shows_the_doors_terminal", async () => {
+  const tree: RailNode[] = [room("closed", { attempt: "2" })];
+  const mounted = await mountRail(tree, [], () => null, () => false, { pane: fakeEmulators().factory });
+  mounted.app.handlers["rail.startDoor"] = () => {
+    const live = door("closed", "working", "starting");
+    tree.splice(0, 1, live);
+
+    return live;
+  };
+
+  mounted.rail.select("closed");
+
+  fireEvent.click(screen.getAllByText("start Door")[0]!);
+
+  await waitFor(() => expect(document.querySelector('[data-terminal="t-closed"]')).not.toBeNull());
+  expect(mounted.rail.doorFailure("closed")).toBeNull();
 });

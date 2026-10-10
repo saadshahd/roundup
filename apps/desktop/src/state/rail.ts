@@ -42,6 +42,9 @@ export type RailState = {
   settled(): Promise<void>;
 };
 
+/** A24: how long the App waits for `rail.startDoor`, the Daemon's own bound of 10 000 ms. */
+const DOOR_START_BOUND_MS = 10_000;
+
 export const createRailState = (app: AppSeam, events: Events, storage?: RailStorage): RailState => {
   const [model, setModel] = createStore<{ tree: RailNode[]; exited: Record<string, number | null> }>({
     tree: [],
@@ -172,12 +175,23 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     }
   };
 
+  /** A24: the call's answer, or a rejection once `DOOR_START_BOUND_MS` passes without one. */
+  const boundedStart = (id: string): Promise<RailNode> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const expiry = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("the Door did not start in time; retry Door")), DOOR_START_BOUND_MS);
+    });
+
+    return Promise.race([app.rpc("rail.startDoor", { id }), expiry]).finally(() => clearTimeout(timer));
+  };
+
   const startDoor = async (id: string): Promise<void> => {
     if (doors[id]?.pending) return;
     setDoors(id, { pending: true, observedLive: false, failure: null });
 
     try {
-      await app.rpc("rail.startDoor", { id });
+      await boundedStart(id);
       fetching(fetchTree);
       await latest;
     } catch (error) {

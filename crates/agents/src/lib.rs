@@ -134,6 +134,10 @@ pub const KILL_WAIT_BOUND: Duration = Duration::from_secs(2);
 /// acknowledging `SessionStart` before it fails with `CONFLICT` and rolls back.
 pub const RESUME_ACK_BOUND: Duration = Duration::from_secs(10);
 
+/// A24: how long `rail.startDoor` waits for that acknowledgement. Below A24's 10 000 ms bound on
+/// the whole call, which also covers the rollback that follows the wait.
+pub const START_DOOR_ACK_BOUND: Duration = Duration::from_secs(8);
+
 /// Kill a Terminal's program and return once it is observably not running (A16) or
 /// `KILL_WAIT_BOUND` has passed, whichever comes first: `kill` itself returns as soon as the
 /// program is reaped, which can race the Terminal's own reader thread noticing the program's end
@@ -1640,7 +1644,7 @@ impl Agents {
             rail.has_conversation(id)?
         };
         if saved {
-            return self.resume_saved(ctx, id).await;
+            return self.resume_saved(ctx, id, START_DOOR_ACK_BOUND).await;
         }
         let attempt = {
             let mut rail = self.shared.rail();
@@ -1705,12 +1709,17 @@ impl Agents {
                 return Err(RpcError::conflict(format!("{id} is not an Agent")));
             }
         }
-        self.resume_saved(ctx, id).await
+        self.resume_saved(ctx, id, RESUME_ACK_BOUND).await
     }
 
     /// A22's launch, acknowledgement, rollback and serialization for an Agent (`agent.resume`) or
     /// a Door (A23's `rail.startDoor`) whose kind the caller has checked.
-    async fn resume_saved(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
+    async fn resume_saved(
+        &self,
+        ctx: &Ctx,
+        id: &str,
+        ack_bound: Duration,
+    ) -> Result<RailNode, RpcError> {
         let (attempt, conversation_id, worktree, saved_cwd, done_rx) = {
             let mut rail = self.shared.rail();
             let node = rail.node(id)?;
@@ -1838,11 +1847,11 @@ impl Agents {
             ack = done_rx => ack.unwrap_or_else(|_| {
                 Err(RpcError::internal(format!("{id}: resume ack channel dropped")))
             }),
-            () = tokio::time::sleep(RESUME_ACK_BOUND) => {
+            () = tokio::time::sleep(ack_bound) => {
                 self.shared.rollback_resume(id, &attempt).await;
                 Err(RpcError::conflict(format!(
                     "{id}: no acknowledgement within {}s",
-                    RESUME_ACK_BOUND.as_secs()
+                    ack_bound.as_secs()
                 )))
             }
         };
