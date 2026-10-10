@@ -84,7 +84,7 @@
   overflow-wrap: anywhere;
 }
 
-/* U155: a row can be dragged, so it reads as grabbable; the fold's rows are not rows of the order. */
-.todo-row [data-reorderable] {
+/* U155: the cursor over a drag is `grab`; at rest it stays `pointer` (D6). The fold's rows are not rows of the order. */
+.todo-row [data-reorderable]:active {
   cursor: grab;
 }
