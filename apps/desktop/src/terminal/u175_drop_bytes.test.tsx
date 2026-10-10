@@ -39,23 +39,30 @@ const dropOnRealEmulator = async (bracketed: boolean) => {
   body.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
   await vi.waitFor(() => expect(emulators.get("t-a")).toBeDefined());
 
+  const input: string[] = [];
+
+  emulators.get("t-a")!.onInput((bytes) => input.push(new TextDecoder().decode(bytes)));
+
   if (bracketed) await new Promise<void>((resolve) => emulators.get("t-a")!.write(new TextEncoder().encode("\x1b[?2004h"), resolve));
 
   app.dropFiles({ phase: "drop", paths: [PATH], x: 50, y: 50 });
   await vi.waitFor(() => expect(callsTo(app, "terminal.write").length).toBeGreaterThan(0));
+  await new Promise<void>((resolve) => emulators.get("t-a")!.write(new Uint8Array(), resolve));
   await new Promise((resolve) => setTimeout(resolve, 50));
 
-  return callsTo(app, "terminal.write");
+  return { input: input.join(""), writes: callsTo(app, "terminal.write") };
 };
 
 it("u175_a_dropped_image_writes_one_bracketed_paste", async () => {
-  const writes = await dropOnRealEmulator(true);
+  const { input, writes } = await dropOnRealEmulator(true);
 
+  expect(input).toBe(`\x1b[200~${QUOTED}\x1b[201~`);
   expect(writes).toEqual([{ id: "t-a", data: btoa(`\x1b[200~${QUOTED}\x1b[201~`) }]);
 });
 
 it("u175_without_bracketed_paste_the_path_has_no_marker", async () => {
-  const writes = await dropOnRealEmulator(false);
+  const { input, writes } = await dropOnRealEmulator(false);
 
+  expect(input).toBe(QUOTED);
   expect(writes).toEqual([{ id: "t-a", data: btoa(QUOTED) }]);
 });
