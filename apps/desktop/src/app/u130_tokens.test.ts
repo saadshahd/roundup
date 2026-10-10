@@ -171,6 +171,7 @@ describe("u130 tokens", () => {
 
   it("u130_no_look_literal_outside_tokens_css", () => {
     const sheets = import.meta.glob<string>(["../**/*.css", "!../tokens.css"], { query: "?raw", import: "default", eager: true });
+
     const sources = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}", "!../testing/**", "!../terminal/emulator.ts"], {
       query: "?raw",
       import: "default",
