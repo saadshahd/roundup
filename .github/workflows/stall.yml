@@ -1,0 +1,34 @@
+name: stall
+run-name: Look for a loop stall
+
+# L94: hourly, on its own, with no model. A stall opens or updates one work Issue; a merge closes it.
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: read
+  actions: read
+
+# L82: bash -eo pipefail, so a failure left of a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  stall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: stall
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: python3 loop/stall.py
+        env:
+          GH_TOKEN: ${{ github.token }}
