@@ -7,6 +7,8 @@ import { ItemDrawer } from "../drawer/ItemDrawer";
 import { useConnectedProject } from "../state/connectedProject";
 import { EditableText } from "./EditableText";
 import { failureOf } from "./failureOf";
+import { HomeMove } from "./HomeMove";
+import { homeNameOf } from "./homes";
 import { RowButton } from "./RowButton";
 import type { TodosState } from "./state";
 import { blockedBy, blockersOf, kindOf, offeredAsBlockers } from "./todoView";
@@ -107,6 +109,10 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   <p class="light">blocks</p>
                   <For each={blockedBy(current(), props.todos.all())}>{(blocked) => <TodoLine todo={blocked} />}</For>
                 </Show>
+                <div class="light">
+                  in {homeNameOf(rail.nodes, current().home)}{" "}
+                  <HomeMove id={props.id} home={current().home} choose={(home) => failureOf(() => app.rpc("todo.move", { id: props.id, home }))} />
+                </div>
                 <p>
                   <button type="button" class="word" onClick={() => setOffering(!offering())}>
                     <Icon name="plus" /> blocker
