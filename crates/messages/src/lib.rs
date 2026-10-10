@@ -129,10 +129,7 @@ impl Messages {
 
     /// O4: whether a Takeover (B6) of `agent` is active.
     pub fn takeover_active(&self, agent: &str) -> bool {
-        self.inner
-            .store
-            .lock()
-            .is_ok_and(|store| store.is_takeover_active(agent))
+        lock(&self.inner.store).is_takeover_active(agent)
     }
 
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
@@ -523,10 +520,7 @@ impl Messages {
     }
 
     fn store(&self) -> Result<MutexGuard<'_, Store>, RpcError> {
-        self.inner
-            .store
-            .lock()
-            .map_err(|_| RpcError::internal("message store poisoned"))
+        Ok(lock(&self.inner.store))
     }
 }
 
@@ -585,6 +579,12 @@ impl Module for Messages {
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
         start_listener(&self.inner);
+        guarded(method, self.dispatch(ctx, method, value)).await
+    }
+}
+
+impl Messages {
+    async fn dispatch(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
         match method {
             "message.send" => self.send(ctx, params(value)?).await,
             "message.pass" => self.pass(ctx, params(value)?).await,
@@ -607,10 +607,7 @@ impl Module for Messages {
 fn start_listener(inner: &Arc<Inner>) {
     inner.listener_started.call_once(|| {
         spawn_bound_clock(Arc::downgrade(inner));
-        let events = inner
-            .events
-            .lock()
-            .unwrap()
+        let events = lock(&inner.events)
             .take()
             .expect("subscribed once, at open");
         spawn_status_listener(Arc::clone(inner), events);
@@ -627,7 +624,7 @@ fn spawn_bound_clock(inner: std::sync::Weak<Inner>) {
             let Some(inner) = inner.upgrade() else {
                 break;
             };
-            let _ = settle(&inner, None).await;
+            let _ = guarded("clock", settle(&inner, None)).await;
         }
     });
 }
@@ -637,7 +634,7 @@ fn spawn_bound_clock(inner: std::sync::Weak<Inner>) {
 async fn settle(inner: &Arc<Inner>, force: Option<u32>) -> Result<(), RpcError> {
     let nodes = rail_nodes(inner).await?;
     let made = {
-        let mut store = inner.store.lock().unwrap();
+        let mut store = lock(&inner.store);
         hops::settle(inner, &mut store, &nodes, (inner.clock)(), force)?
     };
     let rupd = Actor::daemon();
@@ -688,21 +685,25 @@ fn spawn_status_listener(
 ) {
     tokio::spawn(async move {
         let mut resync_due = !resync(&inner).await;
-        let _ = settle(&inner, None).await;
+        let _ = guarded("settle", settle(&inner, None)).await;
         loop {
             match events.recv().await {
                 Ok(contracts::Event {
                     data: EventData::AgentStatus(status),
                     ..
                 }) => {
-                    on_status(
-                        &inner,
-                        &status.id,
-                        &status.attempt,
-                        &status.status_revision,
-                        status.status.kind,
-                    )
-                    .await
+                    let _ = guarded("on_status", async {
+                        on_status(
+                            &inner,
+                            &status.id,
+                            &status.attempt,
+                            &status.status_revision,
+                            status.status.kind,
+                        )
+                        .await;
+                        Ok(())
+                    })
+                    .await;
                 }
                 Ok(contracts::Event {
                     data: EventData::RailChanged,
@@ -714,7 +715,7 @@ fn spawn_status_listener(
             }
             if resync_due {
                 resync_due = !resync(&inner).await;
-                let _ = settle(&inner, None).await;
+                let _ = guarded("settle", settle(&inner, None)).await;
             }
         }
     });
@@ -726,7 +727,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
         contracts::agent::parse_positive_ordinal(revision).expect("wire Status revision"),
     );
     {
-        let mut store = inner.store.lock().unwrap();
+        let mut store = lock(&inner.store);
         reconcile(
             inner,
             &mut store,
@@ -747,7 +748,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
 /// A failed Rail read is retried on the next event; it never guesses that an Agent recovered.
 async fn resync(inner: &Arc<Inner>) -> bool {
     let known = {
-        let store = inner.store.lock().unwrap();
+        let store = lock(&inner.store);
         store
             .receivers()
             .expect("message store")
@@ -761,7 +762,7 @@ async fn resync(inner: &Arc<Inner>) -> bool {
     let Ok(nodes) = rail_nodes(inner).await else {
         return false;
     };
-    let mut store = inner.store.lock().unwrap();
+    let mut store = lock(&inner.store);
     for (id, generation) in known {
         if !nodes.iter().any(|node| node.id == id)
             && store.generation(&id).expect("message store") == generation
@@ -821,7 +822,7 @@ async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
 /// one the next `idle` would pick is typed now, though its Status revision is the current one.
 async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick) {
     let found = {
-        let store = inner.store.lock().unwrap();
+        let store = lock(&inner.store);
         if store.require_generation(agent, at).is_err() {
             return;
         }
@@ -839,7 +840,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick
         return;
     };
     let recorded = {
-        let store = inner.store.lock().unwrap();
+        let store = lock(&inner.store);
         if store.require_generation(agent, at).is_err()
             || (store.bound(found.id).expect("message store").0 != at.0
                 || (pick == Pick::Next && store.bound(found.id).expect("message store").1 >= at.1))
@@ -865,10 +866,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick
         } else {
             Reason::ReceiverGone
         };
-        let dropped = inner
-            .store
-            .lock()
-            .unwrap()
+        let dropped = lock(&inner.store)
             .drop_delivered(message.id, reason)
             .expect("message store");
         if let Some(dropped) = dropped {
@@ -880,10 +878,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick
     }
     if refusal.is_some() {
         // `Busy`: nothing was typed, so the record is undone, back to `pending`, or `held` for `takeover` if one began meanwhile (B6).
-        let reverted = inner
-            .store
-            .lock()
-            .unwrap()
+        let reverted = lock(&inner.store)
             .unmark_delivered(message.id)
             .expect("message store");
         if let Some(held) = reverted.filter(|m| m.status == MessageStatus::Held) {
@@ -1105,6 +1100,51 @@ fn kind_label(kind: MessageKind) -> &'static str {
         MessageKind::Note => "note",
         MessageKind::Question => "question",
     }
+}
+
+/// The store lock, taken even after a panic poisoned it: every change runs as one SQLite
+/// transaction that rolls back on unwind (`Store::atomically`), so the data behind a poisoned
+/// lock is whole (B28).
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// B28: runs one operation so that a panic or an `INTERNAL` error fails only it. The cause is
+/// logged once to stderr as one line naming the operation, and a panic becomes an `INTERNAL`
+/// error naming the same cause.
+async fn guarded<T>(
+    op: &str,
+    fut: impl std::future::Future<Output = Result<T, RpcError>>,
+) -> Result<T, RpcError> {
+    let mut fut = Box::pin(fut);
+    let result = std::future::poll_fn(|cx| {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fut.as_mut().poll(cx))) {
+            Ok(poll) => poll.map(Ok),
+            Err(payload) => std::task::Poll::Ready(Err(panic_cause(payload.as_ref()))),
+        }
+    })
+    .await;
+    match result {
+        Ok(Err(err)) if err.code == code::INTERNAL => {
+            eprintln!("messages: {op} failed: {}", err.message);
+            Err(err)
+        }
+        Ok(result) => result,
+        Err(cause) => {
+            eprintln!("messages: {op} failed: {cause}");
+            Err(RpcError::internal(format!("{op} failed: {cause}")))
+        }
+    }
+}
+
+fn panic_cause(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panic".to_owned())
 }
 
 #[cfg(test)]
@@ -2949,5 +2989,51 @@ mod tests {
         let reopened = Harness::new(dir.path(), vec![door("m", None)]);
         let all = reopened.call("message.list", json!({})).await.unwrap();
         assert_eq!(all.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn b28_a_panic_in_a_locked_operation_leaves_the_next_calls_working() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path(), vec![agent_node("a", Kind::Working)]);
+        let inner = Arc::clone(&h.messages.inner);
+        let panicked = std::thread::spawn(move || {
+            let mut store = lock(&inner.store);
+            let _ = store.atomically::<()>(|_| panic!("injected"));
+        })
+        .join();
+        assert!(panicked.is_err());
+        assert!(h.messages.inner.store.is_poisoned());
+
+        let sent = h
+            .call(
+                "message.send",
+                json!({"to": "a", "kind": "note", "body": "hi"}),
+            )
+            .await
+            .unwrap();
+        h.call("message.get", json!({"id": sent["id"]}))
+            .await
+            .unwrap();
+        h.call("route.set", json!({"from": "a", "to": "a", "mode": "auto"}))
+            .await
+            .ok();
+        assert_eq!(
+            h.call("message.list", json!({}))
+                .await
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn b28_guarded_turns_a_panic_into_an_internal_error_naming_the_cause() {
+        let err = guarded::<()>("message.send", async { panic!("boom") })
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, code::INTERNAL);
+        assert!(err.message.contains("message.send") && err.message.contains("boom"));
     }
 }
