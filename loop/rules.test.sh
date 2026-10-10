@@ -354,6 +354,19 @@ tokens_with rail/a.tsx '// <b style={{ color: "red" }} />\nconst a = 1;'
 expect pass 'l41_a_literal_in_a_comment_passes' bash -c "[ '$comment_css' = y ] && loop/rules.sh tokens"
 expect_exit 2 'l41_an_argument_exits_2' loop/rules.sh tokens x
 
+# Y3 the laws sheet
+laws_repo() { new_repo; mkdir -p scenarios tests; printf '**A1 one.** text\n%s\n' "$1" >scenarios/a.md; echo 'it("a1_works", () => {});' >tests/a.test.ts; commit x; }
+laws_repo 'Law: Things hold. Check: a1_'
+expect pass 'y3_a_law_with_a_matching_test_prints_one_line' bash -c "[ \"\$(loop/rules.sh laws)\" = 'A1 | Things hold | a1_' ]"
+laws_repo 'Law: Things hold.'
+expect fail 'y3_a_law_with_no_check_exits_1' loop/rules.sh laws
+expect pass 'y3_a_law_with_no_check_prints_unchecked' bash -c "loop/rules.sh laws 2>/dev/null | grep -q 'A1 | Things hold | unchecked'"
+laws_repo 'Law: Things hold. Check: z9_'
+expect fail 'y3_a_check_naming_a_prefix_no_test_has_exits_1' loop/rules.sh laws
+expect pass 'y3_that_exit_names_the_id' bash -c "loop/rules.sh laws 2>&1 | grep -q 'A1 names'"
+new_repo
+expect_exit 4 'y3_a_missing_scenarios_directory_exits_4' loop/rules.sh laws
+
 # L34 Issue queue behavior is exercised by loop/orders.test.py.
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
