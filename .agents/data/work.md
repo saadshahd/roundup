@@ -1,6 +1,6 @@
 # Work orders
 
-Open GitHub Issues are the only work orders: every one a collaborator or a loop App filed, and any other a collaborator labels `loop:work`; the repository is public, so no one else's Issue runs (L34). Scenario files hold acceptance specifications, never scheduling tables. Search existing Issues and PRs before creating work; update the existing Issue when it already owns the gap.
+Open GitHub Issues the user or a loop App filed are the only work orders; the repository is public, so no one else's Issue runs, whatever its labels (L34). Scenario files hold acceptance specifications, never scheduling tables. Search existing Issues and PRs before creating work; update the existing Issue when it already owns the gap.
 
 An Issue contains an outcome, scope, regression requirements, and these single-line fields:
 

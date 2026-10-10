@@ -8,10 +8,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 NEEDS_USER = 'flag:needs-user'
-# The repository is public: only its collaborators and the loop's own Apps file work, or vouch for an Issue with
-# `loop:work`, which only collaborators can apply.
-AUTHORS = ('OWNER', 'MEMBER', 'COLLABORATOR')
-BOTS = ('claude[bot]', 'github-actions[bot]')
+# The repository is public: only the user and the loop's own Apps (a stall Issue, a Builder's prerequisite) file work.
+AUTHORS = ('saadshahd', 'claude[bot]', 'github-actions[bot]')
 
 
 def gh(*args):
@@ -29,9 +27,8 @@ def field(body, name, default=None):
 
 
 def work_issue(issue):
-    """Whether the Issue may run: a collaborator or a loop App filed it, or a collaborator labelled it `loop:work`."""
-    return (issue.get('author_association') in AUTHORS or (issue.get('user') or {}).get('login') in BOTS or
-            'loop:work' in {label['name'] for label in issue['labels']})
+    """Whether the Issue may run: the user or a loop App filed it; no label lets anyone else's Issue run."""
+    return (issue.get('user') or {}).get('login') in AUTHORS
 
 
 def order(issue):
@@ -90,7 +87,7 @@ def classify(issues, dependencies, prs):
         number = issue['number']
         row = dict(issue=number, url=issue['html_url'], ids=issue['title'], file='', slug='', priority=100)
         if not work_issue(issue):
-            row.update(state='unspecified', reason='filed outside the repository; a collaborator adds loop:work to vouch for it')
+            row.update(state='unspecified', reason='filed by someone other than the user or a loop App; it never runs')
             rows.append(row)
             continue
         try:

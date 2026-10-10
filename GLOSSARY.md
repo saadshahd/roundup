@@ -239,7 +239,7 @@ A screen the Design critic runs that no Builder's prompt lists.
 ### The loop
 
 **Work Issue**:
-An open GitHub Issue that a collaborator or a loop App filed, or that a collaborator labelled `loop:work`, holding a scoped outcome, acceptance references, immutable Key, priority and native dependencies, or a request without them that a build run specifies first. Who filed or vouched for it authorizes execution; `flag:needs-user` holds it; its delivery evidence determines completion (L34).
+An open GitHub Issue that the user or a loop App filed, holding a scoped outcome, acceptance references, immutable Key, priority and native dependencies, or a request without them that a build run specifies first. Who filed it authorizes execution; `flag:needs-user` holds it; its delivery evidence determines completion (L34).
 
 **Builder**:
 The one kind of agent run that builds roundup and reviews it, each run fresh, from `.agents/builder.md`: a build run takes a GitHub work Issue, a fix run answers a reject or a failure, and a review run judges a PR's head, never its author's rationale (L23, L24).

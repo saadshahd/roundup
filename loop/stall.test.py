@@ -21,7 +21,7 @@ def stamp(seconds_ago):
 
 HOUR = 3600
 READY = dict(number=7, title='Build U1', html_url='https://x/7', state='open', body='', created_at=stamp(HOUR * 20),
-             labels=[], author_association='OWNER', user=dict(login='saadshahd'))
+             labels=[], user=dict(login='saadshahd'))
 BUILD_PR = dict(number=9, headRefName='build/U1', isCrossRepository=False, labels=[])
 
 
@@ -78,7 +78,8 @@ def stalled(**changes):
 
 def stall_issue(ago=HOUR, labels=()):
     return dict(number=50, title='Loop stall', html_url='https://x/50', state='open', created_at=stamp(ago),
-                body='Key: stall-20261010-03\n', labels=[dict(name=n) for n in ('loop:work', *labels)])
+                body='Key: stall-20261010-03\n', labels=[dict(name=n) for n in ('loop:work', *labels)],
+                user=dict(login='github-actions[bot]'))
 
 
 def run(id, workflow, conclusion, ago=HOUR):
@@ -109,7 +110,7 @@ class Stall(unittest.TestCase):
 
     def test_l94_an_issue_waiting_on_the_user_or_filed_outside_is_not_waiting_work(self):
         flagged = dict(READY, labels=[dict(name='flag:needs-user')])
-        outside = dict(READY, author_association='NONE', user=dict(login='stranger'))
+        outside = dict(READY, user=dict(login='stranger'))
         pull = dict(READY, pull_request={})
         for issue in (flagged, outside, pull):
             with self.subTest(issue=issue):
