@@ -204,7 +204,7 @@ button[aria-disabled="true"] {
   }
 }
 
-/* U159: native radios beside their words, in the header's line (24px high) so no row moves (U112); the one global focus ring (U133) draws on the radio. */
+/* U159: native radios beside their words; the pair stays together and wraps as one unit, so no row moves when the choice changes (U112); the one global focus ring (U133) draws on the radio. */
 .shown-word {
   display: inline-flex;
   align-items: center;
@@ -221,6 +221,7 @@ button[aria-disabled="true"] {
 
 .shown-word input {
   margin: 0;
+  font-size: var(--text-body);
   cursor: pointer;
   accent-color: var(--accent);
 }
