@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Mutation check for proofs/messages/PROOF.bend (V5).
-# For each law id (m2 m3 ...): keep PROOF.bend's `lib` section plus that law's section, check it
+# For each law id (m2 m3 ...): keep PROOF.bend's `lib` section plus that law's section (m1, m5 and m6
+# also keep `inv`, the shared invariant they are read off, so their mutants fail inside `inv`), check it
 # against the unmutated model (it must raise no error), then against model.bend with
 # mutants/<id>.patch applied (it must print SOME PROOFS FAIL and a Location inside that section).
 # Needs Bend 2.0.34: BEND=/path/to/bend, or `bend` on PATH. Run from anywhere.
@@ -15,8 +16,8 @@ status=0
 
 section() { # section <id>: PROOF.bend without the other laws' sections
   awk -v want="$(echo "$1" | tr a-z A-Z)" '
-    /^# ---- / { tag = $3 }
-    tag == "" || tag == "lib" || tag == want { print }' "$dir/PROOF.bend"
+    /^# ---- / { tag = toupper($3) }
+    tag == "" || tag == "LIB" || tag == want || (tag == "INV" && want ~ /^M(1|5|6)$/) { print }' "$dir/PROOF.bend"
 }
 
 check() { # check <id> <yes|no mutated>: sets out and secs
