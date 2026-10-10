@@ -37,6 +37,49 @@ const pads = (initial: Pad[]) => {
   return { app, announced };
 };
 
+describe("t11 the in-memory Todo order", () => {
+  const four = () => todos([todo(1), todo(2), todo(3), todo(4)]);
+  const ids = async (app: ReturnType<typeof four>["app"]) => (await app.rpc("todo.list", null)).map((t) => t.id);
+
+  it("t11_reorder_puts_a_todo_before_another_or_last_and_sends_todo_updated_once", async () => {
+    const { app, announced } = four();
+
+    const moved = await app.rpc("todo.reorder", { id: 3, before: 1 });
+    expect([moved.id, await ids(app), announced.map((data) => data.name)]).toEqual([3, [3, 1, 2, 4], ["todo.updated"]]);
+
+    await app.rpc("todo.reorder", { id: 3, before: null });
+    expect(await ids(app)).toEqual([1, 2, 4, 3]);
+  });
+
+  it("t11_moving_to_the_place_it_holds_sends_nothing", async () => {
+    const { app, announced } = four();
+
+    await app.rpc("todo.reorder", { id: 2, before: 3 });
+    await app.rpc("todo.reorder", { id: 4, before: null });
+
+    expect([await ids(app), announced]).toEqual([[1, 2, 3, 4], []]);
+  });
+
+  it("t11_a_rejected_reorder_changes_nothing", async () => {
+    const { app, announced } = four();
+
+    await expect(app.rpc("todo.reorder", { id: 9, before: 1 })).rejects.toMatchObject({ code: -32001 });
+    await expect(app.rpc("todo.reorder", { id: 1, before: 9 })).rejects.toMatchObject({ code: -32001 });
+    await expect(app.rpc("todo.reorder", { id: 2, before: 2 })).rejects.toMatchObject({ code: -32003 });
+
+    expect([await ids(app), announced]).toEqual([[1, 2, 3, 4], []]);
+  });
+
+  it("t10_a_created_todo_goes_last_after_a_reorder", async () => {
+    const { app } = four();
+
+    await app.rpc("todo.reorder", { id: 4, before: 1 });
+    await app.rpc("todo.create", { title: "new", body: null, blockers: null });
+
+    expect(await ids(app)).toEqual([4, 1, 2, 3, 5]);
+  });
+});
+
 describe("u26 the in-memory Todos", () => {
   it("u26_creating_a_todo_numbers_it_after_the_last_and_sends_todo_created", async () => {
     const { app, announced } = todos([todo(4)]);

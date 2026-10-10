@@ -1571,3 +1571,75 @@ async fn t14_a_door_creates_todos_at_its_own_workstream() {
         assert_eq!(todo["home"], json!(door));
     }
 }
+
+async fn ids_listed(client: &rpc::Client) -> Vec<u32> {
+    let listed: Vec<Todo> =
+        serde_json::from_value(client.request("todo.list", json!(null)).await.unwrap()).unwrap();
+    listed.into_iter().map(|todo| todo.id).collect()
+}
+
+/// T11: four Todos, `todo.reorder`, and the ids `todo.list` prints.
+#[tokio::test]
+async fn t11_reorder_changes_the_list_on_a_real_daemon() {
+    let project = start(&[]);
+    let client = project.client().await;
+    for title in ["a", "b", "c", "d"] {
+        todo_at(&client, title).await;
+    }
+    let mut events = project.subscribed().await;
+    let moved = client
+        .request("todo.reorder", json!({ "id": 3, "before": 1 }))
+        .await
+        .unwrap();
+    assert_eq!(moved["id"], 3);
+    let updated = next(&mut events, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo.id),
+        _ => None,
+    })
+    .await;
+    assert_eq!(updated, 3);
+    assert_eq!(ids_listed(&client).await, [3, 1, 2, 4]);
+    let missing = client
+        .request("todo.reorder", json!({ "id": 3, "before": 9 }))
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, rpc::code::NOT_FOUND);
+    assert_eq!(ids_listed(&client).await, [3, 1, 2, 4]);
+    let more = tokio::time::timeout(
+        Duration::from_millis(300),
+        next(&mut events, |data| {
+            matches!(data, EventData::TodoUpdated(_)).then_some(())
+        }),
+    )
+    .await;
+    assert!(more.is_err());
+}
+
+/// T10: an Agent's `todo_list`, `todo_create` and `agent.context` all read the user's order.
+#[tokio::test]
+async fn t10_the_mcp_server_and_the_context_read_the_reordered_list() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let mut shim = Shim::start(&project, &rail.a).await;
+    for title in ["a", "b", "c"] {
+        shim.call("todo_create", json!({ "title": title })).await;
+    }
+    user.request("todo.reorder", json!({ "id": 3, "before": 1 }))
+        .await
+        .unwrap();
+    let ids = |list: Value| -> Vec<u64> {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|todo| todo["id"].as_u64().unwrap())
+            .collect()
+    };
+    assert_eq!(ids(shim.call("todo_list", json!({})).await), [3, 1, 2]);
+    shim.call("todo_create", json!({ "title": "d" })).await;
+    assert_eq!(ids(shim.call("todo_list", json!({})).await), [3, 1, 2, 4]);
+    let context: Context =
+        serde_json::from_value(shim.call("agent_context", json!({})).await).unwrap();
+    let in_context: Vec<u32> = context.todos.iter().map(|todo| todo.id).collect();
+    assert_eq!(in_context, [3, 1, 2, 4]);
+}
