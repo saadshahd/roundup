@@ -58,3 +58,13 @@ Module: `loop/rules.sh`, `loop/builder.py`, `loop/orders.py`, `loop/stall.py` fo
 - *Independence.* The workflow file names no `build.yml`, `claude-code-action` or model, and its token grants are those above (`l94_workflow_calls_no_model_and_holds_only_issue_writes`).
 
 Tests: `l94` in `loop/stall.test.py` against a fake `gh`, and `loop/workflows.test.py` for the last clause.
+
+**L95 Architect sweep.** `rules.sh architect-words` scans every line of `scenarios/` and `docs/` for the pattern `\b[Aa]rchitects?\b` and passes when none matches. A match is exempt in two cases only: the text after it begins with `/` (a branch `architect/<topic>`) or is exactly `-swarm`, `-b` or `-c` ending at a non-word, non-hyphen character (a host name `architect-swarm`, `architect-b`, `architect-c`); or the line lies in this L95 block, from its heading line to its `Tests:` line. It exits 1 naming each `file:line` and 2 when run outside a checkout.
+- *Exit codes.* 0: no match. 1: at least one match, each printed as `file:line`. 2: not run inside a git checkout.
+- *Rewrites.* A Contract approval reads "the Contract recipe of `.agents/builder.md`" (`AGENTS.md` rule 4), whose approver is the review run's approve; a proofs law change reads "`scenarios/proofs.md` M1 to M10"; a direction question reads `flag:needs-user` (L79); an owner, author or reader of a document reads "the Builder run" for writing it and "the review run" for judging it.
+- *Role words.* Any line of any file in `scenarios/` or `docs/` that matches fails, including `architect-approved`, `architect-owned` and `architect-reviewed` (`l95_a_role_mention_fails_naming_file_and_line`).
+- *Identifiers.* `architect/u22-drag-tdd`, `architect-swarm`, `architect-b` and `architect-c` alone pass (`l95_branch_and_host_names_pass`).
+- *Dead citation.* A line citing `.agents/architect.md` matches the pattern and fails (`l95_a_cited_architect_prompt_fails`).
+- *Meaning kept.* Each rewritten line keeps its approval requirement: a Contract change still needs an approve other than its author's, and `rules.sh` accepts the PR exactly when it did before (policy).
+
+Tests: `l95` in `loop/rules.test.sh`.
