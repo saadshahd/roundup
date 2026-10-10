@@ -415,13 +415,14 @@ async fn a25_the_default_door_question_names_the_workstream() {
 async fn a25_a_stored_order_keeps_its_text() {
     let f = Fixture::new();
     let id = f.workstream("w", None).await;
+    let stored = Order::clarification("What is this Room for?");
     rusqlite::Connection::open(f.dir.path().join("agents.db"))
         .unwrap()
-        .execute("UPDATE nodes SET kind = 'room'", [])
+        .execute(
+            "UPDATE nodes SET kind = 'room', work = ? WHERE id = ?",
+            rusqlite::params![serde_json::to_string(&stored).unwrap(), id],
+        )
         .unwrap();
     let tree = f.reopen().tree().await;
-    assert_eq!(
-        order_of(&tree, &id),
-        Some(Order::clarification("What is this Workstream for?"))
-    );
+    assert_eq!(order_of(&tree, &id), Some(stored));
 }
