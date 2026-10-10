@@ -18,8 +18,8 @@ file. What it does comes from the environment, so one script serves every scenar
                            runs under SessionStart (E3), as Claude Code puts it in the session
   FAKE_CLAUDE_SHIM_DELAY_MS milliseconds to wait before the `roundup` server is started (E6)
   FAKE_CLAUDE_ON_PROMPT    JSON {"name", "arguments"} (U146): after SessionStart, once per prompt line typed into
-                           the Terminal, play UserPromptSubmit, then this tool call with the string "$prompt"
-                           in an argument replaced by the typed text, then Stop
+                           the Terminal, play UserPromptSubmit, then this tool call with "$prompt" in a
+                           string argument replaced by the typed text, then Stop
   FAKE_CLAUDE_GATE         a file path: after the played PermissionRequest hook command (which waits for
                            the user's answer, H9) is started, the next event waits until the file exists,
                            as the user's own act in the Terminal (H7a) happens in its own time
@@ -127,7 +127,7 @@ def play_prompts(tool):
     hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
     for prompt in typed_prompts():
         hook("UserPromptSubmit", {"prompt": prompt})
-        arguments = {key: prompt if value == "$prompt" else value for key, value in tool.get("arguments", {}).items()}
+        arguments = {key: value.replace("$prompt", prompt) if isinstance(value, str) else value for key, value in tool.get("arguments", {}).items()}
         mcp_session([{**tool, "arguments": arguments}])
         hook("Stop")
 
