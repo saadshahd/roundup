@@ -81,7 +81,7 @@ A word such as `stop`, `close` or `promote` is a button, not text: it has the ho
 
 ## Surfaces and depth
 
-The Rail and the Shelf sit on `--sunken`; the pane and the Drawer on `--ground`. Regions are told apart by that change of ground and by space, not by a drawn line. The one border allowed is `1px solid var(--hairline)`, where a region meets one of the same ground. Only the Drawer casts a shadow. A translucent surface (`backdrop-filter`) is never placed over another (apple-design: never stack light materials), and the terminal never sits under one (U5).
+The Rail and the Shelf sit on `--sunken`; the pane and the Drawer on `--ground`. Regions are told apart by that change of ground and by space, and by one hairline on the Rail's trailing edge and one on the Shelf's top edge. The only borders allowed are `1px solid var(--hairline)`, on the Rail's trailing edge and the Shelf's top edge, and the Drawer's leading edge (U134). Only the Drawer casts a shadow. A translucent surface (`backdrop-filter`) is never placed over another (apple-design: never stack light materials), and the terminal never sits under one (U5).
 
 Three user settings change the look. Each has a rule in `tokens.css`:
 
