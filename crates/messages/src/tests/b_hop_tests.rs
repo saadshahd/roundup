@@ -69,6 +69,7 @@ impl Hops {
         let env = Env {
             touches: Arc::clone(&touches),
             clock: Arc::new(move || reads.load(Ordering::SeqCst)),
+            fault: Arc::new(|_| Ok(())),
         };
         let agents: Arc<dyn Module> = rail.clone();
         let messages =
@@ -113,7 +114,7 @@ impl Hops {
     /// The Daemon's clock reads `ms`, and every bound that ran out by then is passed.
     async fn at(&self, ms: i64) {
         self.clock.store(ms, Ordering::SeqCst);
-        settle(&self.messages.inner, None).await.unwrap();
+        settle(&self.messages.inner, None, "settle").await.unwrap();
     }
 
     /// `(to, status, reason, passedFrom)` of every Message, by id.
@@ -654,7 +655,7 @@ async fn b17_a_kill_between_the_landing_and_the_chain_move_leaves_neither() {
     )
     .unwrap();
     h.clock.store(60_000, Ordering::SeqCst);
-    assert!(settle(&h.messages.inner, None).await.is_err());
+    assert!(settle(&h.messages.inner, None, "settle").await.is_err());
     assert_eq!(h.all().await.len(), 1);
     db.execute_batch("DROP TRIGGER kill").unwrap();
     let h = h.restarted();

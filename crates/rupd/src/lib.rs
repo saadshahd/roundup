@@ -94,7 +94,7 @@ impl Daemon {
             bus,
             agents_module,
             deliver,
-            messages::Env::system(Arc::clone(&daemon.touches)),
+            messages_env(Arc::clone(&daemon.touches)),
         )?);
         let _ = messages.set(Arc::clone(&opened));
         daemon.register(opened);
@@ -610,3 +610,20 @@ mod tests {
 
 #[cfg(test)]
 mod workstream_door;
+
+/// `RUPD_MESSAGES_FAULT=<operation>` makes the first such Messages operation fail with an error
+/// (B28's observer through a real Daemon).
+fn messages_env(touches: Arc<provenance::Touches>) -> messages::Env {
+    let mut env = messages::Env::system(touches);
+    if let Ok(op) = std::env::var("RUPD_MESSAGES_FAULT") {
+        let armed = std::sync::atomic::AtomicBool::new(true);
+        env.fault = Arc::new(move |name| {
+            if name == op && armed.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                Err(format!("injected failure in {name}"))
+            } else {
+                Ok(())
+            }
+        });
+    }
+    env
+}
