@@ -1,5 +1,5 @@
 import { DEFAULT_FONT_SIZE } from "./fontSize";
-import { terminalTheme } from "./theme";
+import { followScheme, lightTerminalTheme } from "./theme";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -72,7 +72,7 @@ export const xtermOptions: ITerminalOptions = {
   fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: DEFAULT_FONT_SIZE,
   scrollback: SCROLLBACK_LINES,
-  theme: terminalTheme,
+  theme: lightTerminalTheme,
 };
 
 /** What the keystroke run (`scenarios/perf.md` K1 to K3) watches: each chunk the emulator has parsed, each render, and which renderer drew. A build without the run passes none. */
@@ -91,6 +91,7 @@ export const createXtermEmulators = (
 
   return () => {
     const terminal = new Terminal(xtermOptions);
+    const stopScheme = followScheme((theme) => { terminal.options.theme = theme; });
     terminal.loadAddon(new Unicode11Addon());
     terminal.unicode.activeVersion = "11";
     const fitter = new FitAddon();
@@ -207,6 +208,7 @@ export const createXtermEmulators = (
       dispose: () => {
         if (fontFrame !== null) cancelAnimationFrame(fontFrame);
 
+        stopScheme();
         fontViewport?.dispose();
         terminal.dispose();
       },
