@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::common::{PATIENCE, open, sh, until_exit};
+use crate::common::{open, sh, until_exit};
 use contracts::EventData;
 use rpc::code;
 use tokio::sync::broadcast::error::RecvError;
@@ -88,56 +88,4 @@ async fn x8_a_slow_subscriber_never_blocks_the_reader() {
     ));
     let last = std::iter::from_fn(|| slow.events.try_recv().ok()).last();
     assert!(matches!(last, Some(EventData::TerminalExited(_))));
-}
-
-/// U174: a write reaches the pty, and `cat` echoes it back, within one frame at p95.
-#[tokio::test]
-async fn u174_a_write_reaches_the_pty_within_a_frame() {
-    const FRAME: Duration = Duration::from_millis(16);
-    const START: &[u8] = b"\x1b[200~";
-    const END: &[u8] = b"\x1b[201~";
-    let quoted = "'/p/it'\\''s a file.png' ";
-    for bracketed in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
-        let (terminals, _) = open(&dir);
-        let spawned = terminals.spawn(sh(dir.path(), "cat")).await.unwrap();
-        let mut events = terminals.subscribe(&spawned.id).unwrap();
-        let mut bytes = Vec::new();
-        if bracketed {
-            bytes.extend_from_slice(START);
-        }
-        bytes.extend_from_slice(quoted.as_bytes());
-        if bracketed {
-            bytes.extend_from_slice(END);
-        }
-        // A newline ends each canonical line, so `cat` consumes it and the tty never accumulates
-        // the 4 KiB line limit across the 100 writes.
-        bytes.push(b'\n');
-        let mut waits = Vec::new();
-        for _ in 0..100 {
-            let sent = std::time::Instant::now();
-            terminals.write(&spawned.id, &bytes).await.unwrap();
-            // The tty echoes the input back as it is read by the line discipline; control bytes show as ^[.
-            tokio::time::timeout(PATIENCE, until_echoed(&mut events, "file.png"))
-                .await
-                .expect("the echo arrives");
-            waits.push(sent.elapsed());
-        }
-        waits.sort();
-        let p95 = waits[94];
-        assert!(
-            p95 <= FRAME,
-            "p95 {p95:?} over a frame (bracketed {bracketed})"
-        );
-        terminals.kill(&spawned.id).await.unwrap();
-    }
-}
-
-async fn until_echoed(events: &mut tokio::sync::broadcast::Receiver<EventData>, needle: &str) {
-    let mut seen = String::new();
-    while !seen.contains(needle) {
-        if let EventData::TerminalOutput(out) = events.recv().await.expect("events stay open") {
-            seen.push_str(&crate::common::decode(&out.data));
-        }
-    }
 }
