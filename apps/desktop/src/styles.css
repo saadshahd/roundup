@@ -240,3 +240,27 @@ p {
   display: inline-flex;
   align-items: center;
 }
+
+/* U54: Help floats over the centre pane; it opens in the frame of the key, with no motion. */
+.centre {
+  position: relative;
+}
+
+.help {
+  position: absolute;
+  inset: var(--space-4);
+  padding: var(--space-4);
+  overflow: auto;
+  background-color: var(--ground);
+  border: 1px solid var(--hairline);
+}
+
+.help-line {
+  margin: 0;
+  white-space: pre;
+}
+
+.help-keys {
+  display: inline-block;
+  min-width: 8ch;
+}

@@ -1,0 +1,80 @@
+== 1280 light dark=false
+U153 row/list/shelf: "{\"bg\":\"rgb(255, 255, 255)\",\"ground\":\"#ffffff\",\"radius\":[\"6px\",\"6px\"],\"padBlock\":[\"4px\",\"4px\"],\"padInline\":[\"8px\",\"8px\"],\"gap\":4,\"listPad\":[\"8px\",\"8px\"],\"shelf\":\"rgba(0, 0, 0, 0)\",\"sunken\":\"#f5f5f7\",\"btnH\":28,\"btnFont\":[\"13px\",\"13px\"],\"lineFont\":[\"11px\",\"11px\",\"11px\"],\"lineColor\":[\"rgb(110, 110, 115)\",\"rgb(110, 110, 115)\"],\"border\":\"0px\",\"shadow\":\"none\",\"transition\":\"0.12s\"}"
+U153 hovered wash over --ground: "linear-gradient(rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.04))" hover token "rgba(0, 0, 0, 0.04)"
+U154 clipped elements in rows (scrollWidth > clientWidth): "[]" row wider than list: false
+U154 tops same when hovered: yes "[81,134,187,334,411,464,517,634,658]"
+U155 start: "[\"1\",\"2\",\"3\"]"
+U155 after drag: "[\"3\",\"1\",\"2\"]" calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]" a row selected (Drawer open): false
+U156 frames (ms since first, tops of rows 1-4 by place), first 14: "[[0,81,134,187,334],[163,81,187,134,334],[179,81,178,160,334],[196,81,169,184,334],[213,81,161,205,334],[230,81,154,225,334],[246,81,148,243,334],[263,81,142,258,334],[279,81,138,269,334],[296,81,135,277,334],[313,81,134,281,334]]"
+U156 ms from first moved frame to final top: 150
+U155 after two Alt+Up: "[\"3\",\"1\",\"2\"]" active: " #3 a " calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":2}},{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]"
+U155 after reload (fake Daemon is rebuilt, so this is the seed order): "[\"1\",\"2\",\"3\"]"
+U152 drawer waits-on: "[\"close\",\"remove blocker #3\",\"remove blocker #5\",\"move #4\",\" blocker\",\"complete\",\"delete\"]"
+U152 remove by keyboard: row 4 waits="waits on #5" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":4,\"blockers\":[5]}}]" active="BUTTON"
+U152 remove by pointer: row 4 waits=null
+U152 complete by pointer: row 2 present=false done "1" -> "2"
+U152 Tab from the row reaches: "complete"
+U152 complete by keyboard: row 1 present=false done -> "3" active="BUTTON"
+U152 add by pointer: new row text="#9 ship it"
+U152 block by keyboard: row 2 waits="waits on #1" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":2,\"blockers\":[1]}}]" active="BUTTON"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 1280 dark dark=true
+U153 row/list/shelf: "{\"bg\":\"rgb(28, 28, 30)\",\"ground\":\"#1c1c1e\",\"radius\":[\"6px\",\"6px\"],\"padBlock\":[\"4px\",\"4px\"],\"padInline\":[\"8px\",\"8px\"],\"gap\":4,\"listPad\":[\"8px\",\"8px\"],\"shelf\":\"rgba(0, 0, 0, 0)\",\"sunken\":\"#141416\",\"btnH\":28,\"btnFont\":[\"13px\",\"13px\"],\"lineFont\":[\"11px\",\"11px\",\"11px\"],\"lineColor\":[\"rgb(161, 161, 166)\",\"rgb(161, 161, 166)\"],\"border\":\"0px\",\"shadow\":\"none\",\"transition\":\"0.12s\"}"
+U153 hovered wash over --ground: "linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.06))" hover token "rgba(255, 255, 255, 0.06)"
+U154 clipped elements in rows (scrollWidth > clientWidth): "[]" row wider than list: false
+U154 tops same when hovered: yes "[81,134,187,334,411,464,517,634,658]"
+U155 start: "[\"1\",\"2\",\"3\"]"
+U155 after drag: "[\"3\",\"1\",\"2\"]" calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]" a row selected (Drawer open): false
+U156 frames (ms since first, tops of rows 1-4 by place), first 14: "[[0,81,134,187,334],[161,81,187,134,334],[176,81,178,160,334],[192,81,169,183,334],[209,81,161,205,334],[226,81,154,225,334],[243,81,148,243,334],[259,81,142,258,334],[276,81,138,269,334],[293,81,135,277,334],[309,81,134,281,334]]"
+U156 ms from first moved frame to final top: 149
+U155 after two Alt+Up: "[\"3\",\"1\",\"2\"]" active: " #3 a " calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":2}},{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]"
+U155 after reload (fake Daemon is rebuilt, so this is the seed order): "[\"1\",\"2\",\"3\"]"
+U152 drawer waits-on: "[\"close\",\"remove blocker #3\",\"remove blocker #5\",\"move #4\",\" blocker\",\"complete\",\"delete\"]"
+U152 remove by keyboard: row 4 waits="waits on #5" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":4,\"blockers\":[5]}}]" active="BUTTON"
+U152 remove by pointer: row 4 waits=null
+U152 complete by pointer: row 2 present=false done "1" -> "2"
+U152 Tab from the row reaches: "complete"
+U152 complete by keyboard: row 1 present=false done -> "3" active="BUTTON"
+U152 add by pointer: new row text="#9 ship it"
+U152 block by keyboard: row 2 waits="waits on #1" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":2,\"blockers\":[1]}}]" active="BUTTON"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 700 light dark=false
+U153 row/list/shelf: "{\"bg\":\"rgb(255, 255, 255)\",\"ground\":\"#ffffff\",\"radius\":[\"6px\",\"6px\"],\"padBlock\":[\"4px\",\"4px\"],\"padInline\":[\"8px\",\"8px\"],\"gap\":4,\"listPad\":[\"8px\",\"8px\"],\"shelf\":\"rgba(0, 0, 0, 0)\",\"sunken\":\"#f5f5f7\",\"btnH\":28,\"btnFont\":[\"13px\",\"13px\"],\"lineFont\":[\"11px\",\"11px\",\"11px\"],\"lineColor\":[\"rgb(110, 110, 115)\",\"rgb(110, 110, 115)\"],\"border\":\"0px\",\"shadow\":\"none\",\"transition\":\"0.12s\"}"
+U153 hovered wash over --ground: "linear-gradient(rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.04))" hover token "rgba(0, 0, 0, 0.04)"
+U154 clipped elements in rows (scrollWidth > clientWidth): "[]" row wider than list: false
+U154 tops same when hovered: yes "[575,628,681,783,860,913,966,1083,1107]"
+U155 start: "[\"1\",\"2\",\"3\"]"
+U155 after drag: "[\"3\",\"1\",\"2\"]" calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]" a row selected (Drawer open): false
+U156 frames (ms since first, tops of rows 1-4 by place), first 14: "[[0,575,628,681,783],[165,575,681,628,783],[182,575,672,646,783],[199,575,663,662,783],[215,575,655,677,783],[232,575,648,691,783],[249,575,642,703,783],[265,575,636,714,783],[282,575,632,722,783],[299,575,629,727,783],[315,575,628,730,783]]"
+U156 ms from first moved frame to final top: 150
+U155 after two Alt+Up: "[\"3\",\"1\",\"2\"]" active: " #3 a " calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":2}},{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]"
+U155 after reload (fake Daemon is rebuilt, so this is the seed order): "[\"1\",\"2\",\"3\"]"
+U152 drawer waits-on: "[\"close\",\"remove blocker #3\",\"remove blocker #5\",\"move #4\",\" blocker\",\"complete\",\"delete\"]"
+U152 remove by keyboard: row 4 waits="waits on #5" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":4,\"blockers\":[5]}}]" active="BUTTON"
+U152 remove by pointer: row 4 waits=null
+U152 complete by pointer: row 2 present=false done "1" -> "2"
+U152 Tab from the row reaches: "complete"
+U152 complete by keyboard: row 1 present=false done -> "3" active="BUTTON"
+U152 add by pointer: new row text="#9 ship it"
+U152 block by keyboard: row 2 waits="waits on #1" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":2,\"blockers\":[1]}}]" active="BUTTON"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 700 dark dark=true
+U153 row/list/shelf: "{\"bg\":\"rgb(28, 28, 30)\",\"ground\":\"#1c1c1e\",\"radius\":[\"6px\",\"6px\"],\"padBlock\":[\"4px\",\"4px\"],\"padInline\":[\"8px\",\"8px\"],\"gap\":4,\"listPad\":[\"8px\",\"8px\"],\"shelf\":\"rgba(0, 0, 0, 0)\",\"sunken\":\"#141416\",\"btnH\":28,\"btnFont\":[\"13px\",\"13px\"],\"lineFont\":[\"11px\",\"11px\",\"11px\"],\"lineColor\":[\"rgb(161, 161, 166)\",\"rgb(161, 161, 166)\"],\"border\":\"0px\",\"shadow\":\"none\",\"transition\":\"0.12s\"}"
+U153 hovered wash over --ground: "linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.06))" hover token "rgba(255, 255, 255, 0.06)"
+U154 clipped elements in rows (scrollWidth > clientWidth): "[]" row wider than list: false
+U154 tops same when hovered: yes "[575,628,681,783,860,913,966,1083,1107]"
+U155 start: "[\"1\",\"2\",\"3\"]"
+U155 after drag: "[\"3\",\"1\",\"2\"]" calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]" a row selected (Drawer open): false
+U156 frames (ms since first, tops of rows 1-4 by place), first 14: "[[0,575,628,681,783],[164,575,681,628,783],[181,575,672,646,783],[197,575,663,662,783],[214,575,655,677,783],[231,575,648,691,783],[247,575,642,703,783],[264,575,636,714,783],[281,575,632,722,783],[297,575,629,727,783],[314,575,628,730,783]]"
+U156 ms from first moved frame to final top: 150
+U155 after two Alt+Up: "[\"3\",\"1\",\"2\"]" active: " #3 a " calls "[{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":2}},{\"method\":\"todo.reorder\",\"params\":{\"id\":3,\"before\":1}}]"
+U155 after reload (fake Daemon is rebuilt, so this is the seed order): "[\"1\",\"2\",\"3\"]"
+U152 drawer waits-on: "[\"close\",\"remove blocker #3\",\"remove blocker #5\",\"move #4\",\" blocker\",\"complete\",\"delete\"]"
+U152 remove by keyboard: row 4 waits="waits on #5" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":4,\"blockers\":[5]}}]" active="BUTTON"
+U152 remove by pointer: row 4 waits=null
+U152 complete by pointer: row 2 present=false done "1" -> "2"
+U152 Tab from the row reaches: "complete"
+U152 complete by keyboard: row 1 present=false done -> "3" active="BUTTON"
+U152 add by pointer: new row text="#9 ship it"
+U152 block by keyboard: row 2 waits="waits on #1" call="[{\"method\":\"todo.setBlockers\",\"params\":{\"id\":2,\"blockers\":[1]}}]" active="BUTTON"
+activeElement was body at a keyboard step: 0 (1 = yes)

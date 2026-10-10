@@ -52,6 +52,25 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
   // The list state does not refire when only this Todo's fields change, so the cache watches the blockers itself.
   createEffect(on(() => todo()?.blockers.join(","), () => setAnswered(null), { defer: true }));
 
+  // U152, U138: a keyboard step that removes the focused button hands focus to `+ blocker`, never the page body.
+  let blockerButton: HTMLButtonElement | undefined;
+  let removing = false;
+
+  createEffect(
+    on(
+      () => todo()?.blockers.join(","),
+      () => {
+        if (!removing) return;
+
+        removing = false;
+        queueMicrotask(() => {
+          if (!document.activeElement || document.activeElement === document.body) blockerButton?.focus();
+        });
+      },
+      { defer: true },
+    ),
+  );
+
   const blockerBase = () => answered() ?? todo();
 
   const changeBlockers = (next: (blockers: number[]) => number[]) => {
@@ -75,7 +94,10 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
   const addBlocker = (blocker: number) => changeBlockers((blockers) => [...blockers, blocker]);
 
   /** U152: the other blockers stay, in order. */
-  const removeBlocker = (blocker: number) => changeBlockers((blockers) => blockers.filter((id) => id !== blocker));
+  const removeBlocker = (blocker: number) => {
+    removing = true;
+    changeBlockers((blockers) => blockers.filter((id) => id !== blocker));
+  };
 
   return (
     <>
@@ -131,7 +153,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   <HomeMove id={props.id} home={current().home} choose={(home) => failureOf(() => app.rpc("todo.move", { id: props.id, home }))} />
                 </div>
                 <p>
-                  <Button kind="add" class="word" onClick={() => setOffering(!offering())}>
+                  <Button kind="add" class="word" ref={blockerButton} onClick={() => setOffering(!offering())}>
                     <Icon name="plus" /> blocker
                   </Button>
                 </p>
@@ -141,6 +163,7 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                       <RowButton
                         onClick={() => {
                           setOffering(false);
+                          blockerButton?.focus();
                           addBlocker(other.id);
                         }}
                       >
