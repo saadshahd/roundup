@@ -42,5 +42,5 @@ Builder and QA runs are one-shot GitHub Actions jobs, and an event ends every wa
 ## Agent skills
 
 - **Issue tracker**: GitHub Issues, as work orders; see `docs/agents/issue-tracker.md`.
-- **Triage labels**: `flag:needs-user`, `loop:work` and `wontfix` stand for the five triage roles; see `docs/agents/triage-labels.md`.
+- **Triage labels**: none but `wontfix`, since an open Issue the user files is already queued (L34); see `docs/agents/triage-labels.md`.
 - **Domain docs**: single-context, `GLOSSARY.md` and `docs/adr/`; see `docs/agents/domain.md`.

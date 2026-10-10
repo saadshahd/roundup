@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Work orders are GitHub Issues in `saadshahd/roundup`. `.agents/data/work.md` owns their format, dependencies and queueing; read it before filing one, because an open Issue starts a Builder run at once. Use the `gh` CLI for all operations.
+Work orders are GitHub Issues in `saadshahd/roundup`. `.agents/data/work.md` owns their format, dependencies and queueing; read it before filing one, because an open Issue the user or a loop App files starts a Builder run at once (L34). Use the `gh` CLI for all operations.
 
 ## Conventions
 
