@@ -2,14 +2,17 @@
 //! Builder. Stores Messages and Routes, answers the user's and an Actor's calls, and on an `idle`
 //! hands one Message to `Deliver` (slice 3 maps that to H11's `Agents::prompt`).
 
+pub mod digest;
 mod hops;
 mod step;
 mod store;
 
 use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -44,7 +47,13 @@ pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 pub struct Env {
     pub touches: Arc<provenance::Touches>,
     pub clock: Clock,
+    /// Called with an operation's name while it holds the store lock; an `Err` fails that
+    /// operation with its text as the cause (B28's injection point).
+    pub fault: Fault,
 }
+
+/// See `Env::fault`.
+pub type Fault = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 impl Env {
     /// The system clock, logging the Daemon-made Messages' Touches to `touches`.
@@ -52,6 +61,7 @@ impl Env {
         Self {
             touches,
             clock: Arc::new(now_ms),
+            fault: Arc::new(|_| Ok(())),
         }
     }
 }
@@ -82,6 +92,7 @@ struct Inner {
     /// Touches of the Messages the Daemon makes (B17) are logged.
     touches: Arc<provenance::Touches>,
     clock: Clock,
+    fault: Fault,
 }
 
 pub struct Messages {
@@ -120,6 +131,7 @@ impl Messages {
             events: Mutex::new(Some(events)),
             touches: env.touches,
             clock: env.clock,
+            fault: env.fault,
         });
         if tokio::runtime::Handle::try_current().is_ok() {
             start_listener(&inner);
@@ -129,10 +141,7 @@ impl Messages {
 
     /// O4: whether a Takeover (B6) of `agent` is active.
     pub fn takeover_active(&self, agent: &str) -> bool {
-        self.inner
-            .store
-            .lock()
-            .is_ok_and(|store| store.is_takeover_active(agent))
+        lock(&self.inner.store).is_takeover_active(agent)
     }
 
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
@@ -248,7 +257,7 @@ impl Messages {
             on_idle(&self.inner, &p.to, binding(node), Pick::Fresh).await;
         }
         // A hop the Route dropped moves the chain on at once (B16).
-        let _ = settle(&self.inner, None).await;
+        settle_logged(&self.inner, "settle").await;
         reply(&message)
     }
 
@@ -314,7 +323,7 @@ impl Messages {
                 hop.id
             )));
         }
-        settle(&self.inner, Some(hop.id)).await?;
+        settle(&self.inner, Some(hop.id), "settle").await?;
         reply(&self.get_or_not_found(hop.id)?)
     }
 
@@ -382,7 +391,7 @@ impl Messages {
         ctx.touch(Verb::Wrote, &item(p.id))?;
         let dropped = self.get_or_not_found(p.id)?;
         ctx.emit(EventData::MessageDropped(dropped.clone()));
-        let _ = settle(&self.inner, None).await;
+        settle_logged(&self.inner, "settle").await;
         reply(&dropped)
     }
 
@@ -523,10 +532,7 @@ impl Messages {
     }
 
     fn store(&self) -> Result<MutexGuard<'_, Store>, RpcError> {
-        self.inner
-            .store
-            .lock()
-            .map_err(|_| RpcError::internal("message store poisoned"))
+        Ok(lock(&self.inner.store))
     }
 }
 
@@ -585,6 +591,23 @@ impl Module for Messages {
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
         start_listener(&self.inner);
+        let result = guarded(method, self.dispatch(ctx, method, value)).await;
+        match result {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(err)) => {
+                if err.code == code::INTERNAL {
+                    log_failure(method, &err.message);
+                }
+                Err(err)
+            }
+            Err(cause) => Err(RpcError::internal(format!("{method} failed: {cause}"))),
+        }
+    }
+}
+
+impl Messages {
+    async fn dispatch(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
+        trip(&self.inner, method).map_err(RpcError::internal)?;
         match method {
             "message.send" => self.send(ctx, params(value)?).await,
             "message.pass" => self.pass(ctx, params(value)?).await,
@@ -601,16 +624,58 @@ impl Module for Messages {
     }
 }
 
+/// Takes the store lock, whatever panicked while it was held before: a writer's transaction
+/// rolls back with its panic (`Store::atomically`), so the Store it guards is whole (B28).
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Runs `Env::fault` for `op` inside the store lock.
+fn trip(inner: &Inner, op: &str) -> Result<(), String> {
+    let _store = lock(&inner.store);
+    (inner.fault)(op)
+}
+
+fn log_failure(op: &str, cause: &str) {
+    eprintln!("rupd: messages: {op} failed: {cause}");
+}
+
+fn cause_of(panic: Box<dyn std::any::Any + Send>) -> String {
+    match panic.downcast::<String>() {
+        Ok(text) => *text,
+        Err(other) => other
+            .downcast_ref::<&str>()
+            .map_or_else(|| "panic".to_owned(), |text| (*text).to_owned()),
+    }
+}
+
+/// `fut`'s output, or the cause of the panic that ended it, logged once with the operation (B28).
+async fn guarded<T>(op: &str, fut: impl Future<Output = T> + Send) -> Result<T, String> {
+    struct Guarded<F>(Pin<Box<F>>);
+    impl<F: Future> Future for Guarded<F> {
+        type Output = Result<F::Output, String>;
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            match catch_unwind(AssertUnwindSafe(|| self.0.as_mut().poll(cx))) {
+                Ok(Poll::Ready(value)) => Poll::Ready(Ok(value)),
+                Ok(Poll::Pending) => Poll::Pending,
+                Err(panic) => Poll::Ready(Err(cause_of(panic))),
+            }
+        }
+    }
+    let result = Guarded(Box::pin(fut)).await;
+    if let Err(cause) = &result {
+        log_failure(op, cause);
+    }
+    result
+}
+
 /// Starts the status listener at most once for this `Inner` (its `Once`), and only when a Tokio
 /// runtime is there to run it on. The subscription itself was already taken at `open`, so no
 /// `agent.status` fired between `open` and this first poll is lost.
 fn start_listener(inner: &Arc<Inner>) {
     inner.listener_started.call_once(|| {
         spawn_bound_clock(Arc::downgrade(inner));
-        let events = inner
-            .events
-            .lock()
-            .unwrap()
+        let events = lock(&inner.events)
             .take()
             .expect("subscribed once, at open");
         spawn_status_listener(Arc::clone(inner), events);
@@ -627,17 +692,25 @@ fn spawn_bound_clock(inner: std::sync::Weak<Inner>) {
             let Some(inner) = inner.upgrade() else {
                 break;
             };
-            let _ = settle(&inner, None).await;
+            settle_logged(&inner, "clock").await;
         }
     });
 }
 
+/// A background `settle` pass: a panic or an `Err` is logged once with `op` and the pass ends (B28).
+async fn settle_logged(inner: &Arc<Inner>, op: &str) {
+    if let Ok(Err(err)) = guarded(op, settle(inner, None, op)).await {
+        log_failure(op, &err.message);
+    }
+}
+
 /// B13 to B16: moves every question whose current hop passed, ended or ran out its bound to its
 /// next hop, or to the Landing; `force` passes that hop now (`message.pass`). Emits what it made.
-async fn settle(inner: &Arc<Inner>, force: Option<u32>) -> Result<(), RpcError> {
+async fn settle(inner: &Arc<Inner>, force: Option<u32>, op: &str) -> Result<(), RpcError> {
     let nodes = rail_nodes(inner).await?;
     let made = {
-        let mut store = inner.store.lock().unwrap();
+        let mut store = lock(&inner.store);
+        (inner.fault)(op).map_err(RpcError::internal)?;
         hops::settle(inner, &mut store, &nodes, (inner.clock)(), force)?
     };
     let rupd = Actor::daemon();
@@ -688,21 +761,24 @@ fn spawn_status_listener(
 ) {
     tokio::spawn(async move {
         let mut resync_due = !resync(&inner).await;
-        let _ = settle(&inner, None).await;
+        settle_logged(&inner, "settle").await;
         loop {
             match events.recv().await {
                 Ok(contracts::Event {
                     data: EventData::AgentStatus(status),
                     ..
                 }) => {
-                    on_status(
-                        &inner,
-                        &status.id,
-                        &status.attempt,
-                        &status.status_revision,
-                        status.status.kind,
+                    let _ = guarded(
+                        "on_status",
+                        on_status(
+                            &inner,
+                            &status.id,
+                            &status.attempt,
+                            &status.status_revision,
+                            status.status.kind,
+                        ),
                     )
-                    .await
+                    .await;
                 }
                 Ok(contracts::Event {
                     data: EventData::RailChanged,
@@ -714,7 +790,7 @@ fn spawn_status_listener(
             }
             if resync_due {
                 resync_due = !resync(&inner).await;
-                let _ = settle(&inner, None).await;
+                settle_logged(&inner, "settle").await;
             }
         }
     });
@@ -726,7 +802,10 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
         contracts::agent::parse_positive_ordinal(revision).expect("wire Status revision"),
     );
     {
-        let mut store = inner.store.lock().unwrap();
+        let mut store = lock(&inner.store);
+        if let Err(cause) = (inner.fault)("on_status") {
+            panic!("{cause}");
+        }
         reconcile(
             inner,
             &mut store,
@@ -740,14 +819,14 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
     if kind == Kind::Idle {
         on_idle(inner, agent, at, Pick::Next).await;
     }
-    let _ = settle(inner, None).await;
+    settle_logged(inner, "settle").await;
 }
 
 /// Resync after bus lag or Rail changes so missed endings cannot leave Messages deliverable.
 /// A failed Rail read is retried on the next event; it never guesses that an Agent recovered.
 async fn resync(inner: &Arc<Inner>) -> bool {
     let known = {
-        let store = inner.store.lock().unwrap();
+        let store = lock(&inner.store);
         store
             .receivers()
             .expect("message store")
@@ -761,7 +840,7 @@ async fn resync(inner: &Arc<Inner>) -> bool {
     let Ok(nodes) = rail_nodes(inner).await else {
         return false;
     };
-    let mut store = inner.store.lock().unwrap();
+    let mut store = lock(&inner.store);
     for (id, generation) in known {
         if !nodes.iter().any(|node| node.id == id)
             && store.generation(&id).expect("message store") == generation
@@ -821,7 +900,7 @@ async fn sender_name(inner: &Inner, from: &Actor) -> Result<String, RpcError> {
 /// one the next `idle` would pick is typed now, though its Status revision is the current one.
 async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick) {
     let found = {
-        let store = inner.store.lock().unwrap();
+        let store = lock(&inner.store);
         if store.require_generation(agent, at).is_err() {
             return;
         }
@@ -839,7 +918,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick
         return;
     };
     let recorded = {
-        let store = inner.store.lock().unwrap();
+        let store = lock(&inner.store);
         if store.require_generation(agent, at).is_err()
             || (store.bound(found.id).expect("message store").0 != at.0
                 || (pick == Pick::Next && store.bound(found.id).expect("message store").1 >= at.1))
@@ -865,10 +944,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick
         } else {
             Reason::ReceiverGone
         };
-        let dropped = inner
-            .store
-            .lock()
-            .unwrap()
+        let dropped = lock(&inner.store)
             .drop_delivered(message.id, reason)
             .expect("message store");
         if let Some(dropped) = dropped {
@@ -880,10 +956,7 @@ async fn on_idle(inner: &Arc<Inner>, agent: &str, at: store::Binding, pick: Pick
     }
     if refusal.is_some() {
         // `Busy`: nothing was typed, so the record is undone, back to `pending`, or `held` for `takeover` if one began meanwhile (B6).
-        let reverted = inner
-            .store
-            .lock()
-            .unwrap()
+        let reverted = lock(&inner.store)
             .unmark_delivered(message.id)
             .expect("message store");
         if let Some(held) = reverted.filter(|m| m.status == MessageStatus::Held) {
@@ -1120,6 +1193,7 @@ mod tests {
 
     use super::*;
 
+    mod b_fault_tests;
     mod b_held_tests;
     mod b_hop_tests;
     mod b_idle_tests;

@@ -18,8 +18,8 @@ const allStylesheets = () =>
     eager: true,
   });
 
-describe("u4 stylesheet text-colour allowlist", () => {
-  it("u4_text_colour_rules_outside_glyph_tones_never_use_light_or_lightest", () => {
+describe("u87 stylesheet text-colour allowlist", () => {
+  it("u87_no_rule_outside_the_allowlist_sets_a_text_colour_to_light", () => {
     const sheets = allStylesheets();
 
     expect(Object.keys(sheets).sort()).toEqual([

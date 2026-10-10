@@ -80,7 +80,7 @@ describe("u60 an Agent's Todos under it", () => {
 
     const group = screen.getByTitle("notes").closest<HTMLElement>("[data-pads]")!;
 
-    expect(group.style.paddingLeft).toBe("2ch");
+    expect(group.style.paddingLeft).toBe("calc(1 * var(--space-4))");
     expect([...group.querySelectorAll("[data-todo], .rail-pad")].map((row) => row.getAttribute("data-todo") ?? "pad")).toEqual(["pad", "3", "4", "5"]);
     expect(within(group).getByText(/waits on/).textContent).toContain("#4");
     expect(within(group).getByText(/#4 todo 4/)).toBeTruthy();

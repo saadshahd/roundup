@@ -70,6 +70,25 @@ expect fail "L3 vocab: TS export" rules vocab
 new_repo; rm GLOSSARY.md; echo 'pub fn session_id() {}' >crates/b.rs; commit x
 expect fail "L3 vocab: missing GLOSSARY.md fails loudly" rules vocab
 
+# L95
+words() { loop/rules.sh architect-words; }
+new_repo; mkdir scenarios docs; echo 'Contract change (architect-approved).' >scenarios/a.md; commit x
+expect fail 'l95_a_role_mention_fails_naming_file_and_line' words
+[ "$(loop/rules.sh architect-words 2>&1 || true)" = scenarios/a.md:1 ] || { echo 'FAIL: l95 names file:line'; failures=$((failures + 1)); }
+new_repo; mkdir scenarios docs; printf '%s\n' 'Branch `architect/u22-drag-tdd`, architect-swarm, architect-b and architect-c.' "architect-swarm's Mac" >docs/a.md; commit x
+expect pass 'l95_branch_and_host_names_pass' words
+new_repo; mkdir scenarios docs; echo 'See .agents/architect.md.' >docs/a.md; commit x
+expect fail 'l95_a_cited_architect_prompt_fails' words
+new_repo; mkdir scenarios docs; echo 'architect-bound' >docs/a.md; commit x
+expect fail 'l95 architect-bound is not a host name' words
+new_repo; mkdir scenarios docs; printf '%s\n' '**L95 Architect sweep.** the Architect' 'architect-approved' 'Tests: x' >scenarios/a.md; commit x
+expect pass 'l95 the L95 block is exempt' words
+new_repo; mkdir scenarios docs; printf '%s\n' '**L95 Architect sweep.** x' 'Tests: x' 'the architect' >scenarios/a.md; commit x
+expect fail 'l95 a line after the Tests line is not exempt' words
+outside=$(mktemp -d); mkdir "$outside/loop"; cp "$script" "$outside/loop/rules.sh"
+got=0; "$outside/loop/rules.sh" architect-words >/dev/null 2>&1 || got=$?
+[ "$got" = 2 ] || { echo "FAIL: l95 outside a checkout exits 2 (got $got)"; failures=$((failures + 1)); }
+
 # delta
 expect_exit() {
   local want=$1 name=$2 got=0 out
