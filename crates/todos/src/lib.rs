@@ -338,6 +338,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn t1_each_create_logs_a_wrote_touch_by_the_caller() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path());
+        for title in ["a", "b"] {
+            h.call_as(agent("a"), "todo.create", json!({"title": title}))
+                .await
+                .unwrap();
+        }
+        let by_agent = [(Verb::Wrote, "a".to_owned())];
+        assert_eq!(h.touches(1), by_agent);
+        assert_eq!(h.touches(2), by_agent);
+    }
+
+    #[tokio::test]
+    async fn t2_get_logs_a_read_touch_by_the_caller() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path());
+        h.call("todo.create", json!({"title": "a"})).await.unwrap();
+        h.call_as(agent("a"), "todo.get", json!({"id": 1}))
+            .await
+            .unwrap();
+        assert_eq!(
+            h.touches(1),
+            [
+                (Verb::Wrote, "you".to_owned()),
+                (Verb::Read, "a".to_owned())
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn t7_update_by_body_alone_keeps_the_title_and_logs_the_caller() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Harness::new(dir.path());
+        h.call("todo.create", json!({"title": "keep", "body": "old"}))
+            .await
+            .unwrap();
+        let todo = h
+            .call_as(agent("a"), "todo.update", json!({"id": 1, "body": "new"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            (todo["title"].as_str(), todo["body"].as_str()),
+            (Some("keep"), Some("new"))
+        );
+        assert_eq!(
+            h.touches(1),
+            [
+                (Verb::Wrote, "you".to_owned()),
+                (Verb::Wrote, "a".to_owned())
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn t3_completing_a_blocker_unblocks_the_todo() {
         let dir = tempfile::tempdir().unwrap();
         let mut h = Harness::new(dir.path());
