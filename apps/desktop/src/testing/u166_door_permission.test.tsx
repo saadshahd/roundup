@@ -60,7 +60,7 @@ const settle = async (answer: "allow" | "deny", prompt: string) => {
   // The add is disabled while the Door is pending (U143).
   const add = await within(rail).findByRole("button", { name: /^\s*new Workstream$/ });
 
-  await waitFor(() => expect(add).toHaveProperty("disabled", false), { timeout: 60_000 });
+  await waitFor(() => expect(add.getAttribute("aria-disabled")).toBeNull(), { timeout: 60_000 });
   fireEvent.click(add);
   await waitFor(async () => expect(await workstreams()).toHaveLength(2), { timeout: 30_000 });
   await startDoor();
