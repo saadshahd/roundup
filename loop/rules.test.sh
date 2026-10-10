@@ -323,6 +323,55 @@ expect fail 'L2 trusted checkout initially lacks PR objects' git cat-file -e "$p
 expect_exit 0 'L2 ci-trailers fetches missing PR objects as data' gate ci-trailers 12
 expect_output main 'L2 ci-trailers leaves the trusted branch checked out' git branch --show-current
 
+# L41 tokens
+tokens_tree() {
+  new_repo
+  mkdir -p apps/desktop/src/testing apps/desktop/src/terminal
+  : >apps/desktop/src/tokens.css
+}
+src() { printf '%s\n' "$2" >"apps/desktop/src/$1"; }
+tokens_out() { loop/rules.sh tokens 2>&1 || true; }
+expect_has() {
+  if grep -qF -- "$1" <<<"$3"; then echo "ok:   $2"; else echo "FAIL: $2 (got: $3)"; failures=$((failures + 1)); fi
+}
+
+tokens_tree
+expect pass "l41_a_clean_tree_passes" rules tokens
+src a.css $'a {\n  color: #fff;\n}'
+expect fail "l41_a_hex_colour_fails" rules tokens
+expect_has "apps/desktop/src/a.css:2 color" "l41_a_hex_colour_fails_naming_file_line_and_property" "$(tokens_out)"
+src a.css $'a { color: rgba(0,0,0,.5); }\nb { border: 1px solid red; }\nc { background: hsl(1 2% 3%); }'
+out=$(tokens_out)
+expect_has "a.css:1 color" "l41_rgba_fails" "$out"
+expect_has "a.css:2 border" "l41_a_bare_colour_name_fails" "$out"
+expect_has "a.css:3 background" "l41_hsl_fails" "$out"
+src a.css $'a { font-size: 12px; border-radius: 4px; }'
+out=$(tokens_out)
+expect_has "a.css:1 font-size" "l41_a_unit_font_size_fails" "$out"
+expect_has "a.css:1 border-radius" "l41_a_unit_radius_fails" "$out"
+src a.css $'a { box-shadow: 0 1px 2px #000; transition: opacity 120ms; }'
+out=$(tokens_out)
+expect_has "box-shadow" "l41_a_box_shadow_fails" "$out"
+expect_has "transition" "l41_a_duration_fails" "$out"
+src a.css $'a { color: var(--text); box-shadow: var(--shadow); transition: opacity var(--dur); font-size: var(--step-0); }'
+expect pass "l41_var_reads_pass" rules tokens
+src a.css $'a { color: transparent; background: inherit; border: none; outline: currentColor; transition: none 0s; box-shadow: none; }'
+expect pass "l41_transparent_inherit_currentcolor_none_and_0s_pass" rules tokens
+src tokens.css 'a { color: #fff; }'
+expect pass "l41_tokens_css_is_not_read" rules tokens
+src a.css '/* color: #fff; */'
+expect pass "l41_a_literal_in_a_comment_passes" rules tokens
+src terminal/emulator.ts 'const t = { fontSize: "12px", color: "#fff" };'
+src testing/h.ts 'x = <i style={{ color: "#fff" }} />'
+src b.test.tsx 'x = <i style={{ color: "#fff" }} />'
+expect pass "l41_emulator_ts_and_test_files_are_not_read" rules tokens
+src c.tsx $'const x = <i\n  style={{ color: "#fff", fontSize: "12px" }} />;'
+out=$(tokens_out)
+expect_has "c.tsx:2 color" "l41_an_inline_style_literal_fails" "$out"
+src c.tsx 'const x = <i style={{ color: "var(--text)", whiteSpace: "pre" }} />;'
+expect pass "l41_an_inline_style_var_passes" rules tokens
+expect fail "l41_an_argument_exits_2" loop/rules.sh tokens x
+
 # L34 Issue queue behavior is exercised by loop/orders.test.py.
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

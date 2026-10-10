@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref] | tokens
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -244,11 +244,69 @@ except (Refused, KeyError, TypeError, ValueError, OSError, subprocess.Subprocess
 PY
 }
 
+# L41: look literals outside tokens.css, read from the caller's apps/desktop/src.
+tokens() {
+  python3 - "$caller_dir/apps/desktop/src" <<'PY'
+import re, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+COLOURS = set("aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen".split())
+COLOUR_PROP = re.compile(r"^(color|background|background-color|border.*|outline.*|fill|stroke|caret-color|text-decoration-color)$")
+COLOUR_FN = re.compile(r"#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?|oklch|color-mix)\(")
+UNIT = re.compile(r"-?\d*\.?\d+(px|rem|em|pt|%|vh|vw|ch)\b")
+TIME = re.compile(r"(?<![\w.-])(\d*\.?\d+)(ms|s)\b")
+
+def literal(prop, value):
+    value = re.sub(r"var\([^()]*(\([^()]*\)[^()]*)*\)", " ", value).strip()
+    if COLOUR_PROP.match(prop) and (COLOUR_FN.search(value) or COLOURS & set(re.findall(r"[a-z]+", value.lower()))):
+        return True
+    if prop in ("font-size", "border-radius"):
+        return bool(UNIT.search(value))
+    if prop == "box-shadow":
+        return value not in ("", "none")
+    if prop.startswith(("transition", "animation")):
+        return any(float(n) != 0 for n, _ in TIME.findall(value))
+    return False
+
+def blank(text, pattern):
+    return re.sub(pattern, lambda m: re.sub(r"[^\n]", " ", m.group()), text, flags=re.S)
+
+def kebab(name):
+    return re.sub(r"([A-Z])", lambda m: "-" + m.group().lower(), name)
+
+def declarations(text):
+    for m in re.finditer(r"(?<![\w-])([a-zA-Z-]+)\s*:\s*([^;{}]+)", text):
+        yield m.start(), kebab(m.group(1)), m.group(2)
+
+STYLE_PROPS = {"font-size", "border-radius", "box-shadow", "color", "background", "background-color", "border-color"}
+found = []
+for path in sorted(root.rglob("*")):
+    rel = path.relative_to(root).as_posix()
+    if path.suffix not in (".css", ".ts", ".tsx") or rel in ("tokens.css", "terminal/emulator.ts") or ".test." in path.name or rel.startswith("testing/"):
+        continue
+    text = blank(path.read_text(), r"/\*.*?\*/")
+    if path.suffix != ".css":
+        text = blank(text, r"(?<![:\w])//[^\n]*")
+        bodies = [(m.start(1), m.group(1)) for m in re.finditer(r"style=\{\{(.*?)\}\}", text, re.S)]
+        decls = [(off + o, p, v.strip("\"'`,")) for off, body in bodies for o, p, v in declarations(body.replace(",", ";")) if p in STYLE_PROPS]
+    else:
+        decls = list(declarations(text))
+    for off, prop, value in decls:
+        if literal(prop, value):
+            found.append(f"{rel}:{text.count(chr(10), 0, off) + 1} {prop}")
+print("\n".join(f"apps/desktop/src/{f}" for f in found))
+sys.exit(1 if found else 0)
+PY
+}
+
 case "${1:-}" in
   base | ci-trailers)
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   vocab) vocab ;;
+  tokens) [ $# -eq 1 ] || { echo "usage: loop/rules.sh tokens" >&2; exit 2; }
+    tokens ;;
   delta) delta "${2:-}" "${3:-}" ;;
   clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
     clean_merge "$2" "${3:-origin/main}" ;;
