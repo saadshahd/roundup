@@ -2370,3 +2370,514 @@ def m5_run(evs, s, I):
 
 def Laws.m5_terminal_states_are_absorbing(evs):
   m5_run(evs, M.init(), invw_init())
+
+# ---- M4: the typed list only grows at its end ----
+
+law pre_refl:
+  for +xs: +List<Nat>
+  {S.is_prefix(xs, xs) == True{} : Bool}
+
+def pre_refl(xs):
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      %Equal.sym(Bool, Nat.is_eq(x, x), True{}, eq_refl(x)) : {Bool.and(_, S.is_prefix(rest, rest)) == True{} : Bool}
+      pre_refl(rest)
+
+law pre_snoc:
+  for +xs: +List<Nat>
+  for +y: Nat
+  {S.is_prefix(xs, M.snoc(xs, y)) == True{} : Bool}
+
+def pre_snoc(xs, y):
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      %Equal.sym(Bool, Nat.is_eq(x, x), True{}, eq_refl(x)) : {Bool.and(_, S.is_prefix(rest, M.snoc(rest, y))) == True{} : Bool}
+      pre_snoc(rest, y)
+
+law pre_flush:
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.flush(s))) == True{} : Bool}
+
+def pre_flush(s):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      match q i:
+        case Nil{} False{}:
+          pre_refl(t)
+        case Nil{} True{}:
+          pre_refl(t)
+        case Con{+x, rest} False{}:
+          pre_refl(t)
+        case Con{+x, rest} True{}:
+          pre_snoc(t, x)
+
+law pre_send_route:
+  for fu: Bool
+  for tk: Bool
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.send_route(fu, tk, s))) == True{} : Bool}
+
+def pre_send_route(fu, tk, s):
+  match fu:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_flush(M.W{M.snoc(q, n), haf, htk, t, d, M.snoc(u, n), tt, rl, 1n+n, tk, i, g})
+    case False{}:
+      match tk:
+        case True{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              pre_refl(t)
+        case False{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              pre_flush(M.W{M.snoc(q, n), haf, htk, t, d, u, tt, rl, 1n+n, tk, i, g})
+
+law pre_deliver_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.deliver_tk(b, id, s))) == True{} : Bool}
+
+def pre_deliver_tk(b, id, s):
+  match b:
+    case False{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_flush(M.W{M.snoc(q, id), haf, M.remove(id, htk), t, d, u, tt, M.snoc(rl, id), n, tk, i, g})
+
+law pre_deliver_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.deliver_pick(a, b, id, s))) == True{} : Bool}
+
+def pre_deliver_pick(a, b, id, s):
+  match a:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_flush(M.W{M.snoc(q, id), M.remove(id, haf), htk, t, d, u, tt, M.snoc(rl, id), n, tk, i, g})
+    case False{}:
+      pre_deliver_tk(b, id, s)
+
+law pre_drop_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.drop_tk(b, id, s))) == True{} : Bool}
+
+def pre_drop_tk(b, id, s):
+  match b:
+    case False{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+
+law pre_drop_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.drop_pick(a, b, id, s))) == True{} : Bool}
+
+def pre_drop_pick(a, b, id, s):
+  match a:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+    case False{}:
+      pre_drop_tk(b, id, s)
+
+law pre_step:
+  for e: M.Ev
+  for +s: M.World
+  {S.is_prefix(S.typed(s), S.typed(M.step(e, s))) == True{} : Bool}
+
+def pre_step(e, s):
+  match e:
+    case M.Send{fu, r}:
+      match r:
+        case M.Auto{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  pre_refl(t)
+                case False{}:
+                  pre_send_route(fu, tk, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, False{}})
+        case M.AskFirst{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  pre_refl(t)
+                case False{}:
+                  pre_refl(t)
+        case M.RouteDrop{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  pre_refl(t)
+                case False{}:
+                  pre_refl(t)
+    case M.Idle{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              pre_refl(t)
+            case False{}:
+              pre_flush(M.W{q, haf, htk, t, d, u, tt, rl, n, tk, True{}, False{}})
+    case M.Busy{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+    case M.Exit{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+    case M.TakeoverBegin{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_refl(t)
+    case M.TakeoverEnd{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_flush(M.W{List.append(&2, Nat, q, htk), haf, [], t, d, u, tt, rl, n, False{}, i, g})
+    case M.UserDeliver{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_deliver_pick(Bool.and(M.mem(id, haf), Bool.not(g)), Bool.and(M.mem(id, htk), Bool.not(g)), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
+    case M.UserDrop{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          pre_drop_pick(M.mem(id, haf), M.mem(id, htk), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
+
+def Laws.m4_typed_only_grows_at_the_end(evs, e):
+  pre_step(e, S.world(evs))
+
+# ---- M7: once the receiver is gone, nothing is pending and nothing waits on a Takeover ----
+
+law not_true:
+  for b: Bool
+  for +h: {Bool.not(b) == True{} : Bool}
+  {b == False{} : Bool}
+
+def not_true(b, h):
+  match b:
+    case False{}:
+      {==}
+    case True{}:
+      Empty.absurd({True{} == False{} : Bool}, ff_tt(h))
+
+def Inv7(s: M.World) -> Data:
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      {S.implies(g, Bool.and(S.is_nil(q), S.is_nil(htk))) == True{} : Bool}
+
+law inv7_init:
+  Inv7(M.init())
+
+def inv7_init():
+  {==}
+
+law inv7_flush:
+  for +s: M.World
+  for +I: Inv7(s)
+  Inv7(M.flush(s))
+
+def inv7_flush(s, I):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      match q i:
+        case Nil{} False{}:
+          I
+        case Nil{} True{}:
+          I
+        case Con{+x, rest} False{}:
+          I
+        case Con{+x, rest} True{}:
+          match g:
+            case True{}:
+              Empty.absurd({S.implies(True{}, Bool.and(S.is_nil(rest), S.is_nil(htk))) == True{} : Bool}, ff_tt(I))
+            case False{}:
+              {==}
+
+law inv7_send_route:
+  for fu: Bool
+  for tk: Bool
+  for +s: M.World
+  for +hg: {S.gone(s) == False{} : Bool}
+  Inv7(M.send_route(fu, tk, s))
+
+def inv7_send_route(fu, tk, s, hg):
+  match fu:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              Empty.absurd(Inv7(M.flush(M.W{M.snoc(q, n), haf, htk, t, d, M.snoc(u, n), tt, rl, 1n+n, tk, i, True{}})), tt_ff(hg))
+            case False{}:
+              inv7_flush(M.W{M.snoc(q, n), haf, htk, t, d, M.snoc(u, n), tt, rl, 1n+n, tk, i, False{}}, {==})
+    case False{}:
+      match tk:
+        case True{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  Empty.absurd(Inv7(M.W{q, haf, M.snoc(htk, n), t, d, u, tt, rl, 1n+n, tk, i, True{}}), tt_ff(hg))
+                case False{}:
+                  {==}
+        case False{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  Empty.absurd(Inv7(M.flush(M.W{M.snoc(q, n), haf, htk, t, d, u, tt, rl, 1n+n, tk, i, True{}})), tt_ff(hg))
+                case False{}:
+                  inv7_flush(M.W{M.snoc(q, n), haf, htk, t, d, u, tt, rl, 1n+n, tk, i, False{}}, {==})
+
+law inv7_deliver_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: Inv7(s)
+  for hb: @k: {b == True{} : Bool} -> {S.gone(s) == False{} : Bool}
+  Inv7(M.deliver_tk(b, id, s))
+
+def inv7_deliver_tk(b, id, s, I, hb):
+  match b:
+    case False{}:
+      I
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              Empty.absurd(Inv7(M.flush(M.W{M.snoc(q, id), haf, M.remove(id, htk), t, d, u, tt, M.snoc(rl, id), n, tk, i, True{}})), tt_ff(hb({==})))
+            case False{}:
+              inv7_flush(M.W{M.snoc(q, id), haf, M.remove(id, htk), t, d, u, tt, M.snoc(rl, id), n, tk, i, False{}}, {==})
+
+law inv7_deliver_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: Inv7(s)
+  for ha: @k: {a == True{} : Bool} -> {S.gone(s) == False{} : Bool}
+  for hb: @k: {b == True{} : Bool} -> {S.gone(s) == False{} : Bool}
+  Inv7(M.deliver_pick(a, b, id, s))
+
+def inv7_deliver_pick(a, b, id, s, I, ha, hb):
+  match a:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              Empty.absurd(Inv7(M.flush(M.W{M.snoc(q, id), M.remove(id, haf), htk, t, d, u, tt, M.snoc(rl, id), n, tk, i, True{}})), tt_ff(ha({==})))
+            case False{}:
+              inv7_flush(M.W{M.snoc(q, id), M.remove(id, haf), htk, t, d, u, tt, M.snoc(rl, id), n, tk, i, False{}}, {==})
+    case False{}:
+      inv7_deliver_tk(b, id, s, I, hb)
+
+law inv7_drop_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: Inv7(s)
+  Inv7(M.drop_tk(b, id, s))
+
+def inv7_drop_tk(b, id, s, I):
+  match b:
+    case False{}:
+      I
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match q htk g:
+            case Nil{} Nil{} False{}:
+              {==}
+            case Nil{} Nil{} True{}:
+              {==}
+            case Nil{} Con{+y, ys} False{}:
+              {==}
+            case Nil{} Con{+y, ys} True{}:
+              Empty.absurd(Inv7(M.W{[], haf, M.remove(id, y <> ys), t, M.snoc(d, id), u, tt, rl, n, tk, i, True{}}), ff_tt(I))
+            case Con{+x, xs} Nil{} False{}:
+              {==}
+            case Con{+x, xs} Nil{} True{}:
+              Empty.absurd(Inv7(M.W{x <> xs, haf, M.remove(id, []), t, M.snoc(d, id), u, tt, rl, n, tk, i, True{}}), ff_tt(I))
+            case Con{+x, xs} Con{+y, ys} False{}:
+              {==}
+            case Con{+x, xs} Con{+y, ys} True{}:
+              Empty.absurd(Inv7(M.W{x <> xs, haf, M.remove(id, y <> ys), t, M.snoc(d, id), u, tt, rl, n, tk, i, True{}}), ff_tt(I))
+
+law inv7_drop_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: Inv7(s)
+  Inv7(M.drop_pick(a, b, id, s))
+
+def inv7_drop_pick(a, b, id, s, I):
+  match a:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          I
+    case False{}:
+      inv7_drop_tk(b, id, s, I)
+
+law inv7_step:
+  for e: M.Ev
+  for +s: M.World
+  for +I: Inv7(s)
+  Inv7(M.step(e, s))
+
+def inv7_step(e, s, I):
+  match e:
+    case M.Send{fu, r}:
+      match r:
+        case M.Auto{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  I
+                case False{}:
+                  inv7_send_route(fu, tk, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, False{}}, {==})
+        case M.AskFirst{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  I
+                case False{}:
+                  {==}
+        case M.RouteDrop{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  I
+                case False{}:
+                  {==}
+    case M.Idle{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              I
+            case False{}:
+              inv7_flush(M.W{q, haf, htk, t, d, u, tt, rl, n, tk, True{}, False{}}, {==})
+    case M.Busy{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          I
+    case M.Exit{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          {==}
+    case M.TakeoverBegin{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match q htk g:
+            case Nil{} Nil{} False{}:
+              {==}
+            case Nil{} Nil{} True{}:
+              {==}
+            case Nil{} Con{+y, ys} False{}:
+              {==}
+            case Nil{} Con{+y, ys} True{}:
+              Empty.absurd(Inv7(M.W{[], haf, List.append(&2, Nat, y <> ys, []), t, d, u, tt, rl, n, True{}, i, True{}}), ff_tt(I))
+            case Con{+x, xs} Nil{} False{}:
+              {==}
+            case Con{+x, xs} Nil{} True{}:
+              Empty.absurd(Inv7(M.W{M.keep_users(x <> xs, u), haf, List.append(&2, Nat, [], M.drop_users(x <> xs, u)), t, d, u, tt, rl, n, True{}, i, True{}}), ff_tt(I))
+            case Con{+x, xs} Con{+y, ys} False{}:
+              {==}
+            case Con{+x, xs} Con{+y, ys} True{}:
+              Empty.absurd(Inv7(M.W{M.keep_users(x <> xs, u), haf, List.append(&2, Nat, y <> ys, M.drop_users(x <> xs, u)), t, d, u, tt, rl, n, True{}, i, True{}}), ff_tt(I))
+    case M.TakeoverEnd{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match q htk g:
+            case Nil{} Nil{} False{}:
+              inv7_flush(M.W{List.append(&2, Nat, [], []), haf, [], t, d, u, tt, rl, n, False{}, i, False{}}, {==})
+            case Nil{} Nil{} True{}:
+              inv7_flush(M.W{List.append(&2, Nat, [], []), haf, [], t, d, u, tt, rl, n, False{}, i, True{}}, {==})
+            case Nil{} Con{+y, ys} False{}:
+              inv7_flush(M.W{List.append(&2, Nat, [], y <> ys), haf, [], t, d, u, tt, rl, n, False{}, i, False{}}, {==})
+            case Nil{} Con{+y, ys} True{}:
+              Empty.absurd(Inv7(M.flush(M.W{List.append(&2, Nat, [], y <> ys), haf, [], t, d, u, tt, rl, n, False{}, i, True{}})), ff_tt(I))
+            case Con{+x, xs} Nil{} False{}:
+              inv7_flush(M.W{List.append(&2, Nat, x <> xs, []), haf, [], t, d, u, tt, rl, n, False{}, i, False{}}, {==})
+            case Con{+x, xs} Nil{} True{}:
+              Empty.absurd(Inv7(M.flush(M.W{List.append(&2, Nat, x <> xs, []), haf, [], t, d, u, tt, rl, n, False{}, i, True{}})), ff_tt(I))
+            case Con{+x, xs} Con{+y, ys} False{}:
+              inv7_flush(M.W{List.append(&2, Nat, x <> xs, y <> ys), haf, [], t, d, u, tt, rl, n, False{}, i, False{}}, {==})
+            case Con{+x, xs} Con{+y, ys} True{}:
+              Empty.absurd(Inv7(M.flush(M.W{List.append(&2, Nat, x <> xs, y <> ys), haf, [], t, d, u, tt, rl, n, False{}, i, True{}})), ff_tt(I))
+    case M.UserDeliver{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          inv7_deliver_pick(Bool.and(M.mem(id, haf), Bool.not(g)), Bool.and(M.mem(id, htk), Bool.not(g)), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I, k => not_true(g, and_r(M.mem(id, haf), Bool.not(g), k)), k => not_true(g, and_r(M.mem(id, htk), Bool.not(g), k)))
+    case M.UserDrop{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          inv7_drop_pick(M.mem(id, haf), M.mem(id, htk), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I)
+
+law m7_of:
+  for fu: Bool
+  for r: M.Route
+  for +s: M.World
+  for +I: Inv7(s)
+  {Bool.and(S.implies(S.gone(s), Bool.and(S.is_nil(S.queue(s)), S.is_nil(S.held_tk(s)))), S.implies(S.gone(s), Nat.is_eq(S.next_id(M.step(M.Send{fu, r}, s)), S.next_id(s)))) == True{} : Bool}
+
+def m7_of(fu, r, s, I):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      match g:
+        case True{}:
+          and_intro(Bool.and(S.is_nil(q), S.is_nil(htk)), Nat.is_eq(n, n), I, eq_refl(n))
+        case False{}:
+          {==}
+
+law m7_run:
+  for +evs: +List<M.Ev>
+  for fu: Bool
+  for r: M.Route
+  for +s: M.World
+  for +I: Inv7(s)
+  {Bool.and(S.implies(S.gone(M.run(evs, s)), Bool.and(S.is_nil(S.queue(M.run(evs, s))), S.is_nil(S.held_tk(M.run(evs, s))))), S.implies(S.gone(M.run(evs, s)), Nat.is_eq(S.next_id(M.step(M.Send{fu, r}, M.run(evs, s))), S.next_id(M.run(evs, s))))) == True{} : Bool}
+
+def m7_run(evs, fu, r, s, I):
+  match evs:
+    case Nil{}:
+      m7_of(fu, r, s, I)
+    case Con{e, rest}:
+      m7_run(rest, fu, r, M.step(e, s), inv7_step(e, s, I))
+
+def Laws.m7_receiver_gone(evs, fu, r):
+  m7_run(evs, fu, r, M.init(), inv7_init())
