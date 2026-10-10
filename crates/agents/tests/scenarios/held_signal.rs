@@ -8,7 +8,7 @@ use rpc::{RpcError, code};
 use serde_json::{Value, json};
 use tokio::sync::broadcast::Receiver;
 
-use crate::common::{Fixture, hold_starts, release, until_file};
+use crate::common::{Fixture, GATED, hold_starts, release, star, until_file};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -101,7 +101,7 @@ async fn a14_a_held_user_prompt_submit_still_names_the_agent() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a14_a_held_session_start_still_steers_the_spawn_prompt() {
-    let f = Arc::new(Fixture::running("cat > \"$(dirname \"$0\")/typed\""));
+    let f = Arc::new(Fixture::running(GATED));
     let config = hold_starts(&f);
     let typed = f.dir.path().join("typed");
     let spawning = {
@@ -116,6 +116,8 @@ async fn a14_a_held_session_start_still_steers_the_spawn_prompt() {
 
     release(config).await;
     spawning.await.unwrap().unwrap();
+    until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
 
     assert!(held.is_ok(), "{held:?}");
     assert!(until_file(&typed).await.contains("hello there"));
