@@ -791,7 +791,7 @@ async fn b24_a_door_reads_its_brief_then_creates_and_updates_a_todo_over_mcp() {
         .unwrap();
 
     let updated = next(&mut client, |data| match data {
-        EventData::TodoUpdated(todo) => Some(todo),
+        EventData::TodoUpdated(todo) if !todo.body.is_empty() => Some(todo),
         _ => None,
     })
     .await;
@@ -1535,4 +1535,30 @@ async fn t14_an_agent_under_a_room_creates_todos_with_the_nearest_room_as_home()
     assert_eq!(create(by_ext).await, Value::Null);
     let listed = client.request("todo.list", json!(null)).await.unwrap();
     assert_eq!(listed[0]["home"], json!(inner));
+}
+
+/// T14: a Door's Rail id is its Room's id, so its Todo's Home is that Room, top-level or nested.
+#[tokio::test]
+async fn t14_a_door_creates_todos_at_its_own_room() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let outer = room(&client, "outer").await;
+    let inner = client
+        .request(
+            "rail.createRoom",
+            json!({ "name": "inner", "parent": outer }),
+        )
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for door in [&outer, &inner] {
+        let who = client_as(&project, actor(ActorKind::Agent, door)).await;
+        let todo = who
+            .request("todo.create", json!({ "title": "ship j4" }))
+            .await
+            .unwrap();
+        assert_eq!(todo["home"], json!(door));
+    }
 }

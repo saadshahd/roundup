@@ -143,23 +143,26 @@ impl Daemon {
         outcome
     }
 
-    /// T14: a Todo an Agent just created gets the nearest Room above that Agent as its Home.
+    /// T14: a Todo an Agent just created gets the nearest Room at or above that Agent as its Home.
     async fn home_in_room(&self, actor: &Actor, created: Value) -> Result<Value, RpcError> {
         let nodes = self.rail().await?;
         let mut at = nodes.iter().find(|node| node.id == actor.id);
         while let Some(node) = at {
+            if node.kind == contracts::agent::NodeKind::Room {
+                let module = self
+                    .modules
+                    .get("todo")
+                    .ok_or_else(|| RpcError::internal("todo module is not registered"))?;
+                let id = created["id"].clone();
+                let ctx = self.ctx(Actor::daemon());
+                return module
+                    .call(&ctx, "todo.move", json!({ "id": id, "home": node.id }))
+                    .await;
+            }
             at = node
                 .parent
                 .as_ref()
                 .and_then(|parent| nodes.iter().find(|n| &n.id == parent));
-            if let Some(room) = at.filter(|n| n.kind == contracts::agent::NodeKind::Room) {
-                let id = created["id"].clone();
-                let module = &self.modules["todo"];
-                let ctx = self.ctx(Actor::daemon());
-                return module
-                    .call(&ctx, "todo.move", json!({ "id": id, "home": room.id }))
-                    .await;
-            }
         }
         Ok(created)
     }
