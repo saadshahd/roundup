@@ -57,12 +57,12 @@ describe("u153 the row surface and rhythm", () => {
     expect([style(button).minHeight, style(button).fontSize, style(button).color]).toEqual(["28px", "var(--text-body)", "var(--text)"]);
   });
 
-  it("u153_the_waits_on_and_home_lines_are_caption_grey_and_indented_2ch", async () => {
+  it("u153_the_waits_on_and_home_lines_are_caption_grey_and_indented_one_space_step", async () => {
     await mountTodos(seed());
     await screen.findByText(/todo 3/);
 
     for (const line of [rowOf(2).querySelector("[data-todo-waits]")!, rowOf(2).querySelector("[data-todo-home]")!]) {
-      expect([style(line).fontSize, style(line).color, style(line).paddingLeft]).toEqual(["var(--text-caption)", "var(--grey)", expect.stringMatching(/^(2ch|16px)$/)]);
+      expect([style(line).fontSize, style(line).color, style(line).paddingLeft]).toEqual(["var(--text-caption)", "var(--grey)", expect.stringMatching(/^(var\(--space-4\)|16px)$/)]);
     }
   });
 

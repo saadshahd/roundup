@@ -1,5 +1,5 @@
 .todo-row-button {
-  --todo-row-indent: calc(var(--space-4) + 1ch);
+  --todo-row-indent: calc(var(--space-4) + var(--space-2));
   min-height: var(--space-5);
   cursor: pointer;
 }
@@ -17,7 +17,7 @@
   position: absolute;
   top: 0;
   right: 9ch;
-  padding-left: 1ch;
+  padding-left: var(--space-2);
   background: var(--sunken);
 }
 
@@ -78,7 +78,7 @@
 }
 
 .todo-line {
-  padding-left: 2ch;
+  padding-left: var(--space-4);
   font-size: var(--text-caption);
   color: var(--grey);
   overflow-wrap: anywhere;
