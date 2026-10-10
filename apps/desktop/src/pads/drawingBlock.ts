@@ -19,11 +19,13 @@ export type CanvasApi = {
   Excalidraw: ComponentType<CanvasProps>;
   /** Expands skeletons: a shape with a `label`, an arrow with `start` and `end` ids. Ids are kept, so a stored scene's bindings still point at their elements. */
   convertToExcalidrawElements(skeleton: Skeleton[], options: { regenerateIds: false }): CanvasElement[];
+  /** Loads full elements a stored scene holds, keeping their bindings; converting them again would detach every arrow. */
+  restoreElements(elements: Skeleton[]): CanvasElement[];
 };
 
-export type Skeleton = { type: string; id?: string | undefined };
+export type Skeleton = { type: string; id?: string | undefined; version?: number | undefined };
 
-const Scene = v.object({ type: v.literal("excalidraw"), elements: v.array(v.looseObject({ type: v.string(), id: v.optional(v.string()) })) });
+const Scene = v.object({ type: v.literal("excalidraw"), elements: v.array(v.looseObject({ type: v.string(), id: v.optional(v.string()), version: v.optional(v.number()) })) });
 
 const parse = (text: string) => {
   const scene = v.safeParse(Scene, JSON.parse(text));
@@ -32,6 +34,9 @@ const parse = (text: string) => {
 
   return scene.output.elements;
 };
+
+/** A scene the Pad itself wrote holds full elements; an Agent's holds skeletons. */
+const isStored = (elements: Skeleton[]) => elements.length > 0 && elements.every((element) => element.version !== undefined);
 
 const signature = (elements: readonly CanvasElement[]) => elements.map((element) => `${element.id}:${element.version}`).join(",");
 
@@ -67,7 +72,8 @@ export const mountDrawing = (canvas: CanvasApi): VisualMount => (host, { text, r
   window.addEventListener("pointerup", up);
 
   try {
-    const elements = canvas.convertToExcalidrawElements(parse(text), { regenerateIds: false });
+    const skeleton = parse(text);
+    const elements = isStored(skeleton) ? canvas.restoreElements(skeleton) : canvas.convertToExcalidrawElements(skeleton, { regenerateIds: false });
     let last = signature(elements);
 
     root = createRoot(host);

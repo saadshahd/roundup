@@ -31,6 +31,8 @@ export const bundledRenderers: Renderers = {
       Excalidraw: (props) => createElement(module.Excalidraw, props as never),
       // SAFETY: a skeleton is Excalidraw's own input shape, and its output elements all carry `id` and `version`.
       convertToExcalidrawElements: (skeleton, options) => module.convertToExcalidrawElements(skeleton as never, options),
+      // SAFETY: stored elements are Excalidraw's own output, and restoring them keeps `id` and `version`.
+      restoreElements: (elements) => module.restoreElements(elements as never, null) as never,
     };
   },
 };

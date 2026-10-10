@@ -44,7 +44,7 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/testing/domStubs.ts"],
     // jsdom resolves the server build of solid-js unless told to use the browser one.
-    server: { deps: { inline: [/solid-js/] } },
+    server: { deps: { inline: [/solid-js/, /@excalidraw/] } },
   },
   resolve: { conditions: ["browser", "development|production"] },
 });

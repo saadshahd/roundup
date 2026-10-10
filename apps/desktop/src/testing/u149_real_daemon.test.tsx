@@ -42,6 +42,7 @@ describe("u148, u149 the open Drawer renders a block the Daemon stores", () => {
       canvas: async () => ({
         Excalidraw: () => createElement("div", { "data-testid": "canvas" }),
         convertToExcalidrawElements: (skeleton) => skeleton.map((element, index) => ({ id: String(element.id ?? index), version: 1 })),
+        restoreElements: (stored) => stored.map((element, index) => ({ id: String(element.id ?? index), version: 1 })),
       }),
     });
     const app = createServedApp(real.base);

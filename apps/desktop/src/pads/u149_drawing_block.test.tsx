@@ -15,6 +15,7 @@ let loads: unknown[] = [];
 const fake: CanvasApi = {
   // The skeleton expands to full elements.
   convertToExcalidrawElements: (skeleton, options) => (loads.push(options), skeleton).map((element, index) => ({ id: String(element.id ?? `e${index}`), version: 1 })),
+  restoreElements: (stored) => (loads.push("restored"), stored).map((element) => ({ id: String(element.id), version: 1 })),
   Excalidraw: (next) => {
     props = next;
 
@@ -166,6 +167,16 @@ describe("u149 a Drawing renders and edits in the Pad", () => {
     await screen.findByTestId("canvas");
 
     expect(loads).toEqual([{ regenerateIds: false }]);
+  });
+
+  it("u149_a_scene_of_full_elements_is_restored_not_converted_again", async () => {
+    const stored = '{"type":"excalidraw","version":2,"elements":[{"type":"rectangle","id":"a","version":3},{"type":"arrow","id":"r","version":2}]}';
+
+    await openShelf([padOf("note", USER, `\`\`\`excalidraw\n${stored}\n\`\`\`\n`)]);
+    await openPad("note");
+    await screen.findByTestId("canvas");
+
+    expect(loads).toEqual(["restored"]);
   });
 
   it("u149_adding_a_shape_then_leaving_writes_once_with_only_the_block_changed", async () => {
