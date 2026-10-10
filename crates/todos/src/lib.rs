@@ -836,4 +836,27 @@ mod tests {
         assert!(h.events().is_empty());
         assert!(h.touches(9).is_empty());
     }
+
+    #[tokio::test]
+    async fn t13_a_move_of_a_todo_made_by_an_agent_or_an_extension_is_the_same() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Harness::new(dir.path());
+        for (n, creator) in [(1, agent("a")), (2, ext("x", "a"))] {
+            h.call_as(creator.clone(), "todo.create", json!({"title": "t"}))
+                .await
+                .unwrap();
+            h.events();
+            let moved = h
+                .call("todo.move", json!({"id": n, "home": "r1"}))
+                .await
+                .unwrap();
+            assert_eq!(moved["home"], "r1");
+            assert_eq!(moved["creator"], serde_json::to_value(&creator).unwrap());
+            assert_eq!(h.events(), [format!("todo.updated {n}")]);
+            h.call("todo.move", json!({"id": n, "home": null}))
+                .await
+                .unwrap();
+            assert_eq!(get_home(&h, n).await, Value::Null);
+        }
+    }
 }

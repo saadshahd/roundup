@@ -1356,12 +1356,27 @@ async fn home_of(client: &rpc::Client, id: u32) -> Value {
 #[tokio::test]
 async fn t13_move_checks_the_rail_and_survives_a_restart() {
     let mut project = start(&[]);
+    let mut events = project.subscribed().await;
     let client = project.client().await;
     let r1 = room(&client, "r1").await;
     let agent = agent_in(&project, &client, None).await;
     let id = todo_at(&client, "a").await;
     assert_eq!(home_of(&client, id).await, Value::Null);
+    next(&mut events, |data| {
+        matches!(data, EventData::TodoCreated(_)).then_some(())
+    })
+    .await;
 
+    let history = || async {
+        client
+            .request(
+                "provenance.history",
+                json!({ "item": format!("todo:{id}") }),
+            )
+            .await
+            .unwrap()
+    };
+    let touched = history().await;
     let missing = client
         .request("todo.move", json!({ "id": id, "home": "nope" }))
         .await
@@ -1372,12 +1387,20 @@ async fn t13_move_checks_the_rail_and_survives_a_restart() {
         .await
         .unwrap_err();
     assert_eq!(not_a_room.code, rpc::code::INVALID_PARAMS);
+    assert_eq!(history().await, touched);
     assert_eq!(home_of(&client, id).await, Value::Null);
 
     client
         .request("todo.move", json!({ "id": id, "home": r1 }))
         .await
         .unwrap();
+    // The first Todo event after the rejections is the move that succeeded.
+    let first = next(&mut events, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo.home.clone()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(first, Some(r1.clone()));
     assert_eq!(home_of(&client, id).await, json!(r1));
 
     project.restart(&[]);

@@ -25,7 +25,7 @@ The persistent place for one body of work, with exactly one Door and its Agents,
 _Avoid_: folder
 
 **Home**:
-Where an item sits: a Room, or the Project root. Each item has one Home the user can change. The Shelf is still Project-wide; Room-scoped Todos and Sketches are follow-up work.
+Where an item sits: a Room, or the Project root. Each item has one Home the user can change. The Shelf is still Project-wide; Room-scoped Todos and Sketches are follow-up work. `todo.move` is the method that changes it.
 
 **Door**:
 The coordinating Agent role of one Room, with a system prompt tuned to that role. Its Rail id is the Room id; its program may be starting, running or stopped without changing the Room. Direct access to any Agent remains (P1).
