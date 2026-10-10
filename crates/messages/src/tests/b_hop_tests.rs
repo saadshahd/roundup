@@ -41,7 +41,7 @@ fn child(id: &str, parent: &str) -> RailNode {
     agent
 }
 
-fn tree() -> Vec<RailNode> {
+pub(super) fn tree() -> Vec<RailNode> {
     vec![
         door("top", None),
         door("mid", Some("top")),

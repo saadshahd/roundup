@@ -256,7 +256,7 @@ impl Messages {
             on_idle(&self.inner, &p.to, binding(node), Pick::Fresh).await;
         }
         // A hop the Route dropped moves the chain on at once (B16).
-        let _ = settle(&self.inner, None, "settle").await;
+        settle_logged(&self.inner, "settle").await;
         reply(&message)
     }
 
@@ -390,7 +390,7 @@ impl Messages {
         ctx.touch(Verb::Wrote, &item(p.id))?;
         let dropped = self.get_or_not_found(p.id)?;
         ctx.emit(EventData::MessageDropped(dropped.clone()));
-        let _ = settle(&self.inner, None, "settle").await;
+        settle_logged(&self.inner, "settle").await;
         reply(&dropped)
     }
 
@@ -691,9 +691,16 @@ fn spawn_bound_clock(inner: std::sync::Weak<Inner>) {
             let Some(inner) = inner.upgrade() else {
                 break;
             };
-            let _ = guarded("clock", settle(&inner, None, "clock")).await;
+            settle_logged(&inner, "clock").await;
         }
     });
+}
+
+/// A background `settle` pass: a panic or an `Err` is logged once with `op` and the pass ends (B28).
+async fn settle_logged(inner: &Arc<Inner>, op: &str) {
+    if let Ok(Err(err)) = guarded(op, settle(inner, None, op)).await {
+        log_failure(op, &err.message);
+    }
 }
 
 /// B13 to B16: moves every question whose current hop passed, ended or ran out its bound to its
@@ -753,7 +760,7 @@ fn spawn_status_listener(
 ) {
     tokio::spawn(async move {
         let mut resync_due = !resync(&inner).await;
-        let _ = guarded("settle", settle(&inner, None, "settle")).await;
+        settle_logged(&inner, "settle").await;
         loop {
             match events.recv().await {
                 Ok(contracts::Event {
@@ -782,7 +789,7 @@ fn spawn_status_listener(
             }
             if resync_due {
                 resync_due = !resync(&inner).await;
-                let _ = guarded("settle", settle(&inner, None, "settle")).await;
+                settle_logged(&inner, "settle").await;
             }
         }
     });
@@ -811,7 +818,7 @@ async fn on_status(inner: &Arc<Inner>, agent: &str, attempt: &str, revision: &st
     if kind == Kind::Idle {
         on_idle(inner, agent, at, Pick::Next).await;
     }
-    let _ = settle(inner, None, "settle").await;
+    settle_logged(inner, "settle").await;
 }
 
 /// Resync after bus lag or Rail changes so missed endings cannot leave Messages deliverable.

@@ -1,7 +1,7 @@
 //! B28: one failure fails one operation. `Env::fault` stands in for a Store that panics or errs
 //! while an operation holds the lock.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 
 use contracts::agent::StatusEvent;
 use contracts::{Actor, EventData, Kind, Status};
@@ -24,10 +24,15 @@ struct Faulty {
     typed: Arc<StdMutex<Vec<(String, String)>>>,
     armed: Arc<StdMutex<Option<(&'static str, Fail)>>>,
     calls: Arc<AtomicUsize>,
+    clock: Arc<AtomicI64>,
 }
 
 impl Faulty {
     fn new(dir: &Path) -> Self {
+        Self::over(dir, vec![agent_node("a", Kind::Working)])
+    }
+
+    fn over(dir: &Path, nodes: Vec<RailNode>) -> Self {
         let bus = Bus::new();
         let touches = Arc::new(provenance::Touches::in_memory().unwrap());
         let typed: Arc<StdMutex<Vec<(String, String)>>> = Arc::default();
@@ -39,9 +44,11 @@ impl Faulty {
         let armed: Arc<StdMutex<Option<(&'static str, Fail)>>> = Arc::default();
         let calls = Arc::new(AtomicUsize::new(0));
         let (trigger, counted) = (Arc::clone(&armed), Arc::clone(&calls));
+        let clock: Arc<AtomicI64> = Arc::default();
+        let reads = Arc::clone(&clock);
         let env = Env {
             touches: Arc::clone(&touches),
-            clock: Arc::new(|| 0),
+            clock: Arc::new(move || reads.load(Ordering::SeqCst)),
             fault: Arc::new(move |op| {
                 if op == "clock" {
                     counted.fetch_add(1, Ordering::SeqCst);
@@ -61,7 +68,7 @@ impl Faulty {
                 }
             }),
         };
-        let rail = FakeRail::new(vec![agent_node("a", Kind::Working)]);
+        let rail = FakeRail::new(nodes);
         let messages = Messages::open_with(dir, bus.clone(), rail, deliver, env).unwrap();
         Self {
             messages,
@@ -70,6 +77,7 @@ impl Faulty {
             typed,
             armed,
             calls,
+            clock,
         }
     }
 
@@ -201,4 +209,40 @@ async fn b28_a_failure_in_the_clock_does_not_stop_it() {
     let before = h.calls.load(Ordering::SeqCst);
     tokio::time::sleep(std::time::Duration::from_millis(1_600)).await;
     assert!(h.calls.load(Ordering::SeqCst) >= before + 3);
+
+    // The pass after the failed one still works: a hop passes at 60 000 ms, not at 59 999.
+    let dir = tempfile::tempdir().unwrap();
+    let h = Faulty::over(dir.path(), super::b_hop_tests::tree());
+    let ask = json!({"to": "sub", "kind": "question", "body": "which?"});
+    let ctx = Ctx {
+        actor: Actor::user(),
+        bus: h.bus.clone(),
+        touches: Arc::clone(&h.touches),
+    };
+    let actor = super::agent("c");
+    let ctx = Ctx { actor, ..ctx };
+    h.messages.call(&ctx, "message.send", ask).await.unwrap();
+    h.arm("clock", Fail::Panic);
+    h.clock.store(59_999, Ordering::SeqCst);
+    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+    assert_eq!(
+        h.call("message.list", json!({}))
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    h.clock.store(60_000, Ordering::SeqCst);
+    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+    assert_eq!(
+        h.call("message.list", json!({}))
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }
