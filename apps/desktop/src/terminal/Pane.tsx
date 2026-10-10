@@ -173,7 +173,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
   let watched: ResizeObserver | undefined;
 
-  // A Card appearing, growing or going changes the Terminal's workstream without a window resize.
+  // A Card appearing, growing or going changes the Terminal's room without a window resize.
   const watch = (body: HTMLElement) => {
     if (typeof ResizeObserver === "undefined") return;
 

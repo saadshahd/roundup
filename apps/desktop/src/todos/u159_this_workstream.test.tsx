@@ -16,14 +16,14 @@ describe("u159 the Shelf can show only the selected Workstream's Todos", () => {
     const { connected } = await mountTodos(seed(), true, [...rail(), agent("a1", "idle", "ann")]);
 
     await screen.findByText(/todo 1/);
-    expect(screen.queryByRole("radio", { name: "this workstream" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "this one" })).toBeNull();
 
     connected.rail.select("a1");
     await Promise.resolve();
-    expect(screen.queryByRole("radio", { name: "this workstream" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "this one" })).toBeNull();
 
     connected.rail.select("r1");
-    expect(await screen.findByRole("radio", { name: "this workstream" })).toBeTruthy();
+    expect(await screen.findByRole("radio", { name: "this one" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "all" })).toHaveProperty("checked", true);
     expect(ids()).toEqual(["1", "2", "3"]);
   });
@@ -33,7 +33,7 @@ describe("u159 the Shelf can show only the selected Workstream's Todos", () => {
 
     await screen.findByText(/todo 1/);
     connected.rail.select("r1");
-    fireEvent.click(await screen.findByRole("radio", { name: "this workstream" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "this one" }));
 
     await waitFor(() => expect(ids()).toEqual(["1"]));
   });
@@ -43,7 +43,7 @@ describe("u159 the Shelf can show only the selected Workstream's Todos", () => {
 
     await screen.findByText(/todo 1/);
     connected.rail.select("r1");
-    fireEvent.click(await screen.findByRole("radio", { name: "this workstream" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "this one" }));
     await waitFor(() => expect(ids()).toEqual(["1"]));
 
     connected.rail.select("r2");
@@ -57,7 +57,7 @@ describe("u159 the Shelf can show only the selected Workstream's Todos", () => {
 
     await screen.findByText(/todo 1/);
     connected.rail.select("r1");
-    fireEvent.click(await screen.findByRole("radio", { name: "this workstream" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "this one" }));
     await waitFor(() => expect(ids()).toEqual(["1"]));
 
     connected.rail.select("r2");
@@ -72,7 +72,7 @@ describe("u159 the Shelf can show only the selected Workstream's Todos", () => {
 
     await screen.findByText(/todo 2/);
     connected.rail.select("r1");
-    fireEvent.click(await screen.findByRole("radio", { name: "this workstream" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "this one" }));
 
     expect(await screen.findByText("no todos in this workstream")).toBeTruthy();
     expect(screen.queryByText("no todos yet")).toBeNull();
@@ -83,7 +83,7 @@ describe("u159 the Shelf can show only the selected Workstream's Todos", () => {
 
     await screen.findByText("no todos yet");
     connected.rail.select("r1");
-    fireEvent.click(await screen.findByRole("radio", { name: "this workstream" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "this one" }));
 
     expect(await screen.findByText("no todos in this workstream")).toBeTruthy();
     expect(screen.queryByText("no todos yet")).toBeNull();

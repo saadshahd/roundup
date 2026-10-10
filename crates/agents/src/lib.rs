@@ -2647,7 +2647,7 @@ mod tests {
     /// the swap into `Running`, then re-locks `runs` once per held Signal to apply it — the
     /// regression this test catches if the one `rail`-then-`runs` lock section is ever split:
     /// over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
-    /// `TRIALS` leaves roughly 3.6x that much workstream, so a reintroduced bug would need to be
+    /// `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug would need to be
     /// dramatically harder to hit than the one measured to slip past a run.
     const TRIALS: usize = 20_000;
 

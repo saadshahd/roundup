@@ -46,13 +46,13 @@ describe("u159 a Workstream's Todos are found from the Workstream on the real Da
 
     const shelf = await screen.findByRole("region", { name: "todos" });
 
-    fireEvent.click(await within(shelf).findByRole("radio", { name: "this workstream" }));
+    fireEvent.click(await within(shelf).findByRole("radio", { name: "this one" }));
     await waitFor(() => expect(shelf.querySelector("[data-shelf-row]")?.textContent).toContain("ship j4"));
 
     fireEvent.click(await within(rail).findByRole("button", { name: /^\s*new Workstream$/ }));
     await waitFor(async () => expect((await app.rpc("rail.tree", null)).filter((node) => node.kind === "workstream")).toHaveLength(2));
     await waitFor(() => expect(within(shelf).getByRole("radio", { name: "all" })).toHaveProperty("checked", true));
-    fireEvent.click(within(shelf).getByRole("radio", { name: "this workstream" }));
+    fireEvent.click(within(shelf).getByRole("radio", { name: "this one" }));
 
     expect(await within(shelf).findByText("no todos in this workstream")).toBeTruthy();
   }, 120_000);

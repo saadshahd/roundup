@@ -35,7 +35,6 @@ export const Rail = () => {
   );
 
   /** U38: the empty line waits for the first `rail.tree` (always answered before the Rail mounts) and yields to a fetch failure, which the centre shows instead. */
-  const isEmpty = createMemo(() => rail.nodes.length === 0 && rail.failure() === null);
 
   const nodeRows = createMemo(() => rows().filter((row): row is NodeRow => row.kind === "node"));
   const nodeIds = createMemo(() => nodeRows().map((row) => row.node.id));
@@ -335,10 +334,6 @@ export const Rail = () => {
           )}
         </For>
       </div>
-      <Show when={isEmpty()}>
-        <p>no agents yet</p>
-        <p>⌘N starts one</p>
-      </Show>
       <Show when={drag.state()}>
         {(dragging) => (
           <div
