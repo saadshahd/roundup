@@ -8,9 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    Channel, ChannelEvent, CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, PromptParams,
-    RailNode, RenameParams, SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent,
-    WorktreeState,
+    Channel, ChannelEvent, CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, Order,
+    PromptParams, RailNode, RenameParams, SetOrderParams, SignalParams, SpawnParams,
+    SpawnTerminalParams, StatusEvent, WorktreeState,
 };
 use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
@@ -27,6 +27,7 @@ use tokio::time::{Instant, sleep_until};
 pub mod claude_code;
 mod decision;
 mod name;
+mod order;
 mod rail;
 pub mod worktree;
 
@@ -102,6 +103,9 @@ struct Shared {
     /// E6: the Channel of each Agent's current Attempt that has left `pending`, as
     /// `(attempt, channel)`; an entry of an earlier Attempt reads as `pending`.
     channels: Mutex<HashMap<String, (String, Channel)>>,
+    /// O4: whether a Takeover of the Agent is active, which keeps a changed order from being
+    /// sent to it. Without one, none is.
+    takeover: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
     /// E6: how long after a start `agent.channelUp` may take before the Channel is `missing`.
     channel_deadline: Duration,
 }
@@ -1488,6 +1492,7 @@ impl Agents {
                 interrupt_bound: INTERRUPT_BOUND,
                 channels: Mutex::new(HashMap::new()),
                 channel_deadline: channel_deadline_from_env(),
+                takeover: None,
             }),
             dir: dir.to_owned(),
             launcher,
@@ -1499,6 +1504,51 @@ impl Agents {
     #[must_use]
     pub fn with_proof(self, proof: Option<String>) -> Self {
         self.configure(|shared| shared.decisions.set_proof(proof))
+    }
+
+    /// O4: `active` says whether a Takeover of an Agent is active. Call it before the first call.
+    #[must_use]
+    pub fn with_takeover(self, active: impl Fn(&str) -> bool + Send + Sync + 'static) -> Self {
+        self.configure(|shared| shared.takeover = Some(Arc::new(active)))
+    }
+
+    /// O4: replace the order of an Agent or a Door, and Steer it the new one unless the caller is
+    /// the Agent itself or a Takeover is active.
+    async fn set_order(&self, ctx: &Ctx, params: SetOrderParams) -> Result<RailNode, RpcError> {
+        let SetOrderParams { id, order } = params;
+        valid_order(&order)?;
+        let node = self.shared.rail().node(&id)?;
+        let allowed = match ctx.actor.kind {
+            ActorKind::User => true,
+            ActorKind::Agent => {
+                ctx.actor.id == id || node.parent.as_deref() == Some(ctx.actor.id.as_str())
+            }
+            ActorKind::Ext => false,
+        };
+        if !allowed {
+            return Err(RpcError::forbidden(format!(
+                "{} may not set the order of agent {id}",
+                ctx.actor.id
+            )));
+        }
+        let node = self.shared.rail().set_order(&id, &order)?;
+        ctx.touch(contracts::Verb::Wrote, &format!("agent:{id}"))?;
+        ctx.emit(EventData::RailChanged);
+        let takeover = self
+            .shared
+            .takeover
+            .as_ref()
+            .is_some_and(|active| active(&id));
+        if ctx.actor.id != id && !takeover {
+            let shared = Arc::clone(&self.shared);
+            let text = order::steer(&order);
+            tokio::spawn(async move {
+                if let Err(err) = shared.prompt(&id, &text).await {
+                    eprintln!("agents: the new order of {id} was not steered: {err}");
+                }
+            });
+        }
+        self.shared.node(&node.id)
     }
 
     /// Change a setting before any call has shared the Agents: the only holder of `shared` is
@@ -1570,19 +1620,32 @@ impl Agents {
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
     async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
         let cwd = Path::new(&params.cwd);
+        let order = match (params.prompt, params.order) {
+            (Some(_), Some(_)) => {
+                return Err(RpcError::new(
+                    code::INVALID_PARAMS,
+                    "prompt and order are exclusive",
+                ));
+            }
+            (Some(prompt), None) => Order::work(&prompt),
+            (None, Some(order)) => order,
+            (None, None) => rail::default_order(NodeKind::Agent),
+        };
+        valid_order(&order)?;
         let (id, attempt) = {
             let mut rail = self.shared.rail();
-            let node = rail.insert(
+            let node = rail.insert_ordered(
                 NodeKind::Agent,
                 name::UNNAMED,
                 params.parent.as_deref(),
                 None,
+                Some(&order),
             )?;
             let attempt = rail.allocate_attempt(&node.id)?;
             self.shared.mark_starting(&node.id, attempt.clone());
             (node.id, attempt)
         };
-        match self.run_agent(&id, &attempt, cwd, params.prompt).await {
+        match self.run_agent(&id, &attempt, cwd).await {
             Ok(_) => {}
             Err(err) => {
                 let mut rail = self.shared.rail();
@@ -1683,7 +1746,7 @@ impl Agents {
             attempt
         };
         let project = self.project_dir().to_owned();
-        if let Err(err) = self.run_agent(id, &attempt, &project, None).await {
+        if let Err(err) = self.run_agent(id, &attempt, &project).await {
             let mut rail = self.shared.rail();
             let mut runs = self.shared.runs();
             if runs.get(id).is_some_and(|slot| slot.attempt() == attempt) {
@@ -1971,14 +2034,10 @@ impl Agents {
     /// Start Claude Code for node `id`, marked as starting, in a Terminal recorded in the Rail,
     /// then register and watch it; returns the Terminal's id. Failed cleanup keeps its Worktree
     /// ownership record so reopening can recover it without deleting unrelated work.
-    async fn run_agent(
-        &self,
-        id: &str,
-        attempt: &str,
-        cwd: &Path,
-        prompt: Option<String>,
-    ) -> Result<String, RpcError> {
+    async fn run_agent(&self, id: &str, attempt: &str, cwd: &Path) -> Result<String, RpcError> {
         let node = self.shared.rail().node(id)?;
+        // O2, O3: the first Steer is the node's order, whichever way it was set.
+        let prompt = node.work.as_ref().map(order::steer);
 
         let retained = node.worktree.map(|w| PathBuf::from(w.path));
         if let Some(path) = &retained
@@ -2171,6 +2230,13 @@ fn real_paths(project: &Path, cwd: &Path) -> Result<(PathBuf, PathBuf), RpcError
     Ok((real_project, real_cwd))
 }
 
+/// O1: an order of the right shape, or `INVALID_PARAMS`.
+fn valid_order(order: &Order) -> Result<(), RpcError> {
+    order
+        .validate()
+        .map_err(|message| RpcError::new(code::INVALID_PARAMS, message))
+}
+
 /// Milliseconds since the Unix epoch.
 fn now_ms() -> i64 {
     let since_epoch = SystemTime::now()
@@ -2227,6 +2293,7 @@ impl Module for Agents {
                 let NodeId { id } = params(value)?;
                 reply(&self.resume(ctx, &id).await?)
             }
+            "agent.setOrder" => reply(&self.set_order(ctx, params(value)?).await?),
             "agent.channelUp" => {
                 let NodeId { id } = params(value)?;
                 shared.channel_up(&ctx.actor, &id)?;
@@ -2268,10 +2335,21 @@ impl Module for Agents {
             }
             "rail.tree" => reply(&shared.tree()?),
             "rail.createRoom" => {
-                let CreateRoomParams { name, parent } = params(value)?;
-                let node = shared
-                    .rail()
-                    .insert(NodeKind::Room, &name, parent.as_deref(), None)?;
+                let CreateRoomParams {
+                    name,
+                    parent,
+                    order,
+                } = params(value)?;
+                if let Some(order) = &order {
+                    valid_order(order)?;
+                }
+                let node = shared.rail().insert_ordered(
+                    NodeKind::Room,
+                    &name,
+                    parent.as_deref(),
+                    None,
+                    order.as_ref(),
+                )?;
                 ctx.emit(EventData::RailChanged);
                 reply(&shared.node(&node.id)?)
             }
@@ -2370,6 +2448,7 @@ mod tests {
             interrupt_bound: super::INTERRUPT_BOUND,
             channels: Mutex::new(HashMap::new()),
             channel_deadline: super::CHANNEL_DEADLINE,
+            takeover: None,
         });
         (dir, bus, shared)
     }
@@ -2777,6 +2856,7 @@ mod tests {
             interrupt_bound: super::INTERRUPT_BOUND,
             channels: Mutex::new(HashMap::new()),
             channel_deadline: super::CHANNEL_DEADLINE,
+            takeover: None,
         })
     }
 
@@ -2988,6 +3068,7 @@ mod tests {
             interrupt_bound: super::INTERRUPT_BOUND,
             channels: Mutex::new(HashMap::new()),
             channel_deadline: super::CHANNEL_DEADLINE,
+            takeover: None,
         });
         (dir, shared)
     }

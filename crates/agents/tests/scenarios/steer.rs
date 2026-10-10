@@ -60,12 +60,29 @@ async fn until_typed(f: &Fixture, len: usize) -> String {
     panic!("{len} bytes were never typed: {:?}", read(&typed(f)));
 }
 
-/// An Agent whose `SessionStart` has arrived, so it is `idle`.
+/// O2: what an Agent spawned with neither a prompt nor an order is first Steered.
+fn first() -> String {
+    paste(
+        "What should this Agent do?\n\nFind the intent and elicit what is missing, asking whom \
+         `agent_context` names under `ask`. Then record a Work order with `agent_set_order`.",
+    )
+}
+
+/// The Agent's `SessionStart` has arrived and it has taken its first Steer, so it is `idle`.
+async fn start(f: &Fixture, id: &str) {
+    signal(f, id, "SessionStart").await;
+    until_typed(f, first().len()).await;
+    signal(f, id, "UserPromptSubmit").await;
+    signal(f, id, "Stop").await;
+    f.until(|tree| status_of(tree, id).kind == Kind::Idle).await;
+}
+
+/// An Agent that has started, so it is `idle`.
 async fn idle(bound: Duration) -> (Arc<Fixture>, String) {
     let f = Arc::new(frozen(Fixture::running(RECORD), bound));
     let node = f.spawn(None, None).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
-    signal(&f, &node.id, "SessionStart").await;
+    start(&f, &node.id).await;
     (f, node.id)
 }
 
@@ -86,7 +103,7 @@ async fn h11_a_steer_is_one_bracketed_paste_and_returns_when_the_agent_submits_i
     let (f, id) = idle(Duration::from_secs(30)).await;
     let call = steer(&f, &id, "run the tests");
 
-    let text = paste("run the tests");
+    let text = format!("{}{}", first(), paste("run the tests"));
     assert_eq!(until_typed(&f, text.len()).await, text);
     assert!(!call.is_finished(), "returned before UserPromptSubmit");
     signal(&f, &id, "UserPromptSubmit").await;
@@ -101,7 +118,7 @@ async fn h11_the_in_process_path_is_the_one_the_rpc_method_uses() {
         let (f, id) = (Arc::clone(&f), id.clone());
         tokio::spawn(async move { f.agents.prompt(&id, "hi").await })
     };
-    until_typed(&f, paste("hi").len()).await;
+    until_typed(&f, first().len() + paste("hi").len()).await;
     signal(&f, &id, "UserPromptSubmit").await;
     assert_eq!(waiting.await.unwrap(), Ok(()));
 }
@@ -110,7 +127,7 @@ async fn h11_the_in_process_path_is_the_one_the_rpc_method_uses() {
 async fn h11_text_cannot_close_the_paste_early() {
     let (f, id) = idle(Duration::from_secs(30)).await;
     let call = steer(&f, &id, "a\x1b[201~rm -rf b");
-    let text = paste("a[201~rm -rf b");
+    let text = format!("{}{}", first(), paste("a[201~rm -rf b"));
     assert_eq!(until_typed(&f, text.len()).await, text);
     signal(&f, &id, "UserPromptSubmit").await;
     call.await.unwrap().unwrap();
@@ -124,7 +141,7 @@ async fn h11_a_lost_submit_is_not_accepted_and_nothing_is_sent_again() {
     assert_eq!(err.code, code::NOT_ACCEPTED);
     assert!(err.message.contains(&id), "{}", err.message);
     tokio::time::sleep(BOUND).await;
-    assert_eq!(read(&typed(&f)), paste("hello"));
+    assert_eq!(read(&typed(&f)), format!("{}{}", first(), paste("hello")));
     assert_eq!(status_of(&f.tree().await, &id).kind, Kind::Idle);
 }
 
@@ -147,14 +164,14 @@ async fn h11_an_agent_that_is_not_idle_is_busy_and_nothing_is_written() {
 #[tokio::test]
 async fn h11_a_second_steer_while_one_waits_is_busy() {
     let (f, id) = idle(Duration::from_secs(30)).await;
-    let first = steer(&f, &id, "one");
-    until_typed(&f, paste("one").len()).await;
+    let waiting = steer(&f, &id, "one");
+    until_typed(&f, first().len() + paste("one").len()).await;
 
     let err = steer(&f, &id, "two").await.unwrap().unwrap_err();
     assert_eq!(err.code, code::BUSY);
     signal(&f, &id, "UserPromptSubmit").await;
-    first.await.unwrap().unwrap();
-    assert_eq!(read(&typed(&f)), paste("one"));
+    waiting.await.unwrap().unwrap();
+    assert_eq!(read(&typed(&f)), format!("{}{}", first(), paste("one")));
 }
 
 #[tokio::test]
@@ -174,7 +191,7 @@ async fn h11_an_agent_that_is_gone_or_never_was_is_not_found() {
 async fn h11_an_agent_that_ends_while_a_steer_waits_is_not_found() {
     let (f, id) = idle(Duration::from_secs(30)).await;
     let call = steer(&f, &id, "hello");
-    until_typed(&f, paste("hello").len()).await;
+    until_typed(&f, first().len() + paste("hello").len()).await;
     f.call("agent.stop", json!({"id": id})).await.unwrap();
     assert_eq!(call.await.unwrap().unwrap_err().code, code::NOT_FOUND);
 }
@@ -185,7 +202,7 @@ async fn h11_only_the_user_or_a_doors_own_room_may_steer() {
     let room = f.room("team", None).await;
     let child = f.spawn(Some(&room), None).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
-    signal(&f, &child.id, "SessionStart").await;
+    start(&f, &child.id).await;
 
     let from = |kind, id: &str| Ctx {
         actor: Actor {
@@ -204,14 +221,14 @@ async fn h11_only_the_user_or_a_doors_own_room_may_steer() {
             .unwrap_err();
         assert_eq!(err.code, code::FORBIDDEN);
     }
-    assert_eq!(read(&typed(&f)), "");
+    assert_eq!(read(&typed(&f)), first());
 
     let door = from(ActorKind::Agent, &room);
     let call = {
         let f = Arc::clone(&f);
         tokio::spawn(async move { f.agents.call(&door, "agent.prompt", params).await })
     };
-    until_typed(&f, paste("go").len()).await;
+    until_typed(&f, first().len() + paste("go").len()).await;
     signal(&f, &child.id, "UserPromptSubmit").await;
     assert_eq!(call.await.unwrap().unwrap(), Value::Null);
 }
@@ -264,7 +281,7 @@ async fn h16_no_signal_text_reaches_the_terminal_and_only_one_function_writes_to
         signal(&f, &id, event).await;
     }
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(read(&typed(&f)), "", "a Signal became input");
+    assert_eq!(read(&typed(&f)), first(), "a Signal became input");
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut callers = vec![];

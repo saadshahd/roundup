@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use contracts::{Actor, ActorKind, IdentifyParams, decision, message, pad, todo};
+use contracts::{Actor, ActorKind, IdentifyParams, agent, decision, message, pad, todo};
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
     Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
@@ -114,6 +114,31 @@ fn agent_context() -> Offered {
     }
 }
 
+/// O4: `agent.setOrder` takes `{id, order}`; the shim fills `id`, so the Agent's tool takes only
+/// `order`.
+fn agent_set_order() -> Offered {
+    let Ok(Value::Object(mut schema)) =
+        serde_json::to_value(schemars::schema_for!(agent::SetOrderParams))
+    else {
+        unreachable!("a params struct's schema is an object");
+    };
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        properties.remove("id");
+    }
+    if let Some(Value::Array(required)) = schema.get_mut("required") {
+        required.retain(|name| name != "id");
+    }
+    Offered {
+        own_id: true,
+        tool: Tool::new(
+            "agent_set_order",
+            "Replace your own order: a Work order once the ask is clear, or a Clarification order while a question is open.",
+            schema,
+        ),
+        ..offer("agent.setOrder", "", JsonObject::new(), true)
+    }
+}
+
 /// `todo.delete` (a Todo has no owner to guard it), `pad.export` (writes outside the Project) and `pad.setStorage` (the user's setting) are left out on purpose.
 fn offered_tools() -> Vec<Offered> {
     vec![
@@ -147,6 +172,7 @@ fn offered_tools() -> Vec<Offered> {
             "Pass a question sent to you on to the next Door above, at once.",
         ),
         agent_context(),
+        agent_set_order(),
         ask_user(),
     ]
 }
@@ -214,7 +240,12 @@ impl Shim {
         arguments: Option<JsonObject>,
     ) -> Result<Result<Value, RpcError>, Gone> {
         let params = match (offer.takes_params, offer.own_id, arguments) {
-            (_, true, _) => serde_json::json!({ "id": self.actor.id }),
+            (false, true, _) => serde_json::json!({ "id": self.actor.id }),
+            (true, true, arguments) => {
+                let mut arguments = arguments.unwrap_or_default();
+                arguments.insert("id".into(), self.actor.id.clone().into());
+                Value::Object(arguments)
+            }
             (true, false, arguments) => Value::Object(arguments.unwrap_or_default()),
             (false, false, _) => Value::Null,
         };

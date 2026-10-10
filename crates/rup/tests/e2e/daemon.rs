@@ -117,6 +117,7 @@ impl Project {
         let params = SpawnParams {
             cwd: self.dir.path().to_string_lossy().into_owned(),
             prompt: None,
+            order: None,
             parent: None,
         };
         let node = client.request("agent.spawn", params).await.unwrap();

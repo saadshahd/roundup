@@ -1,5 +1,6 @@
 //! Agents and the Rail: the tree of Rooms, Agents and Terminals.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -50,6 +51,52 @@ pub struct Landed {
     pub base: String,
 }
 
+/// O1: what an Agent or a Door holds before it works, exactly one of a Work order (the ask and
+/// what it must not do) or a Clarification order (the open question that comes first).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+#[ts(export, export_to = "agent/")]
+pub enum Order {
+    Work { ask: String, limits: Vec<String> },
+    Clarification { question: String },
+}
+
+impl Order {
+    /// O2: what an Agent spawned with only a `prompt` holds.
+    pub fn work(ask: &str) -> Self {
+        Self::Work {
+            ask: ask.to_owned(),
+            limits: Vec::new(),
+        }
+    }
+
+    pub fn clarification(question: &str) -> Self {
+        Self::Clarification {
+            question: question.to_owned(),
+        }
+    }
+
+    /// O1's shape: the ask or question, and every limit, non-empty after trimming.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::Work { ask, limits } => {
+                if ask.trim().is_empty() {
+                    return Err("order ask must not be empty".into());
+                }
+                if limits.iter().any(|limit| limit.trim().is_empty()) {
+                    return Err("order limits must not be empty".into());
+                }
+            }
+            Self::Clarification { question } => {
+                if question.trim().is_empty() {
+                    return Err("order question must not be empty".into());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
 pub struct RailNode {
@@ -75,6 +122,9 @@ pub struct RailNode {
     /// E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Room that is
     /// no Door, a Terminal, and an Agent with no live Terminal.
     pub channel: Option<Channel>,
+    /// O1: the order of an Agent or a Room's Door; `None` for a Terminal. Named `work` because
+    /// `order` is the position among siblings.
+    pub work: Option<Order>,
 }
 
 /// E6: `pending` from the start, `up` once `agent.channelUp` arrived, `missing` when it had not
@@ -118,6 +168,8 @@ pub struct ContextSelf {
     pub id: String,
     pub name: String,
     pub status: Status,
+    /// O4: the Agent's own order; `None` for a Terminal.
+    pub order: Option<Order>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -170,6 +222,9 @@ pub struct SpawnParams {
     pub cwd: String,
     pub prompt: Option<String>,
     pub parent: Option<String>,
+    /// O2: replaces `prompt`; giving both is `INVALID_PARAMS`.
+    #[serde(default)]
+    pub order: Option<Order>,
 }
 
 /// Start the user's login shell in a new Terminal and place its node last under `parent`.
@@ -209,6 +264,17 @@ pub struct SignalParams {
 pub struct CreateRoomParams {
     pub name: String,
     pub parent: Option<String>,
+    /// O3: the Door's order.
+    #[serde(default)]
+    pub order: Option<Order>,
+}
+
+/// O4: replace the order of Agent or Door `id`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(export, export_to = "agent/")]
+pub struct SetOrderParams {
+    pub id: String,
+    pub order: Order,
 }
 
 /// Re-parent and position a node. `parent: None` moves it to the root.
