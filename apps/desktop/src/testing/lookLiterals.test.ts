@@ -74,8 +74,8 @@ describe("u130 the look-literal scanner", () => {
     expect(literals("xbackground: red;\n --row--hover: red;")).toEqual([]);
   });
 
-  it("u130_scanner_flags_a_custom_property_that_holds_a_colour_or_a_time_except_the_two_slice_3_deletes", () => {
-    expect(literals("--light: #86868b;\n --lightest: #c7c7cc;")).toEqual([]);
+  it("u130_scanner_flags_a_custom_property_that_holds_a_colour_or_a_time", () => {
+    expect(literals("--light: #86868b;")).toEqual(["--light: #86868b"]);
     expect(literals("--row-band: #123;")).toEqual(["--row-band: #123"]);
     expect(literals("--slide: 180ms;")).toEqual(["--slide: 180ms"]);
     expect(literals("--x: oklch(0.5 0.1 200);")).toEqual(["--x: oklch(0.5 0.1 200)"]);

@@ -17,9 +17,6 @@ const COLOUR_SHORTHAND = /^(?:border(?:-(?:top|right|bottom|left|block|inline)(?
 
 const NOT_A_COLOUR = new Set(["solid", "dashed", "dotted", "double", "none", "hidden", "inset", "outset", "groove", "ridge", "underline", "overline", "line-through", "wavy", "auto", "to", "top", "right", "bottom", "left", "center", "circle", "ellipse", "at", "inherit", "initial", "unset", "transparent", "currentcolor"]);
 
-// Custom properties U130 slice 3 deletes; until then they hold the two colours the table does not have.
-const UNTIL_SLICE_3 = new Set(["--light", "--lightest"]);
-
 const COLOUR_KEYWORDS_ALLOWED = new Set(["transparent", "inherit", "initial", "unset", "none", "currentcolor"]);
 
 // A time written as digits, or as a template placeholder with a unit (`${ms}ms`, which `inlineStyleCss` writes as `⟨expr⟩ms`), which no scan can read.
@@ -33,7 +30,7 @@ const withoutVars = (value: string): string => value.replace(/var\(--[\w-]+\)/g,
 const isLiteral = (property: string, value: string): boolean => {
   const rest = withoutVars(value);
 
-  if (property.startsWith("--")) return !UNTIL_SLICE_3.has(property) && (COLOUR_FUNCTION.test(rest) || DURATION.test(rest));
+  if (property.startsWith("--")) return COLOUR_FUNCTION.test(rest) || DURATION.test(rest);
 
   if (COLOUR_FUNCTION.test(rest)) return true;
 

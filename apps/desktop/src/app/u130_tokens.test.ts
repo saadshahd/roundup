@@ -168,4 +168,20 @@ describe("u130 tokens", () => {
     expect(Object.keys(sources).filter((path) => /\.test\./.test(path)), "test files are not scanned").toEqual([]);
     expect(Object.entries(sources).flatMap(([path, source]) => lookLiterals(inlineStyleCss(source)).map((literal) => `${path}: ${literal}`))).toEqual([]);
   });
+
+  it("u130_no_look_literal_outside_tokens_css", () => {
+    const sheets = import.meta.glob<string>(["../**/*.css", "!../tokens.css"], { query: "?raw", import: "default", eager: true });
+    const sources = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}", "!../testing/**", "!../terminal/emulator.ts"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+
+    expect(Object.keys(sheets).length).toBeGreaterThan(5);
+    expect(Object.keys(sources).length).toBeGreaterThan(20);
+    expect([
+      ...Object.entries(sheets).flatMap(([path, css]) => lookLiterals(css).map((literal) => `${path}: ${literal}`)),
+      ...Object.entries(sources).flatMap(([path, source]) => lookLiterals(inlineStyleCss(source)).map((literal) => `${path}: ${literal}`)),
+    ]).toEqual([]);
+  });
 });
