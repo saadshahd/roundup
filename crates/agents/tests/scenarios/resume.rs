@@ -55,7 +55,7 @@ impl Fixture {
     /// The tree once `id`'s Attempt differs from `old`, for a caller racing a pending
     /// `agent.resume` (which has already allocated and announced the new one before it blocks
     /// on acknowledgement).
-    async fn until_attempt_changed(&self, id: &str, old: &str) -> Vec<RailNode> {
+    pub async fn until_attempt_changed(&self, id: &str, old: &str) -> Vec<RailNode> {
         self.until(|tree| {
             tree.iter()
                 .find(|n| n.id == id)
