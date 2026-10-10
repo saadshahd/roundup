@@ -68,7 +68,7 @@ impl Seen {
             let key = (id.to_owned(), child.id.clone());
             let after = seen.get(&key).copied();
             let (entry, newest) = entry(child, id, from, after);
-            if let Some(newest) = newest {
+            if let Some(newest) = newest.filter(|_| caller.kind == ActorKind::Agent) {
                 seen.insert(key, newest);
             }
             items.push(DigestItem::Child(entry));
@@ -286,7 +286,12 @@ mod tests {
             pads,
             messages,
         };
-        seen.ask(&Actor::user(), "m", &from).unwrap().children
+        let m = Actor {
+            kind: ActorKind::Agent,
+            id: "m".into(),
+            parent: None,
+        };
+        seen.ask(&m, "m", &from).unwrap().children
     }
 
     fn entries(items: &[DigestItem]) -> Vec<&DigestEntry> {
@@ -369,6 +374,31 @@ mod tests {
         let second = ask(&seen, &rail(), &[], &pads, &[]);
         assert_eq!(entries(&second)[0].pads, ["two"]);
         assert!(entries(&second)[1].pads.is_empty());
+    }
+
+    #[test]
+    fn b19_the_user_asking_does_not_hide_pads_from_m() {
+        let seen = Seen::default();
+        let pads = [pad("one", "a", 10)];
+        let from = Sources {
+            nodes: &rail(),
+            todos: &[],
+            pads: &pads,
+            messages: &[],
+        };
+        let m = Actor {
+            kind: ActorKind::Agent,
+            id: "m".into(),
+            parent: None,
+        };
+        let pads_of = |caller: &Actor| match &seen.ask(caller, "m", &from).unwrap().children[0] {
+            DigestItem::Child(entry) => entry.pads.clone(),
+            DigestItem::More { .. } => unreachable!(),
+        };
+        assert_eq!(pads_of(&Actor::user()), ["one"]);
+        assert_eq!(pads_of(&Actor::user()), ["one"]);
+        assert_eq!(pads_of(&m), ["one"]);
+        assert!(pads_of(&m).is_empty());
     }
 
     #[test]
