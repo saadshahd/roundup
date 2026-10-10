@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, event, room, MINUTE, NOW, terminal } from "../testing/nodes";
+import { agent, event, workstream, MINUTE, NOW, terminal } from "../testing/nodes";
 import type { EmulatorFactory } from "../terminal/emulator";
 import styles from "./styles.css?inline";
 import appStyles from "../styles.css?inline";
@@ -50,7 +50,7 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_enter_on_the_collapse_button_does_not_select_the_row", async () => {
-    const { rail } = await mountRail([room("g")]);
+    const { rail } = await mountRail([workstream("g")]);
     const button = screen.getByRole("button", { name: "collapse" });
     button.focus();
 
@@ -119,7 +119,7 @@ describe("u31 rail keyboard", () => {
   });
 
   it("u31_a_collapsed_groups_children_are_skipped", async () => {
-    await mountRail([room("g"), agent("hidden", "idle", "x", { parent: "g" }), agent("after", "idle", "x")]);
+    await mountRail([workstream("g"), agent("hidden", "idle", "x", { parent: "g" }), agent("after", "idle", "x")]);
     fireEvent.click(screen.getByRole("button", { name: "collapse" }));
     rowOf("g").focus();
 
@@ -212,7 +212,7 @@ describe("u31 rail keyboard", () => {
 
   it("u31_collapsing_the_selected_rows_group_moves_the_roving_tabindex_to_the_first_row", async () => {
     const { rail } = await mountRail([
-      room("g"),
+      workstream("g"),
       agent("child", "idle", "x", { parent: "g" }),
       agent("after", "idle", "x"),
     ]);

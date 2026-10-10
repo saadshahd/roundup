@@ -10,7 +10,7 @@ const mount = () =>
     app.handlers["rail.tree"] = () => [
       agent("a", "working", "editing", { name: "alpha", order: 0, work }),
       agent("b", "working", "editing", { name: "beta", order: 1, work: clarifying("which build?") }),
-      door("r", "working", "editing", { name: "harbor", order: 2, work: clarifying("what is this Room for?") }),
+      door("r", "working", "editing", { name: "harbor", order: 2, work: clarifying("what is this Workstream for?") }),
     ];
   });
 
@@ -31,7 +31,7 @@ describe("O6: the order on one line above the Terminal", () => {
     await waitFor(() => expect(line()?.textContent).toBe("clarifying: which build?"));
 
     select("harbor");
-    await waitFor(() => expect(line()?.textContent).toBe("clarifying: what is this Room for?"));
+    await waitFor(() => expect(line()?.textContent).toBe("clarifying: what is this Workstream for?"));
   });
 
   it("o6_the_line_sits_below_the_decision_card_and_above_the_terminal", async () => {

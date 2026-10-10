@@ -27,7 +27,7 @@ def new_repo(path):
 
 class Permissions(unittest.TestCase):
     def test_l23_writing_runs_request_workflow_changes_and_read_only_ci_evidence(self):
-        for workflow in ('build', 'fix'):
+        for workflow in ('build-issue', 'fix'):
             inputs = action_inputs(workflow)
             block = inputs.split('additional_permissions: |\n', 1)[1]
             granted = []
@@ -57,6 +57,28 @@ class Build(unittest.TestCase):
         for text in ('loop:work', 'COLLABORATOR', 'author_association'):
             self.assertNotIn(text, pick)
         self.assertNotIn('ready-for-agent', source)
+
+    def test_l23_sixteen_build_jobs_at_most(self):
+        source = (ROOT / '.github/workflows/build.yml').read_text()
+        self.assertIn("default: '16'", source)
+        self.assertIn("MAX: ${{ inputs.max || '16' }}", source)
+
+    def test_l23_each_issue_whose_model_worked_starts_the_next_pick_when_its_own_build_ends(self):
+        caller = (ROOT / '.github/workflows/build.yml').read_text()
+        self.assertIn('uses: ./.github/workflows/build-issue.yml', caller)
+        self.assertNotIn('  after:', caller)
+        source = (ROOT / '.github/workflows/build-issue.yml').read_text()
+        build = source.split('  build:', 1)[1].split('\n  after:', 1)[0]
+        after = source.split('\n  after:', 1)[1]
+        # The Builder's job holds no write; only `after`, which runs no model, dispatches.
+        self.assertNotIn('actions: write', build)
+        for grant in ('issues: write', 'pull-requests: write'):
+            self.assertNotIn(grant, build)
+        self.assertIn('needs: build', after)
+        self.assertIn('actions: write', after)
+        step = after.split('gh workflow run build.yml', 1)[0].rsplit('      - ', 1)[1]
+        # Only a job whose model did work dispatches, so a usage limit ends the chain instead of spinning it.
+        self.assertIn("env.RAN == 'true'", step)
 
 
 class Stall(unittest.TestCase):

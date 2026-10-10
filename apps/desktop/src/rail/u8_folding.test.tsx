@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { glyphOf, mountRail, rowNames, rowOf } from "./railFixture";
-import { agent, room, door, MINUTE, NOW, terminal } from "../testing/nodes";
+import { agent, workstream, door, MINUTE, NOW, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -49,7 +49,7 @@ describe("u8 folding", () => {
 
   it("u8_each_parent_folds_its_own_done_agents_at_its_own_depth", async () => {
     await mountRail([
-      room("migrate"),
+      workstream("migrate"),
       doneFor("inner", 30, { parent: "migrate" }),
       doneFor("outer", 30, { order: 1 }),
     ]);
@@ -65,7 +65,7 @@ describe("u8 folding", () => {
 
   it("u8_clicking_a_groups_triangle_collapses_it_to_its_most_urgent_descendants_glyph_and_ink", async () => {
     await mountRail([
-      room("migrate"),
+      workstream("migrate"),
       agent("a", "working", "w", { parent: "migrate", order: 0 }),
       agent("b", "needs-you", "asks", { parent: "migrate", order: 1 }),
     ]);
@@ -81,7 +81,7 @@ describe("u8 folding", () => {
 
   it("u8_a_collapsed_group_shows_a_light_child_count", async () => {
     await mountRail([
-      room("migrate"),
+      workstream("migrate"),
       agent("a", "working", "w", { parent: "migrate", order: 0 }),
       agent("b", "idle", "i", { parent: "migrate", order: 1 }),
     ]);
@@ -92,7 +92,7 @@ describe("u8 folding", () => {
   });
 
   it("u8_another_click_expands_a_collapsed_group", async () => {
-    await mountRail([room("migrate"), agent("a", "working", "w", { parent: "migrate" })]);
+    await mountRail([workstream("migrate"), agent("a", "working", "w", { parent: "migrate" })]);
     fireEvent.click(rowOf("migrate").querySelector("button[aria-label=collapse]")!);
 
     fireEvent.click(rowOf("migrate").querySelector("button[aria-label=collapse]")!);
@@ -105,7 +105,7 @@ describe("u8 folding", () => {
     ["blocked", "blocked"],
     ["done", "done"],
   ])("u8_a_collapsed_group_with_a_%s_agent_below_shows_%s", async (kind, mark) => {
-    await mountRail([room("g"), agent("a", kind, "l", { parent: "g" })]);
+    await mountRail([workstream("g"), agent("a", kind, "l", { parent: "g" })]);
 
     fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 
@@ -113,7 +113,7 @@ describe("u8 folding", () => {
   });
 
   it("u8_collapsing_a_group_does_not_select_it", async () => {
-    const { rail } = await mountRail([room("g")]);
+    const { rail } = await mountRail([workstream("g")]);
 
     fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 
@@ -122,8 +122,8 @@ describe("u8 folding", () => {
 
   it("u8_the_child_count_counts_direct_children_not_descendants", async () => {
     await mountRail([
-      room("g"),
-      room("inner", { parent: "g" }),
+      workstream("g"),
+      workstream("inner", { parent: "g" }),
       agent("deep", "working", "w", { parent: "inner" }),
     ]);
 
@@ -134,8 +134,8 @@ describe("u8 folding", () => {
 
   it("u8_a_collapsed_group_shows_the_most_urgent_kind_among_all_descendants_not_the_last_child", async () => {
     await mountRail([
-      room("outer"),
-      room("inner", { parent: "outer", order: 0 }),
+      workstream("outer"),
+      workstream("inner", { parent: "outer", order: 0 }),
       agent("asks", "needs-you", "?", { parent: "inner", order: 0 }),
       agent("busy", "working", "w", { parent: "outer", order: 1 }),
     ]);
@@ -146,7 +146,7 @@ describe("u8 folding", () => {
   });
 
   it("u8_a_collapsed_group_with_no_agent_below_shows_a_right_triangle", async () => {
-    await mountRail([room("g"), terminal("t", { parent: "g" })]);
+    await mountRail([workstream("g"), terminal("t", { parent: "g" })]);
 
     fireEvent.click(rowOf("g").querySelector("button[aria-label=collapse]")!);
 

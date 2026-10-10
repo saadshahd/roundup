@@ -35,11 +35,11 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
 
   const selected = createMemo(() => rail.nodes.find((node) => node.id === rail.selected()) ?? null);
 
-  /** Why the selected Room's Door is not running, so a stopped, failed or still-starting Door each read differently. */
+  /** Why the selected Workstream's Door is not running, so a stopped, failed or still-starting Door each read differently. */
   const doorState = createMemo(() => {
-    const room = selected();
+    const workstream = selected();
 
-    return room?.kind === "room" ? doorStateOf(room, rail.exitOf(room), rail.doorPending(room.id), rail.doorFailure(room.id) !== null) : null;
+    return workstream?.kind === "workstream" ? doorStateOf(workstream, rail.exitOf(workstream), rail.doorPending(workstream.id), rail.doorFailure(workstream.id) !== null) : null;
   });
 
   const terminalId = createMemo(() => selected()?.terminal_id ?? null);
@@ -172,6 +172,57 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     if (current !== null) screens.emulatorFor(current).focus();
   };
 
+  // U162: the window's native File drop, reported by the App seam. The ring shows only while a drop would be taken.
+  const [dropOver, setDropOver] = createSignal(false);
+  let body: HTMLElement | undefined;
+
+  const takesDrop = (): string | null => {
+    const id = terminalId();
+
+    return id !== null && connected.daemonExit() === null && !screens.exited(id) ? id : null;
+  };
+
+  const inBody = (x: number, y: number): boolean => {
+    const box = body?.getBoundingClientRect();
+
+    if (body === undefined || box === undefined || x < box.left || x >= box.right || y < box.top || y >= box.bottom) return false;
+
+    // An open Drawer sits over the pane, so the rectangle alone would take its drops.
+    const hit = document.elementFromPoint?.(x, y);
+
+    return hit === undefined || (hit !== null && body.contains(hit));
+  };
+
+  let unlistenDrop: (() => void) | undefined;
+  let closed = false;
+
+  void connected.app.onFileDrop((drop) => {
+    const id = takesDrop();
+
+    if (drop.phase === "leave" || id === null || !inBody(drop.x, drop.y)) {
+      setDropOver(false);
+
+      return;
+    }
+
+    setDropOver(drop.phase === "over");
+
+    if (drop.phase === "drop") {
+      screens.pastePaths(id, drop.paths);
+      screens.emulatorFor(id).focus();
+    }
+  }).then((stop) => {
+    if (closed) stop();
+    else unlistenDrop = stop;
+  });
+
+  createEffect(on(terminalId, () => setDropOver(false)));
+  createEffect(() => { if (takesDrop() === null) setDropOver(false); });
+  onCleanup(() => {
+    closed = true;
+    unlistenDrop?.();
+  });
+
   let watched: ResizeObserver | undefined;
 
   // A Card appearing, growing or going changes the Terminal's room without a window resize.
@@ -221,19 +272,26 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         )}
       </Show>
       <Show when={selected()}>{(node) => <OrderLine node={node()} />}</Show>
-      <div class="pane-body" ref={watch}>
+      <div
+        class="pane-body"
+        classList={{ "drop-over": dropOver() }}
+        ref={(element) => {
+          body = element;
+          watch(element);
+        }}
+      >
         <div class="pane-screen" ref={setScreen} />
         <Show when={selected() === null && notice() === null}>
           <Show when={rail.nodes.length === 0} fallback={<p class="pane-empty">select an agent or a terminal</p>}>
             <div class="pane-empty pane-door">
-              <p class="light">{rail.roomCreating() ? "creating Room…" : "no Room yet"}</p>
-              <button class="word pane-action" disabled={rail.roomCreating() || connected.daemonExit() !== null} aria-disabled={rail.roomCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createRoom()}>
-                <Icon name="plus" /> start a Room
+              <p class="light">{rail.workstreamCreating() ? "creating Workstream…" : "no Workstream yet"}</p>
+              <button class="word pane-action" disabled={rail.workstreamCreating() || connected.daemonExit() !== null} aria-disabled={rail.workstreamCreating() || connected.daemonExit() !== null ? true : undefined} onClick={() => void rail.createWorkstream()}>
+                <Icon name="plus" /> new Workstream
               </button>
             </div>
           </Show>
         </Show>
-        <Show when={selected()?.kind !== "room" && selected() !== null && terminalId() === null && notice() === null}>
+        <Show when={selected()?.kind !== "workstream" && selected() !== null && terminalId() === null && notice() === null}>
           <p class="pane-empty light">no output kept from an earlier run</p>
         </Show>
         <Show when={doorState()}>
@@ -256,7 +314,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
         </Show>
       </div>
       <div class="pane-failure">
-        <Show when={notice() ?? rail.roomFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
+        <Show when={notice() ?? rail.workstreamFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       </div>
     </div>
   );

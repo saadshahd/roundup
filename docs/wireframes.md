@@ -77,7 +77,7 @@ roundup   payments-api                                                          
     ready on :3000              │                                       │
   ✓ 2 done                      │                                       │
                                 │                                       │
-  + agent  + terminal  + group  │ > █                                   │
+  + new Workstream              │ > █                                   │
 ```
 
 Detail, a pad, history and the inbox open by widening leftward over the terminal. The terminal is never resized, so Claude's screen does not reflow; the rail stays visible. Clicking the sender tag `[from checkout 14:02]` flips that Route between auto and ask-first.
@@ -111,7 +111,7 @@ roundup   payments-api                                                          
     ready on :3000              │                                       │
   ✓ 2 done                      │                                       │
                                 │                                       │
-  + agent  + terminal  + group  │ > █                                   │
+  + new Workstream              │ > █                                   │
 
   tidy-sort  rail.sort threw, skipped
 ```
@@ -142,7 +142,7 @@ roundup   payments-api                                                          
     writing docs/auth.md        │       │
   ✓ 2 done                      │       │
                                 │       │
-  + agent  + terminal  + group  │ > █   │
+  + new Workstream              │ > █   │
 ```
 - The drawer slides in from the right edge, over the shelf and the terminal; the rail stays visible.
 - The badge counts rows that are new since the drawer was last opened (the top 5) and is inked while anything is held.
@@ -178,7 +178,7 @@ roundup   payments-api                                                          
     ready on :3000              │       │ last  s  session-store read 14:12                history
   ✓ 2 done                      │       │
                                 │       │
-  + agent  + terminal  + group  │ > █   │
+  + new Workstream              │ > █   │
 ```
 A dependency is written as a sentence, not drawn as an arrow, and it uses the rail's own words ("waits on #4"). In the detail, each blocker shows its own live glyph. The letter at the end of a row is the last toucher.
 
@@ -211,7 +211,7 @@ roundup   payments-api                                                          
     ready on :3000              │       │
   ✓ 2 done                      │       │
                                 │       │
-  + agent  + terminal  + group  │ > █   │
+  + new Workstream              │ > █   │
 ```
 Clicking ◈ makes a pad yours (◇). `store as .md files` flips the project-wide setting, which is the same switch as in Project settings. `export .md` writes one file, whatever that setting is.
 
@@ -246,7 +246,7 @@ roundup   payments-api                                                          
     waiting for first prompt    │                                       │
   ✓ 2 done                      │                                       │
                                 │                                       │
-  + agent  + terminal  + group  │ > █                                   │
+  + new Workstream              │ > █                                   │
 ```
 ```
 after + terminal, one click       after you type npm run dev        after the first prompt
@@ -254,7 +254,7 @@ after + terminal, one click       after you type npm run dev        after the fi
 › · zsh                           › ○ npm run dev                   › ○ fix-refresh-race
     ~/repos/payments-api              ready on :3000                    reading src/auth/token.ts
 ```
-`+ agent` is one click. The row appears at the root, or inside the selected group or Door; claude starts and focus moves to its terminal. There is no form and no prompt box. The agent's name comes from its first prompt, and a terminal's name comes from its first command; double-click to rename.
+The pinned line holds one add, `+ new Workstream`. Inside a Workstream its group ends with `+ agent  + terminal`, an Agent first. `+ agent` is one click. The row appears inside that Workstream (`⌘N` and `⌘T` keep their parent rule: the selected group or Door, else the root); claude starts and focus moves to its terminal. There is no form and no prompt box. The agent's name comes from its first prompt, and a terminal's name comes from its first command; double-click to rename.
 
 ### Screen 7 — Door: group, promote, drag to nest / unnest / reorder, Door stopped
 ```
@@ -311,7 +311,7 @@ roundup   payments-api                                                          
     ready on :3000              │       │
   ✓ 2 done                      │       │
                                 │       │
-  + agent  + terminal  + group  │ > █   │
+  + new Workstream              │ > █   │
 ```
 Each lane plots every touch (capital = wrote, small = read), and the rightmost mark is the letter shown at the end of the row in the shelf. The log below uses the inbox's grammar (time, who, item) and folds repeats. Click a `wrote` row to see its diff.
 
@@ -371,7 +371,7 @@ roundup
                                 │                                       │
                                 │ claude 2.1.4  /opt/homebrew/bin       │
                                 │                                       │
-  + agent  + terminal  + group  │                                       │
+  + new Workstream              │                                       │
 ```
 Each region is labelled in place with what will live there; there is no tutorial. No terminal exists until the first agent does. If claude isn't installed, that line becomes the only ink in the window: `✕ CLAUDE NOT FOUND, install Claude Code`.
 
@@ -393,17 +393,17 @@ Each region is labelled in place with what will live there; there is no tutorial
 13. The Shelf shows the selected node's Home and has a one-click view of the whole Project (reverses the earlier project-wide Shelf; `PRINCIPLES.md` P6).
 
 
-## Accepted product direction: Rooms, Doors and Sketches
+## Accepted product direction: Workstreams, Doors and Sketches
 
 Accepted by the user on 2026-10-04. This is the product destination, not a claim that the current App implements it. Implementation keeps the existing glossary and contracts until scoped scenarios change every affected caller together.
 
-- **Room** organizes the work and holds its Agents, Todos, dependencies and Sketches, so the user can understand one topic in one place.
-- **Door** is the Room's coordinating Agent, with a system prompt tuned to the Door role. Every Room has exactly one Door: one place to ask for work, coordinate its Agents and read the outcome. Direct access to an Agent remains available (P1).
-- **Todos** are created by Agents as well as the user; their dependencies are managed in the Room, so what is blocked and what can happen next stay beside the work.
+- **Workstream** organizes the work and holds its Agents, Todos, dependencies and Sketches, so the user can understand one topic in one place.
+- **Door** is the Workstream's coordinating Agent, with a system prompt tuned to the Door role. Every Workstream has exactly one Door: one place to ask for work, coordinate its Agents and read the outcome. Direct access to an Agent remains available (P1).
+- **Todos** are created by Agents as well as the user; their dependencies are managed in the Workstream, so what is blocked and what can happen next stay beside the work.
 - **Todo comments** each contain one concise, readable line of durable information that every future viewer needs. Reduction must preserve all of that information; a progress transcript or a shorter line that loses meaning does not qualify.
 - **Sketches** replace Pads as the product concept. The user and Agents can create rich Markdown containing Mermaid diagrams or tldraw visuals, so written and drawn thinking stay together.
 
-These choices supersede decision 11's Group/Door framing for a Room: its Door is mandatory, while Room nesting is undecided. They supersede decision 13's Home-based organization with Room-based organization; the whole-Project view is not decided here. They supersede decision 9's Pad-only framing, but do not decide Sketch rewrite/append rights; current Pad permissions still govern the implementation. Decision 10 describes existing Pad storage, not a chosen Sketch storage design. The drawings above remain evidence of the earlier design, not competing instructions for the new destination.
+These choices supersede decision 11's Group/Door framing for a Workstream: its Door is mandatory, while Workstream nesting is undecided. They supersede decision 13's Home-based organization with Workstream-based organization; the whole-Project view is not decided here. They supersede decision 9's Pad-only framing, but do not decide Sketch rewrite/append rights; current Pad permissions still govern the implementation. Decision 10 describes existing Pad storage, not a chosen Sketch storage design. The drawings above remain evidence of the earlier design, not competing instructions for the new destination.
 
 ### Capability matrix and next proof
 
@@ -411,9 +411,9 @@ Current evidence is the source at `a1f4d5eae322470951bb4906b31412af564bed15`; a 
 
 | Capability | Desired behavior | Observed foundation | Gap and next observer |
 |---|---|---|---|
-| Room | One topic holds its work. | Rail nodes have `parent` and `meta`; Todos have a Home, a Room or the Project root, and Pads have no Room field ([RailNode](../contracts/generated/agent/RailNode.ts), [Todo](../contracts/generated/todo/Todo.ts), [Pad](../contracts/generated/pad/Pad.ts)). | Specify membership and movement; prove that selecting a Room shows its work and a move preserves it. |
-| Door | Exactly one coordinating Agent per Room, using a system prompt tuned to the Door role. | Groups and Doors exist in the Rail; the current first-run path opens a Project ([Rail](../apps/desktop/src/rail/Rail.tsx), [FirstRun](../apps/desktop/src/app/FirstRun.tsx)). [Awareness E1–E5](../scenarios/awareness.md) specifies Brief and context foundations. | Specify creation, prompt tuning and recovery; prove one Door starts and coordinates work in its Room without making the user route between Agents. |
-| Todos and dependencies | User/Agent creation and dependency management in the Room. | Todo carries creator and blockers; the Shelf and Drawer render them ([Todos](../apps/desktop/src/todos/Todos.tsx), [TodoDrawer](../apps/desktop/src/todos/TodoDrawer.tsx)); [T3–T4](../scenarios/todos.md) define unblocking and cycle rejection. | Specify Room scope; prove creation, blocking and unblocking within it. Cross-Room dependencies remain undecided. |
+| Workstream | One topic holds its work. | Rail nodes have `parent` and `meta`; Todos have a Home, a Workstream or the Project root, and Pads have no Workstream field ([RailNode](../contracts/generated/agent/RailNode.ts), [Todo](../contracts/generated/todo/Todo.ts), [Pad](../contracts/generated/pad/Pad.ts)). | Specify membership and movement; prove that selecting a Workstream shows its work and a move preserves it. |
+| Door | Exactly one coordinating Agent per Workstream, using a system prompt tuned to the Door role. | Groups and Doors exist in the Rail; the current first-run path opens a Project ([Rail](../apps/desktop/src/rail/Rail.tsx), [FirstRun](../apps/desktop/src/app/FirstRun.tsx)). [Awareness E1–E5](../scenarios/awareness.md) specifies Brief and context foundations. | Specify creation, prompt tuning and recovery; prove one Door starts and coordinates work in its Workstream without making the user route between Agents. |
+| Todos and dependencies | User/Agent creation and dependency management in the Workstream. | Todo carries creator and blockers; the Shelf and Drawer render them ([Todos](../apps/desktop/src/todos/Todos.tsx), [TodoDrawer](../apps/desktop/src/todos/TodoDrawer.tsx)); [T3–T4](../scenarios/todos.md) define unblocking and cycle rejection. | Specify Workstream scope; prove creation, blocking and unblocking within it. Cross-Workstream dependencies remain undecided. |
 | Durable Todo comments | One readable line preserves everything future viewers need. | Todo has title/body, but no comments field ([Todo](../contracts/generated/todo/Todo.ts)); current detail is in the Drawer. | Specify comment creation and preservation; review examples that retain a decision, its reason and necessary evidence without transient chatter. |
 | Markdown Sketch | User/Agent creation, rich Markdown and Mermaid. | Pads store text and ownership; source and rich editors exist ([Pad](../contracts/generated/pad/Pad.ts), [PadEditor](../apps/desktop/src/pads/PadEditor.tsx), [PadRichEditor](../apps/desktop/src/pads/PadRichEditor.tsx)). | Specified: a Sketch is a Pad with Mermaid blocks, one live-preview surface with no view modes (U147, U148, [ui-rail](../scenarios/ui-rail.md)). Implement and prove create/edit/reopen with text and diagram intact. |
 | Drawing in a Sketch | User/Agent creation and editing of drawings within rich Markdown. | The current Pad contract holds text only; the desktop dependencies contain no canvas ([package](../apps/desktop/package.json)). | Specified: a Drawing is an `excalidraw` fenced block, with Excalidraw (MIT) chosen over tldraw for its licence (U149, [ui-rail](../scenarios/ui-rail.md)). Implement and prove the visual survives creation, editing and reopening. |
@@ -421,8 +421,8 @@ Current evidence is the source at `a1f4d5eae322470951bb4906b31412af564bed15`; a 
 
 ### Roadmap and decisions still open
 
-1. Deliver one vertical Room/Door slice: create a Room, enter its Door and complete one coordinated action. Define its scenario and observer, then align glossary, contracts, behavior and UI in that work.
-2. Extend it with Room-scoped Todos, dependencies and durable comments, with polished keyboard and pointer interaction.
+1. Deliver one vertical Workstream/Door slice: create a Workstream, enter its Door and complete one coordinated action. Define its scenario and observer, then align glossary, contracts, behavior and UI in that work.
+2. Extend it with Workstream-scoped Todos, dependencies and durable comments, with polished keyboard and pointer interaction.
 3. Add Sketches with rich Markdown and Mermaid or Drawing visuals; settle representation, permissions and storage through scoped implementation and create/edit/reopen proof.
 
-Room nesting, cross-Room dependencies, Sketch embedding, storage and editing rights, and retention of the whole-Project view remain open. No implementation row is ready until it has a scenario and an observer. Assign that work as `; keep accepted product choices and their reasons here.
+Workstream nesting, cross-Workstream dependencies, Sketch embedding, storage and editing rights, and retention of the whole-Project view remain open. No implementation row is ready until it has a scenario and an observer. Assign that work as `; keep accepted product choices and their reasons here.

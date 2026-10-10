@@ -39,7 +39,7 @@ const AttachmentChip = (props: { attachment: Attachment; onPreview: (preview: Pr
 );
 
 /**
- * The conversation with the selected Room's Door: the feed of Messages (U106), and the input (U105, U109, U110).
+ * The conversation with the selected Workstream's Door: the feed of Messages (U106), and the input (U105, U109, U110).
  * `selectionOf` reads the selected Terminal's selection through the emulator the Pane owns.
  */
 const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: string | null) => string }) => {
@@ -64,8 +64,8 @@ const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: s
   const nodeIds = createMemo(() => new Set(rail.nodes.map((node) => node.id)));
   const nameOf = (id: string) => rail.nodes.find((node) => node.id === id)?.name ?? id;
 
-  // U160: the Room's own row and every row below it.
-  const roomIds = createMemo(() => {
+  // U160: the Workstream's own row and every row below it.
+  const workstreamIds = createMemo(() => {
     const ids = new Set([props.door()]);
 
     for (let grown = true; grown; ) {
@@ -83,10 +83,10 @@ const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: s
   });
 
   const listed = (message: Message): boolean => {
-    const inRoom = (id: string) => roomIds().has(id);
+    const inWorkstream = (id: string) => workstreamIds().has(id);
     const fromUser = message.from.kind === "user";
 
-    return (inRoom(message.from.id) || inRoom(message.to)) && (fromUser || inRoom(message.from.id)) && (message.to === "you" || inRoom(message.to));
+    return (inWorkstream(message.from.id) || inWorkstream(message.to)) && (fromUser || inWorkstream(message.from.id)) && (message.to === "you" || inWorkstream(message.to));
   };
 
   const lines = createMemo(() =>
@@ -325,7 +325,7 @@ const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: s
   );
 };
 
-/** The selected Room, or the nearest one above the selected row; `null` when the selection resolves to no Room. */
+/** The selected Workstream, or the nearest one above the selected row; `null` when the selection resolves to no Workstream. */
 const useDoorId = (): Accessor<string | null> => {
   const { rail } = useConnectedProject();
 
@@ -337,7 +337,7 @@ const useDoorId = (): Accessor<string | null> => {
 
       if (found === undefined) return null;
 
-      if (found.kind === "room") return found.id;
+      if (found.kind === "workstream") return found.id;
 
       id = found.parent;
     }
@@ -346,7 +346,7 @@ const useDoorId = (): Accessor<string | null> => {
   });
 };
 
-/** U145: the Thread exists only where there is a Room whose Door it talks to. */
+/** U145: the Thread exists only where there is a Workstream whose Door it talks to. */
 export const Thread = (props: { selectionOf: (terminalId: string | null) => string }) => {
   const door = useDoorId();
 

@@ -24,6 +24,10 @@ export type Screens = {
   returnToBottom(id: string): void;
   copy(id: string, clipboard: Pick<Clipboard, "writeText">): Promise<void>;
   paste(id: string, clipboard: Pick<Clipboard, "readText">): Promise<void>;
+  /** Whether the Terminal has exited. */
+  exited(id: string): boolean;
+  /** Pastes dropped paths as one shell line fragment (U162); an exited Terminal or Daemon, or no path, takes nothing. */
+  pastePaths(id: string, paths: string[]): void;
   /** The selected Terminal's last failed call or `terminal.output`, until a later call for that Terminal succeeds. */
   failure(id: string | null): string | null;
   dispose(): void;
@@ -295,6 +299,12 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     }
   };
 
+  const pastePaths = (id: string, paths: string[]): void => {
+    if (paths.length === 0 || exited(id) || daemonExit() !== null) return;
+
+    emulatorFor(id).paste(`${paths.map((path) => `'${path.replaceAll("'", "'\\''")}'`).join(" ")} `);
+  };
+
   const show = (id: string, host: HTMLElement, focus?: boolean): Size => {
     const holder = holderFor(id);
     const size = holder.emulator.show(host, focus);
@@ -340,6 +350,8 @@ export const createScreens = (connected: ConnectedProject, createEmulator: Emula
     returnToBottom: (id) => holderFor(id).returnToBottom(),
     copy,
     paste,
+    pastePaths,
+    exited,
     failure: (id) => {
       const current = failures();
 

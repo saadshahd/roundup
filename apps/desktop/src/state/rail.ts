@@ -3,7 +3,7 @@ import { createStore, reconcile } from "solid-js/store";
 import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
-import { ancestorsOf, isRoom } from "../rail/layout";
+import { ancestorsOf, isWorkstream } from "../rail/layout";
 import type { RailStorage } from "../rail/persist/storage";
 import type { Events } from "../app/events";
 import type { AppSeam } from "../app/seam";
@@ -14,18 +14,18 @@ export type ExitState = { kind: "code"; code: number } | { kind: "signal" } | { 
 export type RailState = {
   /** Rows in the Daemon's order; only a `rail.tree` call adds or removes one. */
   readonly nodes: readonly RailNode[];
-  /** `null` while the node's program runs, and for a Room (one with no program). */
+  /** `null` while the node's program runs, and for a Workstream (one with no program). */
   exitOf(node: RailNode): ExitState | null;
   doorPending(id: string): boolean;
   doorFailure(id: string): string | null;
   startDoor(id: string): Promise<void>;
-  /** U9/U62: creates a root Room, then selects it and starts its Door once `rail.tree` returns it. */
-  createRoom(): Promise<void>;
-  /** True from the click until the new Room has appeared and its Door launch has begun. */
-  roomCreating(): boolean;
-  /** The message of the last failed `rail.createRoom`, until the next attempt or click. */
-  roomFailure(): string | null;
-  clearRoomFailure(): void;
+  /** U9/U62: creates a root Workstream, then selects it and starts its Door once `rail.tree` returns it. */
+  createWorkstream(): Promise<void>;
+  /** True from the click until the new Workstream has appeared and its Door launch has begun. */
+  workstreamCreating(): boolean;
+  /** The message of the last failed `rail.createWorkstream`, until the next attempt or click. */
+  workstreamFailure(): string | null;
+  clearWorkstreamFailure(): void;
   selected(): string | null;
   restored(): boolean;
   collapsed(): ReadonlySet<string>;
@@ -54,10 +54,10 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
   const [doors, setDoors] = createStore<Record<string, { pending: boolean; observedLive: boolean; failure: { message: string; attempt: string | null } | null }>>({});
   const [selected, setSelected] = createSignal<string | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
-  const [roomCreating, setRoomCreating] = createSignal(false);
-  const [roomFailure, setRoomFailure] = createSignal<string | null>(null);
-  /** The id `rail.createRoom` returned, until `rail.tree` shows its row. */
-  let wantedRoom: string | null = null;
+  const [workstreamCreating, setWorkstreamCreating] = createSignal(false);
+  const [workstreamFailure, setWorkstreamFailure] = createSignal<string | null>(null);
+  /** The id `rail.createWorkstream` returned, until `rail.tree` shows its row. */
+  let wantedWorkstream: string | null = null;
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [restored, setRestored] = createSignal(false);
@@ -71,7 +71,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
     const above = new Set(ancestorsOf(model.tree, id));
 
-    setCollapsed((closed) => new Set([...closed].filter((room) => !above.has(room))));
+    setCollapsed((closed) => new Set([...closed].filter((workstream) => !above.has(workstream))));
   };
 
   let pending = 0;
@@ -110,7 +110,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
         if (saved) {
           setSelected(tree.some((node) => node.id === saved.selected) ? saved.selected : null);
-          setCollapsed(new Set(saved.collapsed.filter((id) => tree.some((node) => node.id === id && isRoom(node)))));
+          setCollapsed(new Set(saved.collapsed.filter((id) => tree.some((node) => node.id === id && isWorkstream(node)))));
           reveal(selected());
           setRestored(selected() !== null);
           save();
@@ -125,12 +125,12 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       }
     });
 
-    const wanted = wantedRoom;
+    const wanted = wantedWorkstream;
 
     if (wanted !== null && tree.some((node) => node.id === wanted)) {
-      wantedRoom = null;
+      wantedWorkstream = null;
       select(wanted);
-      setRoomCreating(false);
+      setWorkstreamCreating(false);
       void startDoor(wanted);
     }
   };
@@ -208,18 +208,18 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     }
   };
 
-  const createRoom = async (): Promise<void> => {
-    if (roomCreating()) return;
-    setRoomCreating(true);
-    setRoomFailure(null);
+  const createWorkstream = async (): Promise<void> => {
+    if (workstreamCreating()) return;
+    setWorkstreamCreating(true);
+    setWorkstreamFailure(null);
 
     try {
-      wantedRoom = (await app.rpc("rail.createRoom", { name: "room", parent: null })).id;
+      wantedWorkstream = (await app.rpc("rail.createWorkstream", { name: "workstream", parent: null })).id;
     } catch (error) {
       if (!(error instanceof Error)) throw error;
 
-      setRoomFailure(error.message);
-      setRoomCreating(false);
+      setWorkstreamFailure(error.message);
+      setWorkstreamCreating(false);
 
       return;
     }
@@ -236,10 +236,10 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     doorPending: (id) => doors[id]?.pending ?? false,
     doorFailure: (id) => doors[id]?.failure?.message ?? null,
     startDoor,
-    createRoom,
-    roomCreating,
-    roomFailure,
-    clearRoomFailure: () => setRoomFailure(null),
+    createWorkstream,
+    workstreamCreating,
+    workstreamFailure,
+    clearWorkstreamFailure: () => setWorkstreamFailure(null),
     get nodes() {
       return model.tree;
     },

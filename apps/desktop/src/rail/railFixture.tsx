@@ -1,4 +1,4 @@
-import { render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { DaemonExit } from "../app/seam";
@@ -82,3 +82,11 @@ export const tabbableRows = (): HTMLElement[] => screen.getAllByRole("treeitem")
 
 export const railCallsTo = (app: ReturnType<typeof createFakeApp>, method: string) =>
   app.calls.filter((call) => call.method === method).map((call) => call.params);
+
+/** A chord of the keyboard: `⌘` and `key` (U32). */
+export const chord = (key: string): void => {
+  fireEvent.keyDown(document, { key, metaKey: true });
+};
+
+/** U162: the one add in the pinned line. */
+export const pinnedAdd = (): HTMLElement => screen.getByText("new Workstream", { selector: ".rail-actions button" });

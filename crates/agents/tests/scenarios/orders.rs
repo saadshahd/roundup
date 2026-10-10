@@ -112,7 +112,7 @@ async fn o1_o2_a_spawn_holds_the_order_it_was_given_or_the_one_its_prompt_or_not
 #[tokio::test]
 async fn o1_a_terminal_has_no_order_and_a_room_has_one() {
     let f = Fixture::new();
-    let room = f.room("team", None).await;
+    let room = f.workstream("team", None).await;
     f.call(
         "rail.spawnTerminal",
         json!({"cwd": f.dir.path(), "parent": null}),
@@ -129,7 +129,7 @@ async fn o1_a_terminal_has_no_order_and_a_room_has_one() {
     }
     assert_eq!(
         order_of(&tree, &room),
-        Some(Order::clarification("What is this Room for?"))
+        Some(Order::clarification("What is this Workstream for?"))
     );
 }
 
@@ -186,7 +186,7 @@ async fn o3_a_room_gives_its_door_the_order_and_stopping_the_door_keeps_it() {
     let given = work("coordinate the release", &["merge"]);
     let room = f
         .call(
-            "rail.createRoom",
+            "rail.createWorkstream",
             json!({"name": "release", "parent": null, "order": given}),
         )
         .await
@@ -205,7 +205,7 @@ async fn o3_a_room_gives_its_door_the_order_and_stopping_the_door_keeps_it() {
 
     let err = f
         .call(
-            "rail.createRoom",
+            "rail.createWorkstream",
             json!({"name": "x", "parent": null, "order": work("", &[])}),
         )
         .await
@@ -217,7 +217,7 @@ async fn o3_a_room_gives_its_door_the_order_and_stopping_the_door_keeps_it() {
 async fn o4_the_agent_its_door_or_the_user_may_set_an_order_and_it_is_a_touch() {
     let f = Fixture::new();
     let touches = Arc::new(Touches::in_memory().unwrap());
-    let room = f.room("team", None).await;
+    let room = f.workstream("team", None).await;
     let agent = spawn(&f, json!({"parent": room})).await.unwrap().id;
     let stranger = spawn(&f, json!({})).await.unwrap().id;
     let set = |actor: Ctx, order: Order| {
@@ -379,7 +379,7 @@ async fn o4_another_callers_order_is_steered_unless_the_agent_set_it_or_a_takeov
 async fn o5_an_order_survives_a_reopen_and_a_move_and_leaves_with_its_node() {
     let f = Fixture::new();
     let given = work("keep me", &["leave"]);
-    let room = f.room("team", None).await;
+    let room = f.workstream("team", None).await;
     let agent = spawn(&f, json!({"order": given})).await.unwrap().id;
 
     f.call(
@@ -394,7 +394,7 @@ async fn o5_an_order_survives_a_reopen_and_a_move_and_leaves_with_its_node() {
     assert_eq!(order_of(&f.tree().await, &agent), Some(given));
     assert_eq!(
         order_of(&f.tree().await, &room),
-        Some(Order::clarification("What is this Room for?"))
+        Some(Order::clarification("What is this Workstream for?"))
     );
 
     f.call("rail.remove", json!({"id": agent})).await.unwrap();

@@ -4,7 +4,7 @@ import { mostUrgent } from "../ink/glyph";
 
 const DONE_FOLD_MS = 10 * 60_000;
 
-/** What a collapsed Room shows in place of `▾`: its most urgent descendant Kind (`null` when no Agent is below) and its child count. */
+/** What a collapsed Workstream shows in place of `▾`: its most urgent descendant Kind (`null` when no Agent is below) and its child count. */
 export type Collapsed = { kind: Kind | null; children: number };
 
 export type RailRow =
@@ -22,7 +22,16 @@ export type RailView = {
   dragged: string | null;
 };
 
-export const isRoom = (node: RailNode): boolean => node.kind === "room";
+export const isWorkstream = (node: RailNode): boolean => node.kind === "workstream";
+
+/** U145's resolution: `selected` when it is a Workstream, else the nearest Workstream above it, else `null`. */
+export const resolvedWorkstream = (nodes: readonly RailNode[], selected: string | null): string | null => {
+  const node = nodes.find((candidate) => candidate.id === selected);
+
+  if (node === undefined) return null;
+
+  return isWorkstream(node) ? node.id : node.parent === null ? null : resolvedWorkstream(nodes, node.parent);
+};
 
 /** The children of `parent` (`null` is the top level) by `order`. */
 export const siblingsOf = (nodes: readonly RailNode[], parent: string | null): RailNode[] =>
@@ -46,7 +55,7 @@ const isFoldedAgent = (node: RailNode, view: RailView): boolean =>
   node.status.kind === "done" &&
   view.now - node.status.since >= DONE_FOLD_MS;
 
-/** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Room without its descendants. */
+/** Rows in tree order: siblings by `order`, then Agents done for 10 minutes or more as one `✓ n done` line, a collapsed Workstream without its descendants. */
 export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[] => {
   const under = (parent: string | null): RailNode[] => siblingsOf(nodes, parent);
 
@@ -64,7 +73,7 @@ export const layoutRail = (nodes: readonly RailNode[], view: RailView): RailRow[
     ];
 
     const nodeRows = shown.flatMap((node): RailRow[] => {
-      const collapsed = isRoom(node) && view.collapsed.has(node.id);
+      const collapsed = isWorkstream(node) && view.collapsed.has(node.id);
 
       const row: RailRow = {
         kind: "node",

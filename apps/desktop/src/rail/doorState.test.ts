@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { door, room } from "../testing/nodes";
+import { door, workstream } from "../testing/nodes";
 import { doorStateOf, doorStateText } from "./doorState";
 
 const none = { kind: "unknown" } as const;
@@ -10,18 +10,18 @@ describe("u143 Door state", () => {
   });
 
   it("u143_a_pending_start_is_starting_even_after_an_earlier_failure", () => {
-    expect(doorStateOf(room("r"), none, true, true)).toEqual({ kind: "starting" });
+    expect(doorStateOf(workstream("r"), none, true, true)).toEqual({ kind: "starting" });
   });
 
   it("u143_a_recorded_start_failure_is_failed_not_stopped", () => {
     expect(doorStateOf(door("r", "done", "d", { terminal_id: null }), none, false, true)).toEqual({ kind: "failed" });
   });
 
-  it("u143_a_Room_never_launched_is_not_started", () => {
-    expect(doorStateOf(room("r"), none, false, false)).toEqual({ kind: "never-started" });
+  it("u143_a_Workstream_never_launched_is_not_started", () => {
+    expect(doorStateOf(workstream("r"), none, false, false)).toEqual({ kind: "never-started" });
   });
 
-  it("u143_a_Room_launched_before_is_stopped_with_how_it_ended", () => {
+  it("u143_a_Workstream_launched_before_is_stopped_with_how_it_ended", () => {
     expect(doorStateOf(door("r", "error", "e"), { kind: "code", code: 137 }, false, false)).toEqual({ kind: "stopped", exit: { kind: "code", code: 137 } });
   });
 

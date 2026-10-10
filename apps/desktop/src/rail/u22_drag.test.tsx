@@ -6,12 +6,12 @@ import { RpcError } from "../app/seam";
 import type { DaemonExit } from "../app/seam";
 import { dragFrom, pointerAt, release, stubLayout, stubVariableLayout } from "./dragFixture";
 import { mountRail, railCallsTo, rowNames, rowOf } from "./railFixture";
-import { agent, event, room, MINUTE, NOW } from "../testing/nodes";
+import { agent, event, workstream, MINUTE, NOW } from "../testing/nodes";
 
 /** a, g { x }, b */
 const TREE: RailNode[] = [
   agent("a", "idle", "i", { order: 0 }),
-  room("g", { order: 1 }),
+  workstream("g", { order: 1 }),
   agent("x", "idle", "i", { parent: "g", order: 0 }),
   agent("b", "idle", "i", { order: 2 }),
 ];
@@ -117,7 +117,7 @@ describe("u22 drag", () => {
       agent("a", "idle", "i", { order: 0 }),
       agent("b", "idle", "i", { order: 1 }),
       agent("c", "idle", "i", { order: 2 }),
-      room("g", { order: 3 }),
+      workstream("g", { order: 3 }),
       agent("x", "idle", "i", { parent: "g", order: 0 }),
       doneAgent("e", 1, { parent: "g" }),
       doneAgent("d", 4),

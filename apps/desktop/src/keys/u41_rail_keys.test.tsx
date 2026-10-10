@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, room, door, MINUTE, NOW } from "../testing/nodes";
+import { agent, workstream, door, MINUTE, NOW } from "../testing/nodes";
 import { rowOf } from "../rail/railFixture";
 import type { EmulatorFactory } from "../terminal/emulator";
 import { mountKeys } from "./keysFixture";
@@ -145,7 +145,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_left_on_an_expanded_group_collapses_it", async () => {
-    await mountKeys([room("g"), agent("child", "idle", "x", { parent: "g" })]);
+    await mountKeys([workstream("g"), agent("child", "idle", "x", { parent: "g" })]);
     rowOf("g").focus();
 
     press("ArrowLeft");
@@ -154,7 +154,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_left_on_an_expanded_group_among_several_collapses_only_the_focused_one", async () => {
-    await mountKeys([room("g1", { order: 0 }), room("g2", { order: 1 })]);
+    await mountKeys([workstream("g1", { order: 0 }), workstream("g2", { order: 1 })]);
     rowOf("g2").focus();
 
     press("ArrowLeft");
@@ -164,7 +164,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_left_on_a_collapsed_group_selects_its_parent", async () => {
-    const { rail } = await mountKeys([room("outer"), room("inner", { parent: "outer" })]);
+    const { rail } = await mountKeys([workstream("outer"), workstream("inner", { parent: "outer" })]);
     fireEvent.click(within(rowOf("inner")).getByRole("button", { name: "collapse" }));
     rowOf("inner").focus();
 
@@ -175,7 +175,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_left_on_a_leaf_selects_its_parent", async () => {
-    const { rail } = await mountKeys([room("g"), agent("child", "idle", "x", { parent: "g" })]);
+    const { rail } = await mountKeys([workstream("g"), agent("child", "idle", "x", { parent: "g" })]);
     rowOf("child").focus();
 
     press("ArrowLeft");
@@ -186,8 +186,8 @@ describe("u41 rail by keyboard, the rest", () => {
 
   it("u41_left_at_depth_three_selects_the_immediate_parent_not_the_root", async () => {
     const { rail } = await mountKeys([
-      room("outer"),
-      room("inner", { parent: "outer" }),
+      workstream("outer"),
+      workstream("inner", { parent: "outer" }),
       agent("leaf", "idle", "x", { parent: "inner" }),
     ]);
 
@@ -210,7 +210,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_right_on_a_collapsed_group_expands_it", async () => {
-    await mountKeys([room("g"), agent("child", "idle", "x", { parent: "g" })]);
+    await mountKeys([workstream("g"), agent("child", "idle", "x", { parent: "g" })]);
     fireEvent.click(screen.getByRole("button", { name: "collapse" }));
     rowOf("g").focus();
 
@@ -221,7 +221,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_right_on_a_collapsed_group_among_several_expands_only_the_focused_one", async () => {
-    await mountKeys([room("g1", { order: 0 }), room("g2", { order: 1 })]);
+    await mountKeys([workstream("g1", { order: 0 }), workstream("g2", { order: 1 })]);
     fireEvent.click(within(rowOf("g1")).getByRole("button", { name: "collapse" }));
     fireEvent.click(within(rowOf("g2")).getByRole("button", { name: "collapse" }));
     rowOf("g2").focus();
@@ -234,7 +234,7 @@ describe("u41 rail by keyboard, the rest", () => {
 
   it("u41_right_on_an_expanded_group_selects_its_first_child", async () => {
     const { rail } = await mountKeys([
-      room("g"),
+      workstream("g"),
       agent("b", "idle", "x", { parent: "g", order: 1 }),
       agent("a", "idle", "x", { parent: "g", order: 0 }),
     ]);
@@ -249,7 +249,7 @@ describe("u41 rail by keyboard, the rest", () => {
 
   it("u41_right_selects_the_first_visible_child_skipping_a_row_folded_into_done", async () => {
     const { rail } = await mountKeys([
-      room("g"),
+      workstream("g"),
       agent("old", "done", "finished", { parent: "g", order: 0, status: { kind: "done", label: "finished", since: NOW - 11 * MINUTE } }),
       agent("live", "idle", "x", { parent: "g", order: 1 }),
     ]);
@@ -273,9 +273,9 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(document.activeElement).toBe(rowOf("a"));
   });
 
-  it("u41_left_on_an_expanded_meta_agent_collapses_its_room", async () => {
+  it("u41_left_on_an_expanded_meta_agent_collapses_its_workstream", async () => {
     const { rail } = await mountKeys([
-      room("g"),
+      workstream("g"),
       door("m", "working", "x", { parent: "g" }),
       agent("child", "idle", "y", { parent: "m" }),
     ]);
@@ -314,7 +314,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_arrow_left_and_right_in_the_rail_prevent_the_default_action", async () => {
-    await mountKeys([room("g")]);
+    await mountKeys([workstream("g")]);
     rowOf("g").focus();
 
     expect(press("ArrowLeft")).toBe(false);
@@ -327,7 +327,7 @@ describe("u41 rail by keyboard, the rest", () => {
     ["shift", { shiftKey: true }],
     ["cmd", { metaKey: true }],
   ])("u41_arrow_left_with_a_modifier_does_nothing_%s", async (_, held) => {
-    await mountKeys([room("g"), agent("child", "idle", "x", { parent: "g" })]);
+    await mountKeys([workstream("g"), agent("child", "idle", "x", { parent: "g" })]);
     rowOf("g").focus();
 
     const notPrevented = press("ArrowLeft", held);
@@ -347,7 +347,7 @@ describe("u41 rail by keyboard, the rest", () => {
 
   it("u41_arrow_left_in_the_pane_reaches_the_terminal", async () => {
     const { rail } = await mountKeys(
-      [room("g"), agent("a", "idle", "x", { parent: "g" })],
+      [workstream("g"), agent("a", "idle", "x", { parent: "g" })],
       { pane: focusableEmulator() },
     );
 
@@ -393,7 +393,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_f2_on_the_collapse_button_does_nothing", async () => {
-    const { rail } = await mountKeys([room("g")]);
+    const { rail } = await mountKeys([workstream("g")]);
     rail.select("g");
     screen.getByRole("button", { name: "collapse" }).focus();
 
@@ -404,7 +404,7 @@ describe("u41 rail by keyboard, the rest", () => {
 
   it("u41_right_selecting_a_row_shows_its_terminal_exactly_as_a_click_does", async () => {
     await mountKeys(
-      [room("g"), agent("child", "idle", "x", { parent: "g" })],
+      [workstream("g"), agent("child", "idle", "x", { parent: "g" })],
       { pane: terminalMarkerEmulator() },
     );
     rowOf("g").focus();
@@ -415,7 +415,7 @@ describe("u41 rail by keyboard, the rest", () => {
   });
 
   it("u41_selecting_a_row_by_keyboard_calls_no_method_of_its_own", async () => {
-    const { app } = await mountKeys([room("g"), agent("child", "idle", "x", { parent: "g" })]);
+    const { app } = await mountKeys([workstream("g"), agent("child", "idle", "x", { parent: "g" })]);
     rowOf("g").focus();
     const before = app.calls.length;
 
@@ -430,7 +430,7 @@ describe("u41 rail by keyboard, the rest", () => {
     ["f2", "F2"],
   ])("u41_%s_in_an_open_drawer_does_nothing", async (_, key) => {
     const { rail, connected } = await mountKeys(
-      [room("g"), agent("child", "idle", "x", { parent: "g" })],
+      [workstream("g"), agent("child", "idle", "x", { parent: "g" })],
       { drawer: true },
     );
 

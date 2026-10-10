@@ -122,7 +122,7 @@ Every long string forces this choice. Make it per field, not globally:
 - **Truncate at the end** for secondary metadata where the start carries the meaning: role, description, last message preview. Always pair with a way to see the full value.
 - **Truncate in the middle** when items differ at the *end*: file names (`Q3-report…v12-final.pdf`), emails sharing a long domain, paths, hashes. End-truncation makes them identical.
 - **Clamp** (`line-clamp: 2`) for multi-line previews in cards, so card heights stay predictable.
-- **Never truncate** numbers, amounts, dates, or anything the user compares. Give them the room.
+- **Never truncate** numbers, amounts, dates, or anything the user compares. Give them the workstream.
 
 **Completion criterion:** every catalog row that applies has been tried, every width and environment above has been checked, and every break has a signature, a cause, and a fix.
 

@@ -43,7 +43,7 @@ describe("u11 one emulator per Terminal", () => {
   });
 
   it("u11_selecting_a_group_shows_no_emulator", async () => {
-    const { connected, container } = await mountPane([node("a"), node("g", { kind: "room", status: null, terminal_id: null })]);
+    const { connected, container } = await mountPane([node("a"), node("g", { kind: "workstream", status: null, terminal_id: null })]);
 
     connected.rail.select("a");
     connected.rail.select("g");

@@ -402,10 +402,13 @@ async fn g6_worktrees_are_found_by_stored_path_after_a_restart() {
             stranger.to_str().unwrap(),
         ],
     );
-    let room = f.room("elsewhere", None).await;
-    f.call("rail.move", json!({"id": id, "parent": room, "index": 0}))
-        .await
-        .unwrap();
+    let workstream = f.workstream("elsewhere", None).await;
+    f.call(
+        "rail.move",
+        json!({"id": id, "parent": workstream, "index": 0}),
+    )
+    .await
+    .unwrap();
     f.call("agent.stop", json!({"id": id})).await.unwrap();
     let tree = f.tree().await;
     let state = f

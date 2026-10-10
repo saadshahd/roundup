@@ -27,7 +27,7 @@ const mount = async () => {
   const controls = seedApp("door-stopped", Date.now());
 
   render(() => <App app={controls.app} reducedMotion={() => false} clock={Date.now} />);
-  fireEvent.click(await screen.findByText("first room"));
+  fireEvent.click(await screen.findByText("first workstream"));
   await screen.findByText("Door stopped, exited 0");
 };
 

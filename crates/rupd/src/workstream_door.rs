@@ -57,11 +57,14 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
     let socket = project.path().join("rupd.sock");
     let serving = tokio::spawn(serve(UnixListener::bind(&socket).unwrap(), daemon.clone()));
     let client = Client::connect(&socket).await.unwrap();
-    let room = client
-        .request("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = client
+        .request(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
+    let id = workstream["id"].as_str().unwrap();
     let child = client
         .request(
             "agent.spawn",
@@ -206,7 +209,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
         id
     );
     assert_eq!(
-        nodes.iter().find(|n| n["id"] == room["id"]).unwrap()["terminal_id"],
+        nodes.iter().find(|n| n["id"] == workstream["id"]).unwrap()["terminal_id"],
         second["terminal_id"]
     );
     daemon.stop_terminals().await.unwrap();

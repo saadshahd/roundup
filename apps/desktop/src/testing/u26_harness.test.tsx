@@ -22,7 +22,7 @@ const rail = () => screen.findByRole("region", { name: "rail" });
 afterEach(cleanup);
 
 describe("u26 the harness seeds", () => {
-  it("u26_the_seeds_include_the_first_room_screens_the_recipe_documents", () => {
+  it("u26_the_seeds_include_the_first_workstream_screens_the_recipe_documents", () => {
     expect(SEEDS).toEqual(["first-run", "agents-10", "tree-40", "daemon-exits", "conflict", "empty-project", "door-stopped", "decisions", "earlier-run"]);
   });
 
@@ -34,16 +34,16 @@ describe("u26 the harness seeds", () => {
     expect((await rail()).textContent).toBe("agents and terminalsappear here, one per row,nested by indent");
   });
 
-  it("u143_the_empty_project_seed_exposes_the_first_room_action", async () => {
+  it("u143_the_empty_project_seed_exposes_the_first_workstream_action", async () => {
     mount("empty-project");
 
-    expect(await screen.findByRole("button", { name: "start a Room" })).toBeTruthy();
+    expect(await screen.findAllByRole("button", { name: "new Workstream" })).toHaveLength(2);
     expect(screen.queryByText("open a folder to start")).toBeNull();
   });
 
   it("u143_the_stopped_door_seed_shows_its_exit_and_restart_action", async () => {
     mount("door-stopped");
-    fireEvent.click(await screen.findByText("first room"));
+    fireEvent.click(await screen.findByText("first workstream"));
 
     expect(await screen.findByText("Door stopped, exited 0")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "start Door" }).length).toBeGreaterThan(0);
@@ -89,8 +89,8 @@ describe("u26 the harness seeds", () => {
     await within(await rail()).findByText("agent-1");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await expect(app.rpc("rail.createRoom", { name: "x", parent: null })).rejects.toMatchObject({ code: -32003 });
-    await expect(app.rpc("rail.createRoom", { name: "x", parent: null })).resolves.toMatchObject({ name: "x" });
+    await expect(app.rpc("rail.createWorkstream", { name: "x", parent: null })).rejects.toMatchObject({ code: -32003 });
+    await expect(app.rpc("rail.createWorkstream", { name: "x", parent: null })).resolves.toMatchObject({ name: "x" });
   });
 
   it("u26_a_pad_the_agent_owns_takes_an_append_and_shows_the_new_text", async () => {
@@ -195,7 +195,7 @@ describe("u26 the Daemon's rail methods", () => {
   it("u26_creating_a_group_adds_a_group_with_the_name", async () => {
     const { app, names } = await daemon();
 
-    await app.rpc("rail.createRoom", { name: "infra", parent: null });
+    await app.rpc("rail.createWorkstream", { name: "infra", parent: null });
 
     expect(await names()).toContain("infra");
   });
@@ -213,7 +213,7 @@ describe("u26 the Daemon's rail methods", () => {
 
     const promoted = await app.rpc("rail.startDoor", { id: "backend" });
 
-    expect([promoted.kind, promoted.terminal_id]).toEqual(["room", "t-backend-1"]);
+    expect([promoted.kind, promoted.terminal_id]).toEqual(["workstream", "t-backend-1"]);
   });
 
   it("u26_moving_a_node_re_parents_it_at_the_index", async () => {

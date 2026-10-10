@@ -173,9 +173,12 @@ impl Fixture {
         Ok(serde_json::from_value(node).unwrap())
     }
 
-    pub async fn room(&self, name: &str, parent: Option<&str>) -> String {
+    pub async fn workstream(&self, name: &str, parent: Option<&str>) -> String {
         let node = self
-            .call("rail.createRoom", json!({"name": name, "parent": parent}))
+            .call(
+                "rail.createWorkstream",
+                json!({"name": name, "parent": parent}),
+            )
             .await
             .unwrap();
         node["id"].as_str().unwrap().to_owned()

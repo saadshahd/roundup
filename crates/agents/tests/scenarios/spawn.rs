@@ -46,11 +46,11 @@ async fn a4_spawn_runs_claude_with_the_agents_settings_and_lists_an_agent() {
 }
 
 #[tokio::test]
-async fn a4_spawn_nests_under_a_room_and_never_under_an_agent() {
+async fn a4_spawn_nests_under_a_workstream_and_never_under_an_agent() {
     let f = Fixture::running("sleep 30");
-    let room = f.room("team", None).await;
-    let child = f.spawn(Some(&room), None).await.unwrap();
-    assert_eq!(child.parent.as_deref(), Some(room.as_str()));
+    let workstream = f.workstream("team", None).await;
+    let child = f.spawn(Some(&workstream), None).await.unwrap();
+    assert_eq!(child.parent.as_deref(), Some(workstream.as_str()));
 
     let err = f.spawn(Some(&child.id), None).await.unwrap_err();
     assert_eq!(err.code, code::CONFLICT);
