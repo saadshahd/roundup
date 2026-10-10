@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { room } from "../testing/nodes";
+import { workstream } from "../testing/nodes";
 import rowCss from "./rowButton.styles.css?inline";
 import appCss from "../styles.css?inline";
 import { mountTodos, todo, todoRowOf as rowOf } from "./testHarness";
@@ -35,7 +35,7 @@ const wraps = (el: Element) => {
 
 describe("u154 the row on the densest data", () => {
   it("u154_the_title_the_waits_on_line_and_the_home_line_wrap_without_ellipsis_or_clipping", async () => {
-    await mountTodos(densest(), true, [room("r1", { name: LONG_ROOM })]);
+    await mountTodos(densest(), true, [workstream("r1", { name: LONG_ROOM })]);
     await screen.findByText(/#12 /);
 
     const row = rowOf(12);
@@ -52,7 +52,7 @@ describe("u154 the row on the densest data", () => {
   });
 
   it("u154_a_failure_takes_the_place_of_the_waits_on_line_and_the_home_line_stays", async () => {
-    const { app } = await mountTodos(densest(), true, [room("r1", { name: LONG_ROOM })]);
+    const { app } = await mountTodos(densest(), true, [workstream("r1", { name: LONG_ROOM })]);
 
     await screen.findByText(/#12 /);
     app.handlers["todo.complete"] = () => Promise.reject(new Error("could not complete the todo"));
