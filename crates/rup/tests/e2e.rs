@@ -950,7 +950,7 @@ async fn b20_a_door_and_the_user_ask_for_its_children_and_no_one_else_does() {
 }
 
 #[tokio::test]
-async fn b19_a_childs_pads_reach_the_digest_once_and_terminal_output_never() {
+async fn b19_a_childs_pads_reach_the_door_once_and_terminal_output_never() {
     let project = start(&[]);
     let user = project.client().await;
     let rail = rail(&project, &user).await;
@@ -958,19 +958,188 @@ async fn b19_a_childs_pads_reach_the_digest_once_and_terminal_output_never() {
     as_a.request("pad.create", json!({ "name": "notes", "text": "ZEBRA" }))
         .await
         .unwrap();
-
     let as_m = client_as(&project, actor(ActorKind::Agent, &rail.m)).await;
 
+    // The change is pushed to `m` (B21), which is an envelope about the child, so it names the
+    // Pad and no later envelope does.
+    let (_, pushed) = push_where(&user, &rail.m, |_, e| e["pads"] == json!(["notes"])).await;
     let by_user = digest_of(&user, &rail.m).await.unwrap();
-    let by_user_again = digest_of(&user, &rail.m).await.unwrap();
     let first = digest_of(&as_m, &rail.m).await.unwrap();
-    let second = digest_of(&as_m, &rail.m).await.unwrap();
 
-    assert_eq!(by_user["children"][0]["pads"], json!(["notes"]));
-    assert_eq!(by_user_again["children"][0]["pads"], json!(["notes"]));
-    assert_eq!(first["children"][0]["pads"], json!(["notes"]));
-    assert_eq!(second["children"][0]["pads"], json!([]));
+    assert_eq!(pushed["name"], by_user["children"][0]["name"]);
+    assert_eq!(by_user["children"][0]["pads"], json!([]));
+    assert_eq!(first["children"][0]["pads"], json!([]));
+    assert!(!pushed.to_string().contains("ZEBRA"));
     assert!(!first.to_string().contains("ZEBRA"));
+}
+
+/// The Messages the Daemon sent to `to`, each with its pushed entry.
+async fn digest_pushes(client: &rpc::Client, to: &str) -> Vec<(Value, Value)> {
+    let listed = client
+        .request("message.list", json!({ "to": to }))
+        .await
+        .unwrap();
+    listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["from"]["id"] == "rupd")
+        .map(|message| {
+            let body = message["body"].as_str().unwrap();
+            let entry = body
+                .strip_prefix("[digest] ")
+                .expect("body is [digest] and an entry");
+            (message.clone(), serde_json::from_str(entry).unwrap())
+        })
+        .collect()
+}
+
+/// The pushes to `to` once one satisfies `want`; fails after five seconds.
+async fn push_where(
+    client: &rpc::Client,
+    to: &str,
+    want: impl Fn(&Value, &Value) -> bool,
+) -> (Value, Value) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let pushes = digest_pushes(client, to).await;
+        if let Some(found) = pushes.iter().rev().find(|(m, e)| want(m, e)) {
+            return found.clone();
+        }
+        assert!(Instant::now() < deadline, "no such push yet: {pushes:?}");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// Everything the Daemon has to say about the Rail so far has been said.
+async fn settled(client: &rpc::Client, to: &str) -> usize {
+    let mut seen = usize::MAX;
+    loop {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let now = digest_pushes(client, to).await.len();
+        if now == seen {
+            return now;
+        }
+        seen = now;
+    }
+}
+
+#[tokio::test]
+async fn b21_a_childs_kind_pad_and_todo_changes_each_push_one_entry_to_its_door() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let a_name = rail_tree(&user)
+        .await
+        .into_iter()
+        .find(|node| node.id == rail.a)
+        .unwrap()
+        .name;
+    settled(&user, &rail.m).await;
+
+    // A Kind change.
+    signal(&user, &rail.a, json!({"hook_event_name": "Stop"})).await;
+    let (message, entry) = push_where(&user, &rail.m, |_, e| {
+        e["name"] == a_name.as_str() && e["kind"] == "idle"
+    })
+    .await;
+    assert_eq!(message["kind"], "note");
+    assert_eq!(message["from"]["id"], "rupd");
+    let mut keys: Vec<_> = entry.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["kind", "last", "name", "pads", "todos"]);
+
+    // A Pad.
+    let as_a = client_as(&project, actor(ActorKind::Agent, &rail.a)).await;
+    as_a.request("pad.create", json!({ "name": "notes", "text": "ZEBRA" }))
+        .await
+        .unwrap();
+    let (_, entry) = push_where(&user, &rail.m, |_, e| e["pads"] == json!(["notes"])).await;
+    assert_eq!(entry["name"], a_name.as_str());
+    assert!(!entry.to_string().contains("ZEBRA"));
+
+    // An open Todo whose Home is a child Door, then its completion.
+    let sub = user
+        .request(
+            "rail.createWorkstream",
+            json!({ "name": "sub", "parent": rail.m }),
+        )
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    user.request("rail.startDoor", json!({ "id": sub }))
+        .await
+        .unwrap();
+    let todo = todo_at(&user, "chase the ticket").await;
+    user.request("todo.move", json!({ "id": todo, "home": sub }))
+        .await
+        .unwrap();
+    push_where(&user, &rail.m, |_, e| e["name"] == "sub" && e["todos"] == 1).await;
+    user.request("todo.complete", json!({ "id": todo }))
+        .await
+        .unwrap();
+    push_where(&user, &rail.m, |_, e| e["name"] == "sub" && e["todos"] == 0).await;
+}
+
+#[tokio::test]
+async fn b21_a_change_that_leaves_the_entry_as_it_was_pushes_nothing() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    settled(&user, &rail.m).await;
+    signal(&user, &rail.a, json!({"hook_event_name": "Stop"})).await;
+    let before = settled(&user, &rail.m).await;
+
+    signal(&user, &rail.a, json!({"hook_event_name": "Stop"})).await;
+    let todo = todo_at(&user, "at the root").await;
+    user.request("todo.update", json!({ "id": todo, "title": "renamed" }))
+        .await
+        .unwrap();
+
+    assert_eq!(settled(&user, &rail.m).await, before);
+}
+
+#[tokio::test]
+async fn b21_a_child_with_no_door_above_it_pushes_nothing() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    settled(&user, &rail.m).await;
+
+    signal(&user, &rail.c, json!({"hook_event_name": "Stop"})).await;
+    let as_c = client_as(&project, actor(ActorKind::Agent, &rail.c)).await;
+    as_c.request("pad.create", json!({ "name": "c-notes", "text": "x" }))
+        .await
+        .unwrap();
+    settled(&user, &rail.m).await;
+
+    for to in [&rail.g, &rail.c, &rail.m] {
+        let pushes = digest_pushes(&user, to).await;
+        assert!(
+            pushes.iter().all(|(_, e)| e["pads"] != json!(["c-notes"])),
+            "{to}: {pushes:?}"
+        );
+    }
+    assert!(digest_pushes(&user, &rail.g).await.is_empty());
+}
+
+#[tokio::test]
+async fn b21_under_a_takeover_of_the_door_the_push_is_held() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    settled(&user, &rail.m).await;
+    user.request("takeover.begin", json!({ "agent": rail.m }))
+        .await
+        .unwrap();
+
+    signal(&user, &rail.b, json!({"hook_event_name": "Stop"})).await;
+
+    let (message, _) = push_where(&user, &rail.m, |_, e| e["kind"] == "idle").await;
+    assert_eq!(message["status"], "held");
+    assert_eq!(message["reason"], "takeover");
 }
 
 #[tokio::test]

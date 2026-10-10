@@ -11,10 +11,9 @@ use provenance::Touches;
 use rpc::{Ctx, Module, RpcError, code};
 use serde_json::{Value, json};
 
-use crate::common::{Fixture, until_file};
+use crate::common::{Fixture, GATED, star, until_file};
 
-const RECORD: &str =
-    "stty raw -echo; echo 1 > \"$(dirname \"$0\")/ready\"; cat > \"$(dirname \"$0\")/typed\"";
+const RECORD: &str = GATED;
 
 fn paste(text: &str) -> String {
     format!("\x1b[200~{text}\x1b[201~\r")
@@ -160,6 +159,7 @@ async fn o2_the_first_steer_of_a_work_order_is_the_ask_then_its_limits() {
     .await
     .unwrap();
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     signal(&f, &node.id, "SessionStart").await;
 
     let text = paste("fix the build\n\nMust not:\n- touch CI\n- push");
@@ -172,6 +172,7 @@ async fn o2_the_first_steer_of_a_clarification_order_asks_to_find_elicit_and_rec
     let order = Order::clarification("Which test fails?");
     let node = spawn(&f, json!({"order": order})).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     signal(&f, &node.id, "SessionStart").await;
 
     let steer = until_typed(&f, 100).await;
@@ -196,6 +197,7 @@ async fn o3_a_workstream_gives_its_door_the_order_and_stopping_the_door_keeps_it
 
     f.call("rail.startDoor", json!({"id": id})).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     signal(&f, &id, "SessionStart").await;
     let text = paste("coordinate the release\n\nMust not:\n- merge");
     assert_eq!(until_typed(&f, text.len()).await, text);
@@ -323,6 +325,7 @@ async fn o4_another_callers_order_is_steered_unless_the_agent_set_it_or_a_takeov
         .with_takeover(move |_| probe.load(Ordering::SeqCst));
     let agent = spawn(&f, json!({"prompt": "first"})).await.unwrap().id;
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     signal(&f, &agent, "SessionStart").await;
     let first = paste("first");
     until_typed(&f, first.len()).await;

@@ -10,11 +10,9 @@ use contracts::{Actor, ActorKind, Kind};
 use rpc::{Ctx, Module, RpcError, code};
 use serde_json::{Value, json};
 
-use crate::common::{Fixture, status_of, until_file};
+use crate::common::{Fixture, GATED, star, status_of, until_file};
 
-/// Raw before anything is written, or the Terminal would turn `\r` into `\n`: `ready` says so.
-const RECORD: &str =
-    "stty raw -echo; echo 1 > \"$(dirname \"$0\")/ready\"; cat > \"$(dirname \"$0\")/typed\"";
+const RECORD: &str = GATED;
 const BOUND: Duration = Duration::from_millis(400);
 
 fn paste(text: &str) -> String {
@@ -82,6 +80,7 @@ async fn idle(bound: Duration) -> (Arc<Fixture>, String) {
     let f = Arc::new(frozen(Fixture::running(RECORD), bound));
     let node = f.spawn(None, None).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     start(&f, &node.id).await;
     (f, node.id)
 }
@@ -202,6 +201,7 @@ async fn h11_only_the_user_or_a_doors_own_workstream_may_steer() {
     let workstream = f.workstream("team", None).await;
     let child = f.spawn(Some(&workstream), None).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     start(&f, &child.id).await;
 
     let from = |kind, id: &str| Ctx {
@@ -251,6 +251,7 @@ async fn h12_the_first_prompt_is_steered_at_the_first_session_start_and_not_befo
     );
 
     signal(&f, &node.id, "SessionStart").await;
+    star(f.dir.path());
     let text = paste("build it");
     assert_eq!(until_typed(&f, text.len()).await, text);
     signal(&f, &node.id, "UserPromptSubmit").await;
@@ -268,6 +269,7 @@ async fn h12_a_first_prompt_that_is_not_accepted_leaves_the_agent_in_error() {
     let f = frozen(Fixture::running(RECORD), BOUND);
     let node = f.spawn(None, Some("build it")).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
+    star(f.dir.path());
     signal(&f, &node.id, "SessionStart").await;
 
     let tree = f
@@ -318,4 +320,42 @@ fn collect(dir: &Path, found: &mut Vec<String>) {
             found.push(format!("{}: {count}", name.unwrap().display()));
         }
     }
+}
+
+#[tokio::test]
+async fn h19_the_first_steer_waits_for_the_star_whichever_comes_last() {
+    let f = frozen(Fixture::running(RECORD), Duration::from_secs(30));
+    let node = f.spawn(None, Some("build it")).await.unwrap();
+    until_file(&f.dir.path().join("ready")).await;
+    signal(&f, &node.id, "SessionStart").await;
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        read(&f.dir.path().join("dropped")),
+        "",
+        "written before the star"
+    );
+    assert_eq!(read(&typed(&f)), "");
+
+    star(f.dir.path());
+    let text = paste("build it");
+    assert_eq!(until_typed(&f, text.len()).await, text);
+    assert_eq!(read(&f.dir.path().join("dropped")), "");
+}
+
+#[tokio::test]
+async fn h19_a_star_that_never_comes_leaves_the_agent_in_error_and_writes_nothing() {
+    let f = frozen(Fixture::running(RECORD), BOUND);
+    let node = f.spawn(None, Some("build it")).await.unwrap();
+    until_file(&f.dir.path().join("ready")).await;
+    signal(&f, &node.id, "SessionStart").await;
+
+    let tree = f
+        .until(|tree| status_of(tree, &node.id).kind == Kind::Error)
+        .await;
+    assert_eq!(status_of(&tree, &node.id).label, "prompt not accepted");
+    star(f.dir.path());
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(read(&f.dir.path().join("dropped")), "");
+    assert_eq!(read(&typed(&f)), "", "a late star wrote the dropped prompt");
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | tokens | delta <base-dir> <head-dir> | base|ci-trailers <pr> | architect-words | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | tokens | laws | delta <base-dir> <head-dir> | base|ci-trailers <pr> | architect-words | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -46,6 +46,45 @@ vocab() {
     done <<<"$names"
   done <<<"$phrases"
   return "$bad"
+}
+
+# Y3: one `id | law | check` line for each scenario clause carrying a `Law:` line, sorted by id. Exit 1 for an unchecked law or a test prefix no test has, 4 without scenarios/.
+laws() {
+  [ -d scenarios ] || { echo "laws: scenarios/ is missing" >&2; return 4; }
+  local sheet status=0 prefix id
+  sheet=$(python3 - <<'PY'
+import glob
+import re
+
+rows = {}
+for path in glob.glob('scenarios/**/*.md', recursive=True):
+    clause = None
+    for line in open(path, encoding='utf-8'):
+        heading = re.match(r'\*\*([A-Za-z]+[0-9]+)[ .]', line)
+        if heading:
+            clause = heading.group(1)
+        law = re.match(r'Law: (.*?)\.? *(?:Check: *(.*?) *)?$', line.rstrip('\n'))
+        if law and clause:
+            rows[clause] = (law.group(1), law.group(2) or 'unchecked')
+for key in sorted(rows):
+    print(f'{key} | {rows[key][0]} | {rows[key][1]}')
+PY
+)
+  [ -z "$sheet" ] || echo "$sheet"
+  while IFS='|' read -r id _ prefix; do
+    id=${id// /}
+    prefix=${prefix// /}
+    [ -n "$id" ] || continue
+    if [ "$prefix" = unchecked ]; then
+      echo "laws: $id has no Check" >&2
+      status=1
+    elif [[ $prefix =~ ^[a-z][a-z0-9]*_$ ]] &&
+      ! grep -rIlE --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=target --exclude-dir=scenarios --exclude-dir=docs "(fn |[\"'\` ]|^)${prefix}[a-z0-9_]" . >/dev/null 2>&1; then
+      echo "laws: $id names '$prefix' and no test has it" >&2
+      status=1
+    fi
+  done <<<"$sheet"
+  return "$status"
 }
 
 # L95: the role word "architect" in scenarios/ or docs/ fails as `<file>:<line>`; a branch `architect/…`, a host `architect-swarm|-b|-c` and the L95 block are exempt.
@@ -468,6 +507,8 @@ case "${1:-}" in
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   vocab) vocab ;;
+  laws) [ $# -eq 1 ] || { echo "usage: loop/rules.sh laws" >&2; exit 2; }
+    laws ;;
   architect-words) [ $# -eq 1 ] || { echo "usage: loop/rules.sh architect-words" >&2; exit 2; }
     architect_words ;;
   tokens) [ $# -eq 1 ] || { echo "usage: loop/rules.sh tokens" >&2; exit 2; }

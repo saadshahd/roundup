@@ -279,6 +279,26 @@ impl Shared {
         });
     }
 
+    /// H19: when the star has not arrived `steer_bound` after the first `SessionStart`, drop the
+    /// first prompt unwritten and settle `id` to `error`, as a Steer that failed does.
+    fn refuse_unless_gate_opens(&self, id: &str, attempt: &str) {
+        let Some(shared) = self.me.upgrade() else {
+            return;
+        };
+        let (id, attempt) = (id.to_owned(), attempt.to_owned());
+        tokio::spawn(async move {
+            tokio::time::sleep(shared.steer_bound).await;
+            let dropped = match shared.runs().get_mut(&id) {
+                Some(Slot::Running(run)) if run.attempt == attempt => run.prompt.take().is_some(),
+                _ => false,
+            };
+            if dropped {
+                eprintln!("agents: the first prompt of {id} was never written: no star title");
+                shared.refuse_prompt(&id, &attempt);
+            }
+        });
+    }
+
     /// H12: settle `id` to `error` with the label `prompt not accepted`, if `attempt` is still
     /// its current Attempt.
     fn refuse_prompt(&self, id: &str, attempt: &str) {
@@ -817,8 +837,18 @@ impl Shared {
             }
             _ => {}
         }
-        let session_start = matches!(&observation, Observation::Signal(payload)
-            if claude_code::is_session_start(payload));
+        // H19: the first Steer waits for the first `SessionStart` and the first star title.
+        if matches!(&observation, Observation::Signal(payload)
+            if claude_code::is_session_start(payload))
+        {
+            if !run.session_started && run.prompt.is_some() {
+                self.refuse_unless_gate_opens(id, &run.attempt);
+            }
+            run.session_started = true;
+        }
+        if matches!(&observation, Observation::Title(title) if title.starts_with('✳')) {
+            run.starred = true;
+        }
         // H11: the Steer's wait ends with the Signal that names it, or with the Agent.
         if matches!(&observation, Observation::Signal(payload)
             if claude_code::submitted_prompt(payload).is_some())
@@ -876,7 +906,7 @@ impl Shared {
             rail.rename(id, &name)?;
             self.bus.emit(actor.clone(), EventData::RailChanged);
         }
-        let prompt = run.prompt.take_if(|_| session_start);
+        let prompt = run.prompt.take_if(|_| run.session_started && run.starred);
         Ok((prompt, run.adapter.tick_at()))
     }
 
@@ -1091,6 +1121,8 @@ impl Shared {
             adapter: ClaudeCode::starting(move || clock()),
             prompt: None,
             steer: None,
+            session_started: false,
+            starred: false,
             interrupt: None,
             named: true,
             terminal_id: terminal_id.clone(),
@@ -1502,6 +1534,10 @@ struct Run {
     adapter: ClaudeCode,
     /// H12: sent as a Steer at the first `SessionStart`, then gone.
     prompt: Option<String>,
+    /// H19: the first `SessionStart` Signal has arrived.
+    session_started: bool,
+    /// H19: the first title with the star glyph has arrived.
+    starred: bool,
     /// H11: the Steer written and awaiting its `UserPromptSubmit` Signal.
     steer: Option<tokio::sync::oneshot::Sender<()>>,
     /// H13: the Interrupt written and awaiting the title that acknowledges it.
@@ -2235,6 +2271,8 @@ impl Agents {
             adapter: ClaudeCode::starting(move || clock()),
             prompt,
             steer: None,
+            session_started: false,
+            starred: false,
             interrupt: None,
             named,
             terminal_id,
@@ -2638,6 +2676,8 @@ mod tests {
                 adapter: ClaudeCode::starting(move || adapter_clock()),
                 prompt: None,
                 steer: None,
+                session_started: false,
+                starred: false,
                 interrupt: None,
                 named: false,
                 terminal_id: "1".into(),
@@ -2818,6 +2858,8 @@ mod tests {
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
             steer: None,
+            session_started: false,
+            starred: false,
             interrupt: None,
             named,
             terminal_id: "1".into(),
@@ -2865,6 +2907,8 @@ mod tests {
             adapter: ClaudeCode::starting(|| 0),
             prompt: None,
             steer: None,
+            session_started: false,
+            starred: false,
             interrupt: None,
             named,
             terminal_id: "1".into(),
@@ -2939,6 +2983,8 @@ mod tests {
                             adapter: ClaudeCode::starting(|| 0),
                             prompt: None,
                             steer: None,
+                            session_started: false,
+                            starred: false,
                             interrupt: None,
                             named,
                             terminal_id: id.clone(),
@@ -3040,6 +3086,8 @@ mod tests {
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 steer: None,
+                session_started: false,
+                starred: false,
                 interrupt: None,
                 named: true,
                 terminal_id: "1".into(),
@@ -3081,6 +3129,8 @@ mod tests {
                 adapter: ClaudeCode::starting(|| 0),
                 prompt: None,
                 steer: None,
+                session_started: false,
+                starred: false,
                 interrupt: None,
                 named: true,
                 terminal_id: "1".into(),

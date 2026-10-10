@@ -6,6 +6,7 @@ import { underSettings } from "../testing/media";
 import type { Setting } from "../testing/media";
 import { seedApp } from "../testing/seeds";
 import type { SeedName } from "../testing/seeds";
+import xtermCss from "@xterm/xterm/css/xterm.css?inline";
 import tokenCss from "../tokens.css?inline";
 import appCss from "../styles.css?inline";
 import inkCss from "../ink/styles.css?inline";
@@ -15,7 +16,7 @@ import terminalCss from "../terminal/styles.css?inline";
 import rowButtonCss from "../todos/rowButton.styles.css?inline";
 import chipCss from "../rail/attentionChip.styles.css?inline";
 
-const SHEETS = [tokenCss, appCss, inkCss, padsCss, railCss, terminalCss, rowButtonCss, chipCss].join("\n");
+const SHEETS = [xtermCss, tokenCss, appCss, inkCss, padsCss, railCss, terminalCss, rowButtonCss, chipCss].join("\n");
 
 const SEEDS: SeedName[] = ["first-run", "agents-10", "tree-40", "daemon-exits", "conflict"];
 

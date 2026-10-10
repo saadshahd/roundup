@@ -50,6 +50,26 @@ describe("u137 one module measures the checks", () => {
     expect(d1.selector).toBe(".rail-row");
   });
 
+  it("u136_d1_exempts_terminal_rules_and_still_catches_others", () => {
+    document.head.querySelectorAll("style").forEach((sheet) => sheet.remove());
+    document.body.innerHTML = "<p class='rail-row'>x</p>";
+    addSheet(".xterm .composition-view, .xterm .x { color: #ffffff; transition: opacity 100ms linear; }");
+
+    expect(runChecks().D1.status).toBe("pass");
+
+    addSheet(".rail-row, .xterm .x { color: #ff00ff; }");
+
+    expect(runChecks().D1.status).toBe("fail");
+
+    for (const selector of [".pane:has(.xterm) .rail-row", "p:not(.xterm)", ".xterm ~ .rail-row", "p:not(.xterm, .xterm)", ".rail-row[title='.xterm']"]) {
+      document.head.querySelectorAll("style").forEach((sheet) => sheet.remove());
+      document.body.innerHTML = "<p class='rail-row' title='.xterm'>x</p>";
+      addSheet(`${selector} { color: #ff00ff; }`);
+
+      expect(runChecks().D1.status, selector).toBe("fail");
+    }
+  });
+
   it("u137_an_inline_literal_colour_makes_d1_fail", () => {
     document.body.innerHTML = `<p style="color: #ff00ff">x</p>`;
     addSheet("p { margin: 0; }");
