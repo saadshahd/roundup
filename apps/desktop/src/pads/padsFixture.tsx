@@ -17,6 +17,11 @@ import {
 } from "../state/connectedProject";
 import { Pads } from "./Pads";
 
+// jsdom has no layout; ProseMirror asks a Range for its rectangles when a selection moves.
+Range.prototype.getClientRects ??= () => document.body.getClientRects();
+
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+
 export const AGENT: Actor = { kind: "agent", id: "agent-7f3", parent: null };
 
 const AGENT_NAME = "auth-refactor";

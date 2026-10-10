@@ -889,3 +889,51 @@ async fn p5_a_flip_back_that_fails_part_way_imports_nothing() {
         .await;
     assert_eq!(rig.file_text("notes.md"), "z");
 }
+
+#[tokio::test]
+async fn u148_a_visual_block_survives_files_export_and_reopening_byte_exact() {
+    let dir = TempDir::new().unwrap();
+    let a = agent("a");
+    let touches = Arc::new(Touches::in_memory().unwrap());
+    let call = |pads: Pads, method: &'static str, params: Value| {
+        let ctx = Ctx {
+            actor: a.clone(),
+            bus: Bus::new(),
+            touches: Arc::clone(&touches),
+        };
+        async move { pads.call(&ctx, method, params).await.unwrap() }
+    };
+    let text = "before\r\n\r\n```mermaid\ngraph TD\n  A --> B  \n```\n\n```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[]}\n```\n";
+    call(
+        Pads::open(dir.path(), Bus::new()).unwrap(),
+        "pad.create",
+        json!({"name": "notes", "text": text}),
+    )
+    .await;
+
+    let reopened = Pads::open(dir.path(), Bus::new()).unwrap();
+    let out = TempDir::new().unwrap();
+    let target = out.path().join("notes.md");
+    call(
+        Pads::open(dir.path(), Bus::new()).unwrap(),
+        "pad.export",
+        json!({"name": "notes", "path": target}),
+    )
+    .await;
+    call(
+        Pads::open(dir.path(), Bus::new()).unwrap(),
+        "pad.setStorage",
+        json!({"files": true}),
+    )
+    .await;
+
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), text);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("pads").join("notes.md")).unwrap(),
+        text
+    );
+    assert_eq!(
+        call(reopened, "pad.read", json!({"name": "notes"})).await["text"],
+        text
+    );
+}

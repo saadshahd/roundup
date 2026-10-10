@@ -699,3 +699,51 @@ async fn h14_ask_user_schema_is_the_contract_schema() {
         serde_json::to_value(schemars::schema_for!(contracts::decision::AskParams)).unwrap()
     );
 }
+
+#[tokio::test]
+async fn u148_a_block_written_through_the_tools_is_stored_byte_exact() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+    let block = "```mermaid\ngraph TD\n  A[\"<b>x</b>\"] --> B\n```\n";
+    let drawing = "```excalidraw\n{\"type\":\"excalidraw\",\"version\":2,\"elements\":[]}\n```\n";
+    let user = client_as(&project.socket, Actor::user()).await;
+    let stored = |name: &'static str| {
+        let user = &user;
+        async move {
+            user.request("pad.read", json!({ "name": name }))
+                .await
+                .unwrap()["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+    };
+
+    let created = shim
+        .call("pad_create", json!({ "name": "notes", "text": block }))
+        .await;
+    assert_eq!(created.is_error, Some(false));
+    assert_eq!(stored("notes").await, block);
+
+    let written = shim
+        .call("pad_write", json!({ "name": "notes", "text": drawing }))
+        .await;
+    assert_eq!(written.is_error, Some(false));
+    assert_eq!(stored("notes").await, drawing);
+
+    let appended = shim
+        .call("pad_append", json!({ "name": "notes", "text": block }))
+        .await;
+    assert_eq!(appended.is_error, Some(false));
+    assert_eq!(stored("notes").await, format!("{drawing}{block}"));
+
+    let out = tempfile::tempdir().unwrap();
+    let target = out.path().join("notes.md");
+    user.request("pad.export", json!({ "name": "notes", "path": target }))
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        format!("{drawing}{block}")
+    );
+}

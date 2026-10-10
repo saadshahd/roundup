@@ -46,5 +46,5 @@ export default defineConfig({
     // jsdom resolves the server build of solid-js unless told to use the browser one.
     server: { deps: { inline: [/solid-js/] } },
   },
-  resolve: { conditions: ["browser"] },
+  resolve: { conditions: ["browser", "development|production"] },
 });
