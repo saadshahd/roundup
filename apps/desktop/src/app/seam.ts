@@ -13,6 +13,9 @@ export type DaemonExit = v.InferOutput<typeof daemonExitSchema>;
 
 export type Unsubscribe = () => void;
 
+/** One step of a File drop: `x` and `y` in CSS pixels of the webview; `paths` absolute, empty unless `phase` is `drop`. */
+export type FileDrop = { phase: "over" | "drop" | "leave"; paths: string[]; x: number; y: number };
+
 /** The Tauri commands of `scenarios/app.md`, plus the macOS choosers and the Dock badge; the only door from the webview to Tauri. */
 export type AppSeam = {
   project(): Promise<Project | null>;
@@ -31,6 +34,8 @@ export type AppSeam = {
   ): Promise<RpcMethods[M]["result"]>;
   /** Every Event the Daemon emits from now on arrives at `onEvent`, in the Daemon's order. */
   subscribe(onEvent: (event: DaemonEvent) => void): Promise<void>;
+  /** Reports the window's native File drop, which Tauri takes before the webview sees a DOM `drop`. */
+  onFileDrop(listener: (drop: FileDrop) => void): Promise<Unsubscribe>;
   onDaemonExited(listener: (exit: DaemonExit) => void): Promise<Unsubscribe>;
 };
 

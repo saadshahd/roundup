@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import * as v from "valibot";
@@ -41,6 +42,30 @@ const parsedCommand = <Schema extends v.GenericSchema>(
   args: InvokeArgs,
 ): Promise<v.InferOutput<Schema>> => guarded(async () => v.parse(schema, await invoke(name, args)));
 
+/** Tauri reports the drop at physical pixels; the webview lays out in CSS pixels. */
+export const tauriFileDrop = (
+  webview: () => Pick<ReturnType<typeof getCurrentWebview>, "onDragDropEvent">,
+  ratio: () => number,
+): AppSeam["onFileDrop"] => (listener) =>
+  guarded(() =>
+    webview().onDragDropEvent(({ payload }) => {
+      if (payload.type === "leave") {
+        listener({ phase: "leave", paths: [], x: 0, y: 0 });
+
+        return;
+      }
+
+      const scale = ratio() || 1;
+
+      listener({
+        phase: payload.type === "drop" ? "drop" : "over",
+        paths: payload.type === "drop" ? payload.paths : [],
+        x: payload.position.x / scale,
+        y: payload.position.y / scale,
+      });
+    }),
+  );
+
 export const createTauriApp = (): AppSeam => ({
   project: () => parsedCommand(v.nullable(projectSchema), "project", {}),
   openProject: (path) => parsedCommand(projectSchema, "open_project", { path }),
@@ -52,6 +77,7 @@ export const createTauriApp = (): AppSeam => ({
   subscribe: async (onEvent) => {
     await command("subscribe", { channel: new Channel<DaemonEvent>(onEvent) });
   },
+  onFileDrop: tauriFileDrop(getCurrentWebview, () => window.devicePixelRatio),
   onDaemonExited: (listener) =>
     guarded(() => listen("daemon-exited", (event) => listener(v.parse(daemonExitSchema, event.payload)))),
 });
