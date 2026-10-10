@@ -1,6 +1,6 @@
 # UI: the first Room (U143)
 
-Module: `apps/desktop` (the webview); U146 also edits the fake `claude` at `crates/rup/tests/e2e/fake_claude.py`. Ids: U143, U144, U145, U146, U160. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
+Module: `apps/desktop` (the webview); U146 also edits the fake `claude` at `crates/rup/tests/e2e/fake_claude.py`. Ids: U143, U144, U145, U146, U160, U166, U167. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
 
 **U143 the first Room says where it stands.** Narrows U38 and U9; changes no contract, App seam command or token. Given an open Project, then:
 
@@ -47,3 +47,19 @@ Observer: `u146_` tests in `apps/desktop/src/testing/` start the real `rupd` as 
 - **Order and status.** Id order, the status beside each Message and the failure line of U80 are unchanged.
 
 Tests are named `u160_…` in `apps/desktop/src/thread/` against the fake App seam: two Rooms each holding a Door and an Agent, a Message to each Door, a Door's Message to `you`, a Message between Agents of different Rooms, a status event for a Message of the other Room, and a switch of selection. Observer: `u160_` in `apps/desktop/src/testing/` starts the real `rupd` as U146 does with `FAKE_CLAUDE_ON_PROMPT` set to `{"name":"message_send","arguments":{"to":"you","kind":"note","body":"done $prompt","replyTo":null}}` (the recipient of a Message to the user is `you`), creates two Rooms, starts each Door, sends `a` to the first and `b` to the second, and asserts the first Thread holds `a` and `done a` and not `b`, the second the reverse, and that `message.list` still returns all four. `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U160/`.
+
+**U166 a Door resumes and finishes its turn after its Decision is answered, in the real-Daemon harness.** Found by the J6 audit (Intervene): on `just harness-real` with `FAKE_CLAUDE_EVENTS=SessionStart,PermissionRequest` and `FAKE_CLAUDE_ON_PROMPT`, `allow` on the Door's Decision cleared the Card and moved the Room from `needs-you` to `working` (`artifacts/ux/journey/j6-both-answered-1280.png`), but the fake never plays `PostToolUse` or `Stop` after the answer, so the Room stays `working` and a Message typed to it stays `pending` (`message.list` status `pending`), and the Door's action, Todo and reply can never be observed after an Intervene. Changes no contract, App seam command or Token. Given a fake `claude` whose played `PermissionRequest` hook command was started, then:
+
+- **The fake.** With `FAKE_CLAUDE_RESUME=1`, the fake waits for that hook command to exit (`rup permission` returns once the Decision is answered, H9), then plays `PostToolUse` and `Stop`, and only then reads typed prompt lines. Without the variable it behaves as today.
+- **The Room.** After `allow`, the Room's status goes `working` to `idle`, and a Message sent to its Door while it waited reaches `delivered` with no reload (B1).
+- **The answer.** After `deny`, the same sequence runs and the Room reads `idle`; the Decision is gone in both.
+
+Observer: `u166_` tests in `apps/desktop/src/testing/` start the real `rupd` as U144 does with the variables above, create two Rooms, answer one by `allow` and the other by `deny` from its own Room, and assert each Room reads `idle`, a Message typed to each is `delivered`, and a `todo_create {title: "$prompt"}` Door shows its Todo under `this room` of that Room only. `agent-browser` captures at 1280 by 800 and 700 by 800 go to `artifacts/ux/U166/`. A real `claude` stays F7's observer.
+
+**U167 a new Room's default name is unique among the Rail's roots.** Found by the J6 audit (Understand): two Rooms created by `start a Room` and `+ room` are both named `room`; their Rail rows, their Thread lines (`you → room note ship a`) and their Cards (`Decision for room`) are identical, so the user cannot say which Room needs them except by the selection highlight (`artifacts/ux/journey/j6-room2-decision-1280.png`). P1 and the Understand stage ask the user to identify the selected Room and the one that needs them. Narrows U9 and U143 (their `name: "room"` is the first Room's default); changes no contract and no Token. Given Rooms already on the Rail, then:
+
+- **The default.** The App sends the first free name of `room`, `room 2`, `room 3`, among the Rail's root rows; The Daemon accepts any name (A6) and is not asked to number. A renamed Room frees its old name.
+- **The words.** The new name shows in the Rail row, in every Thread line naming the Room, and in `Decision for <name>`.
+
+Observer: `u167_` tests in `apps/desktop/src/rail/` against the fake App seam: create three Rooms in turn, rename the second, create a fourth; assert the `rail.createRoom` names, and the Thread and Card words for each. The 1280 by 800 and 700 by 800 `agent-browser` captures with two Rooms go to `artifacts/ux/U167/`. After the Workstream rename (A25, `scenarios/workstream.md`) the stem is `workstream`.
+
