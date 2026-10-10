@@ -27,6 +27,7 @@ pub struct Sources<'a> {
 }
 
 /// What a Meta-agent was last told about a child, to see whether a change alters the entry (B21).
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct Told {
     kind: Kind,
     todos: u32,
@@ -42,13 +43,14 @@ struct Book {
     told: HashMap<(String, String), Told>,
 }
 
-/// An entry B21 decided to push, to be `commit`ted once the Message is sent.
+/// An entry B21 decided to push. `changed` already recorded it as told, so a digest asked while
+/// the Message is in flight does not repeat it; `release` takes that back if the send failed.
 pub struct Push {
     key: (String, String),
     pub meta: String,
     pub entry: DigestEntry,
     told: Told,
-    named: Option<i64>,
+    before: (Option<i64>, Option<Told>),
 }
 
 #[derive(Default)]
@@ -121,9 +123,10 @@ impl Seen {
 
     /// B21: the entries whose child's Kind, open Todo count or Pads changed since its Meta-agent
     /// was last told, oldest child first in Rail order. A change that leaves the entry as it was
-    /// is none.
+    /// is none. Each one is recorded as told and its Pads as named before it is returned, under one
+    /// lock, so no digest can name them again while the Message is sent.
     pub fn changed(&self, from: &Sources) -> Vec<Push> {
-        let book = self.book();
+        let mut book = self.book();
         let mut pushes = Vec::new();
         for (meta, child) in pairs(from) {
             let key = (meta.id.clone(), child.id.clone());
@@ -136,25 +139,38 @@ impl Seen {
                     || (!entry.pads.is_empty() && now.pads > was.pads)
             });
             if moved {
+                let before = (after, book.told.get(&key).copied());
+                if let Some(newest) = newest {
+                    book.named.insert(key.clone(), newest);
+                }
+                book.told.insert(key.clone(), now);
                 pushes.push(Push {
                     key,
                     meta: meta.id.clone(),
                     entry,
                     told: now,
-                    named: newest,
+                    before,
                 });
             }
         }
         pushes
     }
 
-    /// B21: the Message for `push` was sent, so its Pads count as named and its entry as told.
-    pub fn commit(&self, push: Push) {
+    /// B21: the Message for `push` was not sent, so its entry is as untold as it was, unless a
+    /// digest asked since has told the Meta-agent something newer.
+    pub fn release(&self, push: Push) {
         let mut book = self.book();
-        if let Some(newest) = push.named {
-            book.named.insert(push.key.clone(), newest);
+        if book.told.get(&push.key) != Some(&push.told) {
+            return;
         }
-        book.told.insert(push.key, push.told);
+        match push.before.0 {
+            Some(named) => book.named.insert(push.key.clone(), named),
+            None => book.named.remove(&push.key),
+        };
+        match push.before.1 {
+            Some(told) => book.told.insert(push.key, told),
+            None => book.told.remove(&push.key),
+        };
     }
 }
 
@@ -626,8 +642,6 @@ mod tests {
         assert_eq!(pushes[0].meta, "m");
         assert_eq!(pushes[0].entry.kind, Kind::Idle);
         assert!(push_body(&pushes[0].entry).starts_with("[digest] {"));
-        let push = pushes.into_iter().next().unwrap();
-        seen.commit(push);
         assert!(seen.changed(&sources(&nodes, &none, &[], &[])).is_empty());
 
         // A label that leaves Kind, Todos and Pads as they were.
@@ -638,11 +652,9 @@ mod tests {
         let todos = vec![todo(1, Some("a"), false)];
         let pushes = seen.changed(&sources(&nodes, &todos, &[], &[]));
         assert_eq!(pushes[0].entry.todos, 1);
-        seen.commit(pushes.into_iter().next().unwrap());
         let pads = vec![pad("notes", "a", 5)];
         let pushes = seen.changed(&sources(&nodes, &todos, &pads, &[]));
         assert_eq!(pushes[0].entry.pads, ["notes"]);
-        seen.commit(pushes.into_iter().next().unwrap());
         assert!(
             seen.changed(&sources(&nodes, &todos, &pads, &[]))
                 .is_empty()
@@ -650,13 +662,16 @@ mod tests {
     }
 
     #[test]
-    fn b21_a_push_not_committed_is_offered_again() {
+    fn b21_a_push_is_told_at_once_and_offered_again_once_released() {
         let seen = Seen::default();
         let mut nodes = rail();
         let none: Vec<Todo> = vec![];
         seen.baseline(&sources(&nodes, &none, &[], &[]));
         nodes[1].status = Some(status(Kind::Idle, "done"));
-        assert_eq!(seen.changed(&sources(&nodes, &none, &[], &[])).len(), 1);
+        let mut pushes = seen.changed(&sources(&nodes, &none, &[], &[]));
+        assert_eq!(pushes.len(), 1);
+        assert!(seen.changed(&sources(&nodes, &none, &[], &[])).is_empty());
+        seen.release(pushes.remove(0));
         assert_eq!(seen.changed(&sources(&nodes, &none, &[], &[])).len(), 1);
     }
 

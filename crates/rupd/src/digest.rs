@@ -148,10 +148,13 @@ async fn push_once(reader: &Reader, seen: &messages::digest::Seen) -> Result<(),
             )
             .await;
         match sent {
-            Ok(_) => seen.commit(push),
+            Ok(_) => {}
             // A Meta-agent that is gone gets none (B9); anything else is tried again at the next
             // change.
-            Err(err) => eprintln!("rupd: digest push to {} refused: {err}", push.meta),
+            Err(err) => {
+                eprintln!("rupd: digest push to {} refused: {err}", push.meta);
+                seen.release(push);
+            }
         }
     }
     Ok(())
