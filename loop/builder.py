@@ -89,13 +89,14 @@ def worked(path):
 
 
 def busy():
-    """Issues whose `build #<issue>` job has not completed in any unfinished build.yml run."""
+    """Issues whose `build #<issue> / build` job (`build #<issue>` before build-issue.yml) has not completed in any
+    unfinished build.yml run; its `after` job holds no slot."""
     issues = set()
     for status in ('requested', 'pending', 'waiting', 'queued', 'in_progress'):
         runs = orders.gh('api', f'repos/{{owner}}/{{repo}}/actions/workflows/build.yml/runs?status={status}&per_page=100')
         for run in runs['workflow_runs']:
             for job in orders.gh('api', f'repos/{{owner}}/{{repo}}/actions/runs/{run["id"]}/jobs?per_page=100')['jobs']:
-                match = re.fullmatch(r'build #(\d+)', job['name'])
+                match = re.fullmatch(r'build #(\d+)(?: / build)?', job['name'])
                 if match and job['status'] != 'completed':
                     issues.add(int(match[1]))
     return issues

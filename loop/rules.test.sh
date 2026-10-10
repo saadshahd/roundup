@@ -46,7 +46,7 @@ expect pass 'L82 every workflow runs its steps under bash -eo pipefail' pipefail
 actions="$(dirname "$script")/../.github/actions"
 job_runner() { awk -v job="$2" '$0 ~ "^  "job":$" {f=1; next} f && /^  [a-z-]+:$/ {f=0} f && /runs-on:/ {print $2; exit}' "$1"; }
 runs_on() { [ "$(job_runner "$workflows/$1.yml" "$2")" = "$3" ]; }
-expect pass 'L84 build runs on ubuntu-latest' runs_on build build ubuntu-latest
+expect pass 'L84 build runs on ubuntu-latest' runs_on build-issue build ubuntu-latest
 expect pass 'L84 fix runs on ubuntu-latest' runs_on fix fix-run ubuntu-latest
 expect pass 'L84 check on a PR stays on macos-latest' runs_on check rust macos-latest
 expect pass 'L84 each push to main runs just check on ubuntu-latest' bash -c "runs_on() { $(declare -f job_runner); job_runner \"\$@\"; }; [ \"\$(runs_on '$workflows/check.yml' linux)\" = ubuntu-latest ] && grep -q 'github.event_name == .push.' '$workflows/check.yml' && grep -q 'run: just check\$' '$workflows/check.yml'"
