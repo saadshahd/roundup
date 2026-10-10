@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
+import type { Message } from "@contracts/message/Message";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
 import { useConnectedProject } from "../state/connectedProject";
@@ -63,8 +64,33 @@ const ThreadBody = (props: { door: Accessor<string>; selectionOf: (terminalId: s
   const nodeIds = createMemo(() => new Set(rail.nodes.map((node) => node.id)));
   const nameOf = (id: string) => rail.nodes.find((node) => node.id === id)?.name ?? id;
 
+  // U160: the Room's own row and every row below it.
+  const roomIds = createMemo(() => {
+    const ids = new Set([props.door()]);
+
+    for (let grown = true; grown; ) {
+      grown = false;
+
+      for (const node of rail.nodes) {
+        if (node.parent !== null && ids.has(node.parent) && !ids.has(node.id)) {
+          ids.add(node.id);
+          grown = true;
+        }
+      }
+    }
+
+    return ids;
+  });
+
+  const listed = (message: Message): boolean => {
+    const inRoom = (id: string) => roomIds().has(id);
+    const fromUser = message.from.kind === "user";
+
+    return (inRoom(message.from.id) || inRoom(message.to)) && (fromUser || inRoom(message.from.id)) && (message.to === "you" || inRoom(message.to));
+  };
+
   const lines = createMemo(() =>
-    feed.messages().map((message) => {
+    feed.messages().filter(listed).map((message) => {
       const from = rail.nameOf(message.from);
       const to = nameOf(message.to);
       const folded = isBetweenAgents(message, nodeIds()) && !expanded();

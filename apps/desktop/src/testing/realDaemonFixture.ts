@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "vite";
@@ -25,11 +25,34 @@ const served = async (base: string) => {
   throw new Error("the dev server never served the Daemon routes");
 };
 
+const LOCK = join(tmpdir(), "roundup-cargo-build.lock");
+
+/** Workers build in parallel and a fresh toolchain installs itself on first use, so one worker at a time builds. */
+const buildOnce = async () => {
+  for (;;) {
+    try {
+      await mkdir(LOCK);
+      break;
+    } catch {
+      const age = await stat(LOCK).then((lock) => Date.now() - lock.mtimeMs, () => 0);
+
+      if (age > 600_000) await rm(LOCK, { recursive: true, force: true });
+      await new Promise((done) => setTimeout(done, 200));
+    }
+  }
+
+  try {
+    const build = () => spawnSync("cargo", ["build", "-p", "rupd", "-p", "rup"], { cwd: REPO, stdio: "inherit" });
+
+    if (build().status !== 0 && build().status !== 0) throw new Error("cargo build -p rupd -p rup failed");
+  } finally {
+    await rm(LOCK, { recursive: true, force: true });
+  }
+};
+
 /** Starts `rupd` on the fake `claude` with `env` added to its environment, as `just harness-real` does. */
 export const startRealDaemon = async (env: Record<string, string>): Promise<StartedDaemon> => {
-  const built = spawnSync("cargo", ["build", "-p", "rupd", "-p", "rup"], { cwd: REPO, stdio: "inherit" });
-
-  if (built.status !== 0) throw new Error("cargo build -p rupd -p rup failed");
+  await buildOnce();
 
   const dir = await mkdtemp(join(tmpdir(), "roundup-real-"));
   const socket = join(dir, "rupd.sock");
