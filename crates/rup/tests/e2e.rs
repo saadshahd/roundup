@@ -1577,11 +1577,18 @@ async fn t11_reorder_changes_the_list_on_a_real_daemon() {
     for title in ["a", "b", "c", "d"] {
         todo_at(&client, title).await;
     }
+    let mut events = project.subscribed().await;
     let moved = client
         .request("todo.reorder", json!({ "id": 3, "before": 1 }))
         .await
         .unwrap();
     assert_eq!(moved["id"], 3);
+    let updated = next(&mut events, |data| match data {
+        EventData::TodoUpdated(todo) => Some(todo.id),
+        _ => None,
+    })
+    .await;
+    assert_eq!(updated, 3);
     assert_eq!(ids_listed(&client).await, [3, 1, 2, 4]);
     let missing = client
         .request("todo.reorder", json!({ "id": 3, "before": 9 }))
@@ -1589,6 +1596,14 @@ async fn t11_reorder_changes_the_list_on_a_real_daemon() {
         .unwrap_err();
     assert_eq!(missing.code, rpc::code::NOT_FOUND);
     assert_eq!(ids_listed(&client).await, [3, 1, 2, 4]);
+    let more = tokio::time::timeout(
+        Duration::from_millis(300),
+        next(&mut events, |data| {
+            matches!(data, EventData::TodoUpdated(_)).then_some(())
+        }),
+    )
+    .await;
+    assert!(more.is_err());
 }
 
 /// T10: an Agent's `todo_list`, `todo_create` and `agent.context` all read the user's order.
