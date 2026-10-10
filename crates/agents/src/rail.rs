@@ -500,6 +500,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 worktree,
                 can_resume: false,
                 channel: None,
+                stray: Vec::new(),
                 work,
             })
         })

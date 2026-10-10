@@ -23,9 +23,9 @@ The App is a Rust crate under `crates/`, not under `apps/`. A Cargo workspace me
 
 | Path | Owner module | Contents |
 |---|---|---|
-| `crates/contracts` | Architect | RPC params, results and events as Rust types; generates `contracts/generated/*.ts` (`cargo test -p contracts`); `contracts/hooks.ts` holds the Hook types |
-| `crates/rpc` | Architect | `Module` trait, `Ctx`, event `Bus`, error codes, `Client` |
-| `crates/provenance` | Architect | the Touch log (append-only SQLite) |
+| `crates/contracts` | Builder run | RPC params, results and events as Rust types; generates `contracts/generated/*.ts` (`cargo test -p contracts`); `contracts/hooks.ts` holds the Hook types |
+| `crates/rpc` | Builder run | `Module` trait, `Ctx`, event `Bus`, error codes, `Client` |
+| `crates/provenance` | Builder run | the Touch log (append-only SQLite) |
 | `crates/terminal` | terminal | `portable-pty`, screen state |
 | `crates/agents` | agents | `AgentAdapter`, Status classifier; `claude_code/` adapter |
 | `crates/todos` | todos | SQLite (WAL), blocker graph |

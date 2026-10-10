@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref]
+# Machine checks for AGENTS.md. Usage: loop/rules.sh vocab | tokens | delta <base-dir> <head-dir> | base|ci-trailers <pr> | clean-merge <commit> [main-ref]
 # Scans: `vocab` reads public Rust items and fields, TS exports, and non-comment text under contracts/.
 # It does not read imports, enum variants or UI strings.
 set -euo pipefail
@@ -46,6 +46,190 @@ vocab() {
     done <<<"$names"
   done <<<"$phrases"
   return "$bad"
+}
+
+# L41: a look literal (colour, size, radius, shadow, duration) outside tokens.css fails as `<file>:<line> <property>`.
+tokens() {
+  python3 - <<'PY'
+import os
+import re
+import sys
+
+ROOT = 'apps/desktop/src'
+NAMES = set('''aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood
+cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen
+darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray
+darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia
+gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender
+lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink
+lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta
+maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise
+mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid
+palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red
+rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow
+springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen'''.split())
+COLOUR = re.compile(r'^(color|background|background-color|border.*|outline.*|fill|stroke|caret-color|text-decoration-color)$')
+TS_COLOUR = {'color', 'background', 'backgroundColor', 'borderColor'}
+TS_KEYS = TS_COLOUR | {'fontSize', 'borderRadius', 'boxShadow'}
+HEX = re.compile(r'#[0-9a-fA-F]{3,8}\b')
+FUNC = re.compile(r'(?<![\w-])(rgb|rgba|hsl|hsla|oklch|color-mix)\(', re.I)
+UNIT = re.compile(r'(?<![\w.#-])[+-]?(\d*\.?\d+)([a-z%]+)', re.I)
+DURATION = re.compile(r'(?<![\w.#-])(\d*\.?\d+)(ms|s)\b', re.I)
+BARE = re.compile(r'(?<![\w#-])[A-Za-z]+(?![\w(-])')
+
+
+def blank(text, slashes):
+    # Comments become spaces; newlines and strings stay.
+    out, i, n, quote = [], 0, len(text), None
+    while i < n:
+        c = text[i]
+        if quote:
+            out.append(c)
+            if c == '\\' and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif c == quote:
+                quote = None
+        elif c in '"\'`':
+            quote = c
+            out.append(c)
+        elif text.startswith('/*', i):
+            j = text.find('*/', i + 2)
+            j = n if j < 0 else j + 2
+            out.append(re.sub(r'[^\n]', ' ', text[i:j]))
+            i = j
+            continue
+        elif slashes and text.startswith('//', i):
+            j = text.find('\n', i)
+            j = n if j < 0 else j
+            out.append(' ' * (j - i))
+            i = j
+            continue
+        else:
+            out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def strip_calls(value, names):
+    # Remove name(...) calls, balanced.
+    while True:
+        m = re.search(r'(?<![\w-])(%s)\(' % '|'.join(names), value, re.I)
+        if not m:
+            return value
+        depth, j = 1, m.end()
+        while j < len(value) and depth:
+            depth += {'(': 1, ')': -1}.get(value[j], 0)
+            j += 1
+        value = value[:m.start()] + ' ' + value[j:]
+
+
+def has_colour(v):
+    if HEX.search(v) or FUNC.search(v):
+        return True
+    return any(w.lower() in NAMES for w in BARE.findall(v))
+
+
+def nonzero(v, pattern):
+    return any(float(m.group(1)) != 0 for m in pattern.finditer(v))
+
+
+def bad(prop, value, ts):
+    raw = value
+    v = strip_calls(strip_calls(value, ['url']), ['var'])
+    if prop in ('fontSize', 'borderRadius', 'font-size', 'border-radius'):
+        if ts and re.fullmatch(r'\s*[+-]?\d*\.?\d+\s*', v) and float(v) != 0:
+            return True
+        return nonzero(v, UNIT)
+    if prop in ('boxShadow', 'box-shadow'):
+        if has_colour(v):
+            return True
+        return 'var(' not in raw and v.strip().strip('"\'`').lower() not in ('none', 'inherit', 'initial', 'unset', '')
+    if prop.startswith(('transition', 'animation')) and not ts:
+        return nonzero(v, DURATION)
+    if (ts and prop in TS_COLOUR) or (not ts and COLOUR.match(prop)):
+        return has_colour(v)
+    return False
+
+
+def line_of(text, pos):
+    return text.count('\n', 0, pos) + 1
+
+
+def css(text):
+    for m in re.finditer(r'(?<![\w-])([a-zA-Z-]+)\s*:\s*([^;{}]*)', text):
+        if bad(m.group(1).lower(), m.group(2), False):
+            yield line_of(text, m.start(1)), m.group(1)
+
+
+def style_objects(text):
+    for m in re.finditer(r'style\s*=\s*\{\s*\{', text):
+        depth, j, quote = 2, m.end(), None
+        while j < len(text) and depth > 1:
+            c = text[j]
+            if quote:
+                if c == '\\':
+                    j += 1
+                elif c == quote:
+                    quote = None
+            elif c in '"\'`':
+                quote = c
+            elif c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+            j += 1
+        yield m.end(), text[m.end():j - 1]
+
+
+def ts(text):
+    for start, body in style_objects(text):
+        # Entries `key: value` at the object's top level.
+        depth, quote, i, entries, last = 0, None, 0, [], 0
+        while i <= len(body):
+            c = body[i] if i < len(body) else ','
+            if quote:
+                if c == '\\':
+                    i += 1
+                elif c == quote:
+                    quote = None
+            elif c in '"\'`':
+                quote = c
+            elif c in '([{':
+                depth += 1
+            elif c in ')]}':
+                depth -= 1
+            elif c == ',' and depth == 0:
+                entries.append((last, body[last:i]))
+                last = i + 1
+            i += 1
+        for off, entry in entries:
+            m = re.match(r'\s*["\']?([A-Za-z]+)["\']?\s*:\s*(.*)', entry, re.S)
+            if m and m.group(1) in TS_KEYS and bad(m.group(1), m.group(2), True):
+                yield line_of(text, start + off + m.start(1)), m.group(1)
+
+
+def skipped(path):
+    rel = os.path.relpath(path, ROOT).split(os.sep)
+    return (rel == ['tokens.css'] or rel == ['terminal', 'emulator.ts'] or 'testing' in rel[:-1]
+            or '.test.' in rel[-1])
+
+
+found = []
+for dirpath, dirs, files in os.walk(ROOT):
+    dirs.sort()
+    for name in sorted(files):
+        path = os.path.join(dirpath, name)
+        if skipped(path) or not name.endswith(('.css', '.ts', '.tsx')):
+            continue
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+        hits = css(blank(text, False)) if name.endswith('.css') else ts(blank(text, True))
+        found += [f'{path}:{line} {prop}' for line, prop in hits]
+if found:
+    print('\n'.join(found))
+    sys.exit(1)
+PY
 }
 
 visual_check_ids="D1 D2 D3 D4 D5 D6 D7 D8 D9 D10"
@@ -249,6 +433,8 @@ case "${1:-}" in
     [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: loop/rules.sh $1 <pr>" >&2; exit 2; }
     pr_rule "$1" "$2" ;;
   vocab) vocab ;;
+  tokens) [ $# -eq 1 ] || { echo "usage: loop/rules.sh tokens" >&2; exit 2; }
+    tokens ;;
   delta) delta "${2:-}" "${3:-}" ;;
   clean-merge) [ -n "${2:-}" ] || { echo "usage: loop/rules.sh clean-merge <commit> [main-ref]" >&2; exit 2; }
     clean_merge "$2" "${3:-origin/main}" ;;
