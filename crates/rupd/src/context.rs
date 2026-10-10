@@ -190,6 +190,7 @@ mod tests {
                 id: creator.into(),
                 parent: None,
             },
+            home: None,
         }
     }
 

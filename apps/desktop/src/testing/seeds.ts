@@ -99,6 +99,7 @@ const todosAt = (now: number): Todo[] =>
     blocked: index === 3,
     created_at: now,
     creator: USER,
+    home: null,
   }));
 
 const padsAt = (now: number): Pad[] =>

@@ -9,4 +9,8 @@ blocked: boolean, created_at: number,
 /**
  * The Actor whose `todo.create` made this Todo. A Todo from before this field reads as `Actor::user()`.
  */
-creator: Actor, };
+creator: Actor, 
+/**
+ * The Room (a Rail id) this Todo belongs to; `None` is the Project root. A Todo from before this field reads as `None`.
+ */
+home: string | null, };

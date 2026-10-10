@@ -128,9 +128,64 @@ impl Daemon {
             .modules
             .get(namespace)
             .ok_or_else(|| RpcError::method_not_found(method))?;
-        module
+        if method == "todo.move" {
+            self.require_room(&params).await?;
+        }
+        let outcome = module
             .call(&self.ctx(conn.actor.clone()), method, params)
-            .await
+            .await;
+        if method == "rail.remove" && outcome.is_ok() {
+            self.reset_orphaned_homes().await?;
+        }
+        outcome
+    }
+
+    /// T13: a `todo.move` names a Room on the Rail, or the Project root.
+    async fn require_room(&self, params: &Value) -> Result<(), RpcError> {
+        let contracts::todo::MoveParams { home, .. } = rpc::params(params.clone())?;
+        let Some(home) = home else { return Ok(()) };
+        let nodes = self.rail().await?;
+        match nodes.iter().find(|node| node.id == home) {
+            None => Err(RpcError::not_found(format!("rail node {home}"))),
+            Some(node) if node.kind != contracts::agent::NodeKind::Room => Err(RpcError::new(
+                code::INVALID_PARAMS,
+                format!("rail node {home} is not a Room"),
+            )),
+            Some(_) => Ok(()),
+        }
+    }
+
+    /// T13: after `rail.remove`, each Todo whose Home left the Rail goes to the Project root, in id order.
+    async fn reset_orphaned_homes(&self) -> Result<(), RpcError> {
+        let rail: std::collections::HashSet<String> =
+            self.rail().await?.into_iter().map(|node| node.id).collect();
+        let todos = self
+            .modules
+            .get("todo")
+            .ok_or_else(|| RpcError::internal("todo module is not registered"))?;
+        let ctx = self.ctx(Actor::daemon());
+        let listed: Vec<contracts::todo::Todo> =
+            serde_json::from_value(todos.call(&ctx, "todo.list", Value::Null).await?)
+                .map_err(RpcError::internal)?;
+        for todo in listed {
+            if todo.home.is_some_and(|home| !rail.contains(&home)) {
+                todos
+                    .call(&ctx, "todo.move", json!({ "id": todo.id, "home": null }))
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn rail(&self) -> Result<Vec<contracts::agent::RailNode>, RpcError> {
+        let rail = self
+            .modules
+            .get("rail")
+            .ok_or_else(|| RpcError::internal("rail module is not registered"))?;
+        let tree = rail
+            .call(&self.ctx(Actor::daemon()), "rail.tree", Value::Null)
+            .await?;
+        serde_json::from_value(tree).map_err(RpcError::internal)
     }
 
     /// E2, E3: the Context of an Agent, or its Brief. The Rail and the Todos are read as the

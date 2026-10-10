@@ -53,7 +53,7 @@ export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => 
   "todo.get": ({ id }) => ({ ...find(store.todos, (todo) => todo.id === id, `todo ${id}`) }),
   "todo.create": ({ title, body, blockers }) => {
     const id = Math.max(0, ...store.todos.map((todo) => todo.id)) + 1;
-    const created: Todo = { id, title, body: body ?? "", done: false, blockers: blockers ?? [], blocked: false, created_at: Date.now(), creator: USER };
+    const created: Todo = { id, title, body: body ?? "", done: false, blockers: blockers ?? [], blocked: false, created_at: Date.now(), creator: USER, home: null };
     store.todos = withBlocked([...store.todos, created]);
     const stored = find(store.todos, (todo) => todo.id === id, `todo ${id}`);
     announce({ name: "todo.created", data: stored });
@@ -68,6 +68,8 @@ export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => 
     changeTodos(store, announce, id, (todos) => todos.map((todo) => (todo.id === id ? { ...todo, done: true } : todo))),
   "todo.setBlockers": ({ id, blockers }) =>
     changeTodos(store, announce, id, (todos) => todos.map((todo) => (todo.id === id ? { ...todo, blockers } : todo))),
+  "todo.move": ({ id, home }) =>
+    changeTodos(store, announce, id, (todos) => todos.map((todo) => (todo.id === id ? { ...todo, home } : todo))),
   "todo.delete": ({ id }) => {
     find(store.todos, (todo) => todo.id === id, `todo ${id}`);
     store.todos = withBlocked(store.todos.filter((todo) => todo.id !== id).map((todo) => ({ ...todo, blockers: todo.blockers.filter((blocker) => blocker !== id) })));

@@ -37,6 +37,7 @@ impl Store {
             );"
         ))?;
         Self::migrate_creator_column(&db)?;
+        Self::migrate_home_column(&db)?;
         Ok(Self { db })
     }
 
@@ -51,6 +52,19 @@ impl Store {
             db.execute_batch(&format!(
                 "ALTER TABLE todos ADD COLUMN creator TEXT NOT NULL DEFAULT '{LEGACY_CREATOR}'"
             ))?;
+        }
+        Ok(())
+    }
+
+    /// A `todos.db` from before T12 has no `home` column; its Todos stay `NULL`, the Project root.
+    fn migrate_home_column(db: &Connection) -> rusqlite::Result<()> {
+        let has_home: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('todos') WHERE name = 'home'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_home {
+            db.execute_batch("ALTER TABLE todos ADD COLUMN home TEXT")?;
         }
         Ok(())
     }
@@ -90,7 +104,7 @@ impl Store {
         let row = self
             .db
             .query_row(
-                "SELECT title, body, done, created_at, creator, EXISTS(
+                "SELECT title, body, done, created_at, creator, home, EXISTS(
                     SELECT 1 FROM blockers b JOIN todos o ON o.id = b.blocker
                     WHERE b.todo = todos.id AND o.done = 0
                 ) FROM todos WHERE id = ?1",
@@ -103,12 +117,13 @@ impl Store {
                         r.get(3)?,
                         r.get::<_, String>(4)?,
                         r.get(5)?,
+                        r.get(6)?,
                     ))
                 },
             )
             .optional()
             .map_err(RpcError::internal)?;
-        let (title, body, done, created_at, creator, blocked) =
+        let (title, body, done, created_at, creator, home, blocked) =
             row.ok_or_else(|| RpcError::not_found(format!("todo {id}")))?;
         Ok(Todo {
             id,
@@ -119,6 +134,7 @@ impl Store {
             blocked,
             created_at,
             creator: parse_creator(&creator).map_err(RpcError::internal)?,
+            home,
         })
     }
 
@@ -153,6 +169,18 @@ impl Store {
         self.get(id)?;
         self.db
             .execute("UPDATE todos SET done = 1 WHERE id = ?1", [id])
+            .map_err(RpcError::internal)?;
+        self.get(id)
+    }
+
+    /// Sets the Home. The caller has checked that a Room exists on the Rail.
+    pub(crate) fn set_home(&self, id: u32, home: Option<&str>) -> Result<Todo, RpcError> {
+        self.get(id)?;
+        self.db
+            .execute(
+                "UPDATE todos SET home = ?2 WHERE id = ?1",
+                params![id, home],
+            )
             .map_err(RpcError::internal)?;
         self.get(id)
     }
