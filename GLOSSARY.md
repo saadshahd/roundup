@@ -37,6 +37,9 @@ Where an item sits: a Workstream, or the Project root. Each item has one Home th
 The coordinating Agent role of one Workstream, with a system prompt tuned to that role. Its Rail id is the Workstream id; its program may be starting, running or stopped without changing the Workstream. Direct access to any Agent remains (P1).
 _Avoid_: meta-agent, parent agent, lead
 
+**Digest**:
+A Door's fixed-size envelope about one direct child, `{name, kind, last, todos, pads}`, asked for with `agent.digest` and never read from Terminal output (B19, B20).
+
 **Attempt**:
 One launch of an Agent's program, numbered per Agent from `1` in launch order (A20). It travels in the hook command, `SignalParams`, `StatusEvent` and `RailNode.attempt` as a canonical positive decimal string within SQLite's signed 64-bit range; a client may compare two of one Agent and reads nothing else from it. Never a Rail identity or a vendor conversation id; the last one survives stop, failure and reopen.
 
