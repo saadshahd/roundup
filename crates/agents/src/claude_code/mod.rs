@@ -12,7 +12,13 @@ use serde_json::Value;
 use crate::{AgentAdapter, Observation};
 
 pub use brief::Role;
-pub use launch::{Launcher, STATE_EVENTS};
+pub use launch::{DOOR_TOOLS, Launcher, STATE_EVENTS, settings_marker};
+
+/// F4, F5: the program names this Adapter's vendor CLI is started by. The shim and the process
+/// scan read the names of every Adapter through a function like this one, and write none.
+pub fn programs() -> &'static [&'static str] {
+    &["claude"]
+}
 
 /// Env vars Claude Code sets when the program running it is itself inside a Claude Code run
 /// (A15). The Daemon can inherit these from its own environment; every program it starts must
