@@ -186,6 +186,11 @@ class Built(unittest.TestCase):
             builder.built(1, 'U1', True, 'https://run/1')
         self.assertEqual(github.writes, [])
 
+    def test_l94_a_closed_stall_issue_is_not_reopened_by_a_build_run(self):
+        with GitHub(state='closed', labels=READY) as github:
+            builder.built(1, 'stall-20261010-03', True, 'https://run/1')
+        self.assertEqual(github.writes, [])
+
     def test_l23_an_issue_a_bot_closed_without_a_merged_build_pr_reopens_and_is_struck(self):
         with GitHub(state='closed', labels=READY) as github:
             builder.built(1, 'U1', True, 'https://run/1')
