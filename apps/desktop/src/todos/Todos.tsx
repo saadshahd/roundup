@@ -247,23 +247,25 @@ export const Todos = () => {
       <Show when={noneInRoom()}>
         <p>no todos in this room</p>
       </Show>
-      <div class="todo-list">
-      <For each={open()}>
-        {(todo) => (
-          <OpenRow
-            todo={todo}
-            selected={selectedId() === todo.id}
-            known={todos.byId()}
-            onOpen={show}
-            onComplete={complete}
-            registerRow={(id, row) => {
-              if (row) rows.set(id, row);
-              else rows.delete(id);
-            }}
-          />
-        )}
-      </For>
-      </div>
+      <Show when={open().length > 0}>
+        <div class="todo-list">
+        <For each={open()}>
+          {(todo) => (
+            <OpenRow
+              todo={todo}
+              selected={selectedId() === todo.id}
+              known={todos.byId()}
+              onOpen={show}
+              onComplete={complete}
+              registerRow={(id, row) => {
+                if (row) rows.set(id, row);
+                else rows.delete(id);
+              }}
+            />
+          )}
+        </For>
+        </div>
+      </Show>
       <Show when={done().length > 0}>
         <RowButton onClick={() => setUnfolded(!unfolded())}>
           <KindGlyph kind="done" decorative /> {done().length} done
