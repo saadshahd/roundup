@@ -796,7 +796,9 @@ async fn u149_a_drawing_written_through_the_tools_is_stored_byte_exact() {
         std::fs::read_to_string(&target).unwrap(),
         format!("{drawing}{block}")
     );
+}
 
+#[tokio::test]
 async fn o4_agent_set_order_fills_its_own_id_and_takes_only_the_order() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("fake.sock");
