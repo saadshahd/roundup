@@ -54,6 +54,8 @@ class GitHub:
         if '/actions/workflows/' in args[1]:
             status = args[1].split('status=')[1].split('&')[0]
             return dict(workflow_runs=[dict(id=run) for run, (state, _) in self.runs.items() if state == status])
+        if '/actions/runs/' in args[1] and '/jobs' not in args[1]:
+            return dict(run_started_at=stamp(300 - int(args[1].rsplit('/', 1)[1]) * 100 + 60))
         if '/jobs' in args[1]:
             return dict(jobs=self.runs[int(args[1].split('/runs/')[1].split('/')[0])][1])
         return dict(state=self.state, closed_by=dict(type=self.closer), labels=[dict(name=name) for name in self.labels])
@@ -206,19 +208,21 @@ class Fix(unittest.TestCase):
                 self.assertIsNone(builder.fix_task(9, HEAD, 'check'))
 
     def test_l82_the_fourth_cause_hands_the_pr_to_its_issue_and_asks_nobody(self):
-        attempts = [note(f'<!-- fix-attempt -->\nFix run https://run/{n} answered `check`.', ago=300 - n * 100) for n in (1, 2, 3)]
+        attempts = [note(f'<!-- fix-attempt -->\nFix run https://github.com/o/r/actions/runs/{n} answered `{"review" if n == 1 else "check"}`.', ago=300 - n * 100) for n in (1, 2, 3)]
         commits = [dict(messageHeadline=f'fix {n}', committedDate=stamp(300 - n * 100 + 10)) for n in (1, 2, 3)]
+        commits.append(dict(messageHeadline='original build', committedDate=stamp(1000)))
         view = pr(url='https://github.com/o/r/pull/9', body='Refs #5\nScenarios: U1\n', commits=commits)
         with GitHub(view=view, notes=attempts[:2]) as github:
             self.assertIn('`check` failed on this head', builder.fix_task(9, HEAD, 'check'))
         self.assertEqual(github.writes, [])
-        with GitHub(view=view, notes=attempts + [note('VERDICT: reject\n\nbad name')], labels=READY) as github:
+        with GitHub(view=view, notes=attempts + [note('VERDICT: reject\n\nfirst finding', ago=350), note('VERDICT: reject\n\nbad name', ago=0)], labels=READY) as github:
             self.assertIsNone(builder.fix_task(9, HEAD, 'review'))
             first = github.bodies()
             self.assertEqual(len(first), 2)
             self.assertTrue(first[0].startswith('<!-- fix-exhausted #9 -->'))
-            for text in ('https://github.com/o/r/pull/9', HEAD, 'fix 1', 'fix 3', 'review rejected: bad name'):
+            for text in ('https://github.com/o/r/pull/9', HEAD, 'fix 1', 'fix 3', 'review rejected: first finding', 'review rejected: bad name'):
                 self.assertIn(text, first[0])
+            self.assertNotIn('original build', first[0])
             self.assertTrue(first[1].startswith('<!-- strike -->'))
             self.assertIn(('pr', 'close', '9', '--delete-branch'), github.writes)
             self.assertFalse(github.flagged())

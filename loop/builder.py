@@ -212,13 +212,20 @@ def strike(issue, why):
     """Record one failed try on the Issue; STRIKES in a day take it off the queue and wait on the user."""
     comment(issue, f'<!-- strike -->\n{why}')
     if len(marked(issue, '<!-- strike -->', time.time() - DAY)) >= STRIKES:
-        flag(issue, f'{STRIKES} build runs in 24 hours ended without a PR, so the queue stops building this Issue until '
+        flag(issue, f'{STRIKES} tries in 24 hours (build runs that ended without a PR, or PRs that used their fix runs) failed, so the queue stops building this Issue until '
                     'you add `ready-for-agent` again. The strike comments link each run.')
         call('api', '-X', 'DELETE', f'repos/{{owner}}/{{repo}}/issues/{issue}/labels/ready-for-agent')
 
 
 def view(pr):
     return orders.gh('pr', 'view', str(pr), '--json', 'number,url,state,headRefOid,headRefName,isDraft,isCrossRepository,body')
+
+
+def started(attempt):
+    """When the fix run an attempt comment links began, or None when its run is not readable."""
+    run = re.search(r'/runs/(\d+)', attempt)
+    began = (orders.gh('api', f'repos/{{owner}}/{{repo}}/actions/runs/{run[1]}') if run else {}).get('run_started_at')
+    return created(began) if began else None
 
 
 def fix_task(pr, head, cause):
@@ -249,19 +256,26 @@ def exhaust(current, attempts, cause):
     if marked(issue, f'<!-- fix-exhausted #{pr} -->'):
         return
     commits = orders.gh('pr', 'view', str(pr), '--json', 'commits')['commits']
-    verdict = ([c['body'] for c in marked(pr, 'VERDICT:')] or [''])[-1].split('\n\n', 1)[-1].strip()
-    lines, since = [], 0
+    verdicts = marked(pr, 'VERDICT:')
+
+    def reason(cause, before):
+        found = [c['body'] for c in verdicts if created(c['created_at']) <= before][-1:] or ['']
+        return f"review rejected: {found[0].split(chr(10) * 2, 1)[-1].strip()}" if cause == 'review' else f'{cause} failed'
+
+    lines, since = [], None
     for attempt in attempts:
         ended_at = created(attempt['created_at'])
-        cause_ran = re.search(r'answered `(\w+)`', attempt['body'])
+        cause_ran = (re.search(r'answered `(\w+)`', attempt['body']) or [None, '?'])[1]
+        if since is None:
+            since = started(attempt['body']) or ended_at
         subjects = [c['messageHeadline'] for c in commits if since < created(c['committedDate']) <= ended_at]
-        lines.append(f"- `{cause_ran[1] if cause_ran else '?'}`: " + ('; '.join(subjects) or 'no commit'))
+        lines.append(f"- `{cause_ran}` ({reason(cause_ran, ended_at)}): " + ('; '.join(subjects) or 'no commit'))
         since = ended_at
-    reason = {'check': 'check failed', 'rules': 'rules failed', 'review': f'review rejected: {verdict}'}.get(cause, cause)
     comment(issue, f'<!-- fix-exhausted #{pr} -->\nPR #{pr} ({current["url"]}) used its {ATTEMPTS} fix runs and was closed '
                    f'unmerged; its diff stays at that link, head `{current["headRefOid"]}`. Each line is a cause a fix '
-                   f'run answered and the commits it pushed; the last is the cause that found no run left.\n\n'
-                   + '\n'.join(lines) + f'\n- `{cause}` ({reason}): no fix run left\n\nTake another approach.')
+                   f'run answered, its failing check or review finding, and the commits it pushed; the last is the cause '
+                   f'that found no run left.\n\n'
+                   + '\n'.join(lines) + f'\n- `{cause}` ({reason(cause, time.time())}): no fix run left\n\nTake another approach.')
     strike(issue, f'PR #{pr} used its {ATTEMPTS} fix runs: {current["url"]}')
     call('pr', 'close', str(pr), '--delete-branch')
 

@@ -2,8 +2,8 @@ name: fix
 run-name: "${{ inputs.pr && format('Fix PR #{0}: {1}', inputs.pr, inputs.cause) || format('Fix {0}', github.event.workflow_run.head_branch) }}"
 
 # L82: a fix run answers one cause on a Builder PR: a failed check or rules run, a reject, a conflict with main, or a
-# draft its run left unfinished. A PR gets three fix runs that worked; the fourth cause waits on the user. The fix run
-# pushes with the Claude App's token, so its push starts check, then review, again.
+# draft its run left unfinished. A PR gets three fix runs that worked; the fourth cause closes the PR, deletes its
+# branch and hands its Issue the causes. The fix run pushes with the Claude App's token, so its push starts check, then review, again.
 on:
   workflow_run:
     workflows: [check, loop]
@@ -47,7 +47,7 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       issues: write
       pull-requests: write
     outputs:
