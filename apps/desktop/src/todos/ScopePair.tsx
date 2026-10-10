@@ -5,19 +5,19 @@ export const ScopePair = (props: { thisRoom: boolean; onChange: (thisRoom: boole
   const name = `todos-scope-${createUniqueId()}`;
 
   return (
-    <span role="radiogroup" aria-label="todos shown" class="scope-pair">
+    <span role="radiogroup" aria-label="todos shown" class="shown-choice">
       {[
         { label: "all", value: false },
         { label: "this room", value: true },
       ].map((option) => (
-        <label class="word scope-word">
+        <label class="word shown-word">
           <input
             type="radio"
             name={name}
             checked={props.thisRoom === option.value}
             onChange={() => props.onChange(option.value)}
           />
-          <span data-on={props.thisRoom === option.value ? "" : undefined}>{option.label}</span>
+          <span>{option.label}</span>
         </label>
       ))}
     </span>

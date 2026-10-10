@@ -52,6 +52,21 @@ describe("u159 the Shelf can show only the selected Room's Todos", () => {
     expect(screen.getByRole("radio", { name: "all" })).toHaveProperty("checked", true);
   });
 
+  it("u159_returning_to_a_room_reads_all", async () => {
+    const { connected } = await mountTodos(seed(), true, rail());
+
+    await screen.findByText(/todo 1/);
+    connected.rail.select("r1");
+    fireEvent.click(await screen.findByRole("radio", { name: "this room" }));
+    await waitFor(() => expect(ids()).toEqual(["1"]));
+
+    connected.rail.select("r2");
+    connected.rail.select("r1");
+
+    await waitFor(() => expect(ids()).toEqual(["1", "2", "3"]));
+    expect(screen.getByRole("radio", { name: "all" })).toHaveProperty("checked", true);
+  });
+
   it("u159_an_empty_result_reads_no_todos_in_this_room", async () => {
     const { connected } = await mountTodos([todo(2, { home: null })], true, rail());
 

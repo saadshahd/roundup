@@ -1,5 +1,5 @@
 import { Icon } from "../ink/Icon";
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, on, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
@@ -124,8 +124,7 @@ export const Todos = () => {
   const [unfolded, setUnfolded] = createSignal(false);
   /** U60: an open Todo whose creator is an Agent on the Rail shows under that Agent instead. */
   const onShelf = createMemo(() => openTodos(todos.all()).filter((todo) => !isTodoOnRail(todo, connected.rail.nodes)));
-  /** U159: the choice belongs to the Room it was made on, so selecting another row reads `all` again without a stored reset. */
-
+  /** U159: the choice belongs to the Room it was made on, and selecting another row clears it, so returning reads `all`. */
   const [choice, setChoice] = createSignal<{ room: string; thisRoom: boolean } | null>(null);
 
   const selectedRoom = createMemo(() => {
@@ -133,6 +132,8 @@ export const Todos = () => {
 
     return connected.rail.nodes.some((node) => node.id === id && isRoom(node)) ? id : null;
   });
+
+  createEffect(on(selectedRoom, () => setChoice(null), { defer: true }));
 
   const thisRoom = createMemo(() => selectedRoom() !== null && choice()?.room === selectedRoom() && choice()?.thisRoom === true);
   const open = createMemo(() => (thisRoom() ? onShelf().filter((todo) => todo.home === selectedRoom()) : onShelf()));

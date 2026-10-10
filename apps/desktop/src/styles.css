@@ -205,21 +205,26 @@ button[aria-disabled="true"] {
 }
 
 /* U159: native radios beside their words, in the header's line (24px high) so no row moves (U112); the one global focus ring (U133) draws on the radio. */
-.scope-word {
+.shown-word {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   min-height: var(--space-5);
-  margin-left: 1ch;
+  margin-left: var(--space-2);
   cursor: pointer;
 }
 
-.scope-word input {
+.shown-choice {
+  display: inline-flex;
+  white-space: nowrap;
+}
+
+.shown-word input {
   margin: 0;
   cursor: pointer;
   accent-color: var(--accent);
 }
 
-.scope-word:has(input:checked) {
+.shown-word:has(input:checked) {
   color: var(--text);
 }
