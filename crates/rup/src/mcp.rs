@@ -177,6 +177,14 @@ fn offered_tools() -> Vec<Offered> {
     ]
 }
 
+/// F3: the tool only a Door is offered; the Daemon refuses the method from any other Agent.
+fn agent_spawn() -> Offered {
+    offered::<agent::SpawnParams>(
+        "agent.spawn",
+        "Start a child Agent in a folder of this Project, with an optional first prompt. The child's Home is you.",
+    )
+}
+
 struct Shim {
     socket: PathBuf,
     actor: Actor,
@@ -316,12 +324,12 @@ impl ServerHandler for Shim {
     }
 }
 
-pub async fn run(agent_id: Option<String>) -> ExitCode {
+pub async fn run(agent_id: Option<String>, door: bool) -> ExitCode {
     let Some(id) = agent_id else {
         eprintln!("usage: rup mcp <agent-id>");
         return ExitCode::from(2);
     };
-    match serve(id).await {
+    match serve(id, door).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(why) => {
             eprintln!("rup: {why}");
@@ -331,7 +339,7 @@ pub async fn run(agent_id: Option<String>) -> ExitCode {
     }
 }
 
-async fn serve(id: String) -> Result<(), String> {
+async fn serve(id: String, door: bool) -> Result<(), String> {
     let socket = rpc::socket_path().map_err(|err| err.to_string())?;
     let (gone, mut gone_rx) = mpsc::channel(1);
     let shim = Shim {
@@ -341,7 +349,10 @@ async fn serve(id: String) -> Result<(), String> {
             id,
             parent: None,
         },
-        tools: offered_tools(),
+        tools: offered_tools()
+            .into_iter()
+            .chain(door.then(agent_spawn))
+            .collect(),
         gone,
     };
     let start = shim.connect().await.map_err(|gone| gone.to_string())?;

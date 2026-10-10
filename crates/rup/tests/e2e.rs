@@ -1643,3 +1643,395 @@ async fn t10_the_mcp_server_and_the_context_read_the_reordered_list() {
     let in_context: Vec<u32> = context.todos.iter().map(|todo| todo.id).collect();
     assert_eq!(in_context, [3, 1, 2, 4]);
 }
+
+// F2 to F5: a Door has no shell, starts children through `agent_spawn`, finds its `claude` shimmed,
+// and has a stray vendor program flagged. `spikes/spawn-boundary/REPORT.md` is what the real
+// Claude Code did (F1).
+
+fn executable(path: &std::path::Path, text: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, text).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A directory holding a `claude` that prints `9.9.9`, ahead of the test's own `PATH`.
+fn path_with_fake_claude(root: &std::path::Path) -> String {
+    let bin = root.join("path-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    executable(&bin.join("claude"), "#!/bin/sh\necho 9.9.9\n");
+    format!("{}:{}", bin.display(), std::env::var("PATH").unwrap())
+}
+
+async fn json_file(path: &std::path::Path) -> Value {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            if let Ok(text) = std::fs::read_to_string(path)
+                && let Ok(value) = serde_json::from_str(&text)
+            {
+                return value;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the fake claude wrote its report")
+}
+
+async fn start_door(client: &rpc::Client) -> String {
+    let id = workstream(client, "team").await;
+    client
+        .request("rail.startDoor", json!({ "id": id }))
+        .await
+        .unwrap();
+    id
+}
+
+fn settings_of(project: &Project, id: &str) -> Value {
+    let path = project
+        .dir
+        .path()
+        .join(format!(".roundup/agents/{id}.settings.json"));
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn f2_an_ordinary_agent_runs_claude_directly_and_through_sh() {
+    let root = tempfile::tempdir().unwrap();
+    let report = root.path().join("run.json");
+    let runs = json!([
+        "claude --version",
+        "sh -c 'claude --version'",
+        ["claude", "--version"]
+    ]);
+    let project = start(&[
+        ("PATH", &path_with_fake_claude(root.path())),
+        ("FAKE_CLAUDE_RUN", &runs.to_string()),
+        ("FAKE_CLAUDE_RUN_REPORT", report.to_str().unwrap()),
+    ]);
+    let client = project.client().await;
+
+    let agent = project.spawn_agent(&client).await;
+    let done = json_file(&report).await;
+
+    for run in done.as_array().unwrap() {
+        assert_eq!(
+            (run["code"].as_i64(), run["stdout"].as_str()),
+            (Some(0), Some("9.9.9\n"))
+        );
+    }
+    assert!(settings_of(&project, &agent.id).get("env").is_none());
+}
+
+#[tokio::test]
+async fn f4_a_door_finds_a_shim_for_claude_directly_and_through_sh_and_other_programs_run() {
+    let root = tempfile::tempdir().unwrap();
+    let report = root.path().join("run.json");
+    let runs = json!([
+        "claude --version",
+        "sh -c 'claude --version'",
+        ["claude", "--version"],
+        "/bin/echo hi",
+        "git --version"
+    ]);
+    let project = start(&[
+        ("PATH", &path_with_fake_claude(root.path())),
+        ("FAKE_CLAUDE_RUN", &runs.to_string()),
+        ("FAKE_CLAUDE_RUN_REPORT", report.to_str().unwrap()),
+    ]);
+    let client = project.client().await;
+
+    start_door(&client).await;
+    let done = json_file(&report).await;
+    let done = done.as_array().unwrap();
+
+    let message = "roundup: start an agent with agent_spawn (a Meta-agent) or ask the user\n";
+    for run in &done[..3] {
+        assert_eq!(run["code"], 1);
+        assert_eq!(run["stderr"], message);
+        assert_eq!(run["stdout"], "");
+    }
+    assert_eq!(
+        (done[3]["code"].as_i64(), done[3]["stdout"].as_str()),
+        (Some(0), Some("hi\n"))
+    );
+    assert_eq!(done[4]["code"], 0);
+    assert!(
+        done[4]["stdout"]
+            .as_str()
+            .unwrap()
+            .starts_with("git version")
+    );
+}
+
+#[tokio::test]
+async fn f4_a_doors_path_in_its_settings_is_its_shim_directory_then_the_daemons_path() {
+    let root = tempfile::tempdir().unwrap();
+    let path = path_with_fake_claude(root.path());
+    let project = start(&[("PATH", &path)]);
+    let client = project.client().await;
+
+    let door = start_door(&client).await;
+
+    let shims = project
+        .dir
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join(format!(".roundup/agents/{door}.bin"));
+    assert_eq!(
+        settings_of(&project, &door)["env"]["PATH"],
+        format!("{}:{path}", shims.display())
+    );
+    assert!(shims.join("claude").is_file());
+}
+
+#[tokio::test]
+async fn f2_a_doors_brief_and_tools_hold_agent_spawn_and_an_agents_hold_none() {
+    let root = tempfile::tempdir().unwrap();
+    let report = root.path().join("seen.json");
+    let project = start(&[("FAKE_CLAUDE_BRIEF_REPORT", report.to_str().unwrap())]);
+    let client = project.client().await;
+
+    start_door(&client).await;
+    let seen = json_file(&report).await;
+
+    let listed: Vec<_> = seen["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect();
+    assert!(listed.contains(&"agent_spawn"));
+    assert_eq!(listed.len(), 21);
+    assert!(seen["brief"].as_str().unwrap().contains("no shell"));
+}
+
+#[tokio::test]
+async fn f3_a_door_starts_a_child_with_agent_spawn_and_the_child_is_the_doors_own() {
+    let root = tempfile::tempdir().unwrap();
+    let report = root.path().join("result.json");
+    let cwd = root.path().join("never-used");
+    let project = start(&[]);
+    let cwd_in_project = project.dir.path().to_string_lossy().into_owned();
+    drop(cwd);
+    let tools = json!([{"name": "agent_spawn", "arguments": {
+        "cwd": cwd_in_project, "prompt": "do it", "parent": "999"
+    }}]);
+    let mut project = project;
+    project.restart(&[
+        ("FAKE_CLAUDE_DOOR_TOOLS", &tools.to_string()),
+        ("FAKE_CLAUDE_TOOL_REPORT", report.to_str().unwrap()),
+    ]);
+    let client = project.client().await;
+
+    let door = start_door(&client).await;
+    let spawned: RailNode = serde_json::from_value(json_file(&report).await[0].clone()).unwrap();
+
+    assert_eq!(spawned.parent.as_deref(), Some(door.as_str()));
+    assert!(spawned.worktree.is_none());
+    let tree = rail_tree(&client).await;
+    let child = tree.iter().find(|n| n.id == spawned.id).unwrap();
+    assert_eq!(child.parent.as_deref(), Some(door.as_str()));
+    assert!(tree.iter().all(|n| n.parent.as_deref() != Some("999")));
+}
+
+#[tokio::test]
+async fn f3_a_door_spawns_into_a_worktree_when_the_setting_is_on() {
+    let root = tempfile::tempdir().unwrap();
+    let report = root.path().join("result.json");
+    let project = start(&[]);
+    let path = project.dir.path().to_owned();
+    git_at(&path, &["init", "-q", "-b", "main"]);
+    git_at(&path, &["config", "user.name", "roundup"]);
+    git_at(&path, &["config", "user.email", "roundup@example.com"]);
+    std::fs::write(path.join("README"), "keep").unwrap();
+    git_at(&path, &["add", "README"]);
+    git_at(&path, &["commit", "-qm", "base"]);
+    let tools = json!([{"name": "agent_spawn", "arguments": {"cwd": path.to_string_lossy()}}]);
+    let mut project = project;
+    project.restart(&[
+        ("FAKE_CLAUDE_DOOR_TOOLS", &tools.to_string()),
+        ("FAKE_CLAUDE_TOOL_REPORT", report.to_str().unwrap()),
+    ]);
+    let client = project.client().await;
+    client
+        .request("project.setWorktrees", json!({"on": true, "check": null}))
+        .await
+        .unwrap();
+
+    let door = start_door(&client).await;
+    let spawned: RailNode = serde_json::from_value(json_file(&report).await[0].clone()).unwrap();
+
+    assert_eq!(spawned.parent.as_deref(), Some(door.as_str()));
+    let worktree = spawned.worktree.expect("the child has a Worktree");
+    assert_eq!(worktree.branch, format!("roundup/agent-{}", spawned.id));
+    let listed = git_at(&path, &["worktree", "list"]);
+    assert!(listed.contains(&worktree.path), "{listed}");
+}
+
+#[tokio::test]
+async fn f3_an_agent_that_is_not_a_door_is_refused_and_nothing_changes() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let agent = project.spawn_agent(&client).await;
+    let before = rail_tree(&client).await;
+    let as_agent = project.client().await;
+    as_agent
+        .request(
+            "daemon.identify",
+            IdentifyParams {
+                actor: Actor {
+                    kind: ActorKind::Agent,
+                    id: agent.id.clone(),
+                    parent: None,
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+    let refused = as_agent
+        .request(
+            "agent.spawn",
+            json!({"cwd": project.dir.path(), "prompt": null, "parent": agent.id}),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code, rpc::code::FORBIDDEN);
+    assert_eq!(rail_tree(&client).await, before);
+}
+
+/// A script named `claude` that leaves its pid in `pid` and sleeps.
+fn stray_script(root: &std::path::Path) -> (PathBuf, PathBuf) {
+    let folder = root.join("stray");
+    std::fs::create_dir_all(&folder).unwrap();
+    let script = folder.join("claude");
+    let pid = root.join("stray.pid");
+    executable(
+        &script,
+        &format!(
+            "#!/bin/sh\necho $$ > '{}'\nsleep 60 & wait\n",
+            pid.display()
+        ),
+    );
+    (script, pid)
+}
+
+async fn next_stray(client: &mut rpc::Client) -> contracts::agent::StrayEvent {
+    next(client, |data| match data {
+        EventData::AgentStray(event) => Some(event),
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test]
+async fn f5_a_stray_claude_under_a_door_is_flagged_once_and_cleared_once_when_it_exits() {
+    let root = tempfile::tempdir().unwrap();
+    let (script, pid) = stray_script(root.path());
+    let project = start(&[
+        ("ROUNDUP_SCAN_MS", "100"),
+        ("FAKE_CLAUDE_STRAY", script.to_str().unwrap()),
+    ]);
+    let mut client = project.subscribed().await;
+    let door = start_door(&client).await;
+    let status = rail_tree(&client)
+        .await
+        .into_iter()
+        .find(|n| n.id == door)
+        .unwrap()
+        .status;
+
+    let flagged = next_stray(&mut client).await;
+    let pid_found: u32 = json_file_text(&pid).await.trim().parse().unwrap();
+
+    assert_eq!(flagged.id, door);
+    assert_eq!(flagged.stray.len(), 1);
+    assert_eq!(flagged.stray[0].pid, pid_found);
+    assert!(flagged.stray[0].command.contains("claude"), "{flagged:?}");
+    let node = rail_tree(&client)
+        .await
+        .into_iter()
+        .find(|n| n.id == door)
+        .unwrap();
+    assert_eq!(node.stray, flagged.stray);
+    assert_eq!(node.status, status);
+    assert_eq!(node.kind, contracts::agent::NodeKind::Workstream);
+
+    assert!(
+        Command::new("kill")
+            .arg(pid_found.to_string())
+            .status()
+            .unwrap()
+            .success()
+    );
+    let cleared = next_stray(&mut client).await;
+    assert_eq!((cleared.id, cleared.stray), (door.clone(), vec![]));
+    let node = rail_tree(&client)
+        .await
+        .into_iter()
+        .find(|n| n.id == door)
+        .unwrap();
+    assert!(node.stray.is_empty());
+}
+
+async fn json_file_text(path: &std::path::Path) -> String {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            match std::fs::read_to_string(path) {
+                Ok(text) if text.ends_with('\n') => return text,
+                _ => tokio::time::sleep(Duration::from_millis(20)).await,
+            }
+        }
+    })
+    .await
+    .expect("the file was written")
+}
+
+#[tokio::test]
+async fn f5_a_program_a_users_mcp_server_starts_is_flagged() {
+    let root = tempfile::tempdir().unwrap();
+    let (script, _) = stray_script(root.path());
+    let project = start(&[
+        ("ROUNDUP_SCAN_MS", "100"),
+        ("FAKE_CLAUDE_MCP_STRAY", script.to_str().unwrap()),
+    ]);
+    let mut client = project.subscribed().await;
+    let door = start_door(&client).await;
+
+    let flagged = next_stray(&mut client).await;
+
+    assert_eq!((flagged.id, flagged.stray.len()), (door, 1));
+}
+
+#[tokio::test]
+async fn f5_only_a_doors_tree_is_scanned_and_a_registered_terminal_is_not_flagged() {
+    let root = tempfile::tempdir().unwrap();
+    let (script, pid) = stray_script(root.path());
+    let shell = root.path().join("shell");
+    std::fs::create_dir_all(&shell).unwrap();
+    let named_claude = shell.join("claude");
+    executable(&named_claude, "#!/bin/sh\nsleep 60 & wait\n");
+    let project = start(&[
+        ("ROUNDUP_SCAN_MS", "100"),
+        ("SHELL", named_claude.to_str().unwrap()),
+        ("FAKE_CLAUDE_STRAY", script.to_str().unwrap()),
+    ]);
+    let client = project.client().await;
+    let agent = project.spawn_agent(&client).await;
+    client
+        .request(
+            "rail.spawnTerminal",
+            json!({"cwd": project.dir.path(), "parent": null}),
+        )
+        .await
+        .unwrap();
+    json_file_text(&pid).await;
+
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let tree = rail_tree(&client).await;
+    assert!(tree.iter().any(|n| n.id == agent.id));
+    assert!(tree.iter().all(|n| n.stray.is_empty()), "{tree:?}");
+}

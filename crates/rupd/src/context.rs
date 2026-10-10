@@ -174,6 +174,7 @@ mod tests {
             worktree: None,
             can_resume: false,
             channel: None,
+            stray: Vec::new(),
             work: (kind != NodeKind::Terminal).then(|| contracts::agent::Order::clarification("?")),
         }
     }

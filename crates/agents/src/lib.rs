@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -10,7 +11,7 @@ use async_trait::async_trait;
 use contracts::agent::{
     Channel, ChannelEvent, CreateWorkstreamParams, Landed, MoveParams, NodeId, NodeKind, Order,
     PromptParams, RailNode, RenameParams, SetOrderParams, SignalParams, SpawnParams,
-    SpawnTerminalParams, StatusEvent, WorktreeState,
+    SpawnTerminalParams, StatusEvent, Stray, StrayEvent, WorktreeState,
 };
 use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
@@ -29,6 +30,7 @@ mod decision;
 mod name;
 mod order;
 mod rail;
+mod scan;
 pub mod worktree;
 
 use claude_code::{ClaudeCode, Launcher, Role};
@@ -111,6 +113,31 @@ struct Shared {
     takeover: Option<TakeoverProbe>,
     /// E6: how long after a start `agent.channelUp` may take before the Channel is `missing`.
     channel_deadline: Duration,
+    /// F5: the scan of the Doors' process trees.
+    scan: Scan,
+}
+
+/// F5: what the scan of the Doors' process trees keeps.
+struct Scan {
+    /// How long between two reads of the process table.
+    interval: Duration,
+    /// The scan loop starts with the first Door and ends with the Daemon.
+    started: AtomicBool,
+    /// Each started Door's marker: the path its program's arguments hold.
+    doors: Mutex<HashMap<String, String>>,
+    /// Each Door's strays as last announced; a Door with none has no entry.
+    found: Mutex<HashMap<String, Vec<Stray>>>,
+}
+
+impl Scan {
+    fn new(interval: Duration) -> Self {
+        Self {
+            interval,
+            started: AtomicBool::new(false),
+            doors: Mutex::new(HashMap::new()),
+            found: Mutex::new(HashMap::new()),
+        }
+    }
 }
 
 /// What kills a Terminal's program; real `Terminals` in production, a fake where a test needs a
@@ -488,6 +515,14 @@ impl Shared {
             node.can_resume = exited && rail.has_conversation(&node.id).unwrap_or(false);
             let channels = self.channels.lock().expect("channels lock");
             node.channel = channel_in(&channels, &node.id, runs.get(&node.id));
+            node.stray = self
+                .scan
+                .found
+                .lock()
+                .expect("scan found lock")
+                .get(&node.id)
+                .cloned()
+                .unwrap_or_default();
         }
         node
     }
@@ -547,6 +582,83 @@ impl Shared {
             tokio::time::sleep(shared.channel_deadline).await;
             shared.set_channel(Actor::daemon(), &id, &attempt, Channel::Missing);
         });
+    }
+
+    /// F5: scan Door `id`, whose program's arguments hold `marker`, from the next tick on.
+    fn scan_door(self: &Arc<Self>, id: &str, marker: String) {
+        self.scan
+            .doors
+            .lock()
+            .expect("scan doors lock")
+            .insert(id.to_owned(), marker);
+        if self.scan.started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let (me, interval) = (self.me.clone(), self.scan.interval);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let Some(shared) = me.upgrade() else { break };
+                shared.scan_once().await;
+            }
+        });
+    }
+
+    /// F5: read the process table once if a Door runs, and announce each Door whose strays changed.
+    async fn scan_once(&self) {
+        let live: Vec<(String, String)> = {
+            let runs = self.runs();
+            let mut doors = self.scan.doors.lock().expect("scan doors lock");
+            doors.retain(|id, _| {
+                matches!(runs.get(id), Some(Slot::Running(run)) if !run.ended && !run.closing)
+            });
+            doors
+                .iter()
+                .map(|(id, marker)| (id.clone(), marker.clone()))
+                .collect()
+        };
+        let table = if live.is_empty() {
+            Vec::new()
+        } else {
+            match tokio::task::spawn_blocking(scan::read_table).await {
+                Ok(Ok(table)) => scan::parse(&table),
+                Ok(Err(err)) => return eprintln!("agents: cannot read the process table: {err}"),
+                Err(err) => return eprintln!("agents: the process scan stopped: {err}"),
+            }
+        };
+        let programs = claude_code::programs();
+        let mut now: HashMap<String, Vec<Stray>> = live
+            .iter()
+            .map(|(id, marker)| (id.clone(), scan::strays(&table, marker, programs)))
+            .collect();
+        let changed: Vec<(String, Vec<Stray>)> = {
+            let mut found = self.scan.found.lock().expect("scan found lock");
+            let gone: Vec<String> = found
+                .keys()
+                .filter(|id| !now.contains_key(*id))
+                .cloned()
+                .collect();
+            now.extend(gone.into_iter().map(|id| (id, Vec::new())));
+            let mut changed = Vec::new();
+            for (id, stray) in now {
+                if found.get(&id).map_or(&[][..], Vec::as_slice) == stray.as_slice() {
+                    continue;
+                }
+                if stray.is_empty() {
+                    found.remove(&id);
+                } else {
+                    found.insert(id.clone(), stray.clone());
+                }
+                changed.push((id, stray));
+            }
+            changed
+        };
+        for (id, stray) in changed {
+            self.bus.emit(
+                Actor::daemon(),
+                EventData::AgentStray(StrayEvent { id, stray }),
+            );
+        }
     }
 
     fn node(&self, id: &str) -> Result<RailNode, RpcError> {
@@ -1268,6 +1380,23 @@ fn channel_deadline_from_env() -> Duration {
     }
 }
 
+/// F5: how long between two reads of the process table. `ROUNDUP_SCAN_MS` shortens it for a test.
+pub const SCAN_INTERVAL: Duration = Duration::from_millis(2000);
+
+/// F5: `ROUNDUP_SCAN_MS` when it is a positive whole number of milliseconds, else `SCAN_INTERVAL`.
+fn scan_interval_from_env() -> Duration {
+    match std::env::var("ROUNDUP_SCAN_MS") {
+        Ok(ms) => match ms.parse::<u64>() {
+            Ok(ms) if ms > 0 => Duration::from_millis(ms),
+            _ => {
+                eprintln!("agents: ROUNDUP_SCAN_MS={ms:?} is not positive milliseconds; ignored");
+                SCAN_INTERVAL
+            }
+        },
+        Err(_) => SCAN_INTERVAL,
+    }
+}
+
 /// A node's place in `Shared::runs`.
 enum Slot {
     /// Its Terminal is starting; `since` is when, on `clock`, it was marked.
@@ -1495,6 +1624,7 @@ impl Agents {
                 interrupt_bound: INTERRUPT_BOUND,
                 channels: Mutex::new(HashMap::new()),
                 channel_deadline: channel_deadline_from_env(),
+                scan: Scan::new(scan_interval_from_env()),
                 takeover: None,
             }),
             dir: dir.to_owned(),
@@ -1621,7 +1751,22 @@ impl Agents {
     }
 
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
-    async fn spawn(&self, ctx: &Ctx, params: SpawnParams) -> Result<RailNode, RpcError> {
+    async fn spawn(&self, ctx: &Ctx, mut params: SpawnParams) -> Result<RailNode, RpcError> {
+        // F3: an Agent may start a child only if it is a Door, and the child's Home is that Door.
+        if ctx.actor.kind == ActorKind::Agent {
+            let door = self
+                .shared
+                .rail()
+                .node(&ctx.actor.id)
+                .is_ok_and(|node| node.kind == NodeKind::Workstream);
+            if !door {
+                return Err(RpcError::forbidden(format!(
+                    "{} is not a Door and may not start an Agent",
+                    ctx.actor.id
+                )));
+            }
+            params.parent = Some(ctx.actor.id.clone());
+        }
         let cwd = Path::new(&params.cwd);
         let order = match (params.prompt, params.order) {
             (Some(_), Some(_)) => {
@@ -2158,6 +2303,12 @@ impl Agents {
         }
         let spawned = self.spawn_behind(id, cwd, Some(argv), attach).await?;
         self.shared.watch_channel(id, &started);
+        if role == Role::Door
+            && let Some(marker) = claude_code::settings_marker(&self.dir, id)
+        {
+            self.shared
+                .scan_door(id, marker.to_string_lossy().into_owned());
+        }
         Ok(spawned)
     }
 
@@ -2451,6 +2602,7 @@ mod tests {
             interrupt_bound: super::INTERRUPT_BOUND,
             channels: Mutex::new(HashMap::new()),
             channel_deadline: super::CHANNEL_DEADLINE,
+            scan: super::Scan::new(super::SCAN_INTERVAL),
             takeover: None,
         });
         (dir, bus, shared)
@@ -2859,6 +3011,7 @@ mod tests {
             interrupt_bound: super::INTERRUPT_BOUND,
             channels: Mutex::new(HashMap::new()),
             channel_deadline: super::CHANNEL_DEADLINE,
+            scan: super::Scan::new(super::SCAN_INTERVAL),
             takeover: None,
         })
     }
@@ -3071,6 +3224,7 @@ mod tests {
             interrupt_bound: super::INTERRUPT_BOUND,
             channels: Mutex::new(HashMap::new()),
             channel_deadline: super::CHANNEL_DEADLINE,
+            scan: super::Scan::new(super::SCAN_INTERVAL),
             takeover: None,
         });
         (dir, shared)
