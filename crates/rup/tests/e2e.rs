@@ -648,8 +648,10 @@ async fn interrupted_worktree(room: bool) {
     };
     let pid = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            if let Ok(pid) = std::fs::read_to_string(&marker) {
-                break pid.trim().parse::<u32>().unwrap();
+            if let Ok(pid) = std::fs::read_to_string(&marker)
+                && let Ok(pid) = pid.trim().parse::<u32>()
+            {
+                break pid;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
