@@ -108,3 +108,22 @@ async fn a9_a_rename_while_the_agent_is_still_starting_wins_over_the_first_promp
 
     assert_eq!(f.name_of(&id).await, "mine");
 }
+
+#[tokio::test]
+async fn u176_agents_with_one_prompt_are_numbered_among_their_siblings() {
+    let f = Fixture::running("sleep 30");
+    let mut names = Vec::new();
+    for _ in 0..3 {
+        let node = f.spawn(None, None).await.unwrap();
+        f.submit(&node.id, "what should this do").await;
+        names.push(f.name_of(&node.id).await);
+    }
+    assert_eq!(
+        names,
+        [
+            "what-should-this",
+            "what-should-this-2",
+            "what-should-this-3"
+        ]
+    );
+}

@@ -903,7 +903,13 @@ impl Shared {
             && let Some(name) = name
             && rail.node(id)?.kind == NodeKind::Agent
         {
-            rail.rename(id, &name)?;
+            let parent = rail.node(id)?.parent;
+            let siblings = rail.tree()?;
+            let taken = siblings
+                .iter()
+                .filter(|node| node.id != id && node.parent == parent)
+                .map(|node| node.name.as_str());
+            rail.rename(id, &name::unique(&name, taken))?;
             self.bus.emit(actor.clone(), EventData::RailChanged);
         }
         let prompt = run.prompt.take_if(|_| run.session_started && run.starred);
