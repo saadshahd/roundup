@@ -110,6 +110,9 @@ async fn u174_a_write_reaches_the_pty_within_a_frame() {
         if bracketed {
             bytes.extend_from_slice(END);
         }
+        // A newline ends each canonical line, so `cat` consumes it and the tty never accumulates
+        // the 4 KiB line limit across the 100 writes.
+        bytes.push(b'\n');
         let mut waits = Vec::new();
         for _ in 0..100 {
             let sent = std::time::Instant::now();
