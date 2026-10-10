@@ -17,4 +17,3 @@ Observer: independent review compares the cited evidence with the stage acceptan
 **J4 audit the journey after U146 (policy).** Follows J1's policy on the main that holds U146: it drives Request through `just harness-real` with a Door that acts on a Thread message, puts its evidence under `artifacts/ux/journey/`, and leaves a successor only as J1 says.
 
 **J5 audit the journey after the Room's work is findable (policy).** Follows J1's policy on the main that holds T12, T13, T14, U157, U158 and U159: it drives Request and Review through `just harness-real`, reads the Todo a Door made from its Room, puts its evidence under `artifacts/ux/journey/`, and leaves a successor only as J1 says.
-
