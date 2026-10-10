@@ -23,9 +23,60 @@ pub fn from_prompt(prompt: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_owned())
 }
 
+/// U176: the first of `name`, `name-2`, `name-3`, … that is not in `taken`. `name` is cut so the
+/// whole stays within 32 characters.
+pub fn unique<'a>(name: &str, taken: impl IntoIterator<Item = &'a str>) -> String {
+    let taken: Vec<&str> = taken.into_iter().collect();
+    if !taken.contains(&name) {
+        return name.to_owned();
+    }
+    (2..)
+        .map(|n| {
+            let suffix = format!("-{n}");
+            let stem: String = name.chars().take(MAX_CHARS - suffix.len()).collect();
+            format!("{}{suffix}", stem.trim_end_matches('-'))
+        })
+        .find(|candidate| !taken.contains(&candidate.as_str()))
+        .expect("an unbounded range always yields a free name")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::from_prompt;
+    use super::{from_prompt, unique};
+
+    #[test]
+    fn u176_three_siblings_with_one_prompt_get_three_names() {
+        let mut taken: Vec<String> = Vec::new();
+        for _ in 0..3 {
+            let name = unique("what-should-this", taken.iter().map(String::as_str));
+            taken.push(name);
+        }
+        assert_eq!(
+            taken,
+            [
+                "what-should-this",
+                "what-should-this-2",
+                "what-should-this-3"
+            ]
+        );
+    }
+
+    #[test]
+    fn u176_a_renamed_sibling_frees_its_name() {
+        let taken = ["x", "renamed", "x-3"];
+        assert_eq!(unique("x", taken), "x-2");
+        assert_eq!(unique("y", taken), "y");
+    }
+
+    #[test]
+    fn u176_a_32_character_name_gets_its_suffix_within_32_characters() {
+        let long = "a".repeat(32);
+        let second = unique(&long, [long.as_str()]);
+        assert_eq!(second, format!("{}-2", "a".repeat(30)));
+        let third = unique(&long, [long.as_str(), second.as_str()]);
+        assert_eq!(third, format!("{}-3", "a".repeat(30)));
+        assert_eq!(third.chars().count(), 32);
+    }
 
     #[test]
     fn a9_filler_and_punctuation_drop_out_and_three_words_remain() {
