@@ -173,6 +173,25 @@ impl Fixture {
         Ok(serde_json::from_value(node).unwrap())
     }
 
+    /// `agent.spawn` called by Agent `caller` (F3, A26), which passes `parent` too.
+    pub async fn spawn_as(&self, caller: &str, parent: Option<&str>) -> Result<RailNode, RpcError> {
+        let cwd = self.dir.path().to_string_lossy().into_owned();
+        let mut ctx = self.ctx();
+        ctx.actor = Actor {
+            kind: contracts::ActorKind::Agent,
+            id: caller.to_owned(),
+            parent: None,
+        };
+        let params = json!({"cwd": cwd, "parent": parent});
+        let node = self.agents.call(&ctx, "agent.spawn", params).await?;
+        Ok(serde_json::from_value(node).unwrap())
+    }
+
+    /// The id of the Agent that Agent `caller` starts.
+    pub async fn spawn_as_agent(&self, caller: &str) -> String {
+        self.spawn_as(caller, None).await.unwrap().id
+    }
+
     pub async fn workstream(&self, name: &str, parent: Option<&str>) -> String {
         let node = self
             .call(

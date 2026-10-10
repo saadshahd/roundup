@@ -29,7 +29,7 @@ describe("u56 remove from the Rail", () => {
     expect(screen.getAllByRole("menuitem").map((each) => each.textContent)).toEqual(["stop", "remove"]);
   });
 
-  it("u56_a_done_meta_agent_and_an_exited_terminal_offer_remove_only", async () => {
+  it("u56_a_done_door_and_an_exited_terminal_offer_remove_only", async () => {
     await mountRail([door("m", "done", "done"), terminal("t")], [exitedTerminal("t", 0), exitedTerminal("m", 0)]);
 
     openAt("m");

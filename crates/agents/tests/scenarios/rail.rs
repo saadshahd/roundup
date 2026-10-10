@@ -24,16 +24,30 @@ fn children(tree: &[RailNode], parent: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+/// What the Rail keeps across a reopen: a running Agent's Status is not kept.
+fn shape(tree: &[RailNode]) -> Vec<(String, NodeKind, String, Option<String>, u32)> {
+    tree.iter()
+        .map(|n| {
+            (
+                n.id.clone(),
+                n.kind,
+                n.name.clone(),
+                n.parent.clone(),
+                n.order,
+            )
+        })
+        .collect()
+}
+
 #[tokio::test]
 async fn a6_new_workstreams_are_appended_with_contiguous_order() {
     let mut f = Fixture::new();
     let a = f.workstream("a", None).await;
     f.workstream("b", None).await;
-    f.workstream("inner", Some(&a)).await;
+    f.spawn(Some(&a), None).await.unwrap();
     let tree = f.tree().await;
     assert_eq!(children(&tree, None), ["a:0", "b:1"]);
-    assert_eq!(children(&tree, Some(&a)), ["inner:0"]);
-    assert!(tree.iter().all(|n| n.kind == NodeKind::Workstream));
+    assert_eq!(children(&tree, Some(&a)), ["new-agent:0"]);
     assert_eq!(f.changed(), 3);
 }
 
@@ -48,24 +62,26 @@ async fn a6_move_reorders_and_keeps_orders_contiguous_from_zero() {
     assert_eq!(f.mv(&c, None, 0).await.unwrap(), Value::Null);
     assert_eq!(children(&f.tree().await, None), ["c:0", "a:1", "b:2"]);
 
-    f.mv(&a, Some(&b), 5).await.unwrap();
+    let x = f.spawn(Some(&b), None).await.unwrap().id;
+    f.changed();
+    f.mv(&x, Some(&c), 5).await.unwrap();
     let tree = f.tree().await;
-    assert_eq!(children(&tree, None), ["c:0", "b:1"]);
-    assert_eq!(children(&tree, Some(&b)), ["a:0"]);
-    assert_eq!(f.changed(), 2);
+    assert_eq!(children(&tree, Some(&b)), Vec::<String>::new());
+    assert_eq!(children(&tree, Some(&c)), ["new-agent:0"]);
+    assert_eq!(f.changed(), 1);
 
-    f.mv(&a, None, 0).await.unwrap();
-    assert_eq!(children(&f.tree().await, None), ["a:0", "c:1", "b:2"]);
+    f.mv(&a, None, 2).await.unwrap();
+    assert_eq!(children(&f.tree().await, None), ["c:0", "b:1", "a:2"]);
 }
 
 #[tokio::test]
-async fn a6_a_workstream_cannot_move_into_its_own_descendant() {
+async fn a6_an_agent_cannot_move_into_its_own_descendant() {
     let mut f = Fixture::new();
-    let a = f.workstream("a", None).await;
-    let b = f.workstream("b", Some(&a)).await;
-    let c = f.workstream("c", Some(&b)).await;
+    let w = f.workstream("w", None).await;
+    let a = f.spawn(Some(&w), None).await.unwrap().id;
+    let b = f.spawn_as_agent(&a).await;
     f.changed();
-    for target in [&a, &b, &c] {
+    for target in [&a, &b] {
         let err = f.mv(&a, Some(target), 0).await.unwrap_err();
         assert_eq!(err.code, code::CONFLICT);
     }
@@ -104,11 +120,11 @@ async fn a6_the_tree_lists_parents_before_their_children() {
     let f = Fixture::new();
     let a = f.workstream("a", None).await;
     let b = f.workstream("b", None).await;
-    f.workstream("a1", Some(&a)).await;
-    f.workstream("b1", Some(&b)).await;
+    f.spawn(Some(&a), None).await.unwrap();
+    f.spawn(Some(&b), None).await.unwrap();
     f.mv(&b, None, 0).await.unwrap();
     let names: Vec<_> = f.tree().await.into_iter().map(|n| n.name).collect();
-    assert_eq!(names, ["b", "b1", "a", "a1"]);
+    assert_eq!(names, ["b", "new-agent", "a", "new-agent"]);
 }
 
 #[tokio::test]
@@ -116,13 +132,10 @@ async fn a8_workstreams_names_parents_and_order_survive_reopening() {
     let f = Fixture::new();
     let a = f.workstream("a", None).await;
     let b = f.workstream("b", None).await;
-    f.workstream("inner", Some(&a)).await;
+    f.spawn(Some(&a), None).await.unwrap();
     f.mv(&b, None, 0).await.unwrap();
-    let mut before = f.tree().await;
-    let mut after = f.reopen().tree().await;
-    for node in before.iter_mut().chain(after.iter_mut()) {
-        node.status.as_mut().unwrap().since = 0;
-    }
+    let before = shape(&f.tree().await);
+    let after = shape(&f.reopen().tree().await);
     assert_eq!(after, before);
 }
 
@@ -307,16 +320,18 @@ fn store_as_room(f: &Fixture) {
 async fn a25_a_stored_rail_with_kind_room_opens_as_workstreams_with_ids_and_children_intact() {
     let f = Fixture::new();
     let a = f.workstream("a", None).await;
-    f.workstream("inner", Some(&a)).await;
+    f.spawn(Some(&a), None).await.unwrap();
     f.workstream("b", None).await;
-    let mut before = f.tree().await;
+    let before = shape(&f.tree().await);
     store_as_room(&f);
-    let mut after = f.reopen().tree().await;
-    for node in before.iter_mut().chain(after.iter_mut()) {
-        node.status.as_mut().unwrap().since = 0;
-    }
-    assert_eq!(after, before);
-    assert!(after.iter().all(|n| n.kind == NodeKind::Workstream));
+    let after = f.reopen().tree().await;
+    assert_eq!(shape(&after), before);
+    assert!(
+        after
+            .iter()
+            .filter(|n| n.kind != NodeKind::Agent)
+            .all(|n| n.kind == NodeKind::Workstream)
+    );
 }
 
 #[tokio::test]

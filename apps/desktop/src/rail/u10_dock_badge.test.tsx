@@ -23,7 +23,7 @@ describe("u10 Dock badge", () => {
     expect(app.badges).toEqual([0]);
   });
 
-  it("u10_a_meta_agent_that_needs_you_counts", async () => {
+  it("u10_a_door_that_needs_you_counts", async () => {
     const { app } = await mountRail([door("lead", "needs-you", "x")]);
 
     expect(app.badges.at(-1)).toBe(1);

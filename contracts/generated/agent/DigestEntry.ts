@@ -2,7 +2,7 @@
 import type { Kind } from "../Kind";
 
 /**
- * B19: what a Meta-agent is told about one child. `last` is one line, `todos` counts the open Todos
+ * B19: what a Door is told about one child. `last` is one line, `todos` counts the open Todos
  * whose Home is the child, and `pads` names the child's Pads written since the previous envelope.
  */
 export type DigestEntry = { name: string, kind: Kind, last: string, todos: number, pads: Array<string>, };

@@ -885,7 +885,7 @@ fn f4_the_shim_for_claude_prints_the_message_and_exits_1_where_the_real_one_woul
         assert_eq!(out.status.code(), Some(1));
         assert_eq!(
             String::from_utf8_lossy(&out.stderr),
-            "roundup: start an agent with agent_spawn (a Meta-agent) or ask the user\n"
+            "roundup: start an agent with agent_spawn (a Door) or ask the user\n"
         );
         assert!(out.stdout.is_empty());
     }

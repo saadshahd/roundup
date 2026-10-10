@@ -52,7 +52,7 @@ describe("u46 hovering or selecting never moves a row", () => {
     ]).toEqual(["0", "1", "auto", "1", "1", "0px", "right", "nowrap"]);
   });
 
-  it("u46_a_meta_agents_live_text_joins_the_first_line_too", async () => {
+  it("u46_a_doors_live_text_joins_the_first_line_too", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     await mountRail([door("lead", "blocked", "waits on #4")]);

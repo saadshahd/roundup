@@ -262,7 +262,7 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(document.activeElement).toBe(rowOf("live"));
   });
 
-  it("u41_right_on_an_expanded_meta_agent_selects_its_first_child", async () => {
+  it("u41_right_on_an_expanded_door_selects_its_first_child", async () => {
     const { rail } = await mountKeys([door("m", "working", "x"), agent("a", "idle", "y", { parent: "m" })]);
 
     rowOf("m").focus();
@@ -273,7 +273,7 @@ describe("u41 rail by keyboard, the rest", () => {
     expect(document.activeElement).toBe(rowOf("a"));
   });
 
-  it("u41_left_on_an_expanded_meta_agent_collapses_its_workstream", async () => {
+  it("u41_left_on_an_expanded_door_collapses_its_workstream", async () => {
     const { rail } = await mountKeys([
       workstream("g"),
       door("m", "working", "x", { parent: "g" }),

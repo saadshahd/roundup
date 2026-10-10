@@ -36,7 +36,7 @@ describe("u9 actions", () => {
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: "g" }]));
   });
 
-  it("u9_plus_agent_spawns_under_the_selected_meta_agent", async () => {
+  it("u9_plus_agent_spawns_under_the_selected_door", async () => {
     const mounted = await mountRail([door("lead", "idle", "i")]);
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("lead");
@@ -253,7 +253,7 @@ describe("u9 actions", () => {
     expect(screen.queryByText("boom")).toBeNull();
   });
 
-  it("u9_promote_is_not_shown_on_a_meta_agent", async () => {
+  it("u9_promote_is_not_shown_on_a_door", async () => {
     await mountRail([door("lead", "idle", "i")]);
 
     fireEvent.mouseEnter(rowOf("lead"));

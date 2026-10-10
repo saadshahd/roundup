@@ -3,6 +3,6 @@ import type { DigestEntry } from "./DigestEntry";
 
 /**
  * B20: one item of `agent.digest`'s `children`: a child's entry, or the last item `{more: n}` when
- * the Meta-agent has more children than the result holds.
+ * the Door has more children than the result holds.
  */
 export type DigestItem = DigestEntry | { more: number, };

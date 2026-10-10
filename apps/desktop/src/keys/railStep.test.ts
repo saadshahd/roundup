@@ -53,7 +53,7 @@ describe("u41 rail by keyboard, the rest: railStep", () => {
     expect(railStep(nodes, "g", "right", true, "a")).toEqual({ kind: "select", id: "a" });
   });
 
-  it("u41_right_on_a_meta_agent_with_no_toggle_selects_its_first_child", () => {
+  it("u41_right_on_a_door_with_no_toggle_selects_its_first_child", () => {
     const nodes = [workstream("m", { attempt: "1" }), agent("a", "idle", "x", { parent: "m" })];
 
     expect(railStep(nodes, "m", "right", null, "a")).toEqual({ kind: "select", id: "a" });

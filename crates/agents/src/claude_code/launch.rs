@@ -20,8 +20,7 @@ use super::brief::{self, Role};
 pub const DOOR_TOOLS: &str = "Read,Grep,Glob";
 
 /// F4: what the shim for a vendor program prints on stderr before it exits 1.
-const SHIM_MESSAGE: &str =
-    "roundup: start an agent with agent_spawn (a Meta-agent) or ask the user";
+const SHIM_MESSAGE: &str = "roundup: start an agent with agent_spawn (a Door) or ask the user";
 
 /// The hook events that carry state. Notification and SubagentStop are left out on purpose: the
 /// first arrives about 6 s late, the second fires spuriously (ADR 0006). H15's replay rule would

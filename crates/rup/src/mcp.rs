@@ -114,7 +114,7 @@ fn agent_context() -> Offered {
     }
 }
 
-/// B20: `agent.digest` takes `{id}`; the shim fills it, so a Meta-agent's tool takes no input.
+/// B20: `agent.digest` takes `{id}`; the shim fills it, so a Door's tool takes no input.
 fn agent_digest() -> Offered {
     Offered {
         own_id: true,
@@ -233,9 +233,9 @@ impl Shim {
             })?
     }
 
-    /// B20: whether this Agent is a Meta-agent, a Workstream's Door, which the Rail shows as a
+    /// B20: whether this Agent is a Door, a Workstream's Door, which the Rail shows as a
     /// Workstream node with its own id. A Daemon that cannot say leaves the tool out, and says so.
-    async fn is_meta_agent(&self, start: &rpc::Client) -> bool {
+    async fn is_door(&self, start: &rpc::Client) -> bool {
         let tree = start.request("rail.tree", Value::Null);
         match tokio::time::timeout(CALL_TIMEOUT, tree).await {
             Ok(Ok(tree)) => {
@@ -394,7 +394,7 @@ async fn serve(id: String, door: bool) -> Result<(), String> {
     };
     let start = shim.connect().await.map_err(|gone| gone.to_string())?;
     // Both wait on the same Daemon, so a mute one costs one `CALL_TIMEOUT`, not two.
-    let (meta, ()) = tokio::join!(shim.is_meta_agent(&start), shim.report_channel(&start));
+    let (meta, ()) = tokio::join!(shim.is_door(&start), shim.report_channel(&start));
     if meta {
         shim.tools.push(agent_digest());
     }

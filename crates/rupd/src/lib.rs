@@ -29,7 +29,7 @@ pub struct Daemon {
     modules: HashMap<&'static str, Arc<dyn Module>>,
     bus: Bus,
     touches: Arc<Touches>,
-    /// B19: which Pads each Meta-agent's earlier digests already named.
+    /// B19: which Pads each Door's earlier digests already named.
     digests: messages::digest::Seen,
 }
 
@@ -269,7 +269,7 @@ impl Daemon {
         }
     }
 
-    /// B19, B20: the digest of a Meta-agent's children. Everything is read as the user or the
+    /// B19, B20: the digest of a Door's children. Everything is read as the user or the
     /// Daemon, so the call changes nothing and logs no Touch.
     async fn digest(&self, conn: &Conn, params: Value) -> Result<Value, RpcError> {
         let NodeId { id } = rpc::params(params)?;

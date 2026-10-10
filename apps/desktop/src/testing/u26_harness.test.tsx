@@ -208,7 +208,7 @@ describe("u26 the Daemon's rail methods", () => {
     expect(await names()).toContain("api");
   });
 
-  it("u26_promoting_a_group_makes_it_a_meta_agent_with_a_terminal", async () => {
+  it("u26_promoting_a_group_makes_it_a_door_with_a_terminal", async () => {
     const { app } = await daemon();
 
     const promoted = await app.rpc("rail.startDoor", { id: "backend" });

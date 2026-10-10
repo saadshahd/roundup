@@ -1,4 +1,4 @@
-//! B19, B20: what a Meta-agent is told about its children, composed from the Rail, the Todos, the
+//! B19, B20: what a Door is told about its children, composed from the Rail, the Todos, the
 //! Pads and the Messages, which only the Daemon holds together. Nothing here reads a Terminal.
 
 use std::collections::HashMap;
@@ -26,13 +26,13 @@ pub struct Sources<'a> {
     pub messages: &'a [Message],
 }
 
-/// For each (Meta-agent, child), the newest `updated_at` among the child's Pads that an envelope
+/// For each (Door, child), the newest `updated_at` among the child's Pads that an envelope
 /// already named, so the next envelope names only Pads written after it (B19).
 #[derive(Default)]
 pub struct Seen(Mutex<HashMap<(String, String), i64>>);
 
 impl Seen {
-    /// B20: the digest of Meta-agent `id`, asked for by `caller`.
+    /// B20: the digest of Door `id`, asked for by `caller`.
     pub fn ask(&self, caller: &Actor, id: &str, from: &Sources) -> Result<Digest, RpcError> {
         let allowed = match caller.kind {
             ActorKind::User => true,
@@ -51,7 +51,7 @@ impl Seen {
             .find(|node| node.id == id && is_agent(node))
             .ok_or_else(|| RpcError::not_found(format!("agent {id}")))?;
         if node.kind != NodeKind::Workstream {
-            return Err(RpcError::conflict(format!("agent {id} is no Meta-agent")));
+            return Err(RpcError::conflict(format!("agent {id} is no Door")));
         }
         let children: Vec<&RailNode> = from
             .nodes

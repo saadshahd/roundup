@@ -70,7 +70,7 @@ pub(crate) fn compose(nodes: &[RailNode], todos: &[Todo], id: &str) -> Result<Co
             id: parent.id.clone(),
             name: parent.name.clone(),
             node: if is_agent(parent) {
-                ParentNode::MetaAgent
+                ParentNode::Agent
             } else {
                 ParentNode::Group
             },
@@ -97,7 +97,7 @@ fn words(context: &Context) -> String {
     let mut lines = vec![match &context.parent {
         Some(parent) => {
             let what = match parent.node {
-                ParentNode::MetaAgent => "a Workstream with a Door",
+                ParentNode::Agent => "an Agent",
                 ParentNode::Group => "a Workstream",
             };
             format!("Parent: {} (id {}), {what}.", parent.name, parent.id)
@@ -197,7 +197,7 @@ mod tests {
         }
     }
 
-    /// Meta-agent `m` (a Workstream with a Door) holding `a` and `b`; plain Group `g` holding `c`; a
+    /// Door `m` (a Workstream with a Door) holding `a` and `b`; plain Workstream `g` holding `c`; a
     /// sibling Door `n` beside `m`.
     fn rail() -> Vec<RailNode> {
         vec![
@@ -212,14 +212,14 @@ mod tests {
     }
 
     #[test]
-    fn e2_an_agent_under_a_door_asks_the_door_and_has_its_siblings_as_peers() {
+    fn a26_parent_node_names_no_meta_agent() {
         let context = compose(&rail(), &[], "2").unwrap();
 
         assert_eq!(
             serde_json::to_value(&context).unwrap(),
             json!({
                 "self": {"id": "2", "name": "a", "status": {"kind": "idle", "label": "x", "since": 1}, "order": {"kind": "clarification", "question": "?"}},
-                "parent": {"id": "1", "name": "m", "node": "meta-agent"},
+                "parent": {"id": "1", "name": "m", "node": "agent"},
                 "ask": {"to": "1"},
                 "peers": [{"id": "3", "name": "b", "status": {"kind": "idle", "label": "x", "since": 1}}],
                 "todos": [],
@@ -295,7 +295,7 @@ mod tests {
         );
         assert_eq!(
             shaped["hookSpecificOutput"]["additionalContext"],
-            "Parent: m (id 1), a Workstream with a Door.\n\
+            "Parent: m (id 1), an Agent.\n\
              Ask: your Door, with message_send to \"1\".\n\
              Peer: b (id 3), idle.\n\
              Todo 1: todo 1.\n\

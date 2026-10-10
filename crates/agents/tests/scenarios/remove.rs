@@ -115,15 +115,15 @@ async fn a16_a_plain_workstreams_children_move_to_its_parent_at_its_place() {
     f.workstream("before", None).await;
     let g = f.workstream("g", None).await;
     f.workstream("after", None).await;
-    let child_a = f.workstream("child-a", Some(&g)).await;
-    let child_b = f.workstream("child-b", Some(&g)).await;
+    let child_a = f.spawn(Some(&g), None).await.unwrap().id;
+    let child_b = f.spawn(Some(&g), None).await.unwrap().id;
 
     f.remove(&g).await.unwrap();
 
     let tree = f.tree().await;
     assert_eq!(
         names(&tree, None),
-        ["before:0", "child-a:1", "child-b:2", "after:3"]
+        ["before:0", "agent:1", "agent:2", "after:3"]
     );
     assert!(tree.iter().all(|n| n.id != g));
     assert!(tree.iter().any(|n| n.id == child_a));
@@ -250,7 +250,7 @@ async fn a16_a_removed_agents_id_no_longer_answers_agent_signal() {
 async fn a16_a_workstreams_failed_delete_leaves_its_children_under_it() {
     let f = Fixture::new();
     let workstream = f.workstream("g", None).await;
-    let child = f.workstream("child", Some(&workstream)).await;
+    let child = f.spawn(Some(&workstream), None).await.unwrap().id;
     let lock = lock_db_for_writes(f.dir.path());
 
     let err = f.remove(&workstream).await.unwrap_err();
