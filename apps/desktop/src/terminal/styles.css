@@ -91,3 +91,13 @@
 .pane .xterm .xterm-viewport {
   background-color: var(--ground);
 }
+
+.pane-body.drop-over::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--accent);
+  pointer-events: none;
+}

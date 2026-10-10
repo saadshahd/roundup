@@ -1,7 +1,7 @@
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RpcMethodName, RpcMethods } from "@contracts/methods";
 import { RpcError } from "../app/seam";
-import type { AppSeam, DaemonExit, Project } from "../app/seam";
+import type { AppSeam, DaemonExit, FileDrop, Project } from "../app/seam";
 
 const METHOD_NOT_FOUND = -32601;
 
@@ -28,6 +28,8 @@ export type FakeApp = AppSeam & {
   handlers: Handlers;
   emit(event: DaemonEvent): void;
   exitDaemon(exit: DaemonExit): void;
+  /** Delivers one File drop step to every listener, as the native window would. */
+  dropFiles(drop: FileDrop): void;
   /** What the macOS chooser answers; `null` is a cancel. */
   chooser: { path: string | null; savePath: string | null; suggestedNames: string[] };
   /** Every Dock badge count set so far, in order. */
@@ -41,6 +43,7 @@ export type FakeApp = AppSeam & {
 export const createFakeApp = (): FakeApp => {
   let onEvent: ((event: DaemonEvent) => void) | null = null;
   const exitListeners = new Set<(exit: DaemonExit) => void>();
+  const dropListeners = new Set<(drop: FileDrop) => void>();
 
   const app: FakeApp = {
     calls: [],
@@ -56,6 +59,9 @@ export const createFakeApp = (): FakeApp => {
     },
     exitDaemon: (exit) => {
       for (const listener of exitListeners) listener(exit);
+    },
+    dropFiles: (drop) => {
+      for (const listener of dropListeners) listener(drop);
     },
     project: async () => app.opened.project,
     openProject: async (path) => {
@@ -90,6 +96,11 @@ export const createFakeApp = (): FakeApp => {
     },
     subscribe: async (listener) => {
       onEvent = listener;
+    },
+    onFileDrop: async (listener) => {
+      dropListeners.add(listener);
+
+      return () => dropListeners.delete(listener);
     },
     onDaemonExited: async (listener) => {
       exitListeners.add(listener);
