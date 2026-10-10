@@ -42,11 +42,6 @@
   transition-duration: 0s;
 }
 
-/* The indent is a width, not a padding, so it is no space step (D2); it lines the buttons up with a child row's text. */
-.rail-adds-indent {
-  flex: none;
-}
-
 /* U172: the one selection mark, a band and a 2px bar on the leading edge, drawn as backgrounds and never a border (D8). */
 .rail-row[data-selected="true"] {
   background: var(--selected);
@@ -108,7 +103,7 @@
   text-overflow: ellipsis;
 }
 
-/* Live has no margin and the 2ch spacing before the label sits in the label's text, so a Live line given no width takes none of the name's (U46). */
+/* Live has no margin and the --space-4 spacing before the label sits in the label's text, so a Live line given no width takes none of the name's (U46). */
 .rail-row .line > .live {
   display: flex;
   flex: 1 1 0;
@@ -125,7 +120,7 @@
 .rail-row .line > .live > .live-label {
   flex: 1 1 0;
   min-width: 0;
-  text-indent: 2ch;
+  text-indent: var(--space-4);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -209,7 +204,7 @@
 
 .drop-line {
   position: absolute;
-  left: calc(var(--depth) * 2ch);
+  left: calc(var(--depth) * var(--space-4));
   right: 0;
   height: 2px;
   background: var(--grey);

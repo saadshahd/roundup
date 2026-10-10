@@ -77,7 +77,7 @@ export const PadRows = (props: { pads: AgentPads; depth: number }) => {
   return (
     <>
       <Show when={props.pads.shown()}>
-        <div class="rail-pads" data-pads role="group" style={{ "padding-left": `${(props.depth + 1) * 2}ch` }}>
+        <div class="rail-pads" data-pads role="group" style={{ "padding-left": `calc(${props.depth + 1} * var(--space-4))` }}>
           <For each={props.pads.owned()}>
             {(pad) => (
               <button

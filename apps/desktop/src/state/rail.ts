@@ -3,6 +3,7 @@ import { createStore, reconcile } from "solid-js/store";
 import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { RailNode } from "@contracts/agent/RailNode";
+import { defaultWorkstreamName } from "../rail/defaultName";
 import { ancestorsOf, isWorkstream } from "../rail/layout";
 import type { RailStorage } from "../rail/persist/storage";
 import type { Events } from "../app/events";
@@ -214,7 +215,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
     setWorkstreamFailure(null);
 
     try {
-      wantedWorkstream = (await app.rpc("rail.createWorkstream", { name: "workstream", parent: null })).id;
+      wantedWorkstream = (await app.rpc("rail.createWorkstream", { name: defaultWorkstreamName(model.tree), parent: null })).id;
     } catch (error) {
       if (!(error instanceof Error)) throw error;
 

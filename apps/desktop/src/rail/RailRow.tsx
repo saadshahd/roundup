@@ -117,7 +117,7 @@ export const RailRowView = (props: {
       data-lifted={props.lifted}
       data-shift={props.shift}
       tabIndex={props.tabbable ? 0 : -1}
-      style={{ "padding-left": `${props.row.depth * 2}ch` }}
+      style={{ "padding-left": `calc(${props.row.depth} * var(--space-4))` }}
       onClick={props.onSelect}
       onContextMenu={(press) => {
         press.preventDefault();
