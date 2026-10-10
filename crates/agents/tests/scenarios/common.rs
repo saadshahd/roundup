@@ -264,7 +264,7 @@ pub async fn release(config: std::path::PathBuf) {
 /// has set its star title (`star`, which a test touches) dropped into `dropped`, then the rest
 /// kept in `typed`.
 pub const GATED: &str = "stty raw -echo; D=\"$(dirname \"$0\")\"; echo 1 > \"$D/ready\"; \
-    cat > \"$D/dropped\" & P=$!; until [ -e \"$D/star\" ]; do sleep 0.02; done; \
+    exec 3<&0; cat <&3 > \"$D/dropped\" & P=$!; until [ -e \"$D/star\" ]; do sleep 0.02; done; \
     kill $P; wait $P; printf '\\033]0;\\342\\234\\263 Claude Code\\007'; cat > \"$D/typed\"";
 
 /// The fake's star title is set from now on.
