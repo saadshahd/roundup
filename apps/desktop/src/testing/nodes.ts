@@ -2,6 +2,7 @@ import type { Actor } from "@contracts/Actor";
 import type { Event as DaemonEvent } from "@contracts/Event";
 import type { EventData } from "@contracts/EventData";
 import type { Kind } from "@contracts/Kind";
+import type { Order } from "@contracts/agent/Order";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 
@@ -12,6 +13,9 @@ export const MINUTE = 60_000;
 export const USER: Actor = { kind: "user", id: "you", parent: null };
 
 export const event = (data: EventData): DaemonEvent => ({ actor: USER, ...data });
+
+/** O1: the Clarification order of a node that was given none. */
+export const clarifying = (question: string): Order => ({ kind: "clarification", question });
 
 /** An Agent that started working at time 0; the other builders refine it. */
 export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
@@ -27,6 +31,7 @@ export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   worktree: null,
   can_resume: false,
   channel: null,
+  work: over.kind === "terminal" ? null : clarifying(over.kind === "room" ? "What is this Room for?" : "What should this Agent do?"),
   ...over,
 });
 

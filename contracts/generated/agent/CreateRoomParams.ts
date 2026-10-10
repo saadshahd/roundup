@@ -5,4 +5,4 @@ export type CreateRoomParams = { name: string, parent: string | null,
 /**
  * O3: the Door's order.
  */
-order: Order | null, };
+order?: Order, };

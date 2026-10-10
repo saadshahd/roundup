@@ -72,6 +72,7 @@ export const openShelf = async (pads: Pad[], onRail = false) => {
       worktree: null,
       can_resume: false,
       channel: null,
+      work: null,
     },
   ];
   Object.assign(app.handlers, padHandlers(state, () => {}));

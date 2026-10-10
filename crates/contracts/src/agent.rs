@@ -224,6 +224,7 @@ pub struct SpawnParams {
     pub parent: Option<String>,
     /// O2: replaces `prompt`; giving both is `INVALID_PARAMS`.
     #[serde(default)]
+    #[ts(optional)]
     pub order: Option<Order>,
 }
 
@@ -266,6 +267,7 @@ pub struct CreateRoomParams {
     pub parent: Option<String>,
     /// O3: the Door's order.
     #[serde(default)]
+    #[ts(optional)]
     pub order: Option<Order>,
 }
 

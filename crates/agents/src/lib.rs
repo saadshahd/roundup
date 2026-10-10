@@ -73,6 +73,9 @@ pub trait AgentAdapter {
     fn observe(&mut self, observation: Observation) -> Option<Status>;
 }
 
+/// Whether an Agent's Terminal is under Takeover, asked before the Daemon writes into it.
+type TakeoverProbe = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 /// State the Terminal watchers and the RPC calls share.
 struct Shared {
     git: worktree::Git,
@@ -105,7 +108,7 @@ struct Shared {
     channels: Mutex<HashMap<String, (String, Channel)>>,
     /// O4: whether a Takeover of the Agent is active, which keeps a changed order from being
     /// sent to it. Without one, none is.
-    takeover: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
+    takeover: Option<TakeoverProbe>,
     /// E6: how long after a start `agent.channelUp` may take before the Channel is `missing`.
     channel_deadline: Duration,
 }

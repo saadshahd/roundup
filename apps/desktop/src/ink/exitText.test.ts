@@ -31,6 +31,7 @@ describe("u7 exited wording", () => {
       worktree: null,
       can_resume: false,
       channel: null,
+      work: null,
     }));
 
     app.handlers["rail.tree"] = () => nodes;

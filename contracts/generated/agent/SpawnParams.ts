@@ -5,4 +5,4 @@ export type SpawnParams = { cwd: string, prompt: string | null, parent: string |
 /**
  * O2: replaces `prompt`; giving both is `INVALID_PARAMS`.
  */
-order: Order | null, };
+order?: Order, };
