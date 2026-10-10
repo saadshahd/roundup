@@ -1,0 +1,11 @@
+== 1280
+j4 all: radios=2 "[\"#1 ship j4in j4\"]"
+j4 this room: "[\"#1 ship j4in j4\"]" this-room-checked=true
+other selected, choice reset to all: true
+other this room: "todos  | all | this room |  | no todos in this room"
+== 700
+j4 all: radios=2 "[\"#1 ship j4in j4\"]"
+j4 this room: "[\"#1 ship j4in j4\"]" this-room-checked=true
+other selected, choice reset to all: true
+other this room: "todos  | all | this room |  | no todos in this room"
+todo.list: [{"title":"ship j4","home":"1"}] (Rooms: j4=1, other=2)
