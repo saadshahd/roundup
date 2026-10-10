@@ -578,8 +578,11 @@ impl Module for Messages {
     }
 
     async fn call(&self, ctx: &Ctx, method: &str, value: Value) -> Result<Value, RpcError> {
-        start_listener(&self.inner);
-        guarded(method, self.dispatch(ctx, method, value)).await
+        guarded(method, async {
+            start_listener(&self.inner);
+            self.dispatch(ctx, method, value).await
+        })
+        .await
     }
 }
 
@@ -1120,7 +1123,12 @@ async fn guarded<T>(
 ) -> Result<T, RpcError> {
     let mut fut = Box::pin(fut);
     let result = std::future::poll_fn(|cx| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fut.as_mut().poll(cx))) {
+        quiet_panics();
+        CAUGHT.with(|c| c.set(true));
+        let caught =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fut.as_mut().poll(cx)));
+        CAUGHT.with(|c| c.set(false));
+        match caught {
             Ok(poll) => poll.map(Ok),
             Err(payload) => std::task::Poll::Ready(Err(panic_cause(payload.as_ref()))),
         }
@@ -1137,6 +1145,25 @@ async fn guarded<T>(
             Err(RpcError::internal(format!("{op} failed: {cause}")))
         }
     }
+}
+
+thread_local! {
+    /// Set while `guarded` polls an operation: a panic then is caught and logged by `guarded`.
+    static CAUGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Installs once a panic hook that stays silent for a panic `guarded` catches, so the cause is
+/// logged once, as one line (B28); any other panic reaches the previous hook.
+fn quiet_panics() {
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !CAUGHT.with(std::cell::Cell::get) {
+                previous(info);
+            }
+        }));
+    });
 }
 
 fn panic_cause(payload: &(dyn std::any::Any + Send)) -> String {
@@ -2994,7 +3021,13 @@ mod tests {
     #[tokio::test]
     async fn b28_a_panic_in_a_locked_operation_leaves_the_next_calls_working() {
         let dir = tempfile::tempdir().unwrap();
-        let h = Harness::new(dir.path(), vec![agent_node("a", Kind::Working)]);
+        let h = Harness::new(
+            dir.path(),
+            vec![
+                agent_node("a", Kind::Working),
+                agent_node("b", Kind::Working),
+            ],
+        );
         let inner = Arc::clone(&h.messages.inner);
         let panicked = std::thread::spawn(move || {
             let mut store = lock(&inner.store);
@@ -3014,9 +3047,15 @@ mod tests {
         h.call("message.get", json!({"id": sent["id"]}))
             .await
             .unwrap();
-        h.call("route.set", json!({"from": "a", "to": "a", "mode": "auto"}))
+        h.call(
+            "route.set",
+            json!({"from": "a", "to": "b", "delivery": "auto"}),
+        )
+        .await
+        .unwrap();
+        h.call("takeover.begin", json!({"agent": "a"}))
             .await
-            .ok();
+            .unwrap();
         assert_eq!(
             h.call("message.list", json!({}))
                 .await
