@@ -73,8 +73,8 @@ roundup   payments-api                                                          
     writing docs/auth.md        │                                       │
   · perf-probe                  │                                       │
     idle 22m                    │                                       │
-  ○ npm run dev                 │                                       │
-    ready on :3000              │                                       │
+  ○ fix-refresh-race            │                                       │
+    reading src/auth/token.ts   │                                       │
   ✓ 2 done                      │                                       │
                                 │                                       │
   + new Workstream              │ > █                                   │
@@ -249,12 +249,13 @@ roundup   payments-api                                                          
   + new Workstream              │ > █                                   │
 ```
 ```
-after + terminal, one click       after you type npm run dev        after the first prompt
+after ⌘T, a bubble                after the first prompt
 
-› · zsh                           › ○ npm run dev                   › ○ fix-refresh-race
-    ~/repos/payments-api              ready on :3000                    reading src/auth/token.ts
+┌ zsh  running  ─ transparency ─┐   › ○ fix-refresh-race
+│ ~/repos/payments-api $ █      │       reading src/auth/token.ts
+└──────────────────── minimise ✕┘
 ```
-The pinned line holds one add, `+ new Workstream`. Inside a Workstream its group ends with `+ agent  + terminal`, an Agent first. `+ agent` is one click. The row appears inside that Workstream (`⌘N` and `⌘T` keep their parent rule: the selected group or Door, else the root); claude starts and focus moves to its terminal. There is no form and no prompt box. The agent's name comes from its first prompt, and a terminal's name comes from its first command; double-click to rename.
+The pinned line holds one add, `+ new Workstream`. Inside a Workstream its group ends with `+ agent`. `+ agent` is one click; `⌘T` opens a Terminal as a bubble over the centre pane (U164, U165): the user moves, resizes, minimises and fades it, and it is never a Rail row. The row appears inside that Workstream (`⌘N` keeps its parent rule: the selected group or Door, else the root); claude starts and focus moves to its terminal. There is no form and no prompt box. The agent's name comes from its first prompt; double-click to rename.
 
 ### Screen 7 — Door: group, promote, drag to nest / unnest / reorder, Door stopped
 ```

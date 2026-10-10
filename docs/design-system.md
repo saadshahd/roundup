@@ -81,7 +81,7 @@ A word such as `stop`, `close` or `promote` is a button, not text: it has the ho
 
 ## Surfaces and depth
 
-The Rail and the Shelf sit on `--sunken`; the pane and the Drawer on `--ground`. Regions are told apart by that change of ground and by space, and by one hairline on the Rail's trailing edge and one on the Shelf's top edge. The only borders allowed are `1px solid var(--hairline)`, on the Rail's trailing edge and the Shelf's top edge, and the Drawer's leading edge (U134). Only the Drawer casts a shadow. A translucent surface (`backdrop-filter`) is never placed over another (apple-design: never stack light materials), and the terminal never sits under one (U5).
+The Rail and the Shelf sit on `--sunken`; the pane and the Drawer on `--ground`. Regions are told apart by that change of ground and by space, and by one hairline on the Rail's trailing edge and one on the Shelf's top edge. The only borders allowed are `1px solid var(--hairline)`, on the Rail's trailing edge and the Shelf's top edge, the Drawer's leading edge and all four edges of a Terminal bubble (U134, U164). Only the Drawer casts a shadow. A translucent surface (`backdrop-filter`) is never placed over another (apple-design: never stack light materials), and the terminal never sits under one (U5); the one exception is a bubble, which is translucent only by the opacity of its `--ground` (the user's transparency setting, 0 to 60 %, default 8 %), never by `backdrop-filter`, and whose text stays opaque.
 
 Three user settings change the look. Each has a rule in `tokens.css`:
 
@@ -102,7 +102,7 @@ Each check is measured from computed style and the DOM of the running App, never
 | D5 | text has at least 4.5:1 against its own ground, and a Glyph tone and a focus ring 3:1 (`done` is exempt as U4 says), in light and in dark | U4, U135 |
 | D6 | every click target shows its rest, hover and focus states from the table above, and its hit area is at least 24 px high | U133 |
 | D7 | every click target's pressed style differs from hover, appears at `pointerdown` and has a transition of `0s` | U133 |
-| D8 | no border is wider than 1 px or any colour but `--hairline`; only the Drawer has a shadow; no `backdrop-filter` element contains another | U134 |
+| D8 | no border is wider than 1 px or any colour but `--hairline`; only the Drawer has a shadow (a bubble has none); no `backdrop-filter` element contains another | U134 |
 | D9 | each duration is within 25% of `docs/motion.md`, and under `prefers-reduced-motion` all but the instant changes are 0 | U5, U135 |
 | D10 | D1 to D9 hold in both colour schemes, in `prefers-contrast: more`, and at 700 by 800 | U135 |
 
