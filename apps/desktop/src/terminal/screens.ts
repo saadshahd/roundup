@@ -24,9 +24,9 @@ export type Screens = {
   returnToBottom(id: string): void;
   copy(id: string, clipboard: Pick<Clipboard, "writeText">): Promise<void>;
   paste(id: string, clipboard: Pick<Clipboard, "readText">): Promise<void>;
-  /** Pastes dropped paths as one shell line fragment (U162); an exited Terminal or Daemon, or no path, takes nothing. */
   /** Whether the Terminal has exited. */
   exited(id: string): boolean;
+  /** Pastes dropped paths as one shell line fragment (U162); an exited Terminal or Daemon, or no path, takes nothing. */
   pastePaths(id: string, paths: string[]): void;
   /** The selected Terminal's last failed call or `terminal.output`, until a later call for that Terminal succeeds. */
   failure(id: string | null): string | null;

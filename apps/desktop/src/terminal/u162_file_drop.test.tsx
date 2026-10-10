@@ -100,6 +100,29 @@ describe("u162 drop files on a pane", () => {
     expect(emulators.get("t-a")!.pasted).toEqual([]);
   });
 
+  it("u162_a_drop_on_an_open_drawer_over_the_pane_does_nothing", async () => {
+    const { app, emulators, body } = await mount();
+    const drawer = document.createElement("aside");
+
+    document.body.append(drawer);
+    document.elementFromPoint = () => drawer;
+
+    try {
+      app.dropFiles(over());
+      expect(body.classList.contains("drop-over")).toBe(false);
+
+      app.dropFiles(drop(["/a"]));
+      expect(emulators.get("t-a")!.pasted).toEqual([]);
+
+      document.elementFromPoint = () => body;
+      app.dropFiles(drop(["/a"]));
+      expect(emulators.get("t-a")!.pasted).toEqual(["'/a' "]);
+    } finally {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+      drawer.remove();
+    }
+  });
+
   it("u162_an_exited_terminal_takes_nothing", async () => {
     const { app, emulators, body } = await mount(undefined, [info("t-a", { running: false, exit_code: 0 })]);
 

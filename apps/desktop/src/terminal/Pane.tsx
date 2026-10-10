@@ -184,7 +184,14 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
   const inBody = (x: number, y: number): boolean => {
     const box = body?.getBoundingClientRect();
 
-    return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom;
+    if (body === undefined || box === undefined || x < box.left || x >= box.right || y < box.top || y >= box.bottom) return false;
+
+    // An open Drawer sits over the pane, so the rectangle alone would take its drops.
+    if (typeof document.elementFromPoint !== "function") return true;
+
+    const hit = document.elementFromPoint(x, y);
+
+    return hit !== null && body.contains(hit);
   };
 
   let unlistenDrop: (() => void) | undefined;
