@@ -1,6 +1,6 @@
 # UI: the first Room (U143)
 
-Module: `apps/desktop` (the webview); U146 and U166 also edit the fake `claude` at `crates/rup/tests/e2e/fake_claude.py`. Ids: U143, U144, U145, U146, U160, U166. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
+Module: `apps/desktop` (the webview); U146 and U166 also edit the fake `claude` at `crates/rup/tests/e2e/fake_claude.py`. Ids: U143, U144, U145, U146, U160, U166, U167. Found by walking the first journey in the U26 harness: an open Project with no row says only `select an agent or a terminal` and offers no first action in the centre; a Room whose Door is not running shows a bare `start Door`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
 
 **U143 the first Room says where it stands.** Narrows U38 and U9; changes no contract, App seam command or token. Given an open Project, then:
 
@@ -57,3 +57,11 @@ Tests are named `u160_…` in `apps/desktop/src/thread/` against the fake App se
 - **Other Rooms.** A second Room's status, Thread (U160) and Decisions do not change.
 
 Observer: `u166_` tests in `apps/desktop/src/testing/` start the real `rupd` as U146 does with `FAKE_CLAUDE_ON_PROMPT_ASK` set to a `Bash` request and `FAKE_CLAUDE_ON_PROMPT` set to a `todo_create` call titled `"$prompt"`, mount the App through the served seam, create two Rooms, start their Doors, send `ship a` to the first by pointer, assert the Card, `needs-you` and the Message `delivered`, then press `allow` and assert the Todo `ship a`, and `idle`, the Message still `delivered`; a second run presses `deny` on `ship b` and asserts the same without a Todo. The second Room is unchanged in both. A reopen of the Project finds the end states again (A8, S5). `agent-browser` captures of the Card and of the settled Room at 1280 by 800 and 700 by 800 go to `artifacts/ux/U166/`. A real `claude` stays F7's observer.
+
+**U167 a new Room's default name is unique among the Rail's roots.** Found by the J6 audit (Understand): two Rooms created by `start a Room` and `+ room` are both named `room`; their Rail rows, their Thread lines (`you → room note ship a`) and their Cards (`Decision for room`) are identical, so the user cannot say which Room needs them except by the selection highlight (`artifacts/ux/journey/j6-room2-decision-1280.png`). P1 and the Understand stage ask the user to identify the selected Room and the one that needs them. Narrows U9 and U143 (their `name: "room"` is the first Room's default); changes no contract and no Token. Given Rooms already on the Rail, then:
+
+- **The default.** The App sends the first free name of `room`, `room 2`, `room 3`, among the Rail's root rows; The Daemon accepts any name (A6) and is not asked to number. A renamed Room frees its old name.
+- **The words.** The new name shows in the Rail row, in every Thread line naming the Room, and in `Decision for <name>`.
+
+Observer: `u167_` tests in `apps/desktop/src/rail/` against the fake App seam: create three Rooms in turn, rename the second, create a fourth; assert the `rail.createRoom` names, and the Thread and Card words for each. The 1280 by 800 and 700 by 800 `agent-browser` captures with two Rooms go to `artifacts/ux/U167/`. After the Workstream rename (A25, `scenarios/workstream.md`) the stem is `workstream`.
+

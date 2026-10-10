@@ -26,24 +26,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@codemirror/commands':
-        specifier: ^6.11.1
-        version: 6.11.1
-      '@codemirror/lang-markdown':
-        specifier: ^6.5.2
-        version: 6.5.2
-      '@codemirror/language':
-        specifier: ^6.12.4
-        version: 6.12.4
-      '@codemirror/state':
-        specifier: ^6.7.6
-        version: 6.7.6
-      '@codemirror/view':
-        specifier: ^6.43.13
-        version: 6.43.13
-      '@lezer/highlight':
-        specifier: ^1.2.5
-        version: 1.2.5
       '@milkdown/crepe':
         specifier: ^7.22.2
         version: 7.22.2(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6)(typescript@7.0.2)
@@ -68,15 +50,9 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
-      dompurify:
-        specifier: ^3.4.16
-        version: 3.4.16
       lucide-solid:
         specifier: ^1.51.0
         version: 1.51.0(solid-js@1.9.15)
-      marked:
-        specifier: ^18.0.14
-        version: 18.0.14
       solid-js:
         specifier: ^1.9.15
         version: 1.9.15
@@ -1824,11 +1800,6 @@ packages:
 
   markdown-table@3.0.4:
     resolution: {integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==}
-
-  marked@18.0.14:
-    resolution: {integrity: sha512-mBHK6FBHuBAlhgRe88w9F0O1AbwwXJUcQibUbC/QcdTbVGAD7aWza+xt3N6oT/jCZx3/OMeS+8rnuiHZcQ9s7A==}
-    engines: {node: '>= 20'}
-    hasBin: true
 
   mdast-util-definitions@6.0.0:
     resolution: {integrity: sha512-scTllyX6pnYNZH/AIp/0ePz6s4cZtARxImwoPJ7kS42n+MnVsI4XbnG6d4ibehRIldYMWM2LD7ImQblVhUejVQ==}
@@ -3604,21 +3575,15 @@ snapshots:
       '@percy/cli-command': 1.32.11(typescript@7.0.2)
       '@percy/cli-exec': 1.32.11(typescript@7.0.2)
     transitivePeerDependencies:
-      - bufferutil
       - supports-color
       - typescript
-      - utf-8-validate
-      - worker-loader
 
   '@percy/cli-build@1.32.11(typescript@7.0.2)':
     dependencies:
       '@percy/cli-command': 1.32.11(typescript@7.0.2)
     transitivePeerDependencies:
-      - bufferutil
       - supports-color
       - typescript
-      - utf-8-validate
-      - worker-loader
 
   '@percy/cli-command@1.32.11(typescript@7.0.2)':
     dependencies:
@@ -3639,11 +3604,8 @@ snapshots:
     dependencies:
       '@percy/cli-command': 1.32.11(typescript@7.0.2)
     transitivePeerDependencies:
-      - bufferutil
       - supports-color
       - typescript
-      - utf-8-validate
-      - worker-loader
 
   '@percy/cli-doctor@1.32.11(typescript@7.0.2)':
     dependencies:
@@ -3670,11 +3632,8 @@ snapshots:
       cross-spawn: 7.0.6
       which: 2.0.2
     transitivePeerDependencies:
-      - bufferutil
       - supports-color
       - typescript
-      - utf-8-validate
-      - worker-loader
 
   '@percy/cli-pdf@1.32.11':
     dependencies:
@@ -3689,11 +3648,8 @@ snapshots:
       '@percy/cli-command': 1.32.11(typescript@7.0.2)
       yaml: 2.9.1
     transitivePeerDependencies:
-      - bufferutil
       - supports-color
       - typescript
-      - utf-8-validate
-      - worker-loader
 
   '@percy/cli-upload@1.32.11(typescript@7.0.2)':
     dependencies:
@@ -3701,11 +3657,8 @@ snapshots:
       fast-glob: 3.3.3
       probe-image-size: 7.4.0
     transitivePeerDependencies:
-      - bufferutil
       - supports-color
       - typescript
-      - utf-8-validate
-      - worker-loader
 
   '@percy/cli@1.32.11(typescript@7.0.2)':
     dependencies:
@@ -4773,8 +4726,6 @@ snapshots:
     optional: true
 
   markdown-table@3.0.4: {}
-
-  marked@18.0.14: {}
 
   mdast-util-definitions@6.0.0:
     dependencies:

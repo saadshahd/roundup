@@ -10,12 +10,8 @@ import { createFailure } from "./failure";
 import { USER } from "./owner";
 import { cutName, markedLine, wholeWord } from "./nameLine";
 
-import type { PadEditorHandle } from "./PadEditor";
+import type { PadEditorHandle } from "./PadRichEditor";
 import "./styles.css";
-
-const PadMarkdown = lazy(() => import("./PadMarkdown"));
-
-const PadEditor = lazy(() => import("./PadEditor"));
 
 const PadRichEditor = lazy(() => import("./PadRichEditor"));
 
@@ -30,7 +26,6 @@ const PadBody = (props: {
   const [shown, setShown] = createSignal(props.initial.text);
   const [origin, setOrigin] = createSignal(props.initial.text);
   const [editing, setEditing] = createSignal(false);
-  const [mode, setMode] = createSignal<"read" | "edit" | "source" | "preview">("read");
   const [conflictActor, setConflictActor] = createSignal<Actor | null>(null);
   const actionFailure = createFailure();
   const [deleted, setDeleted] = createSignal(false);
@@ -41,7 +36,7 @@ const PadBody = (props: {
   let reader: HTMLDivElement | undefined;
   let pendingActor: Actor | null = null;
   let closed = false;
-  let switchingView = false;
+  let sent: string | null = null;
 
   /** Moves the source and its dirty/clean baseline together so a resolved change cannot remain a conflict. */
   const settle = (next: Pad) => {
@@ -107,6 +102,13 @@ const PadBody = (props: {
 
   onCleanup(() => {
     closed = true;
+
+    // Closing the Drawer leaves the document like a blur does; a draft already sent stays one write.
+    if (pad().owner.kind === "user" && !conflictActor() && editor && editing()) {
+      const draft = editor.getText();
+
+      if (draft !== origin() && draft !== sent) void write(draft);
+    }
   });
 
   /** A call that fails after the Drawer closed has no ✕ line to land on, so it goes to the Shelf's. */
@@ -125,8 +127,16 @@ const PadBody = (props: {
 
   const write = (text: string) =>
     act(async () => {
-      if (text !== origin())
-        adopt(await connected.app.rpc("pad.write", { name, text }));
+      if (text !== origin()) {
+        sent = text;
+
+        try {
+          adopt(await connected.app.rpc("pad.write", { name, text }));
+        } catch (thrown) {
+          sent = null;
+          throw thrown;
+        }
+      }
     });
 
   const append = (text: string) =>
@@ -154,46 +164,31 @@ const PadBody = (props: {
   const leaveField = async (typed: string) => {
     if (!editing() && typed === origin()) return;
 
-    if (conflictActor()) return;
+    if (conflictActor() || typed === sent) return;
 
     setEditing(false);
     await write(typed);
   };
 
+  const onChange = () => {
+    sent = null;
+    setEditing(true);
+
+    if (editor?.unchanged()) settle(pad());
+  };
+
   const onText = (text: string) => {
     setShown(text);
-    setEditing(ownedByUser());
 
     if (text === origin()) settle(pad());
   };
 
   const onEditorBlur = (next: EventTarget | null) => {
-    if (switchingView) return;
-
-    if (next instanceof Node && next.parentElement?.closest(".pad-actions")) return;
-
     if (next instanceof Node && next.parentElement?.closest(".pad-rich-editor")) return;
 
+    if (!ownedByUser()) return;
+
     void leaveField(currentDraft());
-  };
-
-  const done = () => {
-    if (conflictActor()) return;
-
-    const draft = currentDraft();
-
-    switchingView = true;
-    setShown(draft);
-    void leaveField(draft);
-    editor = undefined;
-    setMode("read");
-  };
-
-  const showDraft = (next: "edit" | "source" | "preview") => {
-    switchingView = true;
-    setShown(currentDraft());
-    editor = undefined;
-    setMode(next);
   };
 
   /** U58: a Pad opened from under its Agent is taken here, by the owner mark, as U18's click does in the Shelf. */
@@ -278,65 +273,21 @@ const PadBody = (props: {
       <Show when={deleted() && !removedByMe()}>
         <ErrorLine message={`pad ${name} was deleted`} />
       </Show>
-      <Show when={ownedByUser()}>
-        <div class="pad-actions">
-          <Show when={mode() === "read"}>
-            <button type="button" onClick={() => setMode("edit")}>edit</button>
-          </Show>
-          <Show when={mode() === "edit"}>
-            <button type="button" onClick={() => showDraft("source")}>source</button>
-            <button
-              type="button"
-              onClick={() => showDraft("preview")}
-            >
-              Preview
-            </button>
-          </Show>
-          <Show when={mode() === "source"}>
-            <button type="button" onClick={() => showDraft("edit")}>formatted</button>
-            <button type="button" onClick={() => showDraft("preview")}>Preview</button>
-          </Show>
-          <Show when={mode() === "preview"}>
-            <button type="button" onClick={() => setMode("edit")}>edit</button>
-          </Show>
-          <Show when={mode() !== "read"}>
-            <button type="button" onClick={done}>done</button>
-          </Show>
-        </div>
-      </Show>
       <Suspense>
-        <Show when={mode() === "edit" && ownedByUser()}>
-          <PadRichEditor
-            text={shown()}
-            onText={onText}
-            onBlur={onEditorBlur}
-            onReady={(ready) => {
-              editor = ready;
-              switchingView = false;
-            }}
-          />
-        </Show>
-        <Show when={mode() === "source" && ownedByUser()}>
-          <PadEditor
-            text={shown()}
-            onText={onText}
-            onBlur={onEditorBlur}
-            onReady={(ready) => {
-              editor = ready;
-              switchingView = false;
-            }}
-          />
-        </Show>
-        <Show when={mode() === "preview" && ownedByUser()}>
-          <PadMarkdown text={shown()} label="Preview" />
-        </Show>
-        <Show when={mode() === "read" || !ownedByUser()}>
-          <PadMarkdown
-            text={shown()}
-            label="Pad body"
-            onReader={(element) => (reader = element)}
-          />
-        </Show>
+        <PadRichEditor
+          text={props.initial.text}
+          readonly={!ownedByUser()}
+          onChange={onChange}
+          onText={onText}
+          onBlur={onEditorBlur}
+          onScroller={(element) => (reader = element)}
+          onReady={(ready) => {
+            editor = ready;
+
+            // The editor loads lazily; text adopted before it was ready must still reach it.
+            if (!editing()) ready.setText(origin());
+          }}
+        />
       </Suspense>
       <Show when={conflictActor()}>
         {(actor) => (

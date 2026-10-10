@@ -52,7 +52,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
   it("u36_a_dirty_draft_blur_sends_no_write", async () => {
     const { calls, field, state } = await openConflict();
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     expect(calls()).not.toContain("pad.write");
     expect(field.value).toBe("mine, edited");
@@ -63,7 +63,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     const { calls, field, state } = await openConflict();
 
     fireEvent.input(field, { target: { value: "mine, edited more" } });
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     expect(screen.getByText("changed by auth-refactor")).toBeTruthy();
     expect(calls()).not.toContain("pad.write");
@@ -74,7 +74,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
   it("u36_a_second_agents_change_after_blur_leaves_an_unresolved_conflicts_draft_untouched", async () => {
     const { app, field, state } = await openConflict();
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     state.pads = [padOf("release-checklist", USER, "mine\nagent line\nmore")];
     app.emit({
@@ -97,17 +97,17 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
   it("u36_keep_mine_writes_the_draft_and_clears_the_line", async () => {
     const { app, field, state } = await openConflict();
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     fireEvent.click(screen.getByText("keep mine"));
 
     await waitFor(() =>
       expect(
         app.calls.filter((call) => call.method === "pad.write"),
       ).toEqual([
-        { method: "pad.write", params: { name: "release-checklist", text: "mine, edited" } },
+        { method: "pad.write", params: { name: "release-checklist", text: "mine, edited\n" } },
       ]),
     );
-    expect(state.pads[0]?.text).toBe("mine, edited");
+    expect(state.pads[0]?.text).toBe("mine, edited\n");
     expect(screen.queryByText(/changed by/)).toBeNull();
   });
 
@@ -131,7 +131,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
 
     expect(screen.getByText("changed by auth-refactor")).toBeTruthy();
 
-    reply.resolve(padOf("release-checklist", USER, "mine, edited"));
+    reply.resolve(padOf("release-checklist", USER, "mine, edited\n"));
     await waitFor(() => expect(screen.queryByText(/changed by/)).toBeNull());
   });
 
@@ -147,7 +147,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
 
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "mine, edited more" } });
-    reply.resolve(padOf("release-checklist", USER, "mine, edited"));
+    reply.resolve(padOf("release-checklist", USER, "mine, edited\n"));
     await reply.promise;
     await new Promise((done) => setTimeout(done, 0));
 
@@ -185,7 +185,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
       ).toBe(1),
     );
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     await new Promise((done) => setTimeout(done, 0));
 
     expect(
@@ -196,7 +196,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
   it("u36_use_theirs_loads_the_latest_text_and_calls_nothing_else", async () => {
     const { app, field, state } = await openConflict();
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     const before = app.calls.length;
     fireEvent.click(screen.getByText("use theirs"));
 
@@ -367,10 +367,10 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "new" } });
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "newer" } });
-    reply.resolve(padOf("release-checklist", USER, "new"));
+    reply.resolve(padOf("release-checklist", USER, "new\n"));
     await reply.promise;
     await writeAdopted();
 
@@ -391,10 +391,10 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "new" } });
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "newer" } });
-    reply.resolve(padOf("release-checklist", USER, "new"));
+    reply.resolve(padOf("release-checklist", USER, "new\n"));
     await reply.promise;
     await writeAdopted();
 
@@ -438,7 +438,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     expect(field.value).toBe("mine");
     expect(screen.queryByText(/changed by/)).toBeNull();
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     expect(app.calls.some((call) => call.method === "pad.write")).toBe(false);
     expect(state.pads[0]?.text).toBe("mine");
@@ -455,10 +455,10 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
     const field = await openPad("release-checklist");
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "mine, edited" } });
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
     fireEvent.focus(field);
     fireEvent.input(field, { target: { value: "mine, edited" } });
-    reply.resolve(padOf("release-checklist", USER, "mine, edited"));
+    reply.resolve(padOf("release-checklist", USER, "mine, edited\n"));
     await reply.promise;
     await writeAdopted();
 
@@ -472,7 +472,7 @@ describe("u36 a pad edit never overwrites another actor's change", () => {
 
     expect(field.value).toBe("mine");
 
-    fireEvent.blur(field);
+    fireEvent.focusOut(field);
 
     expect(app.calls.filter((call) => call.method === "pad.write")).toHaveLength(1);
     expect(state.pads[0]?.text).toBe("mine");
