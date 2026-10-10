@@ -14,5 +14,5 @@ import "./styles.css";
 const icons = { check: Check, down: ChevronDown, right: ChevronRight, circle: Circle, diamond: Diamond, owned: DiamondPlus, dot: Dot, pause: Pause, plus: Plus, x: X };
 
 export const Icon = (props: { name: keyof typeof icons; filled?: boolean }) => (
-  <Dynamic component={icons[props.name]} class="icon" aria-hidden="true" fill={props.filled ? "currentColor" : "none"} />
+  <Dynamic component={icons[props.name]} class="icon" aria-hidden="true" width={16} height={16} stroke-width={1.75} stroke-linecap="round" stroke-linejoin="round" fill={props.filled ? "currentColor" : "none"} />
 );

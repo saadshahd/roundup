@@ -71,7 +71,9 @@
 .pane .pane-action {
   display: inline-flex;
   align-items: center;
-  min-height: var(--space-5);
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  color: var(--accent);
 }
 
 /* Over a stopped Door's last output, so the state and the way out stay readable. */
@@ -79,6 +81,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: var(--ground);
