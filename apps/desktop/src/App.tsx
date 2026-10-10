@@ -12,6 +12,7 @@ import { AttentionChip } from "./rail/AttentionChip";
 import { railStorage } from "./rail/persist/storage";
 import { Jump } from "./rail/Jump";
 import { Rail } from "./rail/Rail";
+import { Help } from "./keys/Help";
 import { Keys } from "./keys/Keys";
 import { createNow } from "./state/clock";
 import type { Clock } from "./state/clock";
@@ -73,6 +74,7 @@ const OpenProject = (props: {
                 <div class="centre-stack">
                   <Pane notice={open().rail.failure() ?? jumpFailure()} createEmulator={emulators.create} />
                   <Thread selectionOf={emulators.selectionOf} />
+                  <Help />
                 </div>
               }
               shelf={
