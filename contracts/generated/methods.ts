@@ -48,6 +48,7 @@ import type { TerminalInfo as terminal_TerminalInfo } from "./terminal/TerminalI
 import type { WriteParams as terminal_WriteParams } from "./terminal/WriteParams";
 import type { CreateParams as todo_CreateParams } from "./todo/CreateParams";
 import type { MoveParams as todo_MoveParams } from "./todo/MoveParams";
+import type { ReorderParams as todo_ReorderParams } from "./todo/ReorderParams";
 import type { SetBlockersParams as todo_SetBlockersParams } from "./todo/SetBlockersParams";
 import type { Todo as todo_Todo } from "./todo/Todo";
 import type { TodoId as todo_TodoId } from "./todo/TodoId";
@@ -72,6 +73,7 @@ export type RpcMethods = {
   "todo.complete": { params: todo_TodoId; result: todo_Todo };
   "todo.setBlockers": { params: todo_SetBlockersParams; result: todo_Todo };
   "todo.move": { params: todo_MoveParams; result: todo_Todo };
+  "todo.reorder": { params: todo_ReorderParams; result: todo_Todo };
   "todo.delete": { params: todo_TodoId; result: null };
   "pad.create": { params: pad_CreateParams; result: pad_Pad };
   "pad.read": { params: pad_PadName; result: pad_Pad };

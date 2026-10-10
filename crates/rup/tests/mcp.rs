@@ -204,6 +204,17 @@ async fn m1_offers_one_tool_per_method_and_ask_user_and_no_others() {
     assert_eq!(names, expected);
 }
 
+/// T10, T11: the order is the user's, so neither `todo.reorder` nor `todo.delete` is a tool.
+#[tokio::test]
+async fn t11_the_tool_list_lacks_todo_reorder() {
+    let project = start_daemon();
+    let shim = spawn_shim(&project.socket, "a1").await;
+
+    let tools = shim.client.list_all_tools().await.unwrap();
+
+    assert!(tools.iter().all(|t| t.name != "todo_reorder"));
+}
+
 #[tokio::test]
 async fn m1_input_schemas_are_the_contract_schemas() {
     let project = start_daemon();

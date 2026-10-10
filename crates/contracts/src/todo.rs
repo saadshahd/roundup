@@ -62,6 +62,14 @@ pub struct MoveParams {
     pub home: Option<String>,
 }
 
+/// Puts a Todo before another in the Todo order, or last when `before` is `None`.
+#[derive(Clone, Debug, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(export, export_to = "todo/")]
+pub struct ReorderParams {
+    pub id: u32,
+    pub before: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

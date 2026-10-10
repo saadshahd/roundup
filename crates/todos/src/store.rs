@@ -38,6 +38,7 @@ impl Store {
         ))?;
         Self::migrate_creator_column(&db)?;
         Self::migrate_home_column(&db)?;
+        Self::migrate_pos_column(&db)?;
         Ok(Self { db })
     }
 
@@ -69,6 +70,22 @@ impl Store {
         Ok(())
     }
 
+    /// A `todos.db` from before T10 has no `pos` column; its Todos take id order.
+    fn migrate_pos_column(db: &Connection) -> rusqlite::Result<()> {
+        let has_pos: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('todos') WHERE name = 'pos'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_pos {
+            db.execute_batch(
+                "ALTER TABLE todos ADD COLUMN pos INTEGER NOT NULL DEFAULT 0;
+                 UPDATE todos SET pos = id;",
+            )?;
+        }
+        Ok(())
+    }
+
     /// Every id in `blockers` must exist, or the call is `NOT_FOUND`.
     pub(crate) fn insert(
         &self,
@@ -90,7 +107,8 @@ impl Store {
             .unchecked_transaction()
             .map_err(RpcError::internal)?;
         tx.execute(
-            "INSERT INTO todos (title, body, created_at, creator) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO todos (title, body, created_at, creator, pos)
+             VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(pos), 0) + 1 FROM todos))",
             params![title, body, created_at, creator_json(creator)],
         )
         .map_err(RpcError::internal)?;
@@ -141,7 +159,7 @@ impl Store {
     pub(crate) fn list(&self) -> Result<Vec<Todo>, RpcError> {
         let ids = self
             .db
-            .prepare("SELECT id FROM todos ORDER BY id")
+            .prepare("SELECT id FROM todos ORDER BY pos, id")
             .and_then(|mut stmt| {
                 stmt.query_map([], |r| r.get::<_, u32>(0))?
                     .collect::<Result<Vec<_>, _>>()
@@ -171,6 +189,38 @@ impl Store {
             .execute("UPDATE todos SET done = 1 WHERE id = ?1", [id])
             .map_err(RpcError::internal)?;
         self.get(id)
+    }
+
+    /// Puts `id` before `before`, or last. The caller has checked both ids and that `id != before`.
+    pub(crate) fn reorder(&self, id: u32, before: Option<u32>) -> Result<Todo, RpcError> {
+        let mut ids: Vec<u32> = self.list()?.into_iter().map(|t| t.id).collect();
+        ids.retain(|other| *other != id);
+        let at = before
+            .and_then(|b| ids.iter().position(|other| *other == b))
+            .unwrap_or(ids.len());
+        ids.insert(at, id);
+        let tx = self
+            .db
+            .unchecked_transaction()
+            .map_err(RpcError::internal)?;
+        for (pos, todo) in (1_i64..).zip(&ids) {
+            tx.execute(
+                "UPDATE todos SET pos = ?2 WHERE id = ?1",
+                params![todo, pos],
+            )
+            .map_err(RpcError::internal)?;
+        }
+        tx.commit().map_err(RpcError::internal)?;
+        self.get(id)
+    }
+
+    /// The Todo that follows `id` in the Todo order, if any.
+    pub(crate) fn successor(&self, id: u32) -> Result<Option<u32>, RpcError> {
+        let ids: Vec<u32> = self.list()?.into_iter().map(|t| t.id).collect();
+        Ok(ids
+            .iter()
+            .position(|other| *other == id)
+            .and_then(|i| ids.get(i + 1).copied()))
     }
 
     /// Sets the Home. The caller has checked that a Room exists on the Rail.
