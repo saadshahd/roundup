@@ -203,6 +203,35 @@ pub struct ContextTodo {
     pub blocked: bool,
 }
 
+/// B19: what a Meta-agent is told about one child. `last` is one line, `todos` counts the open Todos
+/// whose Home is the child, and `pads` names the child's Pads written since the previous envelope.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct DigestEntry {
+    pub name: String,
+    pub kind: crate::Kind,
+    pub last: String,
+    pub todos: u32,
+    pub pads: Vec<String>,
+}
+
+/// B20: one item of `agent.digest`'s `children`: a child's entry, or the last item `{more: n}` when
+/// the Meta-agent has more children than the result holds.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(untagged)]
+#[ts(export, export_to = "agent/")]
+pub enum DigestItem {
+    Child(DigestEntry),
+    More { more: u32 },
+}
+
+/// What `agent.digest` returns (B20).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "agent/")]
+pub struct Digest {
+    pub children: Vec<DigestItem>,
+}
+
 /// What `agent.context` returns (E2).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]

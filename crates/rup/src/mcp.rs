@@ -114,6 +114,17 @@ fn agent_context() -> Offered {
     }
 }
 
+/// B20: `agent.digest` takes `{id}`; the shim fills it, so a Meta-agent's tool takes no input.
+fn agent_digest() -> Offered {
+    Offered {
+        own_id: true,
+        ..offered_without_params(
+            "agent.digest",
+            "Ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told.",
+        )
+    }
+}
+
 /// O4: `agent.setOrder` takes `{id, order}`; the shim fills `id`, so the Agent's tool takes only
 /// `order`.
 fn agent_set_order() -> Offered {
@@ -212,6 +223,32 @@ impl Shim {
                     CALL_TIMEOUT.as_secs()
                 ))
             })?
+    }
+
+    /// B20: whether this Agent is a Meta-agent, a Workstream's Door, which the Rail shows as a
+    /// Workstream node with its own id. A Daemon that cannot say leaves the tool out, and says so.
+    async fn is_meta_agent(&self, start: &rpc::Client) -> bool {
+        let tree = start.request("rail.tree", Value::Null);
+        match tokio::time::timeout(CALL_TIMEOUT, tree).await {
+            Ok(Ok(tree)) => {
+                serde_json::from_value::<Vec<agent::RailNode>>(tree).is_ok_and(|nodes| {
+                    nodes.iter().any(|node| {
+                        node.id == self.actor.id && node.kind == agent::NodeKind::Workstream
+                    })
+                })
+            }
+            Ok(Err(err)) => {
+                eprintln!("rup: the Daemon would not show the Rail, so no digest tool: {err}");
+                false
+            }
+            Err(_) => {
+                eprintln!(
+                    "rup: no answer to the Rail within {}s, so no digest tool",
+                    CALL_TIMEOUT.as_secs()
+                );
+                false
+            }
+        }
     }
 
     /// E6: tell the Daemon this Agent's `rup mcp` is up, once, on the start connection (after its
@@ -334,7 +371,7 @@ pub async fn run(agent_id: Option<String>) -> ExitCode {
 async fn serve(id: String) -> Result<(), String> {
     let socket = rpc::socket_path().map_err(|err| err.to_string())?;
     let (gone, mut gone_rx) = mpsc::channel(1);
-    let shim = Shim {
+    let mut shim = Shim {
         socket,
         actor: Actor {
             kind: ActorKind::Agent,
@@ -345,7 +382,11 @@ async fn serve(id: String) -> Result<(), String> {
         gone,
     };
     let start = shim.connect().await.map_err(|gone| gone.to_string())?;
-    shim.report_channel(&start).await;
+    // Both wait on the same Daemon, so a mute one costs one `CALL_TIMEOUT`, not two.
+    let (meta, ()) = tokio::join!(shim.is_meta_agent(&start), shim.report_channel(&start));
+    if meta {
+        shim.tools.push(agent_digest());
+    }
     drop(start);
     let running = shim
         .serve(rmcp::transport::stdio())

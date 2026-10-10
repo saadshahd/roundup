@@ -908,6 +908,52 @@ async fn context_of(client: &rpc::Client, id: &str) -> Result<Context, rpc::RpcE
     Ok(serde_json::from_value(reply).unwrap())
 }
 
+async fn digest_of(client: &rpc::Client, id: &str) -> Result<Value, rpc::RpcError> {
+    client.request("agent.digest", json!({ "id": id })).await
+}
+
+#[tokio::test]
+async fn b20_a_door_and_the_user_ask_for_its_children_and_no_one_else_does() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let as_m = client_as(&project, actor(ActorKind::Agent, &rail.m)).await;
+    let as_a = client_as(&project, actor(ActorKind::Agent, &rail.a)).await;
+
+    let asked = digest_of(&as_m, &rail.m).await.unwrap();
+    assert_eq!(digest_of(&user, &rail.m).await.unwrap(), asked);
+    let children = asked["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    for child in children {
+        let mut keys: Vec<_> = child.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["kind", "last", "name", "pads", "todos"]);
+    }
+
+    let code = |result: Result<Value, rpc::RpcError>| result.unwrap_err().code;
+    assert_eq!(code(digest_of(&as_a, &rail.m).await), rpc::code::FORBIDDEN);
+    assert_eq!(code(digest_of(&user, "nobody").await), rpc::code::NOT_FOUND);
+    assert_eq!(code(digest_of(&user, &rail.a).await), rpc::code::CONFLICT);
+}
+
+#[tokio::test]
+async fn b19_a_childs_pads_reach_the_digest_once_and_terminal_output_never() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let as_a = client_as(&project, actor(ActorKind::Agent, &rail.a)).await;
+    as_a.request("pad.create", json!({ "name": "notes", "text": "ZEBRA" }))
+        .await
+        .unwrap();
+
+    let first = digest_of(&user, &rail.m).await.unwrap();
+    let second = digest_of(&user, &rail.m).await.unwrap();
+
+    assert_eq!(first["children"][0]["pads"], json!(["notes"]));
+    assert_eq!(second["children"][0]["pads"], json!([]));
+    assert!(!first.to_string().contains("ZEBRA"));
+}
+
 #[tokio::test]
 async fn e2_an_agent_reads_its_own_context_and_no_one_elses() {
     let project = start(&[]);

@@ -2,6 +2,7 @@
 import type { Brief as agent_Brief } from "./agent/Brief";
 import type { Context as agent_Context } from "./agent/Context";
 import type { CreateWorkstreamParams as agent_CreateWorkstreamParams } from "./agent/CreateWorkstreamParams";
+import type { Digest as agent_Digest } from "./agent/Digest";
 import type { Landed as agent_Landed } from "./agent/Landed";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
 import type { NodeId as agent_NodeId } from "./agent/NodeId";
@@ -91,6 +92,7 @@ export type RpcMethods = {
   "agent.discard": { params: agent_NodeId; result: null };
   "agent.context": { params: agent_NodeId; result: agent_Context };
   "agent.brief": { params: agent_NodeId; result: agent_Brief };
+  "agent.digest": { params: agent_NodeId; result: agent_Digest };
   "agent.setOrder": { params: agent_SetOrderParams; result: agent_RailNode };
   "agent.channelUp": { params: agent_NodeId; result: null };
   "agent.signal": { params: agent_SignalParams; result: null };
