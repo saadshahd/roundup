@@ -4,6 +4,7 @@
 mod common;
 mod control;
 mod in_process;
+mod latency;
 mod snapshot;
 mod spawn;
 mod stuck;
