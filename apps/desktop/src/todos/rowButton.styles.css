@@ -1,3 +1,42 @@
 .todo-row-button {
   --todo-row-indent: calc(var(--space-4) + 1ch);
 }
+.todo-move-wrap {
+  display: contents;
+}
+
+.todo-move {
+  min-width: var(--space-5);
+  min-height: var(--space-5);
+}
+
+/* Out of flow, left of `complete` (8 characters and its 1ch pad), so showing it moves no row (U112). */
+.shelf .row-head .todo-move {
+  position: absolute;
+  top: 0;
+  right: 9ch;
+  padding-left: 1ch;
+  background: var(--sunken);
+}
+
+.todo-homes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.todo-home-offer {
+  min-height: var(--space-5);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.todo-homes-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  background: var(--sunken);
+  border: 1px solid var(--hairline);
+}

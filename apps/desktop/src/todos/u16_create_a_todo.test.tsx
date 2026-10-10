@@ -19,7 +19,7 @@ describe("u16 create a Todo", () => {
 
     const field = await openField();
 
-    expect(field.nextElementSibling?.textContent).toBe(" #1 todo 1");
+    expect(field.nextElementSibling?.querySelector(".todo-row-button")?.textContent).toBe(" #1 todo 1");
   });
 
   it("u16_clicking_plus_twice_still_shows_one_field", async () => {

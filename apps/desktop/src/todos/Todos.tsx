@@ -5,6 +5,8 @@ import { ErrorLine } from "../ink/ErrorLine";
 import { KindGlyph } from "../ink/KindGlyph";
 import { useConnectedProject } from "../state/connectedProject";
 import { failureOf } from "./failureOf";
+import { HomeMove } from "./HomeMove";
+import { homeNameOf } from "./homes";
 import { RowButton } from "./RowButton";
 import { isTodoOnRail } from "../rail/pads/owned";
 import { useTodoList } from "./todoList";
@@ -27,6 +29,7 @@ export const OpenRow = (props: {
   onComplete: (todo: Todo) => Promise<string | null>;
   registerRow?: (id: number, row: HTMLButtonElement | null) => void;
 }) => {
+  const connected = useConnectedProject();
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
   const [hovered, setHovered] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
@@ -65,6 +68,18 @@ export const OpenRow = (props: {
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
         <Show when={hovered() || focused()}>
+          <HomeMove
+            id={props.todo.id}
+            home={props.todo.home}
+            popover
+            choose={async (home) => {
+              const message = await failureOf(() => connected.app.rpc("todo.move", { id: props.todo.id, home }));
+
+              setFailure(message);
+
+              return message;
+            }}
+          />
           <button type="button" class="word complete" onClick={() => void complete()}>
             complete
           </button>
@@ -74,7 +89,7 @@ export const OpenRow = (props: {
         when={failure()}
         fallback={
           <Show when={waitingOn().length > 0}>
-            <p class="light" style={{ "padding-left": "2ch" }}>
+            <p class="light" data-todo-waits style={{ "padding-left": "2ch" }}>
               waits on <For each={waitingOn()}>{(blocker, index) => (
                 <>
                   <Show when={index() > 0}>{", "}</Show>
@@ -89,6 +104,9 @@ export const OpenRow = (props: {
       >
         {(message) => <ErrorLine message={message()} />}
       </Show>
+      <p class="light" data-todo-home>
+        in {homeNameOf(connected.rail.nodes, props.todo.home)}
+      </p>
     </div>
   );
 };
