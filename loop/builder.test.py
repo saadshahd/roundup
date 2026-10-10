@@ -131,9 +131,12 @@ class Pick(unittest.TestCase):
     def test_l23_a_queued_or_running_build_job_holds_its_issue(self):
         runs = {11: ('in_progress', [dict(name='pick', status='completed'), dict(name='build #5', status='in_progress'),
                                       dict(name='build #6', status='completed')]),
-                12: ('queued', [dict(name='build #7', status='queued')])}
+                12: ('queued', [dict(name='build #7', status='queued')]),
+                13: ('in_progress', [dict(name='build #8 / build', status='in_progress'),
+                                      dict(name='build #9 / build', status='completed'),
+                                      dict(name='build #9 / after', status='in_progress')])}
         with GitHub(runs=runs):
-            self.assertEqual(builder.busy(), {5, 7})
+            self.assertEqual(builder.busy(), {5, 7, 8})
 
     def test_l81_pick_starts_fix_runs_for_conflicts_failed_checks_and_abandoned_drafts(self):
         prs = [pr(number=1, mergeable='CONFLICTING'),

@@ -124,6 +124,7 @@ export const createServedApp = (base: string): AppSeam => {
             })();
           }),
       ),
+    onFileDrop: async () => () => {},
     onDaemonExited: async (listener) => {
       exits.add(listener);
 
