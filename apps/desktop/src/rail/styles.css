@@ -42,6 +42,11 @@
   transition-duration: 0s;
 }
 
+/* The indent is a width, not a padding, so it is no space step (D2); it lines the buttons up with a child row's text. */
+.rail-adds-indent {
+  flex: none;
+}
+
 /* U172: the one selection mark, a band and a 2px bar on the leading edge, drawn as backgrounds and never a border (D8). */
 .rail-row[data-selected="true"] {
   background: var(--selected);

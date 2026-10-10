@@ -2,6 +2,7 @@
 import type { Actor } from "./Actor";
 import type { ChannelEvent } from "./agent/ChannelEvent";
 import type { StatusEvent } from "./agent/StatusEvent";
+import type { StrayEvent } from "./agent/StrayEvent";
 import type { ClearedEvent } from "./decision/ClearedEvent";
 import type { Decision } from "./decision/Decision";
 import type { Message } from "./message/Message";
@@ -14,4 +15,4 @@ import type { TitleEvent } from "./terminal/TitleEvent";
 import type { Todo } from "./todo/Todo";
 import type { TodoId } from "./todo/TodoId";
 
-export type Event = { actor: Actor, } & ({ "name": "terminal.output", "data": OutputEvent } | { "name": "terminal.title", "data": TitleEvent } | { "name": "terminal.exited", "data": ExitedEvent } | { "name": "todo.created", "data": Todo } | { "name": "todo.updated", "data": Todo } | { "name": "todo.unblocked", "data": TodoId } | { "name": "todo.deleted", "data": TodoId } | { "name": "pad.changed", "data": PadName } | { "name": "message.sent", "data": Message } | { "name": "message.held", "data": Message } | { "name": "message.delivered", "data": Message } | { "name": "message.dropped", "data": Message } | { "name": "route.changed", "data": Route } | { "name": "takeover.changed", "data": TakeoverChanged } | { "name": "agent.status", "data": StatusEvent } | { "name": "agent.channel", "data": ChannelEvent } | { "name": "rail.changed" } | { "name": "decision.opened", "data": Decision } | { "name": "decision.cleared", "data": ClearedEvent });
+export type Event = { actor: Actor, } & ({ "name": "terminal.output", "data": OutputEvent } | { "name": "terminal.title", "data": TitleEvent } | { "name": "terminal.exited", "data": ExitedEvent } | { "name": "todo.created", "data": Todo } | { "name": "todo.updated", "data": Todo } | { "name": "todo.unblocked", "data": TodoId } | { "name": "todo.deleted", "data": TodoId } | { "name": "pad.changed", "data": PadName } | { "name": "message.sent", "data": Message } | { "name": "message.held", "data": Message } | { "name": "message.delivered", "data": Message } | { "name": "message.dropped", "data": Message } | { "name": "route.changed", "data": Route } | { "name": "takeover.changed", "data": TakeoverChanged } | { "name": "agent.status", "data": StatusEvent } | { "name": "agent.channel", "data": ChannelEvent } | { "name": "agent.stray", "data": StrayEvent } | { "name": "rail.changed" } | { "name": "decision.opened", "data": Decision } | { "name": "decision.cleared", "data": ClearedEvent });

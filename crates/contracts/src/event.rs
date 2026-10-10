@@ -41,6 +41,8 @@ pub enum EventData {
     AgentStatus(agent::StatusEvent),
     #[serde(rename = "agent.channel")]
     AgentChannel(agent::ChannelEvent),
+    #[serde(rename = "agent.stray")]
+    AgentStray(agent::StrayEvent),
     #[serde(rename = "rail.changed")]
     RailChanged,
     #[serde(rename = "decision.opened")]
