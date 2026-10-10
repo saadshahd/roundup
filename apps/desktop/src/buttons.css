@@ -110,3 +110,12 @@ button[data-row]:active {
   background-color: var(--pressed);
   transition-duration: 0s;
 }
+
+/* A quiet button inside a sentence (a Todo's `waits on #3, #5`) stays in the text flow: no side padding; vertical padding keeps its 24 px hit area without moving the line. */
+[data-button="quiet"].word {
+  display: inline;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  padding-right: 0;
+  padding-left: 0;
+}
