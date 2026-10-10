@@ -57,10 +57,12 @@ Module: `loop/rules.sh`, `loop/builder.py`, `loop/orders.py`, `loop/stall.py` fo
 
 Tests: `l94` in `loop/stall.test.py` against a fake `gh`, and `loop/workflows.test.py` for the last clause.
 
-**L95 Architect sweep.** `rules.sh architect-words` passes when no line of `scenarios/` or `docs/` holds the word Architect or architect as a role that approves, authors or reads. Approval of a Contract change is named by its recipe: "the Contract recipe of `.agents/builder.md`" (`AGENTS.md` rule 4), whose approver is the review run's approve; a proofs law change is named by "`scenarios/proofs.md` M1 to M10"; a direction question is named by `flag:needs-user` (L79). `.agents/architect.md` does not exist, so no line cites it. The check ignores only an identifier that exists on `origin`: a branch named `architect/<topic>` or a host name such as `architect-swarm`. It exits 1 naming each `file:line`, and 2 when run outside a checkout.
-- *Role words.* A line of `scenarios/app.md`, `scenarios/todos.md`, `scenarios/decisions.md`, `scenarios/ui-daily.md`, `scenarios/agents.md`, `scenarios/proofs.md`, `scenarios/ui-visual.md`, `docs/messages.md`, `docs/design-system.md` or `docs/control-channel.md` that names an Architect as approver, author or reader fails (`l95_a_role_mention_fails_naming_file_and_line`).
-- *Identifiers.* A branch `architect/u22-drag-tdd` or `architect-swarm` alone passes (`l95_branch_and_host_names_pass`).
-- *No dead citation.* A line citing `.agents/architect.md` fails (`l95_a_cited_architect_prompt_fails`).
+**L95 Architect sweep.** `rules.sh architect-words` scans every line of `scenarios/` and `docs/` for the pattern `\b[Aa]rchitects?\b` and passes when none matches. A match is exempt in two cases only: the text after it begins with `/` or with `-` and a letter or digit (a branch `architect/<topic>`, a host name `architect-swarm`, `architect-b`, `architect-c`), and the line lies in this L95 block, from its heading line to its `Tests:` line. It exits 1 naming each `file:line` and 2 when run outside a checkout.
+- *Exit codes.* 0: no match. 1: at least one match, each printed as `file:line`. 2: not run inside a git checkout.
+- *Rewrites.* A Contract approval reads "the Contract recipe of `.agents/builder.md`" (`AGENTS.md` rule 4), whose approver is the review run's approve; a proofs law change reads "`scenarios/proofs.md` M1 to M10"; a direction question reads `flag:needs-user` (L79); an owner, author or reader of a document reads "the Builder run" for writing it and "the review run" for judging it.
+- *Role words.* Any line of any file in `scenarios/` or `docs/` that matches fails (`l95_a_role_mention_fails_naming_file_and_line`).
+- *Identifiers.* `architect/u22-drag-tdd`, `architect-swarm`, `architect-b` and `architect-c` alone pass (`l95_branch_and_host_names_pass`).
+- *Dead citation.* A line citing `.agents/architect.md` matches the pattern and fails (`l95_a_cited_architect_prompt_fails`).
 - *Meaning kept.* Each rewritten line keeps its approval requirement: a Contract change still needs an approve other than its author's, and `rules.sh` accepts the PR exactly when it did before (policy).
 
 Tests: `l95` in `loop/rules.test.sh`.
