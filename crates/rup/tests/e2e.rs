@@ -1130,6 +1130,59 @@ async fn b21_under_a_takeover_of_the_door_the_push_is_held() {
 }
 
 #[tokio::test]
+async fn b22_a_burst_of_changes_sends_a_door_at_most_eight_pushes_in_a_window() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    settled(&user, &rail.m).await;
+    let as_a = client_as(&project, actor(ActorKind::Agent, &rail.a)).await;
+    for n in 0..12 {
+        as_a.request(
+            "pad.create",
+            json!({ "name": format!("pad-{n}"), "text": "x" }),
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    let held_back = settled(&user, &rail.m).await;
+    assert!(held_back <= 8, "{held_back} pushes within one window");
+    // The changes beyond the eighth wait for the window's rollup instead of getting CONFLICT.
+    let all = user
+        .request("message.list", json!({ "to": rail.m }))
+        .await
+        .unwrap();
+    assert!(
+        all.as_array()
+            .unwrap()
+            .iter()
+            .all(|message| message["status"] != "dropped")
+    );
+}
+
+#[tokio::test]
+async fn b23_a_removed_child_gets_one_last_push_with_its_kind() {
+    let project = start(&[]);
+    let user = project.client().await;
+    let rail = rail(&project, &user).await;
+    let b_name = rail_tree(&user)
+        .await
+        .into_iter()
+        .find(|node| node.id == rail.b)
+        .unwrap()
+        .name;
+    settled(&user, &rail.m).await;
+    let before = digest_pushes(&user, &rail.m).await.len();
+
+    user.request("rail.remove", json!({ "id": rail.b }))
+        .await
+        .unwrap();
+    push_where(&user, &rail.m, |_, e| e["name"] == b_name.as_str()).await;
+    assert_eq!(settled(&user, &rail.m).await, before + 1);
+}
+
+#[tokio::test]
 async fn e2_an_agent_reads_its_own_context_and_no_one_elses() {
     let project = start(&[]);
     let user = project.client().await;

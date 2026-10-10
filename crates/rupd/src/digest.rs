@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use contracts::message::{Message, MessageKind};
+use contracts::message::Message;
 use contracts::{Actor, EventData};
 use rpc::{Bus, Ctx, Module, RpcError};
 use serde::de::DeserializeOwned;
@@ -111,6 +111,7 @@ fn moves_an_entry(data: &EventData) -> bool {
 /// Daemon, kind `note`, with that entry. Runs until the Bus closes.
 pub async fn push_changes(
     reader: Reader,
+    messages: Arc<messages::Messages>,
     seen: Arc<messages::digest::Seen>,
     mut events: tokio::sync::broadcast::Receiver<contracts::Event>,
 ) {
@@ -126,35 +127,24 @@ pub async fn push_changes(
             Err(RecvError::Lagged(_)) => {}
             Err(RecvError::Closed) => return,
         }
-        if let Err(err) = push_once(&reader, &seen).await {
+        if let Err(err) = push_once(&reader, &messages, &seen).await {
             eprintln!("rupd: digest push failed: {err}");
         }
     }
 }
 
-async fn push_once(reader: &Reader, seen: &messages::digest::Seen) -> Result<(), RpcError> {
+async fn push_once(
+    reader: &Reader,
+    messages: &messages::Messages,
+    seen: &messages::digest::Seen,
+) -> Result<(), RpcError> {
     let world = reader.world().await?;
     for push in seen.changed(&world.sources()) {
-        let sent: Result<Message, RpcError> = reader
-            .call(
-                "message",
-                "message.send",
-                json!({
-                    "to": push.meta,
-                    "kind": MessageKind::Note,
-                    "body": messages::digest::push_body(&push.entry),
-                }),
-                Actor::daemon(),
-            )
-            .await;
-        match sent {
-            Ok(_) => {}
-            // A Meta-agent that is gone gets none (B9); anything else is tried again at the next
-            // change.
-            Err(err) => {
-                eprintln!("rupd: digest push to {} refused: {err}", push.meta);
-                seen.release(push);
-            }
+        // B22 sends it now or holds it for the window's rollup. A Meta-agent that is gone gets
+        // none (B9); anything else is tried again at the next change.
+        if let Err(err) = messages.push_digest(&push.meta, &push.entry).await {
+            eprintln!("rupd: digest push to {} refused: {err}", push.meta);
+            seen.release(push);
         }
     }
     Ok(())

@@ -4,6 +4,6 @@
  * Why a Message is `held` (`ask-first`: waiting on the user; `takeover`: on a Takeover's end;
  * `escalated`: on the user's answer to a bubbled-up question, B15) or `dropped`
  * (`receiver gone`, B9; `not accepted`, B2; `passed`, a question's hop that was still `pending`
- * when the next was made, B13).
+ * when the next was made, B13; `merged`, a pushed digest folded into a newer one, B22).
  */
-export type Reason = "ask-first" | "takeover" | "escalated" | "receiver gone" | "not accepted" | "passed";
+export type Reason = "ask-first" | "takeover" | "escalated" | "receiver gone" | "not accepted" | "passed" | "merged";

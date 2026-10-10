@@ -32,6 +32,8 @@ pub struct Daemon {
     touches: Arc<Touches>,
     /// B19: which Pads each Meta-agent's earlier digests already named.
     digests: Arc<messages::digest::Seen>,
+    /// B21, B22: where a push is sent from, once `open` has made it.
+    sender: Arc<std::sync::OnceLock<Arc<messages::Messages>>>,
     /// B21: subscribed at `open`, so no change is missed before the pusher runs; taken once, when
     /// a Tokio runtime is there to run it.
     pushes: std::sync::Mutex<Option<tokio::sync::broadcast::Receiver<contracts::Event>>>,
@@ -78,6 +80,7 @@ impl Daemon {
             touches: Arc::new(Touches::open(&dir.join("provenance.db"))?),
             bus: bus.clone(),
             digests: Arc::new(messages::digest::Seen::default()),
+            sender: Arc::clone(&messages),
             pushes: std::sync::Mutex::new(Some(bus.subscribe())),
         };
         daemon.register(Arc::new(todos::Todos::open(dir, bus.clone())?));
@@ -122,9 +125,10 @@ impl Daemon {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take();
-        if let Some(events) = events {
+        if let (Some(events), Some(sender)) = (events, self.sender.get()) {
             tokio::spawn(digest::push_changes(
                 self.reader(),
+                Arc::clone(sender),
                 Arc::clone(&self.digests),
                 events,
             ));

@@ -649,14 +649,49 @@ impl Store {
         self.get(id)
     }
 
+    /// B1: the Messages to `to` that are `pending` or `held`, pushed digests (B22) left out.
     pub(crate) fn count_open(&self, to: &str) -> Result<u32, RpcError> {
         self.db
             .query_row(
-                "SELECT COUNT(*) FROM messages WHERE to_id = ?1 AND status IN ('pending', 'held')",
-                [to],
+                &format!(
+                    "SELECT COUNT(*) FROM messages WHERE to_id = ?1 AND status IN ('pending', 'held') AND NOT ({DIGEST})"
+                ),
+                params![to, actor_json(&Actor::daemon()), crate::pushes::PREFIX],
                 |row| row.get(0),
             )
             .map_err(RpcError::internal)
+    }
+
+    /// B22: the pushed digests to `to` that are `pending` or `held`, oldest first.
+    pub(crate) fn open_digests(&self, to: &str) -> Result<Vec<Message>, RpcError> {
+        self.db
+            .prepare(&format!(
+                "SELECT id, from_actor, to_id, kind, body, reply_to, status, reason, at, passed_from
+                 FROM messages WHERE to_id = ?1 AND status IN ('pending', 'held') AND ({DIGEST})
+                 ORDER BY id"
+            ))
+            .and_then(|mut stmt| {
+                stmt.query_map(
+                    params![to, actor_json(&Actor::daemon()), crate::pushes::PREFIX],
+                    row_to_message,
+                )?
+                .collect()
+            })
+            .map_err(RpcError::internal)
+    }
+
+    /// B22: `id` folded into a newer digest: `dropped` with the reason `merged`, only while it is
+    /// still `pending` or `held`. Whether it was.
+    pub(crate) fn drop_merged(&self, id: u32) -> Result<bool, RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE messages SET status = 'dropped', reason = 'merged'
+                 WHERE id = ?1 AND status IN ('pending', 'held')",
+                params![id],
+            )
+            .map_err(RpcError::internal)?;
+        Ok(changed == 1)
     }
 
     pub(crate) fn set_route(
@@ -702,6 +737,10 @@ impl Store {
             .map_err(RpcError::internal)
     }
 }
+
+/// The SQL that picks a pushed digest (B22) out of `messages`, taking the Daemon as `?2` and the
+/// body prefix as `?3`.
+const DIGEST: &str = "from_actor = ?2 AND substr(body, 1, length(?3)) = ?3";
 
 fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let from: String = row.get(1)?;

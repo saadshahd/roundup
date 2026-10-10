@@ -4,6 +4,7 @@
 
 pub mod digest;
 mod hops;
+mod pushes;
 mod step;
 mod store;
 
@@ -93,6 +94,8 @@ struct Inner {
     touches: Arc<provenance::Touches>,
     clock: Clock,
     fault: Fault,
+    /// B22: the pushes of each Meta-agent's window.
+    pushes: tokio::sync::Mutex<pushes::Ledger>,
 }
 
 pub struct Messages {
@@ -132,11 +135,22 @@ impl Messages {
             touches: env.touches,
             clock: env.clock,
             fault: env.fault,
+            pushes: tokio::sync::Mutex::default(),
         });
         if tokio::runtime::Handle::try_current().is_ok() {
             start_listener(&inner);
         }
         Ok(Self { inner })
+    }
+
+    /// B21, B22: tells Meta-agent `meta` of its child's changed `entry` as a pushed digest, now or
+    /// in the rollup of the window's end.
+    pub async fn push_digest(
+        &self,
+        meta: &str,
+        entry: &contracts::agent::DigestEntry,
+    ) -> Result<(), RpcError> {
+        pushes::push(&self.inner, meta, entry).await
     }
 
     /// O4: whether a Takeover (B6) of `agent` is active.
@@ -145,6 +159,17 @@ impl Messages {
     }
 
     async fn send(&self, ctx: &Ctx, p: SendParams) -> Result<Value, RpcError> {
+        reply(&self.send_message(ctx, p, false).await?)
+    }
+
+    /// `message.send`. `merge` makes the Message the merge of the two oldest pushed digests to
+    /// `p.to`, which it drops in the same write (B22), and ignores `p.body` but for its prefix.
+    async fn send_message(
+        &self,
+        ctx: &Ctx,
+        p: SendParams,
+        merge: bool,
+    ) -> Result<Message, RpcError> {
         if is_receiver(&ctx.actor, &p.to) {
             return Err(RpcError::new(
                 code::INVALID_PARAMS,
@@ -181,7 +206,8 @@ impl Messages {
         // The reply-to check, the bound check and the insert run while one lock is held, so a
         // second sender racing for the same receiver's last open slot cannot pass its own check
         // before this one's insert lands (B1).
-        let message = {
+        let digest = pushes::is_digest(&ctx.actor, &p.body);
+        let (message, merged) = {
             let mut store = self.store()?;
             // Outside the transaction: a refusal keeps the drops `accept_receiver` reconciled.
             if let Some(node) = &receiver_status {
@@ -196,7 +222,7 @@ impl Messages {
                         format!("replyTo names no Message: {reply_to}"),
                     ));
                 }
-                if store.count_open(&p.to)? >= OPEN_BOUND {
+                if !digest && store.count_open(&p.to)? >= OPEN_BOUND {
                     return Err(RpcError::conflict(format!(
                         "{} already has {OPEN_BOUND} pending or held Messages",
                         p.to
@@ -218,11 +244,21 @@ impl Messages {
                         store.is_takeover_active(&p.to),
                     )
                 };
+                let mut folded = Vec::new();
+                let mut body = p.body.clone();
+                if merge {
+                    let oldest = store.open_digests(&p.to)?;
+                    let [first, second, ..] = oldest.as_slice() else {
+                        return Err(RpcError::conflict("fewer than two pushed digests to merge"));
+                    };
+                    body = pushes::merged_body(first, second);
+                    folded = vec![first.id, second.id];
+                }
                 let message = store.insert(
                     &ctx.actor,
                     &p.to,
                     p.kind,
-                    &p.body,
+                    &body,
                     p.reply_to,
                     status,
                     reason,
@@ -235,11 +271,20 @@ impl Messages {
                     store.start_chain(&ctx.actor, &message.body, rest, message.id)?;
                 }
                 store.arm_chains((self.inner.clock)())?;
-                Ok(message)
+                let mut merged = Vec::new();
+                for id in folded {
+                    if store.drop_merged(id)? {
+                        merged.extend(store.get(id)?);
+                    }
+                }
+                Ok((message, merged))
             })?
         };
         ctx.touch(Verb::Wrote, &item(message.id))?;
         ctx.emit(EventData::MessageSent(message.clone()));
+        for folded in merged {
+            ctx.emit(EventData::MessageDropped(folded));
+        }
         match message.status {
             MessageStatus::Held => ctx.emit(EventData::MessageHeld(message.clone())),
             MessageStatus::Delivered => ctx.emit(EventData::MessageDelivered(message.clone())),
@@ -258,7 +303,7 @@ impl Messages {
         }
         // A hop the Route dropped moves the chain on at once (B16).
         settle_logged(&self.inner, "settle").await;
-        reply(&message)
+        Ok(message)
     }
 
     /// B17: a `note` from the Agent a question's current hop was delivered to, with `replyTo` that
@@ -693,6 +738,7 @@ fn spawn_bound_clock(inner: std::sync::Weak<Inner>) {
                 break;
             };
             settle_logged(&inner, "clock").await;
+            pushes::flush(&inner).await;
         }
     });
 }
@@ -1197,6 +1243,7 @@ mod tests {
     mod b_held_tests;
     mod b_hop_tests;
     mod b_idle_tests;
+    mod b_push_tests;
     mod inv_tests;
 
     /// Stands in for the `agents` module's `rail.tree`: the only Rail fact `message.send` needs,

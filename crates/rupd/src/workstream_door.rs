@@ -43,6 +43,7 @@ async fn a7_b1_b6_b9_real_daemon_fences_old_status_after_door_restart() {
         touches: Arc::new(provenance::Touches::open(&dir.join("provenance.db")).unwrap()),
         digests: Default::default(),
         pushes: Default::default(),
+        sender: Default::default(),
     };
     daemon.register(Arc::new(
         messages::Messages::open(

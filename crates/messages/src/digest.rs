@@ -27,12 +27,14 @@ pub struct Sources<'a> {
 }
 
 /// What a Meta-agent was last told about a child, to see whether a change alters the entry (B21).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct Told {
     kind: Kind,
     todos: u32,
     /// The newest Pad write seen then, named or not.
     pads: i64,
+    /// The entry as it was then, for the last push when the child leaves the Rail (B23).
+    entry: DigestEntry,
 }
 
 #[derive(Default)]
@@ -51,6 +53,8 @@ pub struct Push {
     pub entry: DigestEntry,
     told: Told,
     before: (Option<i64>, Option<Told>),
+    /// The child left the Rail (B23): `told` is what `changed` took out of the book.
+    gone: bool,
 }
 
 #[derive(Default)]
@@ -139,20 +143,22 @@ impl Seen {
                     || (!entry.pads.is_empty() && now.pads > was.pads)
             });
             if moved {
-                let before = (after, book.told.get(&key).copied());
+                let before = (after, book.told.get(&key).cloned());
                 if let Some(newest) = newest {
                     book.named.insert(key.clone(), newest);
                 }
-                book.told.insert(key.clone(), now);
+                book.told.insert(key.clone(), now.clone());
                 pushes.push(Push {
                     key,
                     meta: meta.id.clone(),
                     entry,
                     told: now,
                     before,
+                    gone: false,
                 });
             }
         }
+        pushes.extend(farewells(&mut book, from));
         pushes
     }
 
@@ -160,6 +166,10 @@ impl Seen {
     /// digest asked since has told the Meta-agent something newer.
     pub fn release(&self, push: Push) {
         let mut book = self.book();
+        if push.gone {
+            book.told.entry(push.key).or_insert(push.told);
+            return;
+        }
         if book.told.get(&push.key) != Some(&push.told) {
             return;
         }
@@ -188,7 +198,47 @@ fn told(entry: &DigestEntry, child: &RailNode, from: &Sources) -> Told {
         kind: entry.kind,
         todos: entry.todos,
         pads: newest_pad(child, from),
+        entry: entry.clone(),
     }
+}
+
+/// B23: one last push for each child told of that no longer has a node, to its Meta-agent if that
+/// is still a Door, with the entry as it was last told; none when that already said the child
+/// ended (`done`, `error`). A child that only moved to another Meta-agent has nothing to say.
+fn farewells(book: &mut Book, from: &Sources) -> Vec<Push> {
+    let gone: Vec<(String, String)> = book
+        .told
+        .keys()
+        .filter(|(_, child)| {
+            !from
+                .nodes
+                .iter()
+                .any(|node| node.id == *child && is_agent(node))
+        })
+        .cloned()
+        .collect();
+    let mut pushes = Vec::new();
+    for key in gone {
+        let Some(told) = book.told.remove(&key) else {
+            continue;
+        };
+        book.named.remove(&key);
+        let door = from
+            .nodes
+            .iter()
+            .any(|node| node.id == key.0 && node.kind == NodeKind::Workstream && is_agent(node));
+        if door && !matches!(told.kind, Kind::Done | Kind::Error) {
+            pushes.push(Push {
+                meta: key.0.clone(),
+                entry: told.entry.clone(),
+                before: (None, Some(told.clone())),
+                told,
+                key,
+                gone: true,
+            });
+        }
+    }
+    pushes
 }
 
 fn newest_pad(child: &RailNode, from: &Sources) -> i64 {
@@ -288,7 +338,7 @@ fn entry(
 }
 
 /// `text` as is when it fits `max` bytes, else a prefix ending in `[cut]`, whole at most `max`.
-fn cut(text: &str, max: usize) -> String {
+pub(crate) fn cut(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_owned();
     }
@@ -688,5 +738,65 @@ mod tests {
         assert_eq!(seen.changed(&sources(&nodes, &none, &pads, &[])).len(), 1);
         ask(&seen, &nodes, &none, &pads, &[]);
         assert!(seen.changed(&sources(&nodes, &none, &pads, &[])).is_empty());
+    }
+
+    #[test]
+    fn b23_a_removed_child_gets_one_last_push_with_its_kind_and_a_gone_door_none() {
+        let seen = Seen::default();
+        let none: Vec<Todo> = vec![];
+        let mut nodes = rail();
+        seen.baseline(&sources(&nodes, &none, &[], &[]));
+
+        nodes.remove(1);
+        let pushes = seen.changed(&sources(&nodes, &none, &[], &[]));
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(
+            (pushes[0].meta.as_str(), pushes[0].entry.name.as_str()),
+            ("m", "a-name")
+        );
+        assert_eq!(pushes[0].entry.kind, Kind::Working);
+        assert!(seen.changed(&sources(&nodes, &none, &[], &[])).is_empty());
+
+        // The Door goes with its child: nobody is left to tell.
+        nodes.retain(|node| node.id == "t");
+        assert!(seen.changed(&sources(&nodes, &none, &[], &[])).is_empty());
+    }
+
+    #[test]
+    fn b23_a_child_that_ended_before_it_was_removed_and_one_that_moved_get_no_second_push() {
+        let seen = Seen::default();
+        let none: Vec<Todo> = vec![];
+        let mut nodes = rail();
+        nodes.push(node("n", NodeKind::Workstream, None, "other"));
+        seen.baseline(&sources(&nodes, &none, &[], &[]));
+        nodes[1].status = Some(status(Kind::Done, "finished"));
+        assert_eq!(seen.changed(&sources(&nodes, &none, &[], &[])).len(), 1);
+
+        nodes.remove(1);
+        let pushes = seen.changed(&sources(&nodes, &none, &[], &[]));
+        assert!(
+            pushes.is_empty(),
+            "the ended child was told of when it ended"
+        );
+
+        // `b` moves under `n`: `n` is told of its new child, and `m` is told of no removal.
+        nodes[1].parent = Some("n".into());
+        let pushes = seen.changed(&sources(&nodes, &none, &[], &[]));
+        assert_eq!(
+            pushes.iter().map(|p| p.meta.as_str()).collect::<Vec<_>>(),
+            ["n"]
+        );
+    }
+
+    #[test]
+    fn b23_a_last_push_that_failed_is_offered_again() {
+        let seen = Seen::default();
+        let none: Vec<Todo> = vec![];
+        let mut nodes = rail();
+        seen.baseline(&sources(&nodes, &none, &[], &[]));
+        nodes.remove(1);
+        let mut pushes = seen.changed(&sources(&nodes, &none, &[], &[]));
+        seen.release(pushes.remove(0));
+        assert_eq!(seen.changed(&sources(&nodes, &none, &[], &[])).len(), 1);
     }
 }

@@ -27,7 +27,7 @@ pub enum MessageStatus {
 /// Why a Message is `held` (`ask-first`: waiting on the user; `takeover`: on a Takeover's end;
 /// `escalated`: on the user's answer to a bubbled-up question, B15) or `dropped`
 /// (`receiver gone`, B9; `not accepted`, B2; `passed`, a question's hop that was still `pending`
-/// when the next was made, B13).
+/// when the next was made, B13; `merged`, a pushed digest folded into a newer one, B22).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "message/")]
@@ -40,6 +40,8 @@ pub enum Reason {
     #[serde(rename = "not accepted")]
     NotAccepted,
     Passed,
+    /// B22: two pushed digests folded into one Message.
+    Merged,
 }
 
 /// A typed envelope between Actors. `reply_to` names the Message this answers, if any; `reason`
