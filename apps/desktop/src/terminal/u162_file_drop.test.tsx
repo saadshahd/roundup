@@ -118,6 +118,7 @@ describe("u162 drop files on a pane", () => {
       app.dropFiles(drop(["/a"]));
       expect(emulators.get("t-a")!.pasted).toEqual(["'/a' "]);
     } finally {
+      // SAFETY: jsdom defines no elementFromPoint, so removing the stub restores the document.
       delete (document as { elementFromPoint?: unknown }).elementFromPoint;
       drawer.remove();
     }
