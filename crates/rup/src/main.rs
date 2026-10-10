@@ -34,10 +34,8 @@ async fn main() -> ExitCode {
         ["permission", agent_id] => permission(agent_id).await,
         // As for `signal`: exit 2 would block the tool call.
         ["permission", ..] => Err("usage: rup permission <agent-id>".into()),
-        ["mcp"] => return mcp::run(None, false).await,
-        ["mcp", agent_id, ref rest @ ..] => {
-            return mcp::run(Some(agent_id.to_owned()), rest.contains(&"--door")).await;
-        }
+        ["mcp"] => return mcp::run(None).await,
+        ["mcp", agent_id] => return mcp::run(Some(agent_id.to_owned())).await,
         [] => return usage(),
         [other, ..] => {
             eprintln!("rup: unknown command {other:?}");
@@ -55,7 +53,7 @@ async fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: rup ping | rup signal <agent-id> | rup context <agent-id> | rup permission <agent-id> | rup mcp <agent-id> [--door]"
+        "usage: rup ping | rup signal <agent-id> | rup context <agent-id> | rup permission <agent-id> | rup mcp <agent-id>"
     );
     ExitCode::from(2)
 }

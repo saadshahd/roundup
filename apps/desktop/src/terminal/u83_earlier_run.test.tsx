@@ -11,7 +11,7 @@ describe("u83 a node from an earlier run", () => {
   it.each([
     ["Agent", agent("a", "done", "finished", { terminal_id: null })],
     ["Terminal", terminal("a", { terminal_id: null })],
-    ["Meta-agent", node("a", { terminal_id: null, status: { kind: "idle", label: "waiting", since: 0 } })],
+    ["Door", node("a", { terminal_id: null, status: { kind: "idle", label: "waiting", since: 0 } })],
   ])("u83_a_selected_%s_with_no_terminal_reads_the_line_in_grey_and_never_in_ink", async (_kind, selected) => {
     const { connected, container, app, emulators } = await mountPane([selected]);
 

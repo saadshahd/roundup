@@ -1794,20 +1794,26 @@ impl Agents {
 
     /// Put a new Agent in the Rail and start Claude Code for it in a Terminal.
     async fn spawn(&self, ctx: &Ctx, mut params: SpawnParams) -> Result<RailNode, RpcError> {
-        // F3: an Agent may start a child only if it is a Door, and the child's Home is that Door.
+        // F3, A26: any Agent may start a child, which sits under it; a `parent` it passes is ignored.
         if ctx.actor.kind == ActorKind::Agent {
-            let door = self
+            let agent = self
                 .shared
                 .rail()
                 .node(&ctx.actor.id)
-                .is_ok_and(|node| node.kind == NodeKind::Workstream);
-            if !door {
+                .is_ok_and(|node| node.kind != NodeKind::Terminal);
+            if !agent {
                 return Err(RpcError::forbidden(format!(
-                    "{} is not a Door and may not start an Agent",
+                    "{} is not an Agent and may not start an Agent",
                     ctx.actor.id
                 )));
             }
             params.parent = Some(ctx.actor.id.clone());
+        } else if let Some(parent) = &params.parent
+            && self.shared.rail().node(parent)?.kind == NodeKind::Agent
+        {
+            return Err(RpcError::conflict(format!(
+                "{parent} is an Agent: only an Agent's own start nests under it"
+            )));
         }
         let cwd = Path::new(&params.cwd);
         let order = match (params.prompt, params.order) {
@@ -3139,7 +3145,7 @@ mod tests {
         );
         let child = shared
             .rail()
-            .insert(NodeKind::Workstream, "child", Some(&group), None)
+            .insert(NodeKind::Agent, "child", Some(&group), None)
             .unwrap()
             .id;
 

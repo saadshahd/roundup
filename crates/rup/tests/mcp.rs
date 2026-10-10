@@ -199,6 +199,8 @@ async fn m1_offers_one_tool_per_method_and_ask_user_and_no_others() {
     expected.push("ask_user".into());
     // O4: and `agent_set_order`, which keeps the snake case of the order it sets.
     expected.push("agent_set_order".into());
+    // F3, A26: and `agent_spawn`, which every Agent is offered.
+    expected.push("agent_spawn".into());
     names.sort();
     expected.sort();
     assert_eq!(names, expected);
@@ -598,10 +600,10 @@ async fn m4_the_full_tools_list_carries_a_numeric_ttl_ms_and_cache_scope() {
     let result = raw_tools_list(&socket, None).await;
 
     assert_matches_tools_list_schema(&result);
-    // The methods' tools, `ask_user` (H14) and `agent_set_order` (O4).
+    // The methods' tools, `ask_user` (H14), `agent_set_order` (O4) and `agent_spawn` (F3).
     assert_eq!(
         result["tools"].as_array().unwrap().len(),
-        M1_METHODS.len() + 2
+        M1_METHODS.len() + 3
     );
     assert_eq!(result["cacheScope"], "public", "{result}");
 }

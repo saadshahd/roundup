@@ -219,7 +219,7 @@ it("u100_done_lines_are_not_restored", async () => {
   expect(screen.getByText("1 done")).toBeDefined();
 });
 
-it("u100_meta_agent_selection_survives_reopening", async () => {
+it("u100_door_selection_survives_reopening", async () => {
   const first = mount();
   await loaded();
   collapse("backend");

@@ -70,7 +70,7 @@ pub(crate) fn compose(nodes: &[RailNode], todos: &[Todo], id: &str) -> Result<Co
             id: parent.id.clone(),
             name: parent.name.clone(),
             node: if is_agent(parent) {
-                ParentNode::MetaAgent
+                ParentNode::Agent
             } else {
                 ParentNode::Group
             },
@@ -93,28 +93,29 @@ fn kind_word(kind: Kind) -> &'static str {
 }
 
 /// E3: `context` in words, one line each for the parent, whom to ask, every peer and every Todo.
-fn words(context: &Context) -> String {
+/// `door` is whether the Agent to ask is a Workstream's Door; any other Agent is only its parent.
+fn words(context: &Context, door: bool) -> String {
     let mut lines = vec![match &context.parent {
         Some(parent) => {
             let what = match parent.node {
-                ParentNode::MetaAgent => "a Workstream with a Door",
+                ParentNode::Agent => "an Agent",
                 ParentNode::Group => "a Workstream",
             };
             format!("Parent: {} (id {}), {what}.", parent.name, parent.id)
         }
         None => "Parent: none, you are at the Project root.".to_owned(),
     }];
-    lines.push(if context.ask.to == Actor::user().id {
-        format!(
-            "Ask: the user, with message_send to \"{}\".",
-            context.ask.to
-        )
+    let who = if context.ask.to == Actor::user().id {
+        "the user"
+    } else if door {
+        "your Door"
     } else {
-        format!(
-            "Ask: your Door, with message_send to \"{}\".",
-            context.ask.to
-        )
-    });
+        "your parent"
+    };
+    lines.push(format!(
+        "Ask: {who}, with message_send to \"{}\".",
+        context.ask.to
+    ));
     if context.peers.is_empty() {
         lines.push("Peers: none.".to_owned());
     }
@@ -137,9 +138,12 @@ fn words(context: &Context) -> String {
 }
 
 /// E3: what `rup context` prints for `context`'s Agent, in the vendor's own shape.
-pub(crate) fn brief(context: &Context) -> Brief {
+pub(crate) fn brief(nodes: &[RailNode], context: &Context) -> Brief {
+    let door = nodes
+        .iter()
+        .any(|node| node.id == context.ask.to && node.kind == NodeKind::Workstream);
     Brief {
-        stdout: agents::claude_code::session_start_context(&words(context)),
+        stdout: agents::claude_code::session_start_context(&words(context, door)),
     }
 }
 
@@ -197,7 +201,7 @@ mod tests {
         }
     }
 
-    /// Meta-agent `m` (a Workstream with a Door) holding `a` and `b`; plain Group `g` holding `c`; a
+    /// Door `m` (a Workstream with a Door) holding `a` and `b`; plain Workstream `g` holding `c`; a
     /// sibling Door `n` beside `m`.
     fn rail() -> Vec<RailNode> {
         vec![
@@ -212,14 +216,14 @@ mod tests {
     }
 
     #[test]
-    fn e2_an_agent_under_a_door_asks_the_door_and_has_its_siblings_as_peers() {
+    fn a26_parent_node_names_no_meta_agent() {
         let context = compose(&rail(), &[], "2").unwrap();
 
         assert_eq!(
             serde_json::to_value(&context).unwrap(),
             json!({
                 "self": {"id": "2", "name": "a", "status": {"kind": "idle", "label": "x", "since": 1}, "order": {"kind": "clarification", "question": "?"}},
-                "parent": {"id": "1", "name": "m", "node": "meta-agent"},
+                "parent": {"id": "1", "name": "m", "node": "agent"},
                 "ask": {"to": "1"},
                 "peers": [{"id": "3", "name": "b", "status": {"kind": "idle", "label": "x", "since": 1}}],
                 "todos": [],
@@ -271,6 +275,23 @@ mod tests {
     }
 
     #[test]
+    fn e3_a_subagent_is_told_to_ask_its_parent_not_a_door() {
+        let mut nodes = rail();
+        nodes.push(node("8", NodeKind::Agent, "s", Some("2"), false));
+        let context = compose(&nodes, &[], "8").unwrap();
+
+        let text = words(&context, false);
+
+        assert!(text.contains("Parent: a (id 2), an Agent."), "{text}");
+        assert!(
+            text.contains("Ask: your parent, with message_send to \"2\"."),
+            "{text}"
+        );
+        let stdout = brief(&nodes, &context).stdout;
+        assert!(!stdout.contains("Door"), "{stdout}");
+    }
+
+    #[test]
     fn e2_a_terminal_a_plain_group_and_a_missing_id_are_not_found() {
         for id in ["4", "5", "99"] {
             let err = compose(&rail(), &[], id).unwrap_err();
@@ -286,7 +307,7 @@ mod tests {
         ];
         let context = compose(&rail(), &todos, "2").unwrap();
 
-        let stdout = brief(&context).stdout;
+        let stdout = brief(&rail(), &context).stdout;
 
         let shaped: serde_json::Value = serde_json::from_str(&stdout).unwrap();
         assert_eq!(
@@ -295,7 +316,7 @@ mod tests {
         );
         assert_eq!(
             shaped["hookSpecificOutput"]["additionalContext"],
-            "Parent: m (id 1), a Workstream with a Door.\n\
+            "Parent: m (id 1), an Agent.\n\
              Ask: your Door, with message_send to \"1\".\n\
              Peer: b (id 3), idle.\n\
              Todo 1: todo 1.\n\
@@ -307,7 +328,7 @@ mod tests {
     fn e3_the_brief_of_a_lone_agent_says_so_in_words() {
         let context = compose(&rail(), &[], "6").unwrap();
 
-        let text = words(&context);
+        let text = words(&context, false);
 
         assert_eq!(
             text,

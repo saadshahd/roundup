@@ -171,10 +171,10 @@ impl Messages {
             && ctx.actor.kind != ActorKind::User
             && receiver_status
                 .as_ref()
-                .is_some_and(|node| node.kind == NodeKind::Workstream)
+                .is_some_and(|node| node.kind != NodeKind::Terminal)
         {
             let nodes = rail_nodes(&self.inner).await?;
-            Some(hops::doors_above(&nodes, &p.to, &ctx.actor.id))
+            Some(hops::agents_above(&nodes, &p.to, &ctx.actor.id))
         } else {
             None
         };

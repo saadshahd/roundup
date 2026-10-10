@@ -622,8 +622,8 @@ async fn interrupted_worktree(workstream: bool) {
             .unwrap();
         let child = client
             .request(
-                "rail.createWorkstream",
-                json!({"name":"child","parent":parent["id"]}),
+                "agent.spawn",
+                json!({"cwd": project.dir.path(), "prompt": null, "parent": parent["id"]}),
             )
             .await
             .unwrap();
@@ -881,6 +881,19 @@ async fn agent_in(project: &Project, client: &rpc::Client, parent: Option<&str>)
     serde_json::from_value::<RailNode>(node).unwrap().id
 }
 
+/// The id of the Agent that Agent `caller` starts (F3, A26).
+async fn agent_in_as(project: &Project, caller: &str) -> String {
+    let as_caller = client_as(project, actor(ActorKind::Agent, caller)).await;
+    let node = as_caller
+        .request(
+            "agent.spawn",
+            json!({ "cwd": project.dir.path(), "prompt": null, "parent": null }),
+        )
+        .await
+        .unwrap();
+    serde_json::from_value::<RailNode>(node).unwrap().id
+}
+
 /// `a` and `b` under the Door `m`, and `c` under the plain Group `g`.
 struct Rail {
     m: String,
@@ -1044,30 +1057,6 @@ async fn b21_a_childs_kind_pad_and_todo_changes_each_push_one_entry_to_its_door(
     let (_, entry) = push_where(&user, &rail.m, |_, e| e["pads"] == json!(["notes"])).await;
     assert_eq!(entry["name"], a_name.as_str());
     assert!(!entry.to_string().contains("ZEBRA"));
-
-    // An open Todo whose Home is a child Door, then its completion.
-    let sub = user
-        .request(
-            "rail.createWorkstream",
-            json!({ "name": "sub", "parent": rail.m }),
-        )
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    user.request("rail.startDoor", json!({ "id": sub }))
-        .await
-        .unwrap();
-    let todo = todo_at(&user, "chase the ticket").await;
-    user.request("todo.move", json!({ "id": todo, "home": sub }))
-        .await
-        .unwrap();
-    push_where(&user, &rail.m, |_, e| e["name"] == "sub" && e["todos"] == 1).await;
-    user.request("todo.complete", json!({ "id": todo }))
-        .await
-        .unwrap();
-    push_where(&user, &rail.m, |_, e| e["name"] == "sub" && e["todos"] == 0).await;
 }
 
 #[tokio::test]
@@ -1140,7 +1129,7 @@ async fn e2_an_agent_reads_its_own_context_and_no_one_elses() {
     let parent = a.parent.unwrap();
     assert_eq!(
         (parent.id, parent.node),
-        (rail.m.clone(), ParentNode::MetaAgent)
+        (rail.m.clone(), ParentNode::Agent)
     );
     assert_eq!(a.ask.to, rail.m);
     assert_eq!(
@@ -1286,7 +1275,7 @@ async fn tool_names(shim: &mut Shim) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn m1_offers_agent_digest_to_a_meta_agent_and_to_no_other_agent() {
+async fn m1_offers_agent_digest_to_a_door_and_to_no_other_agent() {
     let project = start(&[]);
     let user = project.client().await;
     let rail = rail(&project, &user).await;
@@ -1769,17 +1758,8 @@ async fn t14_an_agent_under_a_workstream_creates_todos_with_the_nearest_workstre
     let project = start(&[]);
     let client = project.client().await;
     let outer = workstream(&client, "outer").await;
-    let inner = client
-        .request(
-            "rail.createWorkstream",
-            json!({ "name": "inner", "parent": outer }),
-        )
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let nested = agent_in(&project, &client, Some(&inner)).await;
+    let nested = agent_in(&project, &client, Some(&outer)).await;
+    let deeper = agent_in_as(&project, &nested).await;
     let bare = agent_in(&project, &client, None).await;
 
     let create = |who: rpc::Client| async move {
@@ -1789,35 +1769,27 @@ async fn t14_an_agent_under_a_workstream_creates_todos_with_the_nearest_workstre
             .unwrap();
         todo["home"].clone()
     };
-    let by_nested = client_as(&project, actor(ActorKind::Agent, &nested)).await;
-    assert_eq!(create(by_nested).await, json!(inner));
+    for agent in [&nested, &deeper] {
+        let by_nested = client_as(&project, actor(ActorKind::Agent, agent)).await;
+        assert_eq!(create(by_nested).await, json!(outer));
+    }
     let by_bare = client_as(&project, actor(ActorKind::Agent, &bare)).await;
     assert_eq!(create(by_bare).await, Value::Null);
     assert_eq!(create(project.client().await).await, Value::Null);
     let by_ext = client_as(&project, actor(ActorKind::Ext, "x")).await;
     assert_eq!(create(by_ext).await, Value::Null);
     let listed = client.request("todo.list", json!(null)).await.unwrap();
-    assert_eq!(listed[0]["home"], json!(inner));
+    assert_eq!(listed[0]["home"], json!(outer));
 }
 
-/// T14: a Door's Rail id is its Workstream's id, so its Todo's Home is that Workstream, top-level or nested.
+/// T14: a Door's Rail id is its Workstream's id, so its Todo's Home is that Workstream.
 #[tokio::test]
 async fn t14_a_door_creates_todos_at_its_own_workstream() {
     let project = start(&[]);
     let client = project.client().await;
-    let outer = workstream(&client, "outer").await;
-    let inner = client
-        .request(
-            "rail.createWorkstream",
-            json!({ "name": "inner", "parent": outer }),
-        )
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    for door in [&outer, &inner] {
-        let who = client_as(&project, actor(ActorKind::Agent, door)).await;
+    for name in ["outer", "other"] {
+        let door = workstream(&client, name).await;
+        let who = client_as(&project, actor(ActorKind::Agent, &door)).await;
         let todo = who
             .request("todo.create", json!({ "title": "ship j4" }))
             .await
@@ -2016,7 +1988,7 @@ async fn f4_a_door_finds_a_shim_for_claude_directly_and_through_sh_and_other_pro
     let done = json_file(&report).await;
     let done = done.as_array().unwrap();
 
-    let message = "roundup: start an agent with agent_spawn (a Meta-agent) or ask the user\n";
+    let message = "roundup: start an agent with agent_spawn (a Door) or ask the user\n";
     for run in &done[..3] {
         assert_eq!(run["code"], 1);
         assert_eq!(run["stderr"], message);
@@ -2142,30 +2114,38 @@ async fn f3_a_door_spawns_into_a_worktree_when_the_setting_is_on() {
 }
 
 #[tokio::test]
-async fn f3_an_agent_that_is_not_a_door_is_refused_and_nothing_changes() {
+async fn f3_any_agent_starts_a_subagent_under_itself_and_its_parent_param_is_ignored() {
     let project = start(&[]);
     let client = project.client().await;
     let agent = project.spawn_agent(&client).await;
-    let before = rail_tree(&client).await;
-    let as_agent = project.client().await;
-    as_agent
+    let other = project.spawn_agent(&client).await;
+
+    let sub = agent_in_as(&project, &agent.id).await;
+    let tree = rail_tree(&client).await;
+    let node = tree.iter().find(|node| node.id == sub).unwrap();
+    assert_eq!(node.parent.as_deref(), Some(agent.id.as_str()));
+    assert_ne!(node.parent.as_deref(), Some(other.id.as_str()));
+}
+
+#[tokio::test]
+async fn f3_a_terminal_is_refused_and_nothing_changes() {
+    let project = start(&[]);
+    let client = project.client().await;
+    let terminal = client
         .request(
-            "daemon.identify",
-            IdentifyParams {
-                actor: Actor {
-                    kind: ActorKind::Agent,
-                    id: agent.id.clone(),
-                    parent: None,
-                },
-            },
+            "rail.spawnTerminal",
+            json!({"cwd": project.dir.path(), "parent": null}),
         )
         .await
         .unwrap();
+    let id = terminal["id"].as_str().unwrap().to_owned();
+    let before = rail_tree(&client).await;
+    let as_terminal = client_as(&project, actor(ActorKind::Agent, &id)).await;
 
-    let refused = as_agent
+    let refused = as_terminal
         .request(
             "agent.spawn",
-            json!({"cwd": project.dir.path(), "prompt": null, "parent": agent.id}),
+            json!({"cwd": project.dir.path(), "prompt": null, "parent": null}),
         )
         .await
         .unwrap_err();

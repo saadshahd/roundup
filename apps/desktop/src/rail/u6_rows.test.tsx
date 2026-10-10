@@ -24,7 +24,7 @@ describe("u6 rows", () => {
     expect(glyphOf("gateway").getAttribute("aria-label")).toBe("needs-you");
   });
 
-  it("u6_a_meta_agent_shows_its_status_glyph", async () => {
+  it("u6_a_door_shows_its_status_glyph", async () => {
     await mountRail([workstream("checkout", { attempt: "1", status: { kind: "idle", label: "idle", since: 0 } })]);
 
     expect(glyphOf("checkout").getAttribute("aria-label")).toBe("idle");

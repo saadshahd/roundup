@@ -1,5 +1,5 @@
 //! B19 to B21: the Daemon reads the Rail, the Todos, the Pads and the Messages together, which no
-//! module does alone, to answer `agent.digest` and to push a child's change to its Meta-agent.
+//! module does alone, to answer `agent.digest` and to push a child's change to its Door.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -107,7 +107,7 @@ fn moves_an_entry(data: &EventData) -> bool {
     )
 }
 
-/// B21: on each change that may alter a child's entry, send its Meta-agent one Message from the
+/// B21: on each change that may alter a child's entry, send its Door one Message from the
 /// Daemon, kind `note`, with that entry. Runs until the Bus closes.
 pub async fn push_changes(
     reader: Reader,
@@ -149,7 +149,7 @@ async fn push_once(reader: &Reader, seen: &messages::digest::Seen) -> Result<(),
             .await;
         match sent {
             Ok(_) => {}
-            // A Meta-agent that is gone gets none (B9); anything else is tried again at the next
+            // A Door that is gone gets none (B9); anything else is tried again at the next
             // change.
             Err(err) => {
                 eprintln!("rupd: digest push to {} refused: {err}", push.meta);

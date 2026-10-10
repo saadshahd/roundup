@@ -52,7 +52,7 @@ describe("u30 jump", () => {
     expect(rail.selected()).toBe("a");
   });
 
-  it("u30_a_meta_agent_that_needs_you_is_visited", async () => {
+  it("u30_a_door_that_needs_you_is_visited", async () => {
     const { rail } = await mountRail([door("lead", "needs-you", "x")]);
 
     jump();

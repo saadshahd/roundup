@@ -1,4 +1,5 @@
 mod a24;
+mod a26;
 mod common;
 mod decisions;
 mod door;

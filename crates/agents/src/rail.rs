@@ -1,5 +1,6 @@
 //! The Rail: Workstreams, Agents and Terminals as a tree in SQLite (WAL).
-//! Sibling `order` values are contiguous from 0; only Workstreams hold children.
+//! Sibling `order` values are contiguous from 0. Workstreams sit at the root and never nest (A26);
+//! an Agent sits under a Workstream or under the Agent that started it, to any depth.
 
 use std::path::Path;
 
@@ -15,7 +16,7 @@ pub struct Rail {
 
 impl Rail {
     pub fn open(path: &Path) -> Result<Self, OpenError> {
-        let db = Connection::open(path)?;
+        let mut db = Connection::open(path)?;
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS nodes (
@@ -63,6 +64,7 @@ impl Rail {
             "UPDATE nodes SET kind = 'workstream' WHERE kind = 'room'",
             [],
         )?;
+        flatten_workstreams(&mut db)?;
         Ok(Self { db })
     }
 
@@ -75,7 +77,7 @@ impl Rail {
         Ok(out)
     }
 
-    /// Append a node under `parent` (`None` is the root). Only a Workstream can be a parent.
+    /// Append a node under `parent` (`None` is the root); `check_parent` says which kinds fit where.
     pub fn insert(
         &mut self,
         kind: NodeKind,
@@ -102,7 +104,7 @@ impl Rail {
             .transpose()?;
         let tx = self.db.transaction().map_err(sql)?;
         let nodes = load(&tx)?;
-        check_parent(&nodes, parent)?;
+        check_parent(&nodes, kind, parent)?;
         let order = siblings(&nodes, parent).len() as i64;
         tx.execute(
             "INSERT INTO nodes (kind, name, parent, ord, terminal_id, work)
@@ -153,7 +155,17 @@ impl Rail {
         let tx = self.db.transaction().map_err(sql)?;
         let nodes = load(&tx)?;
         let node = find(&nodes, id)?;
-        check_parent(&nodes, parent)?;
+        check_parent(&nodes, node.kind, parent)?;
+        // Only a start nests an Agent under an Agent (A6, A26).
+        if let Some(under) = parent.map(|id| find(&nodes, id)).transpose()?
+            && node.kind == NodeKind::Agent
+            && under.kind == NodeKind::Agent
+        {
+            return Err(RpcError::conflict(format!(
+                "{id} cannot move under Agent {}: only a start nests it",
+                under.id
+            )));
+        }
         if parent.is_some_and(|parent| is_within(&nodes, parent, id)) {
             return Err(RpcError::conflict(format!("{id} cannot move into itself")));
         }
@@ -220,7 +232,7 @@ impl Rail {
         Ok(())
     }
 
-    /// Delete `id`. Its children (only a Workstream, so a Door, ever has any) move to its own
+    /// Delete `id`. Its children (a Workstream or an Agent may have any) move to its own
     /// parent, at its place, in order, first; one transaction, so a failed delete leaves them
     /// still under `id`.
     pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {
@@ -532,14 +544,66 @@ fn descend(nodes: &[RailNode], parent: Option<&str>, out: &mut Vec<RailNode>) {
     }
 }
 
-fn check_parent(nodes: &[RailNode], parent: Option<&str>) -> Result<(), RpcError> {
-    match parent.map(|id| find(nodes, id)).transpose()? {
-        Some(node) if node.kind != NodeKind::Workstream => Err(RpcError::conflict(format!(
-            "{} is not a Workstream: only Workstreams hold children",
-            node.id
+/// A26: a Workstream sits at the root. An Agent sits under a Workstream or under the Agent that
+/// started it; a Terminal sits under a Workstream.
+fn check_parent(nodes: &[RailNode], kind: NodeKind, parent: Option<&str>) -> Result<(), RpcError> {
+    let Some(parent) = parent.map(|id| find(nodes, id)).transpose()? else {
+        return Ok(());
+    };
+    match (kind, parent.kind) {
+        (NodeKind::Workstream, _) => Err(RpcError::conflict(format!(
+            "Workstreams never nest: a Workstream cannot sit under {}",
+            parent.id
         ))),
-        _ => Ok(()),
+        (NodeKind::Agent, NodeKind::Agent) | (_, NodeKind::Workstream) => Ok(()),
+        _ => Err(RpcError::conflict(format!(
+            "{} is not a Workstream: only Workstreams hold children",
+            parent.id
+        ))),
     }
+}
+
+/// A26: a Rail stored by an earlier Daemon may hold a Workstream under another. Each moves to
+/// the root, after the last root node, in the order of depth then `order`; the siblings it leaves
+/// stay contiguous from 0. Nothing else changes.
+fn flatten_workstreams(db: &mut Connection) -> Result<(), RpcError> {
+    let tx = db.transaction().map_err(sql)?;
+    let nodes = load(&tx)?;
+    let depth = |node: &RailNode| {
+        let mut depth = 0;
+        let mut at = node.parent.as_deref();
+        while let Some(parent) = at.filter(|_| depth <= nodes.len()) {
+            depth += 1;
+            at = nodes
+                .iter()
+                .find(|candidate| candidate.id == parent)
+                .and_then(|candidate| candidate.parent.as_deref());
+        }
+        depth
+    };
+    let mut nested: Vec<&RailNode> = nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Workstream && node.parent.is_some())
+        .collect();
+    if nested.is_empty() {
+        return Ok(());
+    }
+    nested.sort_by_key(|node| (depth(node), node.order, node.id.parse::<i64>().unwrap_or(0)));
+    let mut roots = siblings(&nodes, None);
+    let left: Vec<String> = nested
+        .iter()
+        .filter_map(|node| node.parent.clone())
+        .collect();
+    roots.extend(nested.iter().map(|node| node.id.clone()));
+    place(&tx, None, &roots)?;
+    for parent in left {
+        let rest: Vec<String> = siblings(&nodes, Some(&parent))
+            .into_iter()
+            .filter(|id| nested.iter().all(|node| &node.id != id))
+            .collect();
+        place(&tx, Some(&parent), &rest)?;
+    }
+    tx.commit().map_err(sql)
 }
 
 /// Is `node` the ancestor `id` or a descendant of it?
@@ -703,7 +767,7 @@ mod tests {
         let (_dir, mut rail) = rail();
         let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         let child = rail
-            .insert(NodeKind::Workstream, "child", Some(&group.id), None)
+            .insert(NodeKind::Agent, "child", Some(&group.id), None)
             .unwrap();
         rail.db
             .execute_batch(

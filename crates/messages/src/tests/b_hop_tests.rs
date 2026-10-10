@@ -44,10 +44,11 @@ fn child(id: &str, parent: &str) -> RailNode {
 pub(super) fn tree() -> Vec<RailNode> {
     vec![
         door("top", None),
-        door("mid", Some("top")),
-        door("sub", Some("mid")),
+        child("mid", "top"),
+        child("sub", "mid"),
         child("c", "sub"),
         child("d", "top"),
+        agent_node("r", Kind::Working),
     ]
 }
 
@@ -252,15 +253,16 @@ async fn b13_the_sender_is_never_a_hop_and_the_chain_is_read_once() {
 async fn b13_a_question_to_an_agent_or_the_user_has_one_hop() {
     let dir = tempfile::tempdir().unwrap();
     let h = Hops::new(dir.path());
-    h.ask("c", "d").await;
+    h.ask("c", "r").await;
     h.ask("c", "you").await;
     h.at(600_000).await;
 
     assert_eq!(
         h.all().await,
         [
-            row("d", "pending", Value::Null, Value::Null),
+            row("r", "dropped", json!("passed"), Value::Null),
             row("you", "delivered", Value::Null, Value::Null),
+            row("you", "held", json!("escalated"), json!(1)),
         ]
     );
 }

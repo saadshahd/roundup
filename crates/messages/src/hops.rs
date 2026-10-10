@@ -2,7 +2,7 @@
 //! time, and lands in the user's Inbox. This file decides what the next hop is; `lib.rs` stores
 //! it, emits its events and logs its Touch.
 
-use contracts::agent::{NodeKind, RailNode};
+use contracts::agent::RailNode;
 use contracts::message::{Delivery, Message, MessageKind, MessageStatus, Reason};
 use contracts::{Actor, ActorKind};
 use rpc::RpcError;
@@ -13,9 +13,10 @@ use super::{Inner, OPEN_BOUND, accept_receiver, binding, ended, send_status};
 /// B14: how long a live Door has to answer a hop.
 pub(crate) const HOP_BOUND_MS: i64 = 60_000;
 
-/// B13: the Doors a question follows after `door`: the Workstreams above it, nearest first. The sender
+/// B13: the Agents a question follows after `first`: the Agents above it, nearest first, ending
+/// with the Door (A26: Workstreams never nest, so the chain stays in one Workstream). The sender
 /// is never a hop, so `origin` is left out.
-pub(crate) fn doors_above(nodes: &[RailNode], door: &str, origin: &str) -> Vec<String> {
+pub(crate) fn agents_above(nodes: &[RailNode], first: &str, origin: &str) -> Vec<String> {
     let parent_of = |id: &str| {
         nodes
             .iter()
@@ -23,13 +24,9 @@ pub(crate) fn doors_above(nodes: &[RailNode], door: &str, origin: &str) -> Vec<S
             .and_then(|node| node.parent.clone())
     };
     let mut above = Vec::new();
-    let mut at = parent_of(door);
+    let mut at = parent_of(first);
     while let Some(id) = at.filter(|_| above.len() <= nodes.len()) {
-        if id != origin
-            && nodes
-                .iter()
-                .any(|node| node.id == id && node.kind == NodeKind::Workstream)
-        {
+        if id != origin {
             above.push(id.clone());
         }
         at = parent_of(&id);

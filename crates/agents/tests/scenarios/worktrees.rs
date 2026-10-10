@@ -424,9 +424,9 @@ async fn g2_failed_start_door_leaves_a_stopped_workstream() {
 async fn g2_failed_start_door_leaves_children_where_they_were() {
     let wrapper = tempfile::tempdir().unwrap();
     let f = Fixture::in_git_project("sleep 30", failing_git(wrapper.path()));
-    set_worktrees(&f, true, None).await;
     let workstream = f.workstream("team", None).await;
-    let child = f.workstream("child", Some(&workstream)).await;
+    let child = f.spawn(Some(&workstream), None).await.unwrap().id;
+    set_worktrees(&f, true, None).await;
     let before = git_state(f.dir.path());
 
     let err = start_door(&f, &workstream).await.unwrap_err();

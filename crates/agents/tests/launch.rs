@@ -748,7 +748,7 @@ fn e1_the_brief_names_the_agent_by_id_and_the_tools_and_holds_nothing_mutable() 
     ] {
         assert!(text.contains(&format!("`{tool}`")), "{tool}");
     }
-    assert!(!text.contains("agent_spawn"), "agent_spawn");
+    assert!(text.contains("`agent_spawn`"), "agent_spawn");
     assert!(!text.contains(&s.cwd.to_string_lossy().into_owned()));
 }
 
@@ -885,7 +885,7 @@ fn f4_the_shim_for_claude_prints_the_message_and_exits_1_where_the_real_one_woul
         assert_eq!(out.status.code(), Some(1));
         assert_eq!(
             String::from_utf8_lossy(&out.stderr),
-            "roundup: start an agent with agent_spawn (a Meta-agent) or ask the user\n"
+            "roundup: start an agent with agent_spawn (a Door) or ask the user\n"
         );
         assert!(out.stdout.is_empty());
     }
@@ -939,7 +939,7 @@ fn f4_a_symlinked_shim_directory_is_refused() {
 }
 
 #[test]
-fn f3_a_doors_mcp_server_is_started_with_door_and_an_agents_is_not() {
+fn f3_every_agents_mcp_server_is_started_the_same_way() {
     let s = setup();
 
     let door = s.prepare_as("7", Role::Door).unwrap();
@@ -947,7 +947,7 @@ fn f3_a_doors_mcp_server_is_started_with_door_and_an_agents_is_not() {
 
     assert_eq!(
         read(Path::new(&door[4]))["mcpServers"]["roundup"]["args"],
-        json!(["mcp", "7", "--door"])
+        json!(["mcp", "7"])
     );
     assert_eq!(
         read(Path::new(&agent[4]))["mcpServers"]["roundup"]["args"],
@@ -956,7 +956,7 @@ fn f3_a_doors_mcp_server_is_started_with_door_and_an_agents_is_not() {
 }
 
 #[test]
-fn f3_a_doors_brief_names_agent_spawn_and_message_send_and_says_it_has_no_shell() {
+fn f3_every_brief_names_agent_spawn_and_only_a_doors_says_it_has_no_shell() {
     let s = setup();
 
     let door = brief(&s, "7", Role::Door);
@@ -965,5 +965,6 @@ fn f3_a_doors_brief_names_agent_spawn_and_message_send_and_says_it_has_no_shell(
     assert!(door.contains("- `agent_spawn`:"));
     assert!(door.contains("`message_send`"));
     assert!(door.contains("no shell"));
-    assert!(!agent.contains("agent_spawn"));
+    assert!(agent.contains("- `agent_spawn`:"));
+    assert!(!agent.contains("no shell"));
 }

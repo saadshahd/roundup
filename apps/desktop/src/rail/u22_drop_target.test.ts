@@ -81,7 +81,7 @@ describe("u22 drop target", () => {
     expect(dropOf("b", 2, 5, TREE, ["g"])).toEqual({ parent: null, index: 2, depth: 0 });
   });
 
-  it("u22_a_meta_agent_can_be_nested_under", () => {
+  it("u22_a_door_can_be_nested_under", () => {
     const nodes = [workstream("m", { attempt: "1" }), agent("a", "idle", "i", { order: 1 })];
 
     expect(dropOf("a", 1, 5, nodes)).toEqual({ parent: "m", index: 0, depth: 1 });
