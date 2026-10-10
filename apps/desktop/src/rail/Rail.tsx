@@ -307,7 +307,8 @@ export const Rail = () => {
                     </Show>
                     <Show when={addsAfter()?.key === key ? addsAfter() : undefined}>
                       {(adds) => (
-                        <div class="rail-adds" style={{ "padding-left": `${adds().depth * 2}ch` }}>
+                        <div class="rail-adds">
+                          <span class="rail-adds-indent" aria-hidden="true" style={{ width: `calc(${adds().depth * 2}ch - var(--space-2))` }} />
                           <button
                             class="word"
                             disabled={!canSpawn()}
