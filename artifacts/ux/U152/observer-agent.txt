@@ -1,0 +1,5 @@
+U155 under an Agent that created Todos 1 to 3 (U60, expanded). Headless agent-browser, `just harness tree-40 5199`, 1280x800 light.
+The fake seed's Todos are the user's, so `app.rpc` was wrapped in the page to give `todo.list` creator agent-1 to Todos 1 to 3; `◈ 5` of agent-1 opened.
+start (DOM ids in .rail-pads): ["1","2","3"]
+keyboard, Alt+ArrowUp twice on #3: ["3","1","2"]; calls todo.reorder {id:3,before:2}, {id:3,before:1}; document.activeElement is #3's row button
+pointer, fresh load, drag #3 above #1: ["3","1","2"]; calls todo.reorder {id:3,before:1} once; [data-todo][data-selected=true] absent (no Drawer)
