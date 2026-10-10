@@ -15,19 +15,14 @@ async fn p95_of_100_writes(bracketed: bool) -> Duration {
     let dir = tempfile::tempdir().unwrap();
     let (terminals, bus) = open(&dir);
     let ctx = ctx(&dir, &bus);
-    let mut spawned = terminals.spawn(sh(dir.path(), "cat")).await.unwrap();
-    let mut seen = String::new();
-    // Wait for `cat` to run: a write racing the shell's start can be flushed by it.
-    let ready = WriteParams {
-        id: spawned.id.clone(),
-        data: STANDARD.encode("ready\n"),
-    };
-    terminals
-        .call(&ctx, "terminal.write", serde_json::to_value(ready).unwrap())
+    // Raw, no tty echo: the bytes seen come back through `cat`, never from the line discipline.
+    let mut spawned = terminals
+        .spawn(sh(dir.path(), "stty raw -echo; echo up; exec cat"))
         .await
         .unwrap();
+    let mut seen = String::new();
     tokio::time::timeout(PATIENCE, async {
-        while seen.matches("ready").count() < 2 {
+        while !seen.contains("up") {
             if let EventData::TerminalOutput(out) = spawned.events.recv().await.unwrap() {
                 seen.push_str(&decode(&out.data));
             }
