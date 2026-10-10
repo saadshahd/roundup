@@ -110,9 +110,9 @@ async fn o1_o2_a_spawn_holds_the_order_it_was_given_or_the_one_its_prompt_or_not
 }
 
 #[tokio::test]
-async fn o1_a_terminal_has_no_order_and_a_room_has_one() {
+async fn o1_a_terminal_has_no_order_and_a_workstream_has_one() {
     let f = Fixture::new();
-    let room = f.workstream("team", None).await;
+    let workstream = f.workstream("team", None).await;
     f.call(
         "rail.spawnTerminal",
         json!({"cwd": f.dir.path(), "parent": null}),
@@ -128,7 +128,7 @@ async fn o1_a_terminal_has_no_order_and_a_room_has_one() {
         }
     }
     assert_eq!(
-        order_of(&tree, &room),
+        order_of(&tree, &workstream),
         Some(Order::clarification("What is this Workstream for?"))
     );
 }
@@ -181,17 +181,17 @@ async fn o2_the_first_steer_of_a_clarification_order_asks_to_find_elicit_and_rec
 }
 
 #[tokio::test]
-async fn o3_a_room_gives_its_door_the_order_and_stopping_the_door_keeps_it() {
+async fn o3_a_workstream_gives_its_door_the_order_and_stopping_the_door_keeps_it() {
     let f = recording();
     let given = work("coordinate the release", &["merge"]);
-    let room = f
+    let workstream = f
         .call(
             "rail.createWorkstream",
             json!({"name": "release", "parent": null, "order": given}),
         )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap().to_owned();
+    let id = workstream["id"].as_str().unwrap().to_owned();
     assert_eq!(order_of(&f.tree().await, &id), Some(given.clone()));
 
     f.call("rail.startDoor", json!({"id": id})).await.unwrap();
@@ -217,8 +217,8 @@ async fn o3_a_room_gives_its_door_the_order_and_stopping_the_door_keeps_it() {
 async fn o4_the_agent_its_door_or_the_user_may_set_an_order_and_it_is_a_touch() {
     let f = Fixture::new();
     let touches = Arc::new(Touches::in_memory().unwrap());
-    let room = f.workstream("team", None).await;
-    let agent = spawn(&f, json!({"parent": room})).await.unwrap().id;
+    let workstream = f.workstream("team", None).await;
+    let agent = spawn(&f, json!({"parent": workstream})).await.unwrap().id;
     let stranger = spawn(&f, json!({})).await.unwrap().id;
     let set = |actor: Ctx, order: Order| {
         let (f, agent) = (&f, agent.clone());
@@ -235,7 +235,7 @@ async fn o4_the_agent_its_door_or_the_user_may_set_an_order_and_it_is_a_touch() 
 
     for (n, actor) in [
         from(ActorKind::Agent, &agent, &f, &touches),
-        from(ActorKind::Agent, &room, &f, &touches),
+        from(ActorKind::Agent, &workstream, &f, &touches),
         from(ActorKind::User, "you", &f, &touches),
     ]
     .into_iter()
@@ -258,7 +258,7 @@ async fn o4_the_agent_its_door_or_the_user_may_set_an_order_and_it_is_a_touch() 
         by,
         [
             (agent.clone(), Verb::Wrote),
-            (room.clone(), Verb::Wrote),
+            (workstream.clone(), Verb::Wrote),
             ("you".into(), Verb::Wrote)
         ]
     );
@@ -379,12 +379,12 @@ async fn o4_another_callers_order_is_steered_unless_the_agent_set_it_or_a_takeov
 async fn o5_an_order_survives_a_reopen_and_a_move_and_leaves_with_its_node() {
     let f = Fixture::new();
     let given = work("keep me", &["leave"]);
-    let room = f.workstream("team", None).await;
+    let workstream = f.workstream("team", None).await;
     let agent = spawn(&f, json!({"order": given})).await.unwrap().id;
 
     f.call(
         "rail.move",
-        json!({"id": agent, "parent": room, "index": 0}),
+        json!({"id": agent, "parent": workstream, "index": 0}),
     )
     .await
     .unwrap();
@@ -393,10 +393,35 @@ async fn o5_an_order_survives_a_reopen_and_a_move_and_leaves_with_its_node() {
     let f = f.reopen();
     assert_eq!(order_of(&f.tree().await, &agent), Some(given));
     assert_eq!(
-        order_of(&f.tree().await, &room),
+        order_of(&f.tree().await, &workstream),
         Some(Order::clarification("What is this Workstream for?"))
     );
 
     f.call("rail.remove", json!({"id": agent})).await.unwrap();
     assert_eq!(order_of(&f.tree().await, &agent), None);
+}
+
+#[tokio::test]
+async fn a25_the_default_door_question_names_the_workstream() {
+    let f = Fixture::new();
+    let id = f.workstream("w", None).await;
+    assert_eq!(
+        order_of(&f.tree().await, &id),
+        Some(Order::clarification("What is this Workstream for?"))
+    );
+}
+
+#[tokio::test]
+async fn a25_a_stored_order_keeps_its_text() {
+    let f = Fixture::new();
+    let id = f.workstream("w", None).await;
+    rusqlite::Connection::open(f.dir.path().join("agents.db"))
+        .unwrap()
+        .execute("UPDATE nodes SET kind = 'room'", [])
+        .unwrap();
+    let tree = f.reopen().tree().await;
+    assert_eq!(
+        order_of(&tree, &id),
+        Some(Order::clarification("What is this Workstream for?"))
+    );
 }
