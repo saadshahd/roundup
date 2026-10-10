@@ -17,7 +17,7 @@ file. What it does comes from the environment, so one script serves every scenar
   FAKE_CLAUDE_CONTEXT_REPORT a file path: written with the stdout of the `rup context` command that
                            runs under SessionStart (E3), as Claude Code puts it in the session
   FAKE_CLAUDE_SHIM_DELAY_MS milliseconds to wait before the `roundup` server is started (E6)
-  FAKE_CLAUDE_ON_PROMPT    JSON {"name", "arguments"} (U146): after SessionStart, once per prompt line typed into
+  FAKE_CLAUDE_ON_PROMPT    JSON {"name", "arguments"} (U146): after SessionStart (source `resume` with the id of `--resume` when started with it, U177), once per prompt line typed into
                            the Terminal, play UserPromptSubmit, then this tool call with "$prompt" in a
                            string argument replaced by the typed text, then Stop
   FAKE_CLAUDE_ON_PROMPT_ASK JSON {"tool_name", "tool_input"} (U166), set with FAKE_CLAUDE_ON_PROMPT: after
@@ -172,7 +172,11 @@ def ask_permission(ask, prompt):
 
 
 def play_prompts(tool):
-    hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
+    if "--resume" in sys.argv:
+        # U177: a reopened Door is acknowledged by a SessionStart that names the conversation it resumed.
+        hook("SessionStart", {"session_id": flag("--resume"), "source": "resume"})
+    else:
+        hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
     for prompt in typed_prompts():
         hook("UserPromptSubmit", {"prompt": prompt})
         if "FAKE_CLAUDE_ON_PROMPT_ASK" in os.environ and not ask_permission(json.loads(os.environ["FAKE_CLAUDE_ON_PROMPT_ASK"]), prompt):
