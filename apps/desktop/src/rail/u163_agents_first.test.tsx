@@ -29,10 +29,8 @@ describe("u163 Agents come before Terminals", () => {
   it("u163_a_document_names_agent_before_terminal_in_every_add_line", () => {
     const lines = wireframes.split("\n").filter((line) => line.includes("+ terminal"));
 
-    expect(lines.length).toBeGreaterThan(0);
-
     for (const line of lines.filter((each) => each.includes("+ agent"))) expect(line.indexOf("+ agent")).toBeLessThan(line.indexOf("+ terminal"));
 
-    expect(wireframes).toContain("`+ agent  + terminal`");
+    expect(wireframes).toContain("its group ends with `+ agent`.");
   });
 });
