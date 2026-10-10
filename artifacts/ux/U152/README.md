@@ -8,4 +8,6 @@ Headless agent-browser, one session per size and theme, on `just harness tree-40
 - U155: a real pointer drag of Todo 3 above Todo 1 calls `todo.reorder {id: 3, before: 1}` once and the rows read `[3, 1, 2]` with no Drawer opened; in a fresh load `⌥↑` twice reads `[3, 1, 2]` and the focused element is Todo 3's row button.
 - U156: sampling every frame after `⌥↑`, the moved rows reach their final top 149 to 150 ms after the first moved frame, in steps that shrink toward the end (read by eye, not asserted), and rows 1 and 4 never move.
 
-Not shown: a `rupd` restart and reload (the fake Daemon starts again from its seed), the Agent-created variant of U155 (`u155_` covers it), the interrupted second move, reduced motion, and Percy before and after (the Percy build of the PR holds them).
+`observe-motion.sh W theme` adds U156 (`observer-motion.txt`, four runs): under `prefers-reduced-motion` the moved rows take their places in one frame; for a second `⌥↑` fired 75 ms into the first move, the moved row continues from where it showed on screen (154 → 141 → 129 → 118 px at 1280 light) and the list ends `[3, 1, 2]`.
+
+Not shown: a `rupd` restart and reload (the fake Daemon starts again from its seed), the Agent-created variant of U155 (`u155_` covers it), and Percy before and after (the Percy build of the PR holds them).
