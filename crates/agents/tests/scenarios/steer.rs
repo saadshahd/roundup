@@ -274,7 +274,8 @@ async fn h12_a_first_prompt_that_is_not_accepted_leaves_the_agent_in_error() {
         .until(|tree| status_of(tree, &node.id).kind == Kind::Error)
         .await;
     assert_eq!(status_of(&tree, &node.id).label, "prompt not accepted");
-    assert_eq!(read(&typed(&f)), paste("build it"));
+    let text = paste("build it");
+    assert_eq!(until_typed(&f, text.len()).await, text);
 }
 
 #[tokio::test]

@@ -24,7 +24,7 @@ describe("u7 the Live line reads as words", () => {
     expect(text).toBe(text?.trim());
   });
 
-  it("u7_the_live_line_is_a_flex_row_with_an_8px_gap_and_the_2ch_indent_is_on_the_label_alone", async () => {
+  it("u7_the_live_line_is_a_flex_row_with_an_8px_gap_and_the_space_4_indent_is_on_the_label_alone", async () => {
     const sheet = document.head.appendChild(document.createElement("style"));
     sheet.textContent = styles;
     await mountRail([agent("gateway", "error", "tests failed", { status: { kind: "error", label: "tests failed", since: NOW - MINUTE } })]);
@@ -34,7 +34,7 @@ describe("u7 the Live line reads as words", () => {
 
     sheet.remove();
 
-    expect(result).toEqual(["flex", "8px", "16px", "0"]);
+    expect(result).toEqual(["flex", "8px", "var(--space-4)", "0"]);
   });
 
   it("u7_the_live_line_clips_and_the_age_keeps_its_width", async () => {

@@ -1869,6 +1869,24 @@ async fn t11_reorder_changes_the_list_on_a_real_daemon() {
     assert!(more.is_err());
 }
 
+/// T10, U155: the order the user dropped a Todo into is the order `todo.list` gives after `rupd` restarts.
+#[tokio::test]
+async fn t11_reordered_list_survives_a_restart() {
+    let mut project = start(&[]);
+    let client = project.client().await;
+    for title in ["a", "b", "c"] {
+        todo_at(&client, title).await;
+    }
+    client
+        .request("todo.reorder", json!({ "id": 3, "before": 1 }))
+        .await
+        .unwrap();
+    assert_eq!(ids_listed(&client).await, [3, 1, 2]);
+
+    project.restart(&[]);
+    assert_eq!(ids_listed(&project.client().await).await, [3, 1, 2]);
+}
+
 /// T10: an Agent's `todo_list`, `todo_create` and `agent.context` all read the user's order.
 #[tokio::test]
 async fn t10_the_mcp_server_and_the_context_read_the_reordered_list() {
