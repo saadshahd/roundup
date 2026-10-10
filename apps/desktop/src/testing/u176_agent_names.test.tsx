@@ -35,6 +35,8 @@ it("u176_two_agents_added_to_one_workstream_are_told_apart_in_the_rail", async (
     await waitFor(() => expect(add).toHaveProperty("disabled", false), { timeout: 30_000 });
     fireEvent.click(add);
     await waitFor(async () => expect(await agents()).toHaveLength(count), { timeout: 30_000 });
+    await waitFor(async () => expect((await agents())[count - 1]!.status?.label).not.toBe("starting"), { timeout: 30_000 });
+    await waitFor(async () => expect(await app.rpc("agent.prompt", { id: (await agents())[count - 1]!.id, text: "what should this do" })).toBeNull(), { timeout: 30_000 });
     await waitFor(async () => expect((await agents())[count - 1]!.name).not.toBe("new-agent"), { timeout: 60_000 });
   }
 
