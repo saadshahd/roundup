@@ -47,6 +47,18 @@ class Permissions(unittest.TestCase):
         self.assertNotIn(': write', job)
 
 
+class Stall(unittest.TestCase):
+    def test_l94_workflow_calls_no_model_and_holds_only_issue_writes(self):
+        source = (ROOT / '.github/workflows/stall.yml').read_text()
+        for name in ('build.yml', 'claude-code-action', 'claude', 'anthropic'):
+            self.assertNotIn(name, source.lower().replace('loop/stall.py', ''), name)
+        block = source.split('permissions:\n', 1)[1].split('\n\n', 1)[0]
+        self.assertEqual({line.strip() for line in block.splitlines()},
+                         {'issues: write', 'contents: read', 'pull-requests: read', 'actions: read'})
+        self.assertIn("cron: '41 * * * *'", source)
+        self.assertNotIn(': write', source.split('jobs:', 1)[1])
+
+
 class Scripts(unittest.TestCase):
     def test_l24_proposed_instructions_do_not_control_the_reviewer(self):
         with tempfile.TemporaryDirectory() as path:

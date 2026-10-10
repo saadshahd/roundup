@@ -27,6 +27,7 @@ jobs:
       - run: python3 loop/orders.py lint
       - run: python3 loop/orders.test.py
       - run: python3 loop/builder.test.py
+      - run: python3 loop/stall.test.py
       - run: python3 loop/workflows.test.py
       - run: loop/rules.test.sh
       - run: loop/percy.test.sh
