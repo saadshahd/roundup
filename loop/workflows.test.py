@@ -58,6 +58,18 @@ class Build(unittest.TestCase):
             self.assertNotIn(text, pick)
         self.assertNotIn('ready-for-agent', source)
 
+    def test_l23_eight_build_jobs_at_most(self):
+        source = (ROOT / '.github/workflows/build.yml').read_text()
+        self.assertIn("default: '8'", source)
+        self.assertIn("MAX: ${{ inputs.max || '8' }}", source)
+
+    def test_l23_a_run_whose_model_worked_starts_the_next_pick(self):
+        after = (ROOT / '.github/workflows/build.yml').read_text().split('  after:', 1)[1].split('\n  summary:', 1)[0]
+        self.assertIn('actions: write', after)
+        step = after.split('gh workflow run build.yml', 1)[0].rsplit('      - ', 1)[1]
+        # Only a run whose model did work dispatches, so a usage limit ends the chain instead of spinning it.
+        self.assertIn("select(.ran == true)", step)
+
 
 class Stall(unittest.TestCase):
     def test_l94_workflow_calls_no_model_and_holds_only_issue_writes(self):
