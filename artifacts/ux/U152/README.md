@@ -12,4 +12,4 @@ Headless agent-browser, one session per size and theme, on `just harness tree-40
 
 `crates/rup/tests/e2e.rs` `t11_reordered_list_survives_a_restart`: `todo.reorder {id: 3, before: 1}` on three Todos, then `rupd` restarts and `todo.list` gives `[3, 1, 2]` (U155's restart clause; the page reads `todo.list`, so the DOM order follows).
 
-U155 under an Agent that created the Todos: `observer-agent.txt` (keyboard and pointer both give `[3, 1, 2]`). Percy before and after for U153 are on the Percy build of #587.
+U155 under an Agent that created Todos 1 to 3 (U60, expanded in the Rail): `observe-agent.sh W theme` is the run (it wraps `todo.list` in the page to give those Todos creator agent-1); `observer-agent.txt` is its output for all four sizes and themes (keyboard and pointer both give `[3, 1, 2]`, no Drawer opened). Percy before and after for U153 are on the Percy build of #587.
