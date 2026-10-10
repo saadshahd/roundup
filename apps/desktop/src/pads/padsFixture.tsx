@@ -7,7 +7,8 @@ import { RpcError } from "../app/seam";
 import { DrawerHost } from "../drawer/DrawerHost";
 import { createFakeApp } from "../testing/fakeApp";
 import type { FakeApp } from "../testing/fakeApp";
-import { EditorView } from "@codemirror/view";
+import { Editor } from "@milkdown/kit/core";
+import { getMarkdown, replaceAll } from "@milkdown/kit/utils";
 import { padHandlers } from "../testing/stores";
 import type { PadStore } from "../testing/stores";
 import {
@@ -19,8 +20,6 @@ import { Pads } from "./Pads";
 export const AGENT: Actor = { kind: "agent", id: "agent-7f3", parent: null };
 
 const AGENT_NAME = "auth-refactor";
-
-let currentPads: PadStore;
 
 export const padOf = (name: string, owner: Actor, text = ""): Pad => ({
   name,
@@ -56,7 +55,6 @@ export const deferred = <T,>(): Deferred<T> => {
 export const openShelf = async (pads: Pad[], onRail = false) => {
   const history: Touch[] = [];
   const state: PadStore = { pads, history };
-  currentPads = state;
   const app = createFakeApp();
   app.handlers["rail.tree"] = () => [
     {
@@ -98,41 +96,47 @@ export const openShelf = async (pads: Pad[], onRail = false) => {
   };
 };
 
-export const enterEditor = async () => {
-  fireEvent.click(screen.getByRole("button", { name: "edit" }));
-  fireEvent.click(await screen.findByRole("button", { name: "source" }));
-  const field = await screen.findByRole<HTMLElement>("textbox", { name: "Editor" }, { timeout: 5000 });
-  const view = EditorView.findFromDOM(field);
+const editors: Editor[] = [];
 
-  if (!view) throw new Error("Pad Editor has no CodeMirror view");
+let tracking = false;
 
-  Object.defineProperties(field, {
-    value: {
-      configurable: true,
-      get: () => view.state.doc.toString(),
-      set: (text: string) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
-    },
-    readOnly: { configurable: true, get: () => false },
-  });
+/** The Pad's surface is a ProseMirror document, so a test types by replacing it through the Milkdown editor the drawer created. */
+const trackEditors = () => {
+  if (tracking) return;
 
-  // SAFETY: the content element has textarea-shaped accessors installed above; input writes still dispatch real CodeMirror transactions.
-  return field as HTMLTextAreaElement;
+  tracking = true;
+  const make = Editor.make.bind(Editor);
+
+  Editor.make = () => {
+    const editor = make();
+
+    editors.push(editor);
+
+    return editor;
+  };
 };
 
+/** Opens a Pad's Drawer and returns its scroll root with textarea-shaped `value` accessors over the document, so a test can type `fireEvent.input(field, { target: { value } })` and read what the Pad holds. */
 export const openPad = async (name: string) => {
+  trackEditors();
   fireEvent.click(await screen.findByText(name));
-  const reader = await screen.findByLabelText<HTMLElement>("Pad body");
-  const edit = screen.queryByRole("button", { name: "edit" });
+  const surface = await screen.findByRole<HTMLElement>("textbox", { name: "Pad body" }, { timeout: 5000 });
+  const root = surface.closest<HTMLElement>(".pad-editor");
+  const editor = editors.at(-1);
 
-  if (edit) return enterEditor();
+  if (!root || !editor) throw new Error("Pad surface did not open");
 
-  Object.defineProperties(reader, {
-    value: { configurable: true, get: () => currentPads.pads.find((pad) => pad.name === name)?.text ?? "" },
-    readOnly: { configurable: true, get: () => true },
+  Object.defineProperties(root, {
+    value: {
+      configurable: true,
+      get: () => editor.action(getMarkdown()).replace(/\n$/, ""),
+      set: (text: string) => editor.action(replaceAll(text)),
+    },
+    readOnly: { configurable: true, get: () => surface.getAttribute("contenteditable") !== "true" },
   });
 
-  // SAFETY: this reader has the value and readOnly accessors installed above; no test writes through its textarea shape.
-  return reader as HTMLTextAreaElement;
+  // SAFETY: the root has the value and readOnly accessors installed above; input writes still dispatch real ProseMirror transactions.
+  return root as HTMLTextAreaElement;
 };
 
 /** `pad.list` is refetched on every `pad.changed`, so a test waits for that count to pass `atLeast` rather than for a specific call index. */

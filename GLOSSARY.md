@@ -14,8 +14,14 @@ One supervised identity on the Rail, with a Status; each launch of its program i
 _Avoid_: session, bot, worker
 
 **Terminal**:
-A plain shell process roundup started; no Status beyond running or exited.
+A shell process roundup started, with a screen the user can watch; no Status beyond running or exited. Mostly a Run; a Quick command the user keeps, or one the user adds, is the other kind.
 _Avoid_: process, console
+
+**Run**:
+A Terminal an Agent started, shown under that Agent in the Rail for the user to watch; it ends with its Agent's removal, never with its Status.
+
+**Quick command**:
+One command the user runs from the overlay `⌘T` opens inside a Workstream; it leaves no Terminal behind when closed, and becomes a Terminal under the Workstream only when the user keeps it.
 
 **Snapshot**:
 A bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.

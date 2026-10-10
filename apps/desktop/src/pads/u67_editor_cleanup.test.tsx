@@ -13,7 +13,7 @@ it("u67_a_failed_editor_reports_creation_failure_without_destroying", async () =
   vi.spyOn(Editor, "make").mockReturnValue(editor);
   vi.spyOn(editor, "create").mockRejectedValue(new Error("Editor could not open"));
   const destroy = vi.spyOn(editor, "destroy");
-  const view = render(() => <PadRichEditor text="" onText={vi.fn()} onBlur={vi.fn()} onReady={vi.fn()} />);
+  const view = render(() => <PadRichEditor text="" readonly={false} onChange={vi.fn()} onScroller={vi.fn()} onText={vi.fn()} onBlur={vi.fn()} onReady={vi.fn()} />);
 
   expect((await screen.findByRole("alert")).textContent).toContain("Editor could not open");
   view.unmount();
@@ -26,7 +26,7 @@ it.each([false, true])("u67_unmount_disposes_the_editor_without_a_retry_timer_re
   const create = vi.spyOn(editor, "create");
   const destroy = vi.spyOn(editor, "destroy");
   const onReady = vi.fn();
-  const view = render(() => <PadRichEditor text="# Heading" onText={vi.fn()} onBlur={vi.fn()} onReady={onReady} />);
+  const view = render(() => <PadRichEditor text="# Heading" readonly={false} onChange={vi.fn()} onScroller={vi.fn()} onText={vi.fn()} onBlur={vi.fn()} onReady={onReady} />);
 
   try {
     if (ready) await create.mock.results[0]?.value;
