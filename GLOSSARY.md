@@ -42,7 +42,7 @@ An Agent that another Agent, the Door or a Subagent, started. The Rail shows it 
 _Avoid_: child agent, sub-agent, meta-agent, parent agent
 
 **Digest**:
-A Door's fixed-size envelope about one direct child, `{name, kind, last, todos, pads}`, asked for with `agent.digest` and never read from Terminal output (B19, B20).
+A Door's fixed-size envelope about one direct child, `{name, kind, last, todos, pads}`, asked for with `agent.digest`, or pushed to the Door as a Message when the child's Kind, Pads or open Todos change (B21), and never read from Terminal output (B19, B20).
 
 **Attempt**:
 One launch of an Agent's program, numbered per Agent from `1` in launch order (A20). It travels in the hook command, `SignalParams`, `StatusEvent` and `RailNode.attempt` as a canonical positive decimal string within SQLite's signed 64-bit range; a client may compare two of one Agent and reads nothing else from it. Never a Rail identity or a vendor conversation id; the last one survives stop, failure and reopen.
