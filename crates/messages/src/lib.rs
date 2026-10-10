@@ -1171,6 +1171,7 @@ mod tests {
             worktree: None,
             can_resume: false,
             channel: None,
+            stray: Vec::new(),
             work: None,
         }
     }
