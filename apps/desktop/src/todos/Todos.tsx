@@ -8,9 +8,11 @@ import { failureOf } from "./failureOf";
 import { HomeMove } from "./HomeMove";
 import { homeNameOf } from "./homes";
 import { RowButton } from "./RowButton";
+import { isRoom } from "../rail/layout";
 import { isTodoOnRail } from "../rail/pads/owned";
 import { useTodoList } from "./todoList";
 import { TodoDrawer } from "./TodoDrawer";
+import { ScopePair } from "./ScopePair";
 import { doneTodos, kindOf, openBlockersOf, openTodos } from "./todoView";
 
 /** U138: the row to focus once a completed Todo leaves the open list — the next one, else the previous, else none (the `+` button). */
@@ -121,9 +123,22 @@ export const Todos = () => {
   const [createFailure, setCreateFailure] = createSignal<string | null>(null);
   const [unfolded, setUnfolded] = createSignal(false);
   /** U60: an open Todo whose creator is an Agent on the Rail shows under that Agent instead. */
-  const open = createMemo(() => openTodos(todos.all()).filter((todo) => !isTodoOnRail(todo, connected.rail.nodes)));
+  const onShelf = createMemo(() => openTodos(todos.all()).filter((todo) => !isTodoOnRail(todo, connected.rail.nodes)));
+  /** U159: the choice belongs to the Room it was made on, so selecting another row reads `all` again without a stored reset. */
+
+  const [choice, setChoice] = createSignal<{ room: string; thisRoom: boolean } | null>(null);
+
+  const selectedRoom = createMemo(() => {
+    const id = connected.rail.selected();
+
+    return connected.rail.nodes.some((node) => node.id === id && isRoom(node)) ? id : null;
+  });
+
+  const thisRoom = createMemo(() => selectedRoom() !== null && choice()?.room === selectedRoom() && choice()?.thisRoom === true);
+  const open = createMemo(() => (thisRoom() ? onShelf().filter((todo) => todo.home === selectedRoom()) : onShelf()));
   const done = createMemo(() => doneTodos(todos.all()));
   const isEmpty = createMemo(() => todos.isLoaded() && todos.all().length === 0 && todos.failure() === null);
+  const noneInRoom = createMemo(() => thisRoom() && todos.isLoaded() && open().length === 0 && todos.failure() === null);
 
   const rows = new Map<number, HTMLButtonElement>();
   let plusButton: HTMLButtonElement | undefined;
@@ -192,6 +207,9 @@ export const Todos = () => {
         >
           <Icon name="plus" />
         </button>
+        <Show when={selectedRoom()}>
+          {(room) => <ScopePair thisRoom={thisRoom()} onChange={(value) => setChoice({ room: room(), thisRoom: value })} />}
+        </Show>
       </p>
       <Show when={todos.failure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <Show when={createFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
@@ -210,6 +228,9 @@ export const Todos = () => {
       </Show>
       <Show when={isEmpty()}>
         <p>no todos yet</p>
+      </Show>
+      <Show when={noneInRoom()}>
+        <p>no todos in this room</p>
       </Show>
       <For each={open()}>
         {(todo) => (
