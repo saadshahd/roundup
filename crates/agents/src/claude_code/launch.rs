@@ -191,7 +191,7 @@ impl Launcher {
         }
         replace_file(&settings, &self.settings_json(id, attempt, path.as_deref()))
             .map_err(RpcError::internal)?;
-        replace_file(&mcp_config, &self.mcp_json(id, role)).map_err(RpcError::internal)?;
+        replace_file(&mcp_config, &self.mcp_json(id)).map_err(RpcError::internal)?;
         let brief_file = brief_path(&dir, id);
         replace_text(&brief_file, &brief::text(id, role)).map_err(RpcError::internal)?;
         self.trust(&cwd)?;
@@ -285,17 +285,11 @@ impl Launcher {
     }
 
     /// `RUPD_SOCKET` is left out: Claude Code's environment, which the server inherits, has it.
-    /// F3: a Door's server is started with `--door`, which adds `agent_spawn` to its tools; the
-    /// Daemon refuses `agent.spawn` from any other Agent whatever its shim offers.
-    fn mcp_json(&self, id: u64, role: Role) -> Value {
-        let mut args = vec!["mcp".to_owned(), id.to_string()];
-        if role == Role::Door {
-            args.push("--door".into());
-        }
+    fn mcp_json(&self, id: u64) -> Value {
         json!({ "mcpServers": { "roundup": {
             "type": "stdio",
             "command": self.rup.to_string_lossy(),
-            "args": args,
+            "args": ["mcp", id.to_string()],
         } } })
     }
 

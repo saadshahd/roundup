@@ -185,10 +185,11 @@ fn offered_tools() -> Vec<Offered> {
         agent_context(),
         agent_set_order(),
         ask_user(),
+        agent_spawn(),
     ]
 }
 
-/// F3: the tool only a Door is offered; the Daemon refuses the method from any other Agent.
+/// F3, A26: the tool every Agent is offered; its child sits under it.
 fn agent_spawn() -> Offered {
     offered::<agent::SpawnParams>(
         "agent.spawn",
@@ -361,12 +362,12 @@ impl ServerHandler for Shim {
     }
 }
 
-pub async fn run(agent_id: Option<String>, door: bool) -> ExitCode {
+pub async fn run(agent_id: Option<String>) -> ExitCode {
     let Some(id) = agent_id else {
         eprintln!("usage: rup mcp <agent-id>");
         return ExitCode::from(2);
     };
-    match serve(id, door).await {
+    match serve(id).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(why) => {
             eprintln!("rup: {why}");
@@ -376,7 +377,7 @@ pub async fn run(agent_id: Option<String>, door: bool) -> ExitCode {
     }
 }
 
-async fn serve(id: String, door: bool) -> Result<(), String> {
+async fn serve(id: String) -> Result<(), String> {
     let socket = rpc::socket_path().map_err(|err| err.to_string())?;
     let (gone, mut gone_rx) = mpsc::channel(1);
     let mut shim = Shim {
@@ -386,10 +387,7 @@ async fn serve(id: String, door: bool) -> Result<(), String> {
             id,
             parent: None,
         },
-        tools: offered_tools()
-            .into_iter()
-            .chain(door.then(agent_spawn))
-            .collect(),
+        tools: offered_tools(),
         gone,
     };
     let start = shim.connect().await.map_err(|gone| gone.to_string())?;

@@ -1,7 +1,7 @@
 //! E1: the Brief, the text file Claude Code appends to its system prompt. It holds only what never
 //! changes for an Agent id: who it is, that roundup supervises it, the tools `rup mcp` offers and,
 //! for a Door, B24's role guidance. A name, Terminal id, parent, peer or Todo changes, so none is
-//! written here. A tool is described only once `crates/rup` offers it, and `agent_spawn` only to a Door.
+//! written here. A tool is described only once `crates/rup` offers it, and `agent_digest` only to a Door.
 
 /// What an Agent is to roundup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub enum Role {
 }
 
 /// The tools `rup mcp` offers, with when to use each.
-const TOOLS: [(&str, &str); 20] = [
+const TOOLS: [(&str, &str); 21] = [
     ("todo_create", "record a piece of work that is not done yet"),
     ("todo_get", "read one Todo before changing it"),
     ("todo_list", "see all the work already recorded"),
@@ -58,19 +58,17 @@ const TOOLS: [(&str, &str); 20] = [
         "ask_user",
         "put a question to the user with one to four short answers to pick from, and wait for the one they pick",
     ),
-];
-
-/// The tools beyond `TOOLS` that only a Door is offered: B20's digest and F3's spawn.
-const DOOR_TOOLS_EXTRA: [(&str, &str); 2] = [
-    (
-        "agent_digest",
-        "ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told",
-    ),
     (
         "agent_spawn",
         "start a child Agent in a folder of this Project, with an optional first prompt; it becomes your child",
     ),
 ];
+
+/// The tool beyond `TOOLS` that only a Door is offered: B20's digest.
+const DOOR_TOOLS_EXTRA: [(&str, &str); 1] = [(
+    "agent_digest",
+    "ask what each of your direct children did: its Kind, its last line, its open Todos and the Pads it wrote since you were last told",
+)];
 
 const DOOR: &str = "\
 ## Your role

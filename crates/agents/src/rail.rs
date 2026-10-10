@@ -232,7 +232,7 @@ impl Rail {
         Ok(())
     }
 
-    /// Delete `id`. Its children (only a Workstream, so a Door, ever has any) move to its own
+    /// Delete `id`. Its children (a Workstream or an Agent may have any) move to its own
     /// parent, at its place, in order, first; one transaction, so a failed delete leaves them
     /// still under `id`.
     pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {

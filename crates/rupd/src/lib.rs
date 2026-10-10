@@ -265,7 +265,7 @@ impl Daemon {
         }
         match method {
             "agent.context" => rpc::reply(&context),
-            _ => rpc::reply(&context::brief(&context)),
+            _ => rpc::reply(&context::brief(&nodes, &context)),
         }
     }
 
