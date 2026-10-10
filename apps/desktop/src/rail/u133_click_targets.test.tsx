@@ -82,8 +82,11 @@ describe("u133 click targets", () => {
       const selected = el.getAttribute("data-selected") === "true";
       const paint = (style: CSSStyleDeclaration) => `${style.getPropertyValue("background-color")}|${style.getPropertyValue("color")}`;
 
-      expect(hover.getPropertyValue("cursor"), name).toBe("pointer");
-      expect(rest.getPropertyValue("cursor"), name).toBe("pointer");
+      // U155: a Todo row can be dragged, so its cursor is `grab`.
+      const cursor = el.hasAttribute("data-reorderable") ? "grab" : "pointer";
+
+      expect(hover.getPropertyValue("cursor"), name).toBe(cursor);
+      expect(rest.getPropertyValue("cursor"), name).toBe(cursor);
       // The selected row's rest is already the wash a hover would draw.
 
       if (!selected) expect(paint(hover), `${name} hover`).not.toBe(paint(rest));

@@ -54,14 +54,14 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
 
   const blockerBase = () => answered() ?? todo();
 
-  const addBlocker = (blocker: number) => {
+  const changeBlockers = (next: (blockers: number[]) => number[]) => {
     const pick = () =>
       attempt(async () => {
         const base = blockerBase();
 
         if (!base) return;
 
-        setAnswered(await app.rpc("todo.setBlockers", { id: props.id, blockers: [...base.blockers, blocker] }));
+        setAnswered(await app.rpc("todo.setBlockers", { id: props.id, blockers: next(base.blockers) }));
       });
 
     // A bug that rejects one pick is reported, and the picks behind it still run.
@@ -71,6 +71,11 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
       return pick();
     });
   };
+
+  const addBlocker = (blocker: number) => changeBlockers((blockers) => [...blockers, blocker]);
+
+  /** U152: the other blockers stay, in order. */
+  const removeBlocker = (blocker: number) => changeBlockers((blockers) => blockers.filter((id) => id !== blocker));
 
   return (
     <>
@@ -103,8 +108,19 @@ export const TodoDrawer = (props: { id: number; todos: TodosState }) => {
                   />
                 </div>
                 <Show when={blockersOf(current(), props.todos.byId()).length > 0}>
-                  <p class="light">waits on</p>
-                  <For each={blockersOf(current(), props.todos.byId())}>{(blocker) => <TodoLine todo={blocker} />}</For>
+                  <div style={{ display: "grid", "grid-template-columns": "1fr auto", "column-gap": "var(--space-2)" }}>
+                    <p class="light" style={{ "grid-column": "1 / -1" }}>waits on</p>
+                    <For each={blockersOf(current(), props.todos.byId())}>
+                      {(blocker) => (
+                        <>
+                          <TodoLine todo={blocker} />
+                          <button type="button" class="word light" aria-label={`remove blocker #${blocker.id}`} onClick={() => removeBlocker(blocker.id)}>
+                            remove
+                          </button>
+                        </>
+                      )}
+                    </For>
+                  </div>
                 </Show>
                 <Show when={blockedBy(current(), props.todos.all()).length > 0}>
                   <p class="light">blocks</p>

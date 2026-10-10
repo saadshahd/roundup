@@ -1,4 +1,5 @@
 import { Icon } from "../ink/Icon";
+import type { JSX } from "solid-js";
 import { createEffect, createMemo, on, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
@@ -10,6 +11,8 @@ import { homeNameOf } from "./homes";
 import { RowButton } from "./RowButton";
 import { isWorkstream } from "../rail/layout";
 import { isTodoOnRail } from "../rail/pads/owned";
+import { createReorder } from "./reorder";
+import type { Reorder } from "./reorder";
 import { useTodoList } from "./todoList";
 import { TodoDrawer } from "./TodoDrawer";
 import { WorkstreamChoice } from "./WorkstreamChoice";
@@ -27,11 +30,15 @@ export const rowAfter = (id: number, openIds: readonly number[]): number | null 
 /** One open Todo as U15 draws it, with U35's `complete` and `waits on`; `nested` is the Rail's copy (U60), which leaves `data-id` to the Agent rows. */
 export const OpenRow = (props: {
   nested?: boolean;
+  /** U153: the row whose Drawer is open. */
+  selected?: boolean;
   todo: Todo;
   known: ReadonlyMap<number, Todo>;
   onOpen: (todo: Todo) => void;
   onComplete: (todo: Todo) => Promise<string | null>;
   registerRow?: (id: number, row: HTMLButtonElement | null) => void;
+  /** U155: the list this row moves in. */
+  reorder?: Reorder;
 }) => {
   const connected = useConnectedProject();
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
@@ -50,13 +57,20 @@ export const OpenRow = (props: {
     onCleanup(() => document.removeEventListener("click", clear));
   });
 
-  onCleanup(() => props.registerRow?.(props.todo.id, null));
+  onCleanup(() => {
+    props.registerRow?.(props.todo.id, null);
+    props.reorder?.frame(props.todo.id, null);
+    props.reorder?.button(props.todo.id, null);
+  });
 
   return (
     <div
       data-id={props.nested ? undefined : props.todo.id}
       data-todo={props.todo.id}
       data-shelf-row={props.nested ? undefined : ""}
+      data-selected={props.selected ? "true" : undefined}
+      class="todo-row"
+      ref={(frame) => props.reorder?.frame(props.todo.id, frame)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocusIn={() => setFocused(true)}
@@ -69,7 +83,16 @@ export const OpenRow = (props: {
       }}
     >
       <div class="row-head">
-        <RowButton onClick={() => props.onOpen(props.todo)} ref={(row) => props.registerRow?.(props.todo.id, row)}>
+        <RowButton
+          onClick={() => props.onOpen(props.todo)}
+          reorderable={props.reorder !== undefined}
+          onKeyDown={(event) => props.reorder?.key(props.todo.id, event, setFailure)}
+          onPointerDown={(event) => props.reorder?.press(props.todo.id, event, setFailure)}
+          ref={(row) => {
+            props.registerRow?.(props.todo.id, row);
+            props.reorder?.button(props.todo.id, row);
+          }}
+        >
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
         <Show when={hovered() || focused() || listOpen()}>
@@ -102,7 +125,7 @@ export const OpenRow = (props: {
         when={failure()}
         fallback={
           <Show when={waitingOn().length > 0}>
-            <p class="light" data-todo-waits style={{ "padding-left": "2ch" }}>
+            <p class="light todo-line" data-todo-waits>
               waits on <For each={waitingOn()}>{(blocker, index) => (
                 <>
                   <Show when={index() > 0}>{", "}</Show>
@@ -117,7 +140,7 @@ export const OpenRow = (props: {
       >
         {(message) => <ErrorLine message={message()} />}
       </Show>
-      <p class="light" data-todo-home>
+      <p class="light todo-line" data-todo-home>
         in {homeNameOf(connected.rail.nodes, props.todo.home)}
       </p>
     </div>
@@ -149,6 +172,13 @@ export const Todos = () => {
   const done = createMemo(() => doneTodos(todos.all()));
   const isEmpty = createMemo(() => todos.isLoaded() && todos.all().length === 0 && !thisWorkstream() && todos.failure() === null);
   const noneInWorkstream = createMemo(() => thisWorkstream() && todos.isLoaded() && open().length === 0 && todos.failure() === null);
+
+  const reorder = createReorder({
+    ids: () => open().map((todo) => todo.id),
+    all: todos.all,
+    call: (params) => failureOf(() => connected.app.rpc("todo.reorder", params)),
+    reducedMotion: connected.reducedMotion,
+  });
 
   const rows = new Map<number, HTMLButtonElement>();
   let plusButton: HTMLButtonElement | undefined;
@@ -190,7 +220,16 @@ export const Todos = () => {
     setCreateFailure(await failureOf(() => connected.app.rpc("todo.create", { title, body: null, blockers: null })));
   };
 
-  const show = (todo: Todo) => connected.drawer.open(() => <TodoDrawer id={todo.id} todos={todos} />);
+  // U153: a row is selected while the Drawer it opened is the one open.
+  const [shown, setShown] = createSignal<{ id: number; content: () => JSX.Element } | null>(null);
+  const selectedId = () => (shown() !== null && connected.drawer.content() === shown()?.content ? shown()?.id : undefined);
+
+  const show = (todo: Todo) => {
+    const content = () => <TodoDrawer id={todo.id} todos={todos} />;
+
+    setShown({ id: todo.id, content });
+    connected.drawer.open(content);
+  };
 
   const complete = async (todo: Todo) => {
     const target = rowAfter(todo.id, open().map((candidate) => candidate.id));
@@ -242,20 +281,26 @@ export const Todos = () => {
       <Show when={noneInWorkstream()}>
         <p>no todos in this workstream</p>
       </Show>
-      <For each={open()}>
-        {(todo) => (
-          <OpenRow
-            todo={todo}
-            known={todos.byId()}
-            onOpen={show}
-            onComplete={complete}
-            registerRow={(id, row) => {
-              if (row) rows.set(id, row);
-              else rows.delete(id);
-            }}
-          />
-        )}
-      </For>
+      <Show when={open().length > 0}>
+        <div class="todo-list">
+        <For each={open()}>
+          {(todo) => (
+            <OpenRow
+              todo={todo}
+              selected={selectedId() === todo.id}
+              known={todos.byId()}
+              onOpen={show}
+              onComplete={complete}
+              reorder={reorder}
+              registerRow={(id, row) => {
+                if (row) rows.set(id, row);
+                else rows.delete(id);
+              }}
+            />
+          )}
+        </For>
+        </div>
+      </Show>
       <Show when={done().length > 0}>
         <RowButton onClick={() => setUnfolded(!unfolded())}>
           <KindGlyph kind="done" decorative /> {done().length} done

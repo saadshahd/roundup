@@ -1,5 +1,7 @@
 .todo-row-button {
   --todo-row-indent: calc(var(--space-4) + 1ch);
+  min-height: var(--space-5);
+  cursor: pointer;
 }
 .todo-move-wrap {
   display: contents;
@@ -43,4 +45,50 @@
   line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* U153: a row is a `--ground` surface on the Shelf's `--sunken`, spaced by Tokens. The hover and selected washes are gradients over the ground, so `background-color` stays `--ground`. No transition: the surface answers at once (D6, D7). */
+.todo-list {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-1);
+}
+
+.shelf .todo-row[data-shelf-row] {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+  background-color: var(--ground);
+  border-radius: var(--radius-row);
+}
+
+.shelf .todo-row[data-shelf-row]:hover {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+.shelf .todo-row[data-shelf-row][data-selected="true"] {
+  background-image: linear-gradient(var(--selected), var(--selected));
+}
+
+.shelf .todo-row[data-shelf-row] .todo-row-button {
+  min-height: 28px;
+  font-size: var(--text-body);
+  color: var(--text);
+}
+
+.todo-line {
+  padding-left: 2ch;
+  font-size: var(--text-caption);
+  color: var(--grey);
+  overflow-wrap: anywhere;
+}
+
+/* U155: a row can be dragged, so it reads as grabbable; the fold's rows are not rows of the order. */
+.todo-row [data-reorderable] {
+  cursor: grab;
 }
