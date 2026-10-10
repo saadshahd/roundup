@@ -4,7 +4,7 @@ import styles from "../styles.css?inline";
 import { mountTodos, todo } from "../todos/testHarness";
 import { sampleFrames } from "./frameSampler";
 
-// jsdom has no layout: it never scrolls an element and records no `layout-shift`. These tests prove the sampler's reading and its failures; the shipped App in a real window is the `just harness` run in the PR.
+// jsdom has no layout: it never scrolls an element and records no `layout-shift`. The sampler tests prove its reading and failures, the stylesheet test proves `.columns` cannot scroll sideways; a Pad Drawer and the shipped App in a real window are the `just harness` run in the PR.
 class FakeObserver {
   static supportedEntryTypes = ["layout-shift"];
   observe() {}
@@ -42,7 +42,7 @@ const openAndClose = async () => {
 };
 
 describe("y2 the Drawer's laws are sampled every frame", () => {
-  it.each([[1280, 800], [640, 400]])("y2_the_shipped_app_passes_at_%i_by_%i", async (width, height) => {
+  it.each([[1280, 800], [640, 400]])("y2_the_sampler_reads_a_still_shipped_app_as_clean_at_%i_by_%i", async (width, height) => {
     sized(width, height);
     const { columns, sheet } = await mount();
     const watched = [...document.querySelectorAll(".rail, .centre, .shelf")];
@@ -55,7 +55,15 @@ describe("y2 the Drawer's laws are sampled every frame", () => {
     expect(sampled.shift).toBe(0);
   });
 
-  it("y2_a_columns_element_that_scrolls_sideways_fails_with_the_first_bad_frame", async () => {
+  it("y2_the_shipped_columns_stylesheet_clips_sideways_overflow", async () => {
+    const { columns, sheet } = await mount();
+
+    // `hidden` still scrolls under a focus or `scrollIntoView`; only `clip` cannot.
+    expect(getComputedStyle(columns).overflowX).toBe("clip");
+    sheet.remove();
+  });
+
+  it("y2_the_sampler_names_the_first_frame_whose_scrollLeft_is_above_0", async () => {
     const { columns, sheet } = await mount();
     let scrolled = false;
     Object.defineProperty(columns, "scrollLeft", { get: () => (scrolled ? 12 : 0) });

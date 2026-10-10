@@ -14,7 +14,7 @@ afterEach(() => {
 // jsdom has no layout, so axe cannot measure colour there and answers `incomplete` for the grey line: these tests prove it is never a pass.
 // The `violation` for the grey line, the `incomplete` for text over an image and the seeds' contrast are the real-browser run of `window.__axe()` in the PR.
 describe("y1 axe-core runs on the harness page", () => {
-  it("y1_a_grey_line_on_white_below_4_5_to_1_is_one_color_contrast_violation", async () => {
+  it("y1_a_grey_line_on_white_is_reported_as_color_contrast_and_never_a_pass", async () => {
     document.body.innerHTML = `<main><p id="low" style="color:#aaa;background:#fff">hard to read</p></main>`;
 
     const { violations, incomplete } = await runAxe();
