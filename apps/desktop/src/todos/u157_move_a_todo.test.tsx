@@ -108,6 +108,23 @@ describe("u157 move a Todo from the row and the Drawer", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "move #2" }));
   });
 
+  it("u157_a_click_outside_after_the_pointer_leaves_keeps_focus_on_the_word", async () => {
+    const mounted = await mountTodos([todo(2)], true, rooms());
+    await settle(mounted);
+    fireEvent.mouseEnter(rowOf(2));
+    const word = screen.getByRole("button", { name: "move #2" });
+    word.focus();
+    fireEvent.click(word);
+    fireEvent.mouseLeave(rowOf(2));
+    word.blur();
+    expect(screen.getByRole("group", { name: "homes for #2" })).toBeTruthy();
+
+    fireEvent.click(document.body);
+
+    expect(screen.queryByRole("group", { name: "homes for #2" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "move #2" }));
+  });
+
   it("u157_the_drawer_moves_a_todo_by_pointer_and_the_line_follows_the_event", async () => {
     const mounted = await mountTodos([todo(2)], true, rooms());
     moveInStore(mounted);

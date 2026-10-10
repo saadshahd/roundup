@@ -33,6 +33,7 @@ export const OpenRow = (props: {
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
   const [hovered, setHovered] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
+  const [listOpen, setListOpen] = createSignal(false);
   const [failure, setFailure] = createSignal<string | null>(null);
 
   const complete = async () => setFailure(await props.onComplete(props.todo));
@@ -67,11 +68,12 @@ export const OpenRow = (props: {
         <RowButton onClick={() => props.onOpen(props.todo)} ref={(row) => props.registerRow?.(props.todo.id, row)}>
           <KindGlyph kind={kindOf(props.todo)} /> #{props.todo.id} {props.todo.title}
         </RowButton>
-        <Show when={hovered() || focused()}>
+        <Show when={hovered() || focused() || listOpen()}>
           <HomeMove
             id={props.todo.id}
             home={props.todo.home}
             popover
+            onOpenChange={setListOpen}
             choose={async (home) => {
               const message = await failureOf(() => connected.app.rpc("todo.move", { id: props.todo.id, home }));
 

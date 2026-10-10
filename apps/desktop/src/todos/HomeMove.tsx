@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { ErrorLine } from "../ink/ErrorLine";
 import { useConnectedProject } from "../state/connectedProject";
 import { homesToOffer } from "./homes";
@@ -14,6 +14,7 @@ export const HomeMove = (props: {
   home: string | null;
   popover?: boolean;
   class?: string;
+  onOpenChange?: (open: boolean) => void;
   choose: (home: string | null) => Promise<string | null>;
 }) => {
   const { rail } = useConnectedProject();
@@ -22,10 +23,13 @@ export const HomeMove = (props: {
   const [word, setWord] = createSignal<HTMLButtonElement>();
   const [wrap, setWrap] = createSignal<HTMLSpanElement>();
 
+  createEffect(() => props.onOpenChange?.(open()));
+
   const close = () => {
+    // Focus first: the row unmounts this word once the list is shut and nothing else holds focus.
+    word()?.focus();
     setOpen(false);
     setFailure(null);
-    word()?.focus();
   };
 
   const pick = async (offer: Home) => {
