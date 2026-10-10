@@ -17,6 +17,25 @@ async fn p95_of_100_writes(bracketed: bool) -> Duration {
     let ctx = ctx(&dir, &bus);
     let mut spawned = terminals.spawn(sh(dir.path(), "cat")).await.unwrap();
     let mut seen = String::new();
+    // Wait for `cat` to run: a write racing the shell's start can be flushed by it.
+    let ready = WriteParams {
+        id: spawned.id.clone(),
+        data: STANDARD.encode("ready\n"),
+    };
+    terminals
+        .call(&ctx, "terminal.write", serde_json::to_value(ready).unwrap())
+        .await
+        .unwrap();
+    tokio::time::timeout(PATIENCE, async {
+        while seen.matches("ready").count() < 2 {
+            if let EventData::TerminalOutput(out) = spawned.events.recv().await.unwrap() {
+                seen.push_str(&decode(&out.data));
+            }
+        }
+    })
+    .await
+    .expect("cat is running");
+    seen.clear();
     let mut took = Vec::new();
     for i in 0..100 {
         let path = format!("'/p/image-{i}.png' ");
