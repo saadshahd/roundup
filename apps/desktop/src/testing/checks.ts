@@ -114,8 +114,25 @@ const inTerminal = (el: Element) => el.closest(".xterm, [data-terminal]") !== nu
 
 // A rule whose every selector's subject is inside the terminal (xterm's own stylesheet) is exempt, as `inTerminal` exempts its elements.
 // Functional pseudo-classes (`:has()`, `:not()`) and anything before a sibling combinator do not place the subject.
-const terminalRule = (selectorText: string) =>
-  selectorText.split(",").every((part) => {
+const terminalRule = (selectorText: string) => {
+  // Quoted strings and attribute selectors (bar `[data-terminal]`) carry no subject, and may hold commas or `.xterm`.
+  const plain = selectorText.replace(/"[^"]*"|'[^']*'/g, "").replace(/\[(?!data-terminal\])[^\]]*\]/g, "");
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let i = 0; i < plain.length; i++) {
+    if (plain[i] === "(") depth++;
+    else if (plain[i] === ")") depth--;
+    else if (plain[i] === "," && depth === 0) {
+      parts.push(plain.slice(start, i));
+      start = i + 1;
+    }
+  }
+
+  parts.push(plain.slice(start));
+
+  return parts.every((part) => {
     let bare = part;
 
     for (let before = ""; before !== bare; ) {
@@ -125,6 +142,7 @@ const terminalRule = (selectorText: string) =>
 
     return /\.xterm|\[data-terminal\]/.test(bare.split(/[+~]/).pop()!);
   });
+};
 
 const colourProperties = ["color", "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"] as const;
 

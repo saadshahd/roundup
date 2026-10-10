@@ -61,8 +61,9 @@ describe("u137 one module measures the checks", () => {
 
     expect(runChecks().D1.status).toBe("fail");
 
-    for (const selector of [".pane:has(.xterm) .rail-row", "p:not(.xterm)", ".xterm ~ .rail-row"]) {
+    for (const selector of [".pane:has(.xterm) .rail-row", "p:not(.xterm)", ".xterm ~ .rail-row", "p:not(.xterm, .xterm)", ".rail-row[title='.xterm']"]) {
       document.head.querySelectorAll("style").forEach((sheet) => sheet.remove());
+      document.body.innerHTML = "<p class='rail-row' title='.xterm'>x</p>";
       addSheet(`${selector} { color: #ff00ff; }`);
 
       expect(runChecks().D1.status, selector).toBe("fail");
