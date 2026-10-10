@@ -112,8 +112,19 @@ const pageOf = (doc: Document): Page => {
 
 const inTerminal = (el: Element) => el.closest(".xterm, [data-terminal]") !== null;
 
-// A rule whose every selector is inside the terminal (xterm's own stylesheet) is exempt, as `inTerminal` exempts its elements.
-const terminalRule = (selectorText: string) => selectorText.split(",").every((part) => /\.xterm|\[data-terminal\]/.test(part));
+// A rule whose every selector's subject is inside the terminal (xterm's own stylesheet) is exempt, as `inTerminal` exempts its elements.
+// Functional pseudo-classes (`:has()`, `:not()`) and anything before a sibling combinator do not place the subject.
+const terminalRule = (selectorText: string) =>
+  selectorText.split(",").every((part) => {
+    let bare = part;
+
+    for (let before = ""; before !== bare; ) {
+      before = bare;
+      bare = bare.replace(/:[\w-]+\([^()]*\)/g, "");
+    }
+
+    return /\.xterm|\[data-terminal\]/.test(bare.split(/[+~]/).pop()!);
+  });
 
 const colourProperties = ["color", "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"] as const;
 

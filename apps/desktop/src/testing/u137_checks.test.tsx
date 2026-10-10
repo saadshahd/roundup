@@ -60,6 +60,13 @@ describe("u137 one module measures the checks", () => {
     addSheet(".rail-row, .xterm .x { color: #ff00ff; }");
 
     expect(runChecks().D1.status).toBe("fail");
+
+    for (const selector of [".pane:has(.xterm) .rail-row", "p:not(.xterm)", ".xterm ~ .rail-row"]) {
+      document.head.querySelectorAll("style").forEach((sheet) => sheet.remove());
+      addSheet(`${selector} { color: #ff00ff; }`);
+
+      expect(runChecks().D1.status, selector).toBe("fail");
+    }
   });
 
   it("u137_an_inline_literal_colour_makes_d1_fail", () => {
