@@ -103,6 +103,13 @@ export const padHandlers = (store: PadStore, announce: Announce): Handlers => ({
   "pad.write": ({ name, text }) => changePad(store, announce, name, (pad) => ({ ...pad, text, updated_at: Date.now() })),
   "pad.append": ({ name, text }) => changePad(store, announce, name, (pad) => ({ ...pad, text: pad.text + text, updated_at: Date.now() })),
   "pad.setOwner": ({ name, owner }) => changePad(store, announce, name, (pad) => ({ ...pad, owner })),
+  "pad.delete": ({ name }) => {
+    find(store.pads, (pad) => pad.name === name, `pad ${name}`);
+    store.pads = store.pads.filter((pad) => pad.name !== name);
+    announce({ name: "pad.changed", data: { name } });
+
+    return null;
+  },
   "pad.export": () => null,
   "provenance.history": () => store.history,
 });
