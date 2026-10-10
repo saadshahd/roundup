@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Kind } from "@contracts/Kind";
 import type { DaemonExit } from "../app/seam";
 import railCss from "./styles.css?inline";
-import { agent } from "../testing/nodes";
+import { agent, NOW, workstream } from "../testing/nodes";
 import { applyFilter, colourOf, contrastRatio, greyedRailFilter, loadTokens, withStylesheets } from "../testing/contrast";
 import { mountRail, rowOf } from "./railFixture";
 
@@ -49,7 +49,13 @@ describe("u87 contrast: Rail", () => {
       const { rail } = await mountRail(rowsOfEveryKind());
 
       for (const kind of ["needs-you", "error"]) {
-        const ink = () => liveOf(kind).querySelector(".ink") ?? liveOf(kind);
+        const ink = () => {
+          const name = rowOf(kind).querySelector(".name.ink[data-tone]");
+
+          if (!name) throw new Error(`no Ink name on ${kind}`);
+
+          return name;
+        };
 
         for (const surface of [ground, sunken]) expect(contrastRatio(colourOf(ink(), tokens), surface), kind).toBeGreaterThanOrEqual(4.5);
 
@@ -87,11 +93,36 @@ describe("u87 contrast: Rail", () => {
     const { tokens, sunken } = loadTokens();
 
     await withStylesheets(async () => {
-      const { workstream } = await import("../testing/nodes");
       await mountRail([workstream("g")]);
       fireEvent.mouseEnter(rowOf("g"));
 
       expect(contrastRatio(colourOf(screen.getByText("start Door"), tokens), sunken)).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
+  it("u87_the_stop_word_meets_4_5_to_1_on_the_surface_it_sits_on", async () => {
+    const { tokens, ground } = loadTokens();
+
+    await withStylesheets(async () => {
+      await mountRail([agent("a", "working", "busy")]);
+      fireEvent.contextMenu(rowOf("a"), { clientX: 120, clientY: 80 });
+
+      expect(contrastRatio(colourOf(screen.getByRole("menuitem", { name: "stop" }), tokens), ground)).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
+  it("u87_the_done_fold_line_meets_4_5_to_1_on_sunken", async () => {
+    const { tokens, sunken } = loadTokens();
+
+    await withStylesheets(async () => {
+      await mountRail([
+        agent("old", "done", "finished", { status: { kind: "done", label: "finished", since: NOW - 11 * 60_000 } }),
+      ]);
+      const foldLine = screen.getByText(/done$/).closest("button");
+
+      if (!foldLine) throw new Error("no fold line button");
+
+      expect(contrastRatio(colourOf(foldLine, tokens), sunken)).toBeGreaterThanOrEqual(4.5);
     });
   });
 });
