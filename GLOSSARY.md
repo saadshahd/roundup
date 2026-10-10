@@ -14,14 +14,15 @@ One supervised identity on the Rail, with a Status; each launch of its program i
 _Avoid_: session, bot, worker
 
 **Terminal**:
-A shell process roundup started, with a screen the user can watch; no Status beyond running or exited. Mostly a Run; a Quick command the user keeps, or one the user adds, is the other kind.
+A shell or program roundup started, with a screen the user can watch; no Status beyond running or exited. Never a Rail row and never stored: it ends with the Daemon, with its owner's removal or when the user closes it. An Agent's own Terminal is its pane; any other is shown as a Bubble.
 _Avoid_: process, console
 
-**Run**:
-A Terminal an Agent started, shown under that Agent in the Rail for the user to watch; it ends with its Agent's removal, never with its Status.
+**Bubble**:
+How the App shows a Terminal that is not an Agent's pane: a panel floating over the centre pane that the user moves, resizes, minimises to a chip and makes more or less transparent. It ends with its Terminal.
+_Avoid_: overlay, popup
 
-**Quick command**:
-One command the user runs from the overlay `⌘T` opens inside a Workstream; it leaves no Terminal behind when closed, and becomes a Terminal under the Workstream only when the user keeps it.
+**Run**:
+A Terminal an Agent started (`agent.run`), shown as a Bubble while that Agent is selected; it ends with its Agent's removal, never with its Status.
 
 **Snapshot**:
 A bounded copy of a Terminal's screen and output byte offset that restores its pane after a webview reload.
@@ -80,7 +81,7 @@ The few Tauri commands and events between the App and its webview (`scenarios/ap
 The window's native drop of files, which the Tauri shell takes before the webview sees a DOM `drop`; the App seam reports it as `onFileDrop` and a Terminal pane pastes the dropped paths (U162).
 
 **Rail**:
-The tree of Workstreams, Agents and Terminals.
+The tree of Workstreams and Agents.
 
 **Shelf**:
 The Todo and Pad column, Project-wide for now; Workstream scoping is follow-up work.
