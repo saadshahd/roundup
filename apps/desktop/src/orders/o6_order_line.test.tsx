@@ -55,7 +55,20 @@ describe("O6: the order on one line above the Terminal", () => {
     expect(screen.getByLabelText("full order of alpha").textContent).toContain("must not: skip tests");
   });
 
-  it("o6_a_terminal_shows_no_order_line", async () => {
+  it("o6_activating_the_line_after_a_selection_change_opens_the_order_of_the_new_selection", async () => {
+    await mount();
+    select("alpha");
+    await waitFor(() => expect(line()).not.toBeNull());
+
+    select("beta");
+    await waitFor(() => expect(line()?.textContent).toBe("clarifying: which build?"));
+    fireEvent.click(line()!);
+
+    await waitFor(() => expect(screen.getByLabelText("full order of beta").textContent).toContain("which build?"));
+    expect(screen.queryByLabelText("full order of alpha")).toBeNull();
+  });
+
+  it("o6_a_terminal_shows_no_order_line",async () => {
     await mountApp([], (app) => {
       app.handlers["rail.tree"] = () => [agent("a", "working", "editing", { name: "alpha", order: 0 }), terminal("t", { name: "zsh", order: 1 }), door("r", "working", "editing", { name: "harbor", order: 2 })];
     });

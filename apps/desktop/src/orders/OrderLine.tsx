@@ -11,12 +11,14 @@ import "./styles.css";
  */
 export const OrderLine = (props: { node: RailNode }) => {
   const { drawer } = useConnectedProject();
-  const id = props.node.id;
 
   return (
     <Show when={props.node.work}>
       {(order) => (
-        <button type="button" class="word order-line" aria-label={`order of ${props.node.name}`} onClick={() => drawer.open(() => <OrderDrawer id={id} />)}>
+        <button type="button" class="word order-line" aria-label={`order of ${props.node.name}`} onClick={() => {
+            const id = props.node.id;
+            drawer.open(() => <OrderDrawer id={id} />);
+          }}>
           {orderLine(order())}
         </button>
       )}
