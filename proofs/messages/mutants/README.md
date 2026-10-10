@@ -1,5 +1,5 @@
 # Mutants
 
-Each directory holds a copy of the proof files and one mutated `model.bend`.
-`bend PROOF.bend` in it must print `SOME PROOFS FAIL` at the named law.
-Refresh the copies of `LAWS.bend`, `spec.bend` and `PROOF.bend` from `..` after any change.
+`mutants/<law>/model.bend` is `model.bend` with one fault that breaks that law.
+`BEND=/tmp/bend-spike/bend/bin/bend proofs/messages/mutants/run.sh` checks `PROOF.bend` against each in a scratch copy.
+Every mutant must print `SOME PROOFS FAIL`; the script names the first failing definition, which sits in that law's proof chain.

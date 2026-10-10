@@ -41,7 +41,7 @@ def mem(+x: Nat, xs: +List<Nat>) -> Bool:
 def remove_step(b: Bool, +y: Nat, tail: +List<Nat>) -> +List<Nat>:
   match b:
     case True{}:
-      tail
+      y <> tail
     case False{}:
       y <> tail
 
@@ -70,7 +70,7 @@ def flush_go(q: +List<Nat>, s: World) -> World:
     case Con{+x, rest}:
       match s:
         case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
-          W{x <> rest, haf, htk, snoc(t, x), d, u, record(tk, x, tt), rl, n, tk, False{}, g}
+          W{rest, haf, htk, snoc(t, x), d, u, record(tk, x, tt), rl, n, tk, False{}, g}
 
 def flush_b(i: Bool, s: World) -> World:
   match i:

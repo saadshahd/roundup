@@ -908,3 +908,1465 @@ def m3_run(evs, s, I):
 def Laws.m3_takeover_isolates(evs):
   m3_run(evs, M.init(), inv3_init())
 
+
+# ---- M1: nodup, disjoint and bounds, kept by every step ----
+
+law nor_l:
+  for e: Bool
+  for m: Bool
+  for +h: {Bool.not(Bool.or(e, m)) == True{} : Bool}
+  {e == False{} : Bool}
+
+def nor_l(e, m, h):
+  match e:
+    case False{}:
+      {==}
+    case True{}:
+      Empty.absurd({True{} == False{} : Bool}, ff_tt(h))
+
+law nor_r:
+  for e: Bool
+  for m: Bool
+  for +h: {Bool.not(Bool.or(e, m)) == True{} : Bool}
+  {Bool.not(m) == True{} : Bool}
+
+def nor_r(e, m, h):
+  match e:
+    case False{}:
+      h
+    case True{}:
+      Empty.absurd({Bool.not(m) == True{} : Bool}, ff_tt(h))
+
+law nor_i:
+  for e: Bool
+  for m: Bool
+  for +he: {e == False{} : Bool}
+  for +hm: {Bool.not(m) == True{} : Bool}
+  {Bool.not(Bool.or(e, m)) == True{} : Bool}
+
+def nor_i(e, m, he, hm):
+  %Equal.sym(Bool, e, False{}, he) : {Bool.not(Bool.or(_, m)) == True{} : Bool}
+  hm
+
+law f_app:
+  for +x: Nat
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  for +ha: {Bool.not(M.mem(x, a)) == True{} : Bool}
+  for +hb: {Bool.not(M.mem(x, b)) == True{} : Bool}
+  {Bool.not(M.mem(x, List.append(&2, Nat, a, b))) == True{} : Bool}
+
+def f_app(x, a, b, ha, hb):
+  match a:
+    case Nil{}:
+      hb
+    case Con{+y, rest}:
+      nor_i(Nat.is_eq(x, y), M.mem(x, List.append(&2, Nat, rest, b)), nor_l(Nat.is_eq(x, y), M.mem(x, rest), ha), f_app(x, rest, b, nor_r(Nat.is_eq(x, y), M.mem(x, rest), ha), hb))
+
+law f_app_l:
+  for +x: Nat
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  for +h: {Bool.not(M.mem(x, List.append(&2, Nat, a, b))) == True{} : Bool}
+  {Bool.not(M.mem(x, a)) == True{} : Bool}
+
+def f_app_l(x, a, b, h):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      nor_i(Nat.is_eq(x, y), M.mem(x, rest), nor_l(Nat.is_eq(x, y), M.mem(x, List.append(&2, Nat, rest, b)), h), f_app_l(x, rest, b, nor_r(Nat.is_eq(x, y), M.mem(x, List.append(&2, Nat, rest, b)), h)))
+
+law f_app_r:
+  for +x: Nat
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  for +h: {Bool.not(M.mem(x, List.append(&2, Nat, a, b))) == True{} : Bool}
+  {Bool.not(M.mem(x, b)) == True{} : Bool}
+
+def f_app_r(x, a, b, h):
+  match a:
+    case Nil{}:
+      h
+    case Con{+y, rest}:
+      f_app_r(x, rest, b, nor_r(Nat.is_eq(x, y), M.mem(x, List.append(&2, Nat, rest, b)), h))
+
+law eq_comm:
+  for +x: Nat
+  for +y: Nat
+  {Nat.is_eq(x, y) == Nat.is_eq(y, x) : Bool}
+
+def eq_comm(x, y):
+  match x y:
+    case 0n 0n:
+      {==}
+    case 0n 1n+yp:
+      {==}
+    case 1n+xp 0n:
+      {==}
+    case 1n+xp 1n+yp:
+      eq_comm(xp, yp)
+
+law z1:
+  for +y: Nat
+  for +z: Nat
+  for +s: +List<Nat>
+  for +h: {Bool.not(M.mem(z, y <> s)) == True{} : Bool}
+  {Nat.is_eq(y, z) == False{} : Bool}
+
+def z1(y, z, s, h):
+  %eq_comm(z, y) : {_ == False{} : Bool}
+  nor_l(Nat.is_eq(z, y), M.mem(z, s), h)
+
+law d_cons_r1:
+  for +a: +List<Nat>
+  for +y: Nat
+  for +s: +List<Nat>
+  for +h: {S.disjoint(a, y <> s) == True{} : Bool}
+  {Bool.not(M.mem(y, a)) == True{} : Bool}
+
+def d_cons_r1(a, y, s, h):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+z, rest}:
+      nor_i(Nat.is_eq(y, z), M.mem(y, rest), z1(y, z, s, and_l(Bool.not(M.mem(z, y <> s)), S.disjoint(rest, y <> s), h)), d_cons_r1(rest, y, s, and_r(Bool.not(M.mem(z, y <> s)), S.disjoint(rest, y <> s), h)))
+
+law d_cons_r2:
+  for +a: +List<Nat>
+  for +y: Nat
+  for +s: +List<Nat>
+  for +h: {S.disjoint(a, y <> s) == True{} : Bool}
+  {S.disjoint(a, s) == True{} : Bool}
+
+def d_cons_r2(a, y, s, h):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+z, rest}:
+      and_intro(Bool.not(M.mem(z, s)), S.disjoint(rest, s), nor_r(Nat.is_eq(z, y), M.mem(z, s), and_l(Bool.not(M.mem(z, y <> s)), S.disjoint(rest, y <> s), h)), d_cons_r2(rest, y, s, and_r(Bool.not(M.mem(z, y <> s)), S.disjoint(rest, y <> s), h)))
+
+law d_sym:
+  for +b: +List<Nat>
+  for +a: +List<Nat>
+  for +h: {S.disjoint(a, b) == True{} : Bool}
+  {S.disjoint(b, a) == True{} : Bool}
+
+def d_sym(b, a, h):
+  match b:
+    case Nil{}:
+      {==}
+    case Con{+y, s}:
+      and_intro(Bool.not(M.mem(y, a)), S.disjoint(s, a), d_cons_r1(a, y, s, h), d_sym(s, a, d_cons_r2(a, y, s, h)))
+
+law d_mem_eq:
+  for +y: Nat
+  for +z: Nat
+  for +c: +List<Nat>
+  for +h: {Bool.not(M.mem(z, c)) == True{} : Bool}
+  for +k: {Nat.is_eq(y, z) == True{} : Bool}
+  {Bool.not(M.mem(y, c)) == True{} : Bool}
+
+def d_mem_eq(y, z, c, h, k):
+  %Equal.sym(Nat, y, z, eq_sound(y, z, k)) : {Bool.not(M.mem(_, c)) == True{} : Bool}
+  h
+
+law d_mem:
+  for +a: +List<Nat>
+  for +y: Nat
+  for +c: +List<Nat>
+  for +h: {S.disjoint(a, c) == True{} : Bool}
+  for +m: {M.mem(y, a) == True{} : Bool}
+  {Bool.not(M.mem(y, c)) == True{} : Bool}
+
+def d_mem(a, y, c, h, m):
+  match a:
+    case Nil{}:
+      Empty.absurd({Bool.not(M.mem(y, c)) == True{} : Bool}, ff_tt(m))
+    case Con{+z, rest}:
+      or_elim(Nat.is_eq(y, z), M.mem(y, rest), Bool.not(M.mem(y, c)), m, k => d_mem_eq(y, z, c, and_l(Bool.not(M.mem(z, c)), S.disjoint(rest, c), h), k), k => d_mem(rest, y, c, and_r(Bool.not(M.mem(z, c)), S.disjoint(rest, c), h), k))
+
+law d_app_l:
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  for +c: +List<Nat>
+  for +ha: {S.disjoint(a, c) == True{} : Bool}
+  for +hb: {S.disjoint(b, c) == True{} : Bool}
+  {S.disjoint(List.append(&2, Nat, a, b), c) == True{} : Bool}
+
+def d_app_l(a, b, c, ha, hb):
+  match a:
+    case Nil{}:
+      hb
+    case Con{+x, rest}:
+      and_intro(Bool.not(M.mem(x, c)), S.disjoint(List.append(&2, Nat, rest, b), c), and_l(Bool.not(M.mem(x, c)), S.disjoint(rest, c), ha), d_app_l(rest, b, c, and_r(Bool.not(M.mem(x, c)), S.disjoint(rest, c), ha), hb))
+
+law d_sub:
+  for +b: +List<Nat>
+  for +a: +List<Nat>
+  for +c: +List<Nat>
+  for +hd: {S.disjoint(a, c) == True{} : Bool}
+  for +hs: {S.all_in(b, a) == True{} : Bool}
+  {S.disjoint(b, c) == True{} : Bool}
+
+def d_sub(b, a, c, hd, hs):
+  match b:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      and_intro(Bool.not(M.mem(y, c)), S.disjoint(rest, c), d_mem(a, y, c, hd, and_l(M.mem(y, a), S.all_in(rest, a), hs)), d_sub(rest, a, c, hd, and_r(M.mem(y, a), S.all_in(rest, a), hs)))
+
+law n_app:
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  for +hn: {S.nodup(a) == True{} : Bool}
+  for +hm: {S.nodup(b) == True{} : Bool}
+  for +hd: {S.disjoint(a, b) == True{} : Bool}
+  {S.nodup(List.append(&2, Nat, a, b)) == True{} : Bool}
+
+def n_app(a, b, hn, hm, hd):
+  match a:
+    case Nil{}:
+      hm
+    case Con{+x, rest}:
+      and_intro(Bool.not(M.mem(x, List.append(&2, Nat, rest, b))), S.nodup(List.append(&2, Nat, rest, b)), f_app(x, rest, b, and_l(Bool.not(M.mem(x, rest)), S.nodup(rest), hn), and_l(Bool.not(M.mem(x, b)), S.disjoint(rest, b), hd)), n_app(rest, b, and_r(Bool.not(M.mem(x, rest)), S.nodup(rest), hn), hm, and_r(Bool.not(M.mem(x, b)), S.disjoint(rest, b), hd)))
+
+law n_snoc:
+  for +a: +List<Nat>
+  for +x: Nat
+  for +hn: {S.nodup(a) == True{} : Bool}
+  for +hf: {Bool.not(M.mem(x, a)) == True{} : Bool}
+  {S.nodup(M.snoc(a, x)) == True{} : Bool}
+
+def n_snoc(a, x, hn, hf):
+  n_app(a, [x], hn, {==}, d_sym(a, [x], and_intro(Bool.not(M.mem(x, a)), True{}, hf, {==})))
+
+law d_snoc_l:
+  for +a: +List<Nat>
+  for +x: Nat
+  for +c: +List<Nat>
+  for +ha: {S.disjoint(a, c) == True{} : Bool}
+  for +hf: {Bool.not(M.mem(x, c)) == True{} : Bool}
+  {S.disjoint(M.snoc(a, x), c) == True{} : Bool}
+
+def d_snoc_l(a, x, c, ha, hf):
+  d_app_l(a, [x], c, ha, and_intro(Bool.not(M.mem(x, c)), True{}, hf, {==}))
+
+law f_sub:
+  for +y: Nat
+  for +r: +List<Nat>
+  for +t: +List<Nat>
+  for +hf: {Bool.not(M.mem(y, r)) == True{} : Bool}
+  for +hs: {S.all_in(t, r) == True{} : Bool}
+  {Bool.not(M.mem(y, t)) == True{} : Bool}
+
+def f_sub(y, r, t, hf, hs):
+  and_l(Bool.not(M.mem(y, t)), True{}, d_sym([y], t, d_sub(t, r, [y], d_sym(r, [y], and_intro(Bool.not(M.mem(y, r)), True{}, hf, {==})), hs)))
+
+law sub_cons:
+  for +t: +List<Nat>
+  for +y: Nat
+  for +r: +List<Nat>
+  for +h: {S.all_in(t, r) == True{} : Bool}
+  {S.all_in(M.remove_step(False{}, y, t), y <> r) == True{} : Bool}
+
+def sub_cons(t, y, r, h):
+  and_intro(M.mem(y, y <> r), S.all_in(t, y <> r), mem_hd(y, r), all_in_cons(t, y, r, h))
+
+law sub_rs:
+  for b: Bool
+  for +y: Nat
+  for +t: +List<Nat>
+  for +r: +List<Nat>
+  for +h: {S.all_in(t, r) == True{} : Bool}
+  {S.all_in(M.remove_step(b, y, t), y <> r) == True{} : Bool}
+
+def sub_rs(b, y, t, r, h):
+  match b:
+    case True{}:
+      all_in_cons(t, y, r, h)
+    case False{}:
+      sub_cons(t, y, r, h)
+
+law sub_remove:
+  for +x: Nat
+  for +a: +List<Nat>
+  {S.all_in(M.remove(x, a), a) == True{} : Bool}
+
+def sub_remove(x, a):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      sub_rs(Nat.is_eq(x, y), y, M.remove(x, rest), rest, sub_remove(x, rest))
+
+law n_rs:
+  for b: Bool
+  for +y: Nat
+  for +t: +List<Nat>
+  for +r: +List<Nat>
+  for +hf: {Bool.not(M.mem(y, r)) == True{} : Bool}
+  for +hs: {S.all_in(t, r) == True{} : Bool}
+  for +hn: {S.nodup(t) == True{} : Bool}
+  {S.nodup(M.remove_step(b, y, t)) == True{} : Bool}
+
+def n_rs(b, y, t, r, hf, hs, hn):
+  match b:
+    case True{}:
+      hn
+    case False{}:
+      and_intro(Bool.not(M.mem(y, t)), S.nodup(t), f_sub(y, r, t, hf, hs), hn)
+
+law n_remove:
+  for +x: Nat
+  for +a: +List<Nat>
+  for +h: {S.nodup(a) == True{} : Bool}
+  {S.nodup(M.remove(x, a)) == True{} : Bool}
+
+def n_remove(x, a, h):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      n_rs(Nat.is_eq(x, y), y, M.remove(x, rest), rest, and_l(Bool.not(M.mem(y, rest)), S.nodup(rest), h), sub_remove(x, rest), n_remove(x, rest, and_r(Bool.not(M.mem(y, rest)), S.nodup(rest), h)))
+
+law sub_ks:
+  for b: Bool
+  for +y: Nat
+  for +t: +List<Nat>
+  for +r: +List<Nat>
+  for +h: {S.all_in(t, r) == True{} : Bool}
+  {S.all_in(M.keep_step(b, y, t), y <> r) == True{} : Bool}
+
+def sub_ks(b, y, t, r, h):
+  match b:
+    case True{}:
+      and_intro(M.mem(y, y <> r), S.all_in(t, y <> r), mem_hd(y, r), all_in_cons(t, y, r, h))
+    case False{}:
+      all_in_cons(t, y, r, h)
+
+law sub_ds:
+  for b: Bool
+  for +y: Nat
+  for +t: +List<Nat>
+  for +r: +List<Nat>
+  for +h: {S.all_in(t, r) == True{} : Bool}
+  {S.all_in(M.drop_step(b, y, t), y <> r) == True{} : Bool}
+
+def sub_ds(b, y, t, r, h):
+  match b:
+    case True{}:
+      all_in_cons(t, y, r, h)
+    case False{}:
+      and_intro(M.mem(y, y <> r), S.all_in(t, y <> r), mem_hd(y, r), all_in_cons(t, y, r, h))
+
+law sub_keep:
+  for +q: +List<Nat>
+  for +u: +List<Nat>
+  {S.all_in(M.keep_users(q, u), q) == True{} : Bool}
+
+def sub_keep(q, u):
+  match q:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      sub_ks(M.mem(x, u), x, M.keep_users(rest, u), rest, sub_keep(rest, u))
+
+law sub_drop:
+  for +q: +List<Nat>
+  for +u: +List<Nat>
+  {S.all_in(M.drop_users(q, u), q) == True{} : Bool}
+
+def sub_drop(q, u):
+  match q:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      sub_ds(M.mem(x, u), x, M.drop_users(rest, u), rest, sub_drop(rest, u))
+
+law n_ks:
+  for b: Bool
+  for +y: Nat
+  for +t: +List<Nat>
+  for +r: +List<Nat>
+  for +hf: {Bool.not(M.mem(y, r)) == True{} : Bool}
+  for +hs: {S.all_in(t, r) == True{} : Bool}
+  for +hn: {S.nodup(t) == True{} : Bool}
+  {S.nodup(M.keep_step(b, y, t)) == True{} : Bool}
+
+def n_ks(b, y, t, r, hf, hs, hn):
+  match b:
+    case True{}:
+      and_intro(Bool.not(M.mem(y, t)), S.nodup(t), f_sub(y, r, t, hf, hs), hn)
+    case False{}:
+      hn
+
+law n_ds:
+  for b: Bool
+  for +y: Nat
+  for +t: +List<Nat>
+  for +r: +List<Nat>
+  for +hf: {Bool.not(M.mem(y, r)) == True{} : Bool}
+  for +hs: {S.all_in(t, r) == True{} : Bool}
+  for +hn: {S.nodup(t) == True{} : Bool}
+  {S.nodup(M.drop_step(b, y, t)) == True{} : Bool}
+
+def n_ds(b, y, t, r, hf, hs, hn):
+  match b:
+    case True{}:
+      hn
+    case False{}:
+      and_intro(Bool.not(M.mem(y, t)), S.nodup(t), f_sub(y, r, t, hf, hs), hn)
+
+law n_keep:
+  for +q: +List<Nat>
+  for +u: +List<Nat>
+  for +h: {S.nodup(q) == True{} : Bool}
+  {S.nodup(M.keep_users(q, u)) == True{} : Bool}
+
+def n_keep(q, u, h):
+  match q:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      n_ks(M.mem(x, u), x, M.keep_users(rest, u), rest, and_l(Bool.not(M.mem(x, rest)), S.nodup(rest), h), sub_keep(rest, u), n_keep(rest, u, and_r(Bool.not(M.mem(x, rest)), S.nodup(rest), h)))
+
+law n_drop:
+  for +q: +List<Nat>
+  for +u: +List<Nat>
+  for +h: {S.nodup(q) == True{} : Bool}
+  {S.nodup(M.drop_users(q, u)) == True{} : Bool}
+
+def n_drop(q, u, h):
+  match q:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      n_ds(M.mem(x, u), x, M.drop_users(rest, u), rest, and_l(Bool.not(M.mem(x, rest)), S.nodup(rest), h), sub_drop(rest, u), n_drop(rest, u, and_r(Bool.not(M.mem(x, rest)), S.nodup(rest), h)))
+
+law d_kd_b:
+  for b: Bool
+  for +x: Nat
+  for +kr: +List<Nat>
+  for +dr: +List<Nat>
+  for +r: +List<Nat>
+  for +hf: {Bool.not(M.mem(x, r)) == True{} : Bool}
+  for +hk: {S.all_in(kr, r) == True{} : Bool}
+  for +hd: {S.all_in(dr, r) == True{} : Bool}
+  for +ih: {S.disjoint(kr, dr) == True{} : Bool}
+  {S.disjoint(M.keep_step(b, x, kr), M.drop_step(b, x, dr)) == True{} : Bool}
+
+def d_kd_b(b, x, kr, dr, r, hf, hk, hd, ih):
+  match b:
+    case True{}:
+      and_intro(Bool.not(M.mem(x, dr)), S.disjoint(kr, dr), f_sub(x, r, dr, hf, hd), ih)
+    case False{}:
+      d_sym(kr, x <> dr, and_intro(Bool.not(M.mem(x, kr)), S.disjoint(dr, kr), f_sub(x, r, kr, hf, hk), d_sym(dr, kr, ih)))
+
+law d_kd:
+  for +q: +List<Nat>
+  for +u: +List<Nat>
+  for +h: {S.nodup(q) == True{} : Bool}
+  {S.disjoint(M.keep_users(q, u), M.drop_users(q, u)) == True{} : Bool}
+
+def d_kd(q, u, h):
+  match q:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      d_kd_b(M.mem(x, u), x, M.keep_users(rest, u), M.drop_users(rest, u), rest, and_l(Bool.not(M.mem(x, rest)), S.nodup(rest), h), sub_keep(rest, u), sub_drop(rest, u), d_kd(rest, u, and_r(Bool.not(M.mem(x, rest)), S.nodup(rest), h)))
+
+def lt(y: Nat, n: Nat) -> Bool:
+  match y n:
+    case 0n 0n:
+      False{}
+    case 0n 1n+b:
+      True{}
+    case 1n+a 0n:
+      False{}
+    case 1n+a 1n+b:
+      lt(a, b)
+
+def bl(xs: +List<Nat>, +n: Nat) -> Bool:
+  match xs:
+    case Nil{}:
+      True{}
+    case Con{+x, rest}:
+      Bool.and(lt(x, n), bl(rest, n))
+
+law lt_succ:
+  for +y: Nat
+  for +n: Nat
+  for +h: {lt(y, n) == True{} : Bool}
+  {lt(y, 1n+n) == True{} : Bool}
+
+def lt_succ(y, n, h):
+  match y n:
+    case 0n 0n:
+      Empty.absurd({lt(0n, 1n) == True{} : Bool}, ff_tt(h))
+    case 0n 1n+b:
+      {==}
+    case 1n+a 0n:
+      Empty.absurd({lt(1n+a, 1n) == True{} : Bool}, ff_tt(h))
+    case 1n+a 1n+b:
+      lt_succ(a, b, h)
+
+law lt_self:
+  for +n: Nat
+  {lt(n, 1n+n) == True{} : Bool}
+
+def lt_self(n):
+  match n:
+    case 0n:
+      {==}
+    case 1n+p:
+      lt_self(p)
+
+law lt_ne:
+  for +y: Nat
+  for +n: Nat
+  for +h: {lt(y, n) == True{} : Bool}
+  {Nat.is_eq(y, n) == False{} : Bool}
+
+def lt_ne(y, n, h):
+  match y n:
+    case 0n 0n:
+      Empty.absurd({Nat.is_eq(0n, 0n) == False{} : Bool}, ff_tt(h))
+    case 0n 1n+b:
+      {==}
+    case 1n+a 0n:
+      Empty.absurd({Nat.is_eq(1n+a, 0n) == False{} : Bool}, ff_tt(h))
+    case 1n+a 1n+b:
+      lt_ne(a, b, h)
+
+law bl_succ:
+  for +xs: +List<Nat>
+  for +n: Nat
+  for +h: {bl(xs, n) == True{} : Bool}
+  {bl(xs, 1n+n) == True{} : Bool}
+
+def bl_succ(xs, n, h):
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      and_intro(lt(x, 1n+n), bl(rest, 1n+n), lt_succ(x, n, and_l(lt(x, n), bl(rest, n), h)), bl_succ(rest, n, and_r(lt(x, n), bl(rest, n), h)))
+
+law bl_fresh1:
+  for +n: Nat
+  for +x: Nat
+  for +h: {lt(x, n) == True{} : Bool}
+  {Nat.is_eq(n, x) == False{} : Bool}
+
+def bl_fresh1(n, x, h):
+  %eq_comm(x, n) : {_ == False{} : Bool}
+  lt_ne(x, n, h)
+
+law bl_fresh:
+  for +xs: +List<Nat>
+  for +n: Nat
+  for +h: {bl(xs, n) == True{} : Bool}
+  {Bool.not(M.mem(n, xs)) == True{} : Bool}
+
+def bl_fresh(xs, n, h):
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      nor_i(Nat.is_eq(n, x), M.mem(n, rest), bl_fresh1(n, x, and_l(lt(x, n), bl(rest, n), h)), bl_fresh(rest, n, and_r(lt(x, n), bl(rest, n), h)))
+
+law bl_mem_eq:
+  for +y: Nat
+  for +z: Nat
+  for +n: Nat
+  for +h: {lt(z, n) == True{} : Bool}
+  for +k: {Nat.is_eq(y, z) == True{} : Bool}
+  {lt(y, n) == True{} : Bool}
+
+def bl_mem_eq(y, z, n, h, k):
+  %Equal.sym(Nat, y, z, eq_sound(y, z, k)) : {lt(_, n) == True{} : Bool}
+  h
+
+law bl_mem:
+  for +xs: +List<Nat>
+  for +y: Nat
+  for +n: Nat
+  for +h: {bl(xs, n) == True{} : Bool}
+  for +m: {M.mem(y, xs) == True{} : Bool}
+  {lt(y, n) == True{} : Bool}
+
+def bl_mem(xs, y, n, h, m):
+  match xs:
+    case Nil{}:
+      Empty.absurd({lt(y, n) == True{} : Bool}, ff_tt(m))
+    case Con{+z, rest}:
+      or_elim(Nat.is_eq(y, z), M.mem(y, rest), lt(y, n), m, k => bl_mem_eq(y, z, n, and_l(lt(z, n), bl(rest, n), h), k), k => bl_mem(rest, y, n, and_r(lt(z, n), bl(rest, n), h), k))
+
+law bl_sub:
+  for +b: +List<Nat>
+  for +a: +List<Nat>
+  for +n: Nat
+  for +hb: {bl(a, n) == True{} : Bool}
+  for +hs: {S.all_in(b, a) == True{} : Bool}
+  {bl(b, n) == True{} : Bool}
+
+def bl_sub(b, a, n, hb, hs):
+  match b:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      and_intro(lt(y, n), bl(rest, n), bl_mem(a, y, n, hb, and_l(M.mem(y, a), S.all_in(rest, a), hs)), bl_sub(rest, a, n, hb, and_r(M.mem(y, a), S.all_in(rest, a), hs)))
+
+law bl_app:
+  for +a: +List<Nat>
+  for +b: +List<Nat>
+  for +n: Nat
+  for +ha: {bl(a, n) == True{} : Bool}
+  for +hb: {bl(b, n) == True{} : Bool}
+  {bl(List.append(&2, Nat, a, b), n) == True{} : Bool}
+
+def bl_app(a, b, n, ha, hb):
+  match a:
+    case Nil{}:
+      hb
+    case Con{+x, rest}:
+      and_intro(lt(x, n), bl(List.append(&2, Nat, rest, b), n), and_l(lt(x, n), bl(rest, n), ha), bl_app(rest, b, n, and_r(lt(x, n), bl(rest, n), ha), hb))
+
+law bl_snoc:
+  for +a: +List<Nat>
+  for +x: Nat
+  for +n: Nat
+  for +ha: {bl(a, n) == True{} : Bool}
+  for +hx: {lt(x, n) == True{} : Bool}
+  {bl(M.snoc(a, x), n) == True{} : Bool}
+
+def bl_snoc(a, x, n, ha, hx):
+  bl_app(a, [x], n, ha, and_intro(lt(x, n), True{}, hx, {==}))
+
+law f_rs:
+  for b: Bool
+  for +x: Nat
+  for +y: Nat
+  for +t: +List<Nat>
+  for +hb: {b == Nat.is_eq(x, y) : Bool}
+  for +ih: {Bool.not(M.mem(x, t)) == True{} : Bool}
+  {Bool.not(M.mem(x, M.remove_step(b, y, t))) == True{} : Bool}
+
+def f_rs(b, x, y, t, hb, ih):
+  match b:
+    case True{}:
+      ih
+    case False{}:
+      nor_i(Nat.is_eq(x, y), M.mem(x, t), Equal.sym(Bool, False{}, Nat.is_eq(x, y), hb), ih)
+
+law f_remove:
+  for +x: Nat
+  for +a: +List<Nat>
+  for +h: {S.nodup(a) == True{} : Bool}
+  {Bool.not(M.mem(x, M.remove(x, a))) == True{} : Bool}
+
+def f_remove(x, a, h):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+y, rest}:
+      f_rs(Nat.is_eq(x, y), x, y, M.remove(x, rest), {==}, f_remove(x, rest, and_r(Bool.not(M.mem(y, rest)), S.nodup(rest), h)))
+
+law d_nil_r:
+  for +a: +List<Nat>
+  {S.disjoint(a, []) == True{} : Bool}
+
+def d_nil_r(a):
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+x, rest}:
+      and_intro(Bool.not(M.mem(x, [])), S.disjoint(rest, []), {==}, d_nil_r(rest))
+
+def inv18(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  bl(d, n)
+
+def inv17(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(bl(t, n), inv18(q, h, k, t, d, n))
+
+def inv16(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(bl(k, n), inv17(q, h, k, t, d, n))
+
+def inv15(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(bl(h, n), inv16(q, h, k, t, d, n))
+
+def inv14(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(bl(q, n), inv15(q, h, k, t, d, n))
+
+def inv13(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(t, d), inv14(q, h, k, t, d, n))
+
+def inv12(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(k, d), inv13(q, h, k, t, d, n))
+
+def inv11(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(k, t), inv12(q, h, k, t, d, n))
+
+def inv10(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(h, d), inv11(q, h, k, t, d, n))
+
+def inv9(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(h, t), inv10(q, h, k, t, d, n))
+
+def inv8(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(h, k), inv9(q, h, k, t, d, n))
+
+def inv7(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(q, d), inv8(q, h, k, t, d, n))
+
+def inv6(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(q, t), inv7(q, h, k, t, d, n))
+
+def inv5(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(q, k), inv6(q, h, k, t, d, n))
+
+def inv4(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.disjoint(q, h), inv5(q, h, k, t, d, n))
+
+def inv3(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.nodup(t), inv4(q, h, k, t, d, n))
+
+def inv2(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.nodup(k), inv3(q, h, k, t, d, n))
+
+def inv1(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.nodup(h), inv2(q, h, k, t, d, n))
+
+def inv0(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  Bool.and(S.nodup(q), inv1(q, h, k, t, d, n))
+
+def inv(+q: +List<Nat>, +h: +List<Nat>, +k: +List<Nat>, +t: +List<Nat>, +d: +List<Nat>, +n: Nat) -> Bool:
+  inv0(q, h, k, t, d, n)
+
+law pnq:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.nodup(q) == True{} : Bool}
+
+def pnq(q, h, k, t, d, n, I):
+  and_l(S.nodup(q), inv1(q, h, k, t, d, n), I)
+
+law pnh:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.nodup(h) == True{} : Bool}
+
+def pnh(q, h, k, t, d, n, I):
+  and_l(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))
+
+law pnk:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.nodup(k) == True{} : Bool}
+
+def pnk(q, h, k, t, d, n, I):
+  and_l(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))
+
+law pnt:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.nodup(t) == True{} : Bool}
+
+def pnt(q, h, k, t, d, n, I):
+  and_l(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))
+
+law pdqh:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(q, h) == True{} : Bool}
+
+def pdqh(q, h, k, t, d, n, I):
+  and_l(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))
+
+law pdqk:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(q, k) == True{} : Bool}
+
+def pdqk(q, h, k, t, d, n, I):
+  and_l(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))
+
+law pdqt:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(q, t) == True{} : Bool}
+
+def pdqt(q, h, k, t, d, n, I):
+  and_l(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))))
+
+law pdqd:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(q, d) == True{} : Bool}
+
+def pdqd(q, h, k, t, d, n, I):
+  and_l(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))
+
+law pdhk:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(h, k) == True{} : Bool}
+
+def pdhk(q, h, k, t, d, n, I):
+  and_l(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))))))
+
+law pdht:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(h, t) == True{} : Bool}
+
+def pdht(q, h, k, t, d, n, I):
+  and_l(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))))
+
+law pdhd:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(h, d) == True{} : Bool}
+
+def pdhd(q, h, k, t, d, n, I):
+  and_l(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))))))))
+
+law pdkt:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(k, t) == True{} : Bool}
+
+def pdkt(q, h, k, t, d, n, I):
+  and_l(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))))))
+
+law pdkd:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(k, d) == True{} : Bool}
+
+def pdkd(q, h, k, t, d, n, I):
+  and_l(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))))))))))
+
+law pdtd:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {S.disjoint(t, d) == True{} : Bool}
+
+def pdtd(q, h, k, t, d, n, I):
+  and_l(S.disjoint(t, d), inv14(q, h, k, t, d, n), and_r(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))))))))
+
+law pbq:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {bl(q, n) == True{} : Bool}
+
+def pbq(q, h, k, t, d, n, I):
+  and_l(bl(q, n), inv15(q, h, k, t, d, n), and_r(S.disjoint(t, d), inv14(q, h, k, t, d, n), and_r(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))))))))))))
+
+law pbh:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {bl(h, n) == True{} : Bool}
+
+def pbh(q, h, k, t, d, n, I):
+  and_l(bl(h, n), inv16(q, h, k, t, d, n), and_r(bl(q, n), inv15(q, h, k, t, d, n), and_r(S.disjoint(t, d), inv14(q, h, k, t, d, n), and_r(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))))))))))
+
+law pbk:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {bl(k, n) == True{} : Bool}
+
+def pbk(q, h, k, t, d, n, I):
+  and_l(bl(k, n), inv17(q, h, k, t, d, n), and_r(bl(h, n), inv16(q, h, k, t, d, n), and_r(bl(q, n), inv15(q, h, k, t, d, n), and_r(S.disjoint(t, d), inv14(q, h, k, t, d, n), and_r(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I)))))))))))))))))
+
+law pbt:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {bl(t, n) == True{} : Bool}
+
+def pbt(q, h, k, t, d, n, I):
+  and_l(bl(t, n), inv18(q, h, k, t, d, n), and_r(bl(k, n), inv17(q, h, k, t, d, n), and_r(bl(h, n), inv16(q, h, k, t, d, n), and_r(bl(q, n), inv15(q, h, k, t, d, n), and_r(S.disjoint(t, d), inv14(q, h, k, t, d, n), and_r(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))))))))))))
+
+law pbd:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {bl(d, n) == True{} : Bool}
+
+def pbd(q, h, k, t, d, n, I):
+  and_r(bl(t, n), inv18(q, h, k, t, d, n), and_r(bl(k, n), inv17(q, h, k, t, d, n), and_r(bl(h, n), inv16(q, h, k, t, d, n), and_r(bl(q, n), inv15(q, h, k, t, d, n), and_r(S.disjoint(t, d), inv14(q, h, k, t, d, n), and_r(S.disjoint(k, d), inv13(q, h, k, t, d, n), and_r(S.disjoint(k, t), inv12(q, h, k, t, d, n), and_r(S.disjoint(h, d), inv11(q, h, k, t, d, n), and_r(S.disjoint(h, t), inv10(q, h, k, t, d, n), and_r(S.disjoint(h, k), inv9(q, h, k, t, d, n), and_r(S.disjoint(q, d), inv8(q, h, k, t, d, n), and_r(S.disjoint(q, t), inv7(q, h, k, t, d, n), and_r(S.disjoint(q, k), inv6(q, h, k, t, d, n), and_r(S.disjoint(q, h), inv5(q, h, k, t, d, n), and_r(S.nodup(t), inv4(q, h, k, t, d, n), and_r(S.nodup(k), inv3(q, h, k, t, d, n), and_r(S.nodup(h), inv2(q, h, k, t, d, n), and_r(S.nodup(q), inv1(q, h, k, t, d, n), I))))))))))))))))))
+
+law mk_inv:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +e0: {S.nodup(q) == True{} : Bool}
+  for +e1: {S.nodup(h) == True{} : Bool}
+  for +e2: {S.nodup(k) == True{} : Bool}
+  for +e3: {S.nodup(t) == True{} : Bool}
+  for +e4: {S.disjoint(q, h) == True{} : Bool}
+  for +e5: {S.disjoint(q, k) == True{} : Bool}
+  for +e6: {S.disjoint(q, t) == True{} : Bool}
+  for +e7: {S.disjoint(q, d) == True{} : Bool}
+  for +e8: {S.disjoint(h, k) == True{} : Bool}
+  for +e9: {S.disjoint(h, t) == True{} : Bool}
+  for +e10: {S.disjoint(h, d) == True{} : Bool}
+  for +e11: {S.disjoint(k, t) == True{} : Bool}
+  for +e12: {S.disjoint(k, d) == True{} : Bool}
+  for +e13: {S.disjoint(t, d) == True{} : Bool}
+  for +e14: {bl(q, n) == True{} : Bool}
+  for +e15: {bl(h, n) == True{} : Bool}
+  for +e16: {bl(k, n) == True{} : Bool}
+  for +e17: {bl(t, n) == True{} : Bool}
+  for +e18: {bl(d, n) == True{} : Bool}
+  {inv(q, h, k, t, d, n) == True{} : Bool}
+
+def mk_inv(q, h, k, t, d, n, e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18):
+  and_intro(S.nodup(q), inv1(q, h, k, t, d, n), e0, and_intro(S.nodup(h), inv2(q, h, k, t, d, n), e1, and_intro(S.nodup(k), inv3(q, h, k, t, d, n), e2, and_intro(S.nodup(t), inv4(q, h, k, t, d, n), e3, and_intro(S.disjoint(q, h), inv5(q, h, k, t, d, n), e4, and_intro(S.disjoint(q, k), inv6(q, h, k, t, d, n), e5, and_intro(S.disjoint(q, t), inv7(q, h, k, t, d, n), e6, and_intro(S.disjoint(q, d), inv8(q, h, k, t, d, n), e7, and_intro(S.disjoint(h, k), inv9(q, h, k, t, d, n), e8, and_intro(S.disjoint(h, t), inv10(q, h, k, t, d, n), e9, and_intro(S.disjoint(h, d), inv11(q, h, k, t, d, n), e10, and_intro(S.disjoint(k, t), inv12(q, h, k, t, d, n), e11, and_intro(S.disjoint(k, d), inv13(q, h, k, t, d, n), e12, and_intro(S.disjoint(t, d), inv14(q, h, k, t, d, n), e13, and_intro(bl(q, n), inv15(q, h, k, t, d, n), e14, and_intro(bl(h, n), inv16(q, h, k, t, d, n), e15, and_intro(bl(k, n), inv17(q, h, k, t, d, n), e16, and_intro(bl(t, n), inv18(q, h, k, t, d, n), e17, e18))))))))))))))))))
+law frame_send_q:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(M.snoc(q, n), h, k, t, d, 1n+n) == True{} : Bool}
+
+def frame_send_q(q, h, k, t, d, n, I):
+  mk_inv(M.snoc(q, n), h, k, t, d, 1n+n, n_snoc(q, n, pnq(q, h, k, t, d, n, I), bl_fresh(q, n, pbq(q, h, k, t, d, n, I))), pnh(q, h, k, t, d, n, I), pnk(q, h, k, t, d, n, I), pnt(q, h, k, t, d, n, I), d_snoc_l(q, n, h, pdqh(q, h, k, t, d, n, I), bl_fresh(h, n, pbh(q, h, k, t, d, n, I))), d_snoc_l(q, n, k, pdqk(q, h, k, t, d, n, I), bl_fresh(k, n, pbk(q, h, k, t, d, n, I))), d_snoc_l(q, n, t, pdqt(q, h, k, t, d, n, I), bl_fresh(t, n, pbt(q, h, k, t, d, n, I))), d_snoc_l(q, n, d, pdqd(q, h, k, t, d, n, I), bl_fresh(d, n, pbd(q, h, k, t, d, n, I))), pdhk(q, h, k, t, d, n, I), pdht(q, h, k, t, d, n, I), pdhd(q, h, k, t, d, n, I), pdkt(q, h, k, t, d, n, I), pdkd(q, h, k, t, d, n, I), pdtd(q, h, k, t, d, n, I), bl_snoc(q, n, 1n+n, bl_succ(q, n, pbq(q, h, k, t, d, n, I)), lt_self(n)), bl_succ(h, n, pbh(q, h, k, t, d, n, I)), bl_succ(k, n, pbk(q, h, k, t, d, n, I)), bl_succ(t, n, pbt(q, h, k, t, d, n, I)), bl_succ(d, n, pbd(q, h, k, t, d, n, I)))
+
+
+law frame_send_h:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(q, M.snoc(h, n), k, t, d, 1n+n) == True{} : Bool}
+
+def frame_send_h(q, h, k, t, d, n, I):
+  mk_inv(q, M.snoc(h, n), k, t, d, 1n+n, pnq(q, h, k, t, d, n, I), n_snoc(h, n, pnh(q, h, k, t, d, n, I), bl_fresh(h, n, pbh(q, h, k, t, d, n, I))), pnk(q, h, k, t, d, n, I), pnt(q, h, k, t, d, n, I), d_sym(q, M.snoc(h, n), d_snoc_l(h, n, q, d_sym(h, q, pdqh(q, h, k, t, d, n, I)), bl_fresh(q, n, pbq(q, h, k, t, d, n, I)))), pdqk(q, h, k, t, d, n, I), pdqt(q, h, k, t, d, n, I), pdqd(q, h, k, t, d, n, I), d_snoc_l(h, n, k, pdhk(q, h, k, t, d, n, I), bl_fresh(k, n, pbk(q, h, k, t, d, n, I))), d_snoc_l(h, n, t, pdht(q, h, k, t, d, n, I), bl_fresh(t, n, pbt(q, h, k, t, d, n, I))), d_snoc_l(h, n, d, pdhd(q, h, k, t, d, n, I), bl_fresh(d, n, pbd(q, h, k, t, d, n, I))), pdkt(q, h, k, t, d, n, I), pdkd(q, h, k, t, d, n, I), pdtd(q, h, k, t, d, n, I), bl_succ(q, n, pbq(q, h, k, t, d, n, I)), bl_snoc(h, n, 1n+n, bl_succ(h, n, pbh(q, h, k, t, d, n, I)), lt_self(n)), bl_succ(k, n, pbk(q, h, k, t, d, n, I)), bl_succ(t, n, pbt(q, h, k, t, d, n, I)), bl_succ(d, n, pbd(q, h, k, t, d, n, I)))
+
+
+law frame_send_k:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(q, h, M.snoc(k, n), t, d, 1n+n) == True{} : Bool}
+
+def frame_send_k(q, h, k, t, d, n, I):
+  mk_inv(q, h, M.snoc(k, n), t, d, 1n+n, pnq(q, h, k, t, d, n, I), pnh(q, h, k, t, d, n, I), n_snoc(k, n, pnk(q, h, k, t, d, n, I), bl_fresh(k, n, pbk(q, h, k, t, d, n, I))), pnt(q, h, k, t, d, n, I), pdqh(q, h, k, t, d, n, I), d_sym(q, M.snoc(k, n), d_snoc_l(k, n, q, d_sym(k, q, pdqk(q, h, k, t, d, n, I)), bl_fresh(q, n, pbq(q, h, k, t, d, n, I)))), pdqt(q, h, k, t, d, n, I), pdqd(q, h, k, t, d, n, I), d_sym(h, M.snoc(k, n), d_snoc_l(k, n, h, d_sym(k, h, pdhk(q, h, k, t, d, n, I)), bl_fresh(h, n, pbh(q, h, k, t, d, n, I)))), pdht(q, h, k, t, d, n, I), pdhd(q, h, k, t, d, n, I), d_snoc_l(k, n, t, pdkt(q, h, k, t, d, n, I), bl_fresh(t, n, pbt(q, h, k, t, d, n, I))), d_snoc_l(k, n, d, pdkd(q, h, k, t, d, n, I), bl_fresh(d, n, pbd(q, h, k, t, d, n, I))), pdtd(q, h, k, t, d, n, I), bl_succ(q, n, pbq(q, h, k, t, d, n, I)), bl_succ(h, n, pbh(q, h, k, t, d, n, I)), bl_snoc(k, n, 1n+n, bl_succ(k, n, pbk(q, h, k, t, d, n, I)), lt_self(n)), bl_succ(t, n, pbt(q, h, k, t, d, n, I)), bl_succ(d, n, pbd(q, h, k, t, d, n, I)))
+
+
+law frame_send_d:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(q, h, k, t, M.snoc(d, n), 1n+n) == True{} : Bool}
+
+def frame_send_d(q, h, k, t, d, n, I):
+  mk_inv(q, h, k, t, M.snoc(d, n), 1n+n, pnq(q, h, k, t, d, n, I), pnh(q, h, k, t, d, n, I), pnk(q, h, k, t, d, n, I), pnt(q, h, k, t, d, n, I), pdqh(q, h, k, t, d, n, I), pdqk(q, h, k, t, d, n, I), pdqt(q, h, k, t, d, n, I), d_sym(q, M.snoc(d, n), d_snoc_l(d, n, q, d_sym(d, q, pdqd(q, h, k, t, d, n, I)), bl_fresh(q, n, pbq(q, h, k, t, d, n, I)))), pdhk(q, h, k, t, d, n, I), pdht(q, h, k, t, d, n, I), d_sym(h, M.snoc(d, n), d_snoc_l(d, n, h, d_sym(d, h, pdhd(q, h, k, t, d, n, I)), bl_fresh(h, n, pbh(q, h, k, t, d, n, I)))), pdkt(q, h, k, t, d, n, I), d_sym(k, M.snoc(d, n), d_snoc_l(d, n, k, d_sym(d, k, pdkd(q, h, k, t, d, n, I)), bl_fresh(k, n, pbk(q, h, k, t, d, n, I)))), d_sym(t, M.snoc(d, n), d_snoc_l(d, n, t, d_sym(d, t, pdtd(q, h, k, t, d, n, I)), bl_fresh(t, n, pbt(q, h, k, t, d, n, I)))), bl_succ(q, n, pbq(q, h, k, t, d, n, I)), bl_succ(h, n, pbh(q, h, k, t, d, n, I)), bl_succ(k, n, pbk(q, h, k, t, d, n, I)), bl_succ(t, n, pbt(q, h, k, t, d, n, I)), bl_snoc(d, n, 1n+n, bl_succ(d, n, pbd(q, h, k, t, d, n, I)), lt_self(n)))
+
+law frame_deliver_h:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +m: {M.mem(id, h) == True{} : Bool}
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(M.snoc(q, id), M.remove(id, h), k, t, d, n) == True{} : Bool}
+
+def frame_deliver_h(q, h, k, t, d, n, id, m, I):
+  mk_inv(M.snoc(q, id), M.remove(id, h), k, t, d, n, n_snoc(q, id, pnq(q, h, k, t, d, n, I), d_mem(h, id, q, d_sym(h, q, pdqh(q, h, k, t, d, n, I)), m)), n_remove(id, h, pnh(q, h, k, t, d, n, I)), pnk(q, h, k, t, d, n, I), pnt(q, h, k, t, d, n, I), d_snoc_l(q, id, M.remove(id, h), d_sym(q, M.remove(id, h), d_sub(M.remove(id, h), h, q, d_sym(h, q, pdqh(q, h, k, t, d, n, I)), sub_remove(id, h))), f_remove(id, h, pnh(q, h, k, t, d, n, I))), d_snoc_l(q, id, k, pdqk(q, h, k, t, d, n, I), d_mem(h, id, k, pdhk(q, h, k, t, d, n, I), m)), d_snoc_l(q, id, t, pdqt(q, h, k, t, d, n, I), d_mem(h, id, t, pdht(q, h, k, t, d, n, I), m)), d_snoc_l(q, id, d, pdqd(q, h, k, t, d, n, I), d_mem(h, id, d, pdhd(q, h, k, t, d, n, I), m)), d_sub(M.remove(id, h), h, k, pdhk(q, h, k, t, d, n, I), sub_remove(id, h)), d_sub(M.remove(id, h), h, t, pdht(q, h, k, t, d, n, I), sub_remove(id, h)), d_sub(M.remove(id, h), h, d, pdhd(q, h, k, t, d, n, I), sub_remove(id, h)), pdkt(q, h, k, t, d, n, I), pdkd(q, h, k, t, d, n, I), pdtd(q, h, k, t, d, n, I), bl_snoc(q, id, n, pbq(q, h, k, t, d, n, I), bl_mem(h, id, n, pbh(q, h, k, t, d, n, I), m)), bl_sub(M.remove(id, h), h, n, pbh(q, h, k, t, d, n, I), sub_remove(id, h)), pbk(q, h, k, t, d, n, I), pbt(q, h, k, t, d, n, I), pbd(q, h, k, t, d, n, I))
+
+
+law frame_deliver_k:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +m: {M.mem(id, k) == True{} : Bool}
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(M.snoc(q, id), h, M.remove(id, k), t, d, n) == True{} : Bool}
+
+def frame_deliver_k(q, h, k, t, d, n, id, m, I):
+  mk_inv(M.snoc(q, id), h, M.remove(id, k), t, d, n, n_snoc(q, id, pnq(q, h, k, t, d, n, I), d_mem(k, id, q, d_sym(k, q, pdqk(q, h, k, t, d, n, I)), m)), pnh(q, h, k, t, d, n, I), n_remove(id, k, pnk(q, h, k, t, d, n, I)), pnt(q, h, k, t, d, n, I), d_snoc_l(q, id, h, pdqh(q, h, k, t, d, n, I), d_mem(k, id, h, d_sym(k, h, pdhk(q, h, k, t, d, n, I)), m)), d_snoc_l(q, id, M.remove(id, k), d_sym(q, M.remove(id, k), d_sub(M.remove(id, k), k, q, d_sym(k, q, pdqk(q, h, k, t, d, n, I)), sub_remove(id, k))), f_remove(id, k, pnk(q, h, k, t, d, n, I))), d_snoc_l(q, id, t, pdqt(q, h, k, t, d, n, I), d_mem(k, id, t, pdkt(q, h, k, t, d, n, I), m)), d_snoc_l(q, id, d, pdqd(q, h, k, t, d, n, I), d_mem(k, id, d, pdkd(q, h, k, t, d, n, I), m)), d_sym(h, M.remove(id, k), d_sub(M.remove(id, k), k, h, d_sym(k, h, pdhk(q, h, k, t, d, n, I)), sub_remove(id, k))), pdht(q, h, k, t, d, n, I), pdhd(q, h, k, t, d, n, I), d_sub(M.remove(id, k), k, t, pdkt(q, h, k, t, d, n, I), sub_remove(id, k)), d_sub(M.remove(id, k), k, d, pdkd(q, h, k, t, d, n, I), sub_remove(id, k)), pdtd(q, h, k, t, d, n, I), bl_snoc(q, id, n, pbq(q, h, k, t, d, n, I), bl_mem(k, id, n, pbk(q, h, k, t, d, n, I), m)), pbh(q, h, k, t, d, n, I), bl_sub(M.remove(id, k), k, n, pbk(q, h, k, t, d, n, I), sub_remove(id, k)), pbt(q, h, k, t, d, n, I), pbd(q, h, k, t, d, n, I))
+
+
+law frame_drop_h:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +m: {M.mem(id, h) == True{} : Bool}
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(q, M.remove(id, h), k, t, M.snoc(d, id), n) == True{} : Bool}
+
+def frame_drop_h(q, h, k, t, d, n, id, m, I):
+  mk_inv(q, M.remove(id, h), k, t, M.snoc(d, id), n, pnq(q, h, k, t, d, n, I), n_remove(id, h, pnh(q, h, k, t, d, n, I)), pnk(q, h, k, t, d, n, I), pnt(q, h, k, t, d, n, I), d_sym(q, M.remove(id, h), d_sub(M.remove(id, h), h, q, d_sym(h, q, pdqh(q, h, k, t, d, n, I)), sub_remove(id, h))), pdqk(q, h, k, t, d, n, I), pdqt(q, h, k, t, d, n, I), d_sym(q, M.snoc(d, id), d_snoc_l(d, id, q, d_sym(d, q, pdqd(q, h, k, t, d, n, I)), d_mem(h, id, q, d_sym(h, q, pdqh(q, h, k, t, d, n, I)), m))), d_sub(M.remove(id, h), h, k, pdhk(q, h, k, t, d, n, I), sub_remove(id, h)), d_sub(M.remove(id, h), h, t, pdht(q, h, k, t, d, n, I), sub_remove(id, h)), d_sym(M.remove(id, h), M.snoc(d, id), d_snoc_l(d, id, M.remove(id, h), d_sym(d, M.remove(id, h), d_sub(M.remove(id, h), h, d, pdhd(q, h, k, t, d, n, I), sub_remove(id, h))), f_remove(id, h, pnh(q, h, k, t, d, n, I)))), pdkt(q, h, k, t, d, n, I), d_sym(k, M.snoc(d, id), d_snoc_l(d, id, k, d_sym(d, k, pdkd(q, h, k, t, d, n, I)), d_mem(h, id, k, pdhk(q, h, k, t, d, n, I), m))), d_sym(t, M.snoc(d, id), d_snoc_l(d, id, t, d_sym(d, t, pdtd(q, h, k, t, d, n, I)), d_mem(h, id, t, pdht(q, h, k, t, d, n, I), m))), pbq(q, h, k, t, d, n, I), bl_sub(M.remove(id, h), h, n, pbh(q, h, k, t, d, n, I), sub_remove(id, h)), pbk(q, h, k, t, d, n, I), pbt(q, h, k, t, d, n, I), bl_snoc(d, id, n, pbd(q, h, k, t, d, n, I), bl_mem(h, id, n, pbh(q, h, k, t, d, n, I), m)))
+
+
+law frame_drop_k:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +id: Nat
+  for +m: {M.mem(id, k) == True{} : Bool}
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(q, h, M.remove(id, k), t, M.snoc(d, id), n) == True{} : Bool}
+
+def frame_drop_k(q, h, k, t, d, n, id, m, I):
+  mk_inv(q, h, M.remove(id, k), t, M.snoc(d, id), n, pnq(q, h, k, t, d, n, I), pnh(q, h, k, t, d, n, I), n_remove(id, k, pnk(q, h, k, t, d, n, I)), pnt(q, h, k, t, d, n, I), pdqh(q, h, k, t, d, n, I), d_sym(q, M.remove(id, k), d_sub(M.remove(id, k), k, q, d_sym(k, q, pdqk(q, h, k, t, d, n, I)), sub_remove(id, k))), pdqt(q, h, k, t, d, n, I), d_sym(q, M.snoc(d, id), d_snoc_l(d, id, q, d_sym(d, q, pdqd(q, h, k, t, d, n, I)), d_mem(k, id, q, d_sym(k, q, pdqk(q, h, k, t, d, n, I)), m))), d_sym(h, M.remove(id, k), d_sub(M.remove(id, k), k, h, d_sym(k, h, pdhk(q, h, k, t, d, n, I)), sub_remove(id, k))), pdht(q, h, k, t, d, n, I), d_sym(h, M.snoc(d, id), d_snoc_l(d, id, h, d_sym(d, h, pdhd(q, h, k, t, d, n, I)), d_mem(k, id, h, d_sym(k, h, pdhk(q, h, k, t, d, n, I)), m))), d_sub(M.remove(id, k), k, t, pdkt(q, h, k, t, d, n, I), sub_remove(id, k)), d_sym(M.remove(id, k), M.snoc(d, id), d_snoc_l(d, id, M.remove(id, k), d_sym(d, M.remove(id, k), d_sub(M.remove(id, k), k, d, pdkd(q, h, k, t, d, n, I), sub_remove(id, k))), f_remove(id, k, pnk(q, h, k, t, d, n, I)))), d_sym(t, M.snoc(d, id), d_snoc_l(d, id, t, d_sym(d, t, pdtd(q, h, k, t, d, n, I)), d_mem(k, id, t, pdkt(q, h, k, t, d, n, I), m))), pbq(q, h, k, t, d, n, I), pbh(q, h, k, t, d, n, I), bl_sub(M.remove(id, k), k, n, pbk(q, h, k, t, d, n, I), sub_remove(id, k)), pbt(q, h, k, t, d, n, I), bl_snoc(d, id, n, pbd(q, h, k, t, d, n, I), bl_mem(k, id, n, pbk(q, h, k, t, d, n, I), m)))
+
+law frame_flush:
+  for +x: Nat
+  for +r: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(x <> r, h, k, t, d, n) == True{} : Bool}
+  {inv(r, h, k, M.snoc(t, x), d, n) == True{} : Bool}
+
+def frame_flush(x, r, h, k, t, d, n, I):
+  mk_inv(r, h, k, M.snoc(t, x), d, n, and_r(Bool.not(M.mem(x, r)), S.nodup(r), pnq(x <> r, h, k, t, d, n, I)), pnh(x <> r, h, k, t, d, n, I), pnk(x <> r, h, k, t, d, n, I), n_snoc(t, x, pnt(x <> r, h, k, t, d, n, I), and_l(Bool.not(M.mem(x, t)), S.disjoint(r, t), pdqt(x <> r, h, k, t, d, n, I))), and_r(Bool.not(M.mem(x, h)), S.disjoint(r, h), pdqh(x <> r, h, k, t, d, n, I)), and_r(Bool.not(M.mem(x, k)), S.disjoint(r, k), pdqk(x <> r, h, k, t, d, n, I)), d_sym(r, M.snoc(t, x), d_snoc_l(t, x, r, d_sym(t, r, and_r(Bool.not(M.mem(x, t)), S.disjoint(r, t), pdqt(x <> r, h, k, t, d, n, I))), and_l(Bool.not(M.mem(x, r)), S.nodup(r), pnq(x <> r, h, k, t, d, n, I)))), and_r(Bool.not(M.mem(x, d)), S.disjoint(r, d), pdqd(x <> r, h, k, t, d, n, I)), pdhk(x <> r, h, k, t, d, n, I), d_sym(h, M.snoc(t, x), d_snoc_l(t, x, h, d_sym(t, h, pdht(x <> r, h, k, t, d, n, I)), and_l(Bool.not(M.mem(x, h)), S.disjoint(r, h), pdqh(x <> r, h, k, t, d, n, I)))), pdhd(x <> r, h, k, t, d, n, I), d_sym(k, M.snoc(t, x), d_snoc_l(t, x, k, d_sym(t, k, pdkt(x <> r, h, k, t, d, n, I)), and_l(Bool.not(M.mem(x, k)), S.disjoint(r, k), pdqk(x <> r, h, k, t, d, n, I)))), pdkd(x <> r, h, k, t, d, n, I), d_snoc_l(t, x, d, pdtd(x <> r, h, k, t, d, n, I), and_l(Bool.not(M.mem(x, d)), S.disjoint(r, d), pdqd(x <> r, h, k, t, d, n, I))), and_r(lt(x, n), bl(r, n), pbq(x <> r, h, k, t, d, n, I)), pbh(x <> r, h, k, t, d, n, I), pbk(x <> r, h, k, t, d, n, I), bl_snoc(t, x, n, pbt(x <> r, h, k, t, d, n, I), and_l(lt(x, n), bl(r, n), pbq(x <> r, h, k, t, d, n, I))), pbd(x <> r, h, k, t, d, n, I))
+
+
+law frame_takeover_begin:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +u: +List<Nat>
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(M.keep_users(q, u), h, List.append(&2, Nat, k, M.drop_users(q, u)), t, d, n) == True{} : Bool}
+
+def frame_takeover_begin(q, h, k, t, d, n, u, I):
+  mk_inv(M.keep_users(q, u), h, List.append(&2, Nat, k, M.drop_users(q, u)), t, d, n, n_keep(q, u, pnq(q, h, k, t, d, n, I)), pnh(q, h, k, t, d, n, I), n_app(k, M.drop_users(q, u), pnk(q, h, k, t, d, n, I), n_drop(q, u, pnq(q, h, k, t, d, n, I)), d_sym(k, M.drop_users(q, u), d_sub(M.drop_users(q, u), q, k, pdqk(q, h, k, t, d, n, I), sub_drop(q, u)))), pnt(q, h, k, t, d, n, I), d_sub(M.keep_users(q, u), q, h, pdqh(q, h, k, t, d, n, I), sub_keep(q, u)), d_sym(M.keep_users(q, u), List.append(&2, Nat, k, M.drop_users(q, u)), d_app_l(k, M.drop_users(q, u), M.keep_users(q, u), d_sym(k, M.keep_users(q, u), d_sub(M.keep_users(q, u), q, k, pdqk(q, h, k, t, d, n, I), sub_keep(q, u))), d_sym(M.drop_users(q, u), M.keep_users(q, u), d_kd(q, u, pnq(q, h, k, t, d, n, I))))), d_sub(M.keep_users(q, u), q, t, pdqt(q, h, k, t, d, n, I), sub_keep(q, u)), d_sub(M.keep_users(q, u), q, d, pdqd(q, h, k, t, d, n, I), sub_keep(q, u)), d_sym(h, List.append(&2, Nat, k, M.drop_users(q, u)), d_app_l(k, M.drop_users(q, u), h, d_sym(k, h, pdhk(q, h, k, t, d, n, I)), d_sub(M.drop_users(q, u), q, h, pdqh(q, h, k, t, d, n, I), sub_drop(q, u)))), pdht(q, h, k, t, d, n, I), pdhd(q, h, k, t, d, n, I), d_app_l(k, M.drop_users(q, u), t, pdkt(q, h, k, t, d, n, I), d_sub(M.drop_users(q, u), q, t, pdqt(q, h, k, t, d, n, I), sub_drop(q, u))), d_app_l(k, M.drop_users(q, u), d, pdkd(q, h, k, t, d, n, I), d_sub(M.drop_users(q, u), q, d, pdqd(q, h, k, t, d, n, I), sub_drop(q, u))), pdtd(q, h, k, t, d, n, I), bl_sub(M.keep_users(q, u), q, n, pbq(q, h, k, t, d, n, I), sub_keep(q, u)), pbh(q, h, k, t, d, n, I), bl_app(k, M.drop_users(q, u), n, pbk(q, h, k, t, d, n, I), bl_sub(M.drop_users(q, u), q, n, pbq(q, h, k, t, d, n, I), sub_drop(q, u))), pbt(q, h, k, t, d, n, I), pbd(q, h, k, t, d, n, I))
+
+
+law frame_takeover_end:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv(List.append(&2, Nat, q, k), h, [], t, d, n) == True{} : Bool}
+
+def frame_takeover_end(q, h, k, t, d, n, I):
+  mk_inv(List.append(&2, Nat, q, k), h, [], t, d, n, n_app(q, k, pnq(q, h, k, t, d, n, I), pnk(q, h, k, t, d, n, I), pdqk(q, h, k, t, d, n, I)), pnh(q, h, k, t, d, n, I), {==}, pnt(q, h, k, t, d, n, I), d_app_l(q, k, h, pdqh(q, h, k, t, d, n, I), d_sym(k, h, pdhk(q, h, k, t, d, n, I))), d_nil_r(List.append(&2, Nat, q, k)), d_app_l(q, k, t, pdqt(q, h, k, t, d, n, I), pdkt(q, h, k, t, d, n, I)), d_app_l(q, k, d, pdqd(q, h, k, t, d, n, I), pdkd(q, h, k, t, d, n, I)), d_nil_r(h), pdht(q, h, k, t, d, n, I), pdhd(q, h, k, t, d, n, I), {==}, {==}, pdtd(q, h, k, t, d, n, I), bl_app(q, k, n, pbq(q, h, k, t, d, n, I), pbk(q, h, k, t, d, n, I)), pbh(q, h, k, t, d, n, I), {==}, pbt(q, h, k, t, d, n, I), pbd(q, h, k, t, d, n, I))
+
+
+law frame_exit:
+  for +q: +List<Nat>
+  for +h: +List<Nat>
+  for +k: +List<Nat>
+  for +t: +List<Nat>
+  for +d: +List<Nat>
+  for +n: Nat
+  for +I: {inv(q, h, k, t, d, n) == True{} : Bool}
+  {inv([], h, [], t, List.append(&2, Nat, d, List.append(&2, Nat, q, k)), n) == True{} : Bool}
+
+def frame_exit(q, h, k, t, d, n, I):
+  mk_inv([], h, [], t, List.append(&2, Nat, d, List.append(&2, Nat, q, k)), n, {==}, pnh(q, h, k, t, d, n, I), {==}, pnt(q, h, k, t, d, n, I), {==}, {==}, {==}, {==}, d_nil_r(h), pdht(q, h, k, t, d, n, I), d_sym(h, List.append(&2, Nat, d, List.append(&2, Nat, q, k)), d_app_l(d, List.append(&2, Nat, q, k), h, d_sym(d, h, pdhd(q, h, k, t, d, n, I)), d_app_l(q, k, h, pdqh(q, h, k, t, d, n, I), d_sym(k, h, pdhk(q, h, k, t, d, n, I))))), {==}, {==}, d_sym(t, List.append(&2, Nat, d, List.append(&2, Nat, q, k)), d_app_l(d, List.append(&2, Nat, q, k), t, d_sym(d, t, pdtd(q, h, k, t, d, n, I)), d_app_l(q, k, t, pdqt(q, h, k, t, d, n, I), pdkt(q, h, k, t, d, n, I)))), {==}, pbh(q, h, k, t, d, n, I), {==}, pbt(q, h, k, t, d, n, I), bl_app(d, List.append(&2, Nat, q, k), n, pbd(q, h, k, t, d, n, I), bl_app(q, k, n, pbq(q, h, k, t, d, n, I), pbk(q, h, k, t, d, n, I))))
+
+
+def InvW(s: M.World) -> Data:
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      {inv(q, haf, htk, t, d, n) == True{} : Bool}
+
+law invw_init:
+  InvW(M.init())
+
+def invw_init():
+  {==}
+
+law invw_flush:
+  for +s: M.World
+  for +I: InvW(s)
+  InvW(M.flush(s))
+
+def invw_flush(s, I):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      match q i:
+        case Nil{} False{}:
+          I
+        case Nil{} True{}:
+          I
+        case Con{+x, rest} False{}:
+          I
+        case Con{+x, rest} True{}:
+          frame_flush(x, rest, haf, htk, t, d, n, I)
+
+law invw_send_route:
+  for fu: Bool
+  for tk: Bool
+  for +s: M.World
+  for +I: InvW(s)
+  InvW(M.send_route(fu, tk, s))
+
+def invw_send_route(fu, tk, s, I):
+  match fu:
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          invw_flush(M.W{M.snoc(q, n), haf, htk, t, d, M.snoc(u, n), tt, rl, 1n+n, tk, i, g}, frame_send_q(q, haf, htk, t, d, n, I))
+    case False{}:
+      match tk:
+        case True{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              frame_send_k(q, haf, htk, t, d, n, I)
+        case False{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              invw_flush(M.W{M.snoc(q, n), haf, htk, t, d, u, tt, rl, 1n+n, tk, i, g}, frame_send_q(q, haf, htk, t, d, n, I))
+
+law invw_send_auto:
+  for fu: Bool
+  for +s: M.World
+  for +I: InvW(s)
+  InvW(M.send_auto(fu, s))
+
+def invw_send_auto(fu, s, I):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      invw_send_route(fu, tk, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I)
+
+law invw_deliver_if:
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +m: {M.mem(id, S.held_af(s)) == True{} : Bool}
+  InvW(M.deliver_if(True{}, id, s))
+
+def invw_deliver_if(id, s, I, m):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      invw_flush(M.W{M.snoc(q, id), M.remove(id, haf), htk, t, d, u, tt, M.snoc(rl, id), n, tk, i, g}, frame_deliver_h(q, haf, htk, t, d, n, id, m, I))
+
+law invw_deliver_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  InvW(M.deliver_tk(b, id, s))
+
+def invw_deliver_tk(b, id, s, I, hb):
+  match b:
+    case False{}:
+      I
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          invw_flush(M.W{M.snoc(q, id), haf, M.remove(id, htk), t, d, u, tt, M.snoc(rl, id), n, tk, i, g}, frame_deliver_k(q, haf, htk, t, d, n, id, hb({==}), I))
+
+law invw_deliver_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for ha: @k: {a == True{} : Bool} -> {M.mem(id, S.held_af(s)) == True{} : Bool}
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  InvW(M.deliver_pick(a, b, id, s))
+
+def invw_deliver_pick(a, b, id, s, I, ha, hb):
+  match a:
+    case True{}:
+      invw_deliver_if(id, s, I, ha({==}))
+    case False{}:
+      invw_deliver_tk(b, id, s, I, hb)
+
+law invw_drop_if:
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for +m: {M.mem(id, S.held_af(s)) == True{} : Bool}
+  InvW(M.drop_if(True{}, id, s))
+
+def invw_drop_if(id, s, I, m):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      frame_drop_h(q, haf, htk, t, d, n, id, m, I)
+
+law invw_drop_tk:
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  InvW(M.drop_tk(b, id, s))
+
+def invw_drop_tk(b, id, s, I, hb):
+  match b:
+    case False{}:
+      I
+    case True{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          frame_drop_k(q, haf, htk, t, d, n, id, hb({==}), I)
+
+law invw_drop_pick:
+  for a: Bool
+  for b: Bool
+  for +id: Nat
+  for +s: M.World
+  for +I: InvW(s)
+  for ha: @k: {a == True{} : Bool} -> {M.mem(id, S.held_af(s)) == True{} : Bool}
+  for hb: @k: {b == True{} : Bool} -> {M.mem(id, S.held_tk(s)) == True{} : Bool}
+  InvW(M.drop_pick(a, b, id, s))
+
+def invw_drop_pick(a, b, id, s, I, ha, hb):
+  match a:
+    case True{}:
+      invw_drop_if(id, s, I, ha({==}))
+    case False{}:
+      invw_drop_tk(b, id, s, I, hb)
+
+law invw_step:
+  for e: M.Ev
+  for +s: M.World
+  for +I: InvW(s)
+  InvW(M.step(e, s))
+
+def invw_step(e, s, I):
+  match e:
+    case M.Send{fu, r}:
+      match r:
+        case M.Auto{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  I
+                case False{}:
+                  invw_send_auto(fu, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, False{}}, I)
+        case M.AskFirst{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  I
+                case False{}:
+                  frame_send_h(q, haf, htk, t, d, n, I)
+        case M.RouteDrop{}:
+          match s:
+            case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+              match g:
+                case True{}:
+                  I
+                case False{}:
+                  frame_send_d(q, haf, htk, t, d, n, I)
+    case M.Idle{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          match g:
+            case True{}:
+              I
+            case False{}:
+              invw_flush(M.W{q, haf, htk, t, d, u, tt, rl, n, tk, True{}, False{}}, I)
+    case M.Busy{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          I
+    case M.Exit{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          frame_exit(q, haf, htk, t, d, n, I)
+    case M.TakeoverBegin{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          frame_takeover_begin(q, haf, htk, t, d, n, u, I)
+    case M.TakeoverEnd{}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          invw_flush(M.W{List.append(&2, Nat, q, htk), haf, [], t, d, u, tt, rl, n, False{}, i, g}, frame_takeover_end(q, haf, htk, t, d, n, I))
+    case M.UserDeliver{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          invw_deliver_pick(Bool.and(M.mem(id, haf), Bool.not(g)), Bool.and(M.mem(id, htk), Bool.not(g)), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I, k => and_l(M.mem(id, haf), Bool.not(g), k), k => and_l(M.mem(id, htk), Bool.not(g), k))
+    case M.UserDrop{+id}:
+      match s:
+        case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+          invw_drop_pick(M.mem(id, haf), M.mem(id, htk), id, M.W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g}, I, k => k, k => k)
+
+law m1_of:
+  for +s: M.World
+  for +I: InvW(s)
+  {S.nodup(S.typed(s)) == True{} : Bool}
+
+def m1_of(s, I):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      pnt(q, haf, htk, t, d, n, I)
+
+law m1_run:
+  for +evs: +List<M.Ev>
+  for +s: M.World
+  for +I: InvW(s)
+  {S.nodup(S.typed(M.run(evs, s))) == True{} : Bool}
+
+def m1_run(evs, s, I):
+  match evs:
+    case Nil{}:
+      m1_of(s, I)
+    case Con{e, rest}:
+      m1_run(rest, M.step(e, s), invw_step(e, s, I))
+
+def Laws.m1_final_and_at_most_once(evs):
+  m1_run(evs, M.init(), invw_init())
+
+law m5_of:
+  for +s: M.World
+  for +I: InvW(s)
+  {Bool.and(S.disjoint(S.typed(s), S.dropped(s)), Bool.and(S.disjoint(S.typed(s), S.queue(s)), Bool.and(S.disjoint(S.typed(s), S.held_af(s)), S.disjoint(S.typed(s), S.held_tk(s))))) == True{} : Bool}
+
+def m5_of(s, I):
+  match s:
+    case M.W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+      and_intro(S.disjoint(t, d), Bool.and(S.disjoint(t, q), Bool.and(S.disjoint(t, haf), S.disjoint(t, htk))), pdtd(q, haf, htk, t, d, n, I), and_intro(S.disjoint(t, q), Bool.and(S.disjoint(t, haf), S.disjoint(t, htk)), d_sym(t, q, pdqt(q, haf, htk, t, d, n, I)), and_intro(S.disjoint(t, haf), S.disjoint(t, htk), d_sym(t, haf, pdht(q, haf, htk, t, d, n, I)), d_sym(t, htk, pdkt(q, haf, htk, t, d, n, I)))))
+
+law m5_run:
+  for +evs: +List<M.Ev>
+  for +s: M.World
+  for +I: InvW(s)
+  {Bool.and(S.disjoint(S.typed(M.run(evs, s)), S.dropped(M.run(evs, s))), Bool.and(S.disjoint(S.typed(M.run(evs, s)), S.queue(M.run(evs, s))), Bool.and(S.disjoint(S.typed(M.run(evs, s)), S.held_af(M.run(evs, s))), S.disjoint(S.typed(M.run(evs, s)), S.held_tk(M.run(evs, s)))))) == True{} : Bool}
+
+def m5_run(evs, s, I):
+  match evs:
+    case Nil{}:
+      m5_of(s, I)
+    case Con{e, rest}:
+      m5_run(rest, M.step(e, s), invw_step(e, s, I))
+
+def Laws.m5_terminal_states_are_absorbing(evs):
+  m5_run(evs, M.init(), invw_init())

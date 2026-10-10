@@ -70,7 +70,7 @@ def flush_go(q: +List<Nat>, s: World) -> World:
     case Con{+x, rest}:
       match s:
         case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
-          W{x <> rest, haf, htk, snoc(t, x), d, u, record(tk, x, tt), rl, n, tk, False{}, g}
+          W{rest, haf, htk, snoc(t, x), d, u, record(tk, x, tt), rl, n, tk, False{}, g}
 
 def flush_b(i: Bool, s: World) -> World:
   match i:
@@ -199,7 +199,7 @@ def drop_if(b: Bool, +id: Nat, s: World) -> World:
     case True{}:
       match s:
         case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
-          W{q, remove(id, haf), htk, t, snoc(d, id), u, tt, rl, n, tk, i, g}
+          W{q, haf, htk, t, snoc(d, id), u, tt, rl, n, tk, i, g}
 
 def deliver_tk(b: Bool, +id: Nat, s: World) -> World:
   match b:
