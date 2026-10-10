@@ -74,6 +74,7 @@ export const todoHandlers = (store: TodoStore, announce: Announce): Handlers => 
     const moved = find(store.todos, (todo) => todo.id === id, `todo ${id}`);
 
     if (before !== null) find(store.todos, (todo) => todo.id === before, `todo ${before}`);
+
     if (before === id) throw new RpcError(CONFLICT, `todo ${id} cannot go before itself`);
 
     const others = store.todos.filter((todo) => todo.id !== id);
