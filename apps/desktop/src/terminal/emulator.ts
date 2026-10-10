@@ -1,5 +1,5 @@
 import { DEFAULT_FONT_SIZE } from "./fontSize";
-import { terminalTheme } from "./theme";
+import { DARK_SCHEME, terminalThemeFor } from "./theme";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -67,12 +67,15 @@ const encoder = new TextEncoder();
 /** Rule 7's 150 MB budget for ten idle Agents must hold under a Terminal that prints without end. */
 export const SCROLLBACK_LINES = 10_000;
 
+const schemeQuery = (): MediaQueryList | null =>
+  window.matchMedia?.(DARK_SCHEME) ?? null;
+
 export const xtermOptions: ITerminalOptions = {
   allowProposedApi: true,
   fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: DEFAULT_FONT_SIZE,
   scrollback: SCROLLBACK_LINES,
-  theme: terminalTheme,
+  theme: terminalThemeFor(schemeQuery()?.matches ?? false),
 };
 
 /** What the keystroke run (`scenarios/perf.md` K1 to K3) watches: each chunk the emulator has parsed, each render, and which renderer drew. A build without the run passes none. */
@@ -104,6 +107,14 @@ export const createXtermEmulators = (
     element.style.height = "100%";
     terminal.loadAddon(fitter);
     terminal.onRender(() => probe?.rendered());
+
+    const scheme = schemeQuery();
+
+    const followScheme = () => {
+      terminal.options.theme = terminalThemeFor(scheme?.matches ?? false);
+    };
+
+    scheme?.addEventListener("change", followScheme);
 
     const restoreFontViewport = () => {
       fontFrame = null;
@@ -207,6 +218,7 @@ export const createXtermEmulators = (
       dispose: () => {
         if (fontFrame !== null) cancelAnimationFrame(fontFrame);
 
+        scheme?.removeEventListener("change", followScheme);
         fontViewport?.dispose();
         terminal.dispose();
       },
