@@ -362,7 +362,7 @@ One click on a `delivery` value flips it between auto and ask first, and `set by
 roundup
 
                                 │                                       │
-  agents and terminals          │                                       │ todos
+  workstreams and agents        │                                       │ todos
   appear here, one per row,     │ open a folder to start                │ agents add them as they
   nested by indent              │                                       │ plan; so can you
                                 │ ~/repos/payments-api                  │
