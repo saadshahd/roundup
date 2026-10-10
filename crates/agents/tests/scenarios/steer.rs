@@ -197,10 +197,10 @@ async fn h11_an_agent_that_ends_while_a_steer_waits_is_not_found() {
 }
 
 #[tokio::test]
-async fn h11_only_the_user_or_a_doors_own_room_may_steer() {
+async fn h11_only_the_user_or_a_doors_own_workstream_may_steer() {
     let f = Arc::new(frozen(Fixture::running(RECORD), Duration::from_secs(30)));
-    let room = f.room("team", None).await;
-    let child = f.spawn(Some(&room), None).await.unwrap();
+    let workstream = f.workstream("team", None).await;
+    let child = f.spawn(Some(&workstream), None).await.unwrap();
     until_file(&f.dir.path().join("ready")).await;
     start(&f, &child.id).await;
 
@@ -213,7 +213,10 @@ async fn h11_only_the_user_or_a_doors_own_room_may_steer() {
         ..f.ctx()
     };
     let params = json!({"id": child.id, "text": "go"});
-    for stranger in [from(ActorKind::Agent, "999"), from(ActorKind::Ext, &room)] {
+    for stranger in [
+        from(ActorKind::Agent, "999"),
+        from(ActorKind::Ext, &workstream),
+    ] {
         let err = f
             .agents
             .call(&stranger, "agent.prompt", params.clone())
@@ -223,7 +226,7 @@ async fn h11_only_the_user_or_a_doors_own_room_may_steer() {
     }
     assert_eq!(read(&typed(&f)), first());
 
-    let door = from(ActorKind::Agent, &room);
+    let door = from(ActorKind::Agent, &workstream);
     let call = {
         let f = Arc::clone(&f);
         tokio::spawn(async move { f.agents.call(&door, "agent.prompt", params).await })

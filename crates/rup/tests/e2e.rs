@@ -554,7 +554,7 @@ fn git_at(project: &std::path::Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
-async fn interrupted_worktree(room: bool) {
+async fn interrupted_worktree(workstream: bool) {
     use std::os::unix::fs::PermissionsExt;
     let wrapper = tempfile::tempdir().unwrap();
     let real_git = String::from_utf8(
@@ -612,14 +612,17 @@ async fn interrupted_worktree(room: bool) {
         git_at(root, &["worktree", "list"]),
     );
     let client = project.client().await;
-    let ids = if room {
+    let ids = if workstream {
         let parent = client
-            .request("rail.createRoom", json!({"name":"room","parent":null}))
+            .request(
+                "rail.createWorkstream",
+                json!({"name":"workstream","parent":null}),
+            )
             .await
             .unwrap();
         let child = client
             .request(
-                "rail.createRoom",
+                "rail.createWorkstream",
                 json!({"name":"child","parent":parent["id"]}),
             )
             .await
@@ -705,7 +708,7 @@ async fn g6_crashed_agent_provision_is_recovered_without_touching_user_worktree(
 }
 
 #[tokio::test]
-async fn g6_crashed_door_provision_retains_room_and_children() {
+async fn g6_crashed_door_provision_retains_workstream_and_children() {
     interrupted_worktree(true).await;
 }
 
@@ -772,7 +775,7 @@ async fn e1_an_agents_brief_advertises_exactly_the_tools_its_rup_mcp_lists() {
 async fn b24_a_door_reads_its_brief_then_creates_and_updates_a_todo_over_mcp() {
     let report = tempfile::tempdir().unwrap().keep().join("seen.json");
     let tools = json!([
-        { "name": "todo_create", "arguments": { "title": "plan the room" } },
+        { "name": "todo_create", "arguments": { "title": "plan the workstream" } },
         { "name": "todo_update", "arguments": { "id": "$id", "body": "owned files: none yet" } },
     ]);
     let project = start(&[
@@ -780,11 +783,14 @@ async fn b24_a_door_reads_its_brief_then_creates_and_updates_a_todo_over_mcp() {
         ("FAKE_CLAUDE_TOOLS", &tools.to_string()),
     ]);
     let mut client = project.subscribed().await;
-    let room = client
-        .request("rail.createRoom", json!({"name": "room", "parent": null}))
+    let workstream = client
+        .request(
+            "rail.createWorkstream",
+            json!({"name": "workstream", "parent": null}),
+        )
         .await
         .unwrap();
-    let door = room["id"].as_str().unwrap().to_owned();
+    let door = workstream["id"].as_str().unwrap().to_owned();
     client
         .request("rail.startDoor", json!({ "id": door }))
         .await
@@ -802,7 +808,7 @@ async fn b24_a_door_reads_its_brief_then_creates_and_updates_a_todo_over_mcp() {
     let mut listed = seen.tools;
     listed.sort();
     assert_eq!(advertised(&seen.brief), listed);
-    assert_eq!(updated.title, "plan the room");
+    assert_eq!(updated.title, "plan the workstream");
     assert_eq!(updated.body, "owned files: none yet");
     assert_eq!(
         updated.creator,
@@ -853,12 +859,15 @@ async fn client_as(project: &Project, who: Actor) -> rpc::Client {
     client
 }
 
-async fn room(client: &rpc::Client, name: &str) -> String {
-    let room = client
-        .request("rail.createRoom", json!({ "name": name, "parent": null }))
+async fn workstream(client: &rpc::Client, name: &str) -> String {
+    let workstream = client
+        .request(
+            "rail.createWorkstream",
+            json!({ "name": name, "parent": null }),
+        )
         .await
         .unwrap();
-    room["id"].as_str().unwrap().to_owned()
+    workstream["id"].as_str().unwrap().to_owned()
 }
 
 async fn agent_in(project: &Project, client: &rpc::Client, parent: Option<&str>) -> String {
@@ -882,14 +891,14 @@ struct Rail {
 }
 
 async fn rail(project: &Project, client: &rpc::Client) -> Rail {
-    let m = room(client, "m").await;
+    let m = workstream(client, "m").await;
     client
         .request("rail.startDoor", json!({ "id": m }))
         .await
         .unwrap();
     let a = agent_in(project, client, Some(&m)).await;
     let b = agent_in(project, client, Some(&m)).await;
-    let g = room(client, "g").await;
+    let g = workstream(client, "g").await;
     let c = agent_in(project, client, Some(&g)).await;
     Rail { m, a, b, g, c }
 }
@@ -1352,13 +1361,13 @@ async fn home_of(client: &rpc::Client, id: u32) -> Value {
         .clone()
 }
 
-/// T12, T13: a Todo moves to a Room, the Daemon checks the Rail, and the Home survives a restart.
+/// T12, T13: a Todo moves to a Workstream, the Daemon checks the Rail, and the Home survives a restart.
 #[tokio::test]
 async fn t13_move_checks_the_rail_and_survives_a_restart() {
     let mut project = start(&[]);
     let mut events = project.subscribed().await;
     let client = project.client().await;
-    let r1 = room(&client, "r1").await;
+    let r1 = workstream(&client, "r1").await;
     let agent = agent_in(&project, &client, None).await;
     let id = todo_at(&client, "a").await;
     assert_eq!(home_of(&client, id).await, Value::Null);
@@ -1382,11 +1391,11 @@ async fn t13_move_checks_the_rail_and_survives_a_restart() {
         .await
         .unwrap_err();
     assert_eq!(missing.code, rpc::code::NOT_FOUND);
-    let not_a_room = client
+    let not_a_workstream = client
         .request("todo.move", json!({ "id": id, "home": agent }))
         .await
         .unwrap_err();
-    assert_eq!(not_a_room.code, rpc::code::INVALID_PARAMS);
+    assert_eq!(not_a_workstream.code, rpc::code::INVALID_PARAMS);
     assert_eq!(history().await, touched);
     assert_eq!(home_of(&client, id).await, Value::Null);
 
@@ -1408,12 +1417,12 @@ async fn t13_move_checks_the_rail_and_survives_a_restart() {
 }
 
 #[tokio::test]
-async fn t13_room_removal_resets_homes_and_emits_in_id_order() {
+async fn t13_workstream_removal_resets_homes_and_emits_in_id_order() {
     let project = start(&[]);
     let mut events = project.subscribed().await;
     let client = project.client().await;
-    let r1 = room(&client, "r1").await;
-    let r2 = room(&client, "r2").await;
+    let r1 = workstream(&client, "r1").await;
+    let r2 = workstream(&client, "r2").await;
     let (a, b, c, d) = (
         todo_at(&client, "a").await,
         todo_at(&client, "b").await,
@@ -1463,7 +1472,7 @@ async fn t13_room_removal_resets_homes_and_emits_in_id_order() {
 async fn t13_a_failed_rail_remove_leaves_every_home() {
     let project = start(&[]);
     let client = project.client().await;
-    let r1 = room(&client, "r1").await;
+    let r1 = workstream(&client, "r1").await;
     let id = todo_at(&client, "a").await;
     client
         .request("todo.move", json!({ "id": id, "home": r1 }))
@@ -1502,13 +1511,13 @@ async fn t12_every_caller_creates_at_the_project_root_on_a_real_daemon() {
 }
 
 #[tokio::test]
-async fn t14_an_agent_under_a_room_creates_todos_with_the_nearest_room_as_home() {
+async fn t14_an_agent_under_a_workstream_creates_todos_with_the_nearest_workstream_as_home() {
     let project = start(&[]);
     let client = project.client().await;
-    let outer = room(&client, "outer").await;
+    let outer = workstream(&client, "outer").await;
     let inner = client
         .request(
-            "rail.createRoom",
+            "rail.createWorkstream",
             json!({ "name": "inner", "parent": outer }),
         )
         .await
@@ -1537,15 +1546,15 @@ async fn t14_an_agent_under_a_room_creates_todos_with_the_nearest_room_as_home()
     assert_eq!(listed[0]["home"], json!(inner));
 }
 
-/// T14: a Door's Rail id is its Room's id, so its Todo's Home is that Room, top-level or nested.
+/// T14: a Door's Rail id is its Workstream's id, so its Todo's Home is that Workstream, top-level or nested.
 #[tokio::test]
-async fn t14_a_door_creates_todos_at_its_own_room() {
+async fn t14_a_door_creates_todos_at_its_own_workstream() {
     let project = start(&[]);
     let client = project.client().await;
-    let outer = room(&client, "outer").await;
+    let outer = workstream(&client, "outer").await;
     let inner = client
         .request(
-            "rail.createRoom",
+            "rail.createWorkstream",
             json!({ "name": "inner", "parent": outer }),
         )
         .await

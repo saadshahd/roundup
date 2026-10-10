@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
-import { agent, door, room, terminal, USER } from "../testing/nodes";
+import { agent, door, workstream, terminal, USER } from "../testing/nodes";
 import { message, mountThread, threadInput } from "./threadFixture";
 
 const input = () => document.querySelector("[data-thread-input]");
@@ -20,7 +20,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
 
     expect(input()).toBeNull();
     expect(document.querySelector(".thread")).toBeNull();
-    expect(document.body.textContent).not.toContain("select a Room to talk to its Door");
+    expect(document.body.textContent).not.toContain("select a Workstream to talk to its Door");
   });
 
   it("u145_a_project_whose_only_row_is_a_root_terminal_has_no_thread", async () => {
@@ -31,7 +31,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_no_row_selected_has_no_thread_and_alt_0_focuses_nothing", async () => {
-    await mountThread([door("room", "idle", "idle")], { select: null });
+    await mountThread([door("workstream", "idle", "idle")], { select: null });
 
     expect(input()).toBeNull();
 
@@ -40,8 +40,8 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("u145_a_selected_room_shows_the_thread_and_an_agent_inside_it_too", async () => {
-    const { connected } = await mountThread([door("room", "idle", "idle"), agent("a", "working", "x", { parent: "room" })]);
+  it("u145_a_selected_workstream_shows_the_thread_and_an_agent_inside_it_too", async () => {
+    const { connected } = await mountThread([door("workstream", "idle", "idle"), agent("a", "working", "x", { parent: "workstream" })]);
 
     expect(input()).not.toBeNull();
 
@@ -55,7 +55,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_the_composer_is_inset_and_rests_on_its_own_surface_with_one_focus_ring", async () => {
-    await mountThread([door("room", "idle", "idle")]);
+    await mountThread([door("workstream", "idle", "idle")]);
 
     expect(sheet).toMatch(/\.thread-composer\s*{[^}]*margin:\s*0 var\(--space-3\) var\(--space-3\)/);
     expect(sheet).toMatch(/\.thread-composer\s*{[^}]*background-color:\s*var\(--sunken\)/);
@@ -67,25 +67,25 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_send_by_pointer_sends_what_enter_sends", async () => {
-    const { app } = await mountThread([door("room", "idle", "idle")]);
+    const { app } = await mountThread([door("workstream", "idle", "idle")]);
 
     fireEvent.input(threadInput(), { target: { value: "hello" } });
     fireEvent.click(sendButton());
 
     await vi.waitFor(() => expect(threadInput().value).toBe(""));
 
-    expect(sends(app).map((call) => call.params)).toEqual([{ to: "room", kind: "note", body: "hello", replyTo: null }]);
+    expect(sends(app).map((call) => call.params)).toEqual([{ to: "workstream", kind: "note", body: "hello", replyTo: null }]);
   });
 
   it("u145_send_is_a_native_button_that_keyboard_activation_reaches", async () => {
-    await mountThread([door("room", "idle", "idle")]);
+    await mountThread([door("workstream", "idle", "idle")]);
 
     expect(sendButton().tagName).toBe("BUTTON");
     expect(sendButton().getAttribute("type")).toBe("button");
   });
 
   it("u145_send_is_disabled_when_there_is_nothing_to_send_and_calls_nothing", async () => {
-    const { app } = await mountThread([door("room", "idle", "idle")]);
+    const { app } = await mountThread([door("workstream", "idle", "idle")]);
 
     expect(sendButton().getAttribute("aria-disabled")).toBe("true");
 
@@ -100,7 +100,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_send_is_disabled_while_a_message_send_is_pending_and_a_repeat_sends_no_duplicate", async () => {
-    const { app } = await mountThread([door("room", "idle", "idle")]);
+    const { app } = await mountThread([door("workstream", "idle", "idle")]);
     let release: () => void = () => {};
 
     app.handlers["message.send"] = (params) => new Promise((resolve) => (release = () => resolve(message(99, { from: USER, to: params.to, body: params.body }))));
@@ -119,22 +119,22 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_opening_selecting_creating_and_starting_move_no_focus_into_the_thread", async () => {
-    const { connected } = await mountThread([door("room", "idle", "idle"), agent("a", "working", "x", { parent: "room" })]);
+    const { connected } = await mountThread([door("workstream", "idle", "idle"), agent("a", "working", "x", { parent: "workstream" })]);
 
     connected.rail.select("a");
-    connected.rail.select("room");
+    connected.rail.select("workstream");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(document.activeElement).not.toBe(input());
   });
 
-  it("u145_start_a_room_moves_no_focus_into_the_thread", async () => {
+  it("u145_start_a_workstream_moves_no_focus_into_the_thread", async () => {
     const { app } = await mountThread([]);
     let tree: RailNode[] = [];
 
     app.handlers["rail.tree"] = () => tree;
-    app.handlers["rail.createRoom"] = () => {
-      const made = room("g");
+    app.handlers["rail.createWorkstream"] = () => {
+      const made = workstream("g");
 
       tree = [made];
 
@@ -149,7 +149,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
       return made;
     };
 
-    fireEvent.click(screen.getByText("start a Room"));
+    fireEvent.click(screen.getByText("new Workstream", { selector: ".pane-action" }));
     await vi.waitFor(() => expect(input()).not.toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -158,7 +158,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_start_door_moves_no_focus_into_the_thread", async () => {
-    const { app } = await mountThread([room("g")]);
+    const { app } = await mountThread([workstream("g")]);
 
     app.handlers["rail.startDoor"] = () => door("g", "idle", "idle");
     fireEvent.click(screen.getByText("start Door", { selector: ".pane-action" }));
@@ -168,7 +168,7 @@ describe("u145 the Thread's input shows only where it has a Door", () => {
   });
 
   it("u145_a_rejected_message_send_shows_its_message_on_the_one_line", async () => {
-    const { app } = await mountThread([door("room", "idle", "idle")]);
+    const { app } = await mountThread([door("workstream", "idle", "idle")]);
 
     app.handlers["message.send"] = () => {
       throw new Error("Door gone");

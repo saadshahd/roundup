@@ -835,7 +835,7 @@ async fn b6_the_user_a_terminal_and_a_group_cannot_be_taken_over() {
         dir.path(),
         vec![
             node("t", NodeKind::Terminal, false, None),
-            node("g", NodeKind::Room, false, None),
+            node("g", NodeKind::Workstream, false, None),
         ],
     );
 
@@ -995,7 +995,7 @@ async fn b6_a_door_can_be_taken_over() {
     };
     let h = Held2::new(
         dir.path(),
-        vec![node("m", NodeKind::Room, true, Some(working))],
+        vec![node("m", NodeKind::Workstream, true, Some(working))],
     );
 
     h.call("takeover.begin", json!({"agent": "m"}))

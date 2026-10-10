@@ -71,8 +71,8 @@ export const mountThread = async (tree: RailNode[], options: Options = {}) => {
 
   await connected.rail.settled();
 
-  // U145: the Thread shows only under a Room, so these tests open the first one unless `select` says otherwise.
-  const opened = options.select === undefined ? tree.find((node) => node.kind === "room" || node.parent === null)?.id : options.select;
+  // U145: the Thread shows only under a Workstream, so these tests open the first one unless `select` says otherwise.
+  const opened = options.select === undefined ? tree.find((node) => node.kind === "workstream" || node.parent === null)?.id : options.select;
 
   if (opened !== undefined && opened !== null) connected.rail.select(opened);
 

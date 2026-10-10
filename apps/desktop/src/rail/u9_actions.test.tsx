@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
 import { fakeEmulators } from "../terminal/paneHarness";
 import { RpcError } from "../app/seam";
-import { glyphOf, mountRail, railCallsTo, rowNames, rowOf } from "./railFixture";
-import { agent, event, room, door, terminal } from "../testing/nodes";
+import { chord, glyphOf, mountRail, pinnedAdd, railCallsTo, rowNames, rowOf } from "./railFixture";
+import { agent, event, workstream, door, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
 
@@ -12,22 +12,22 @@ const SPAWNED = agent("fresh", "idle", "starting");
 
 type Mounted = Awaited<ReturnType<typeof mountRail>>;
 
-const answerWith = (mounted: Mounted, method: "agent.spawn" | "rail.spawnTerminal" | "rail.createRoom") => {
+const answerWith = (mounted: Mounted, method: "agent.spawn" | "rail.spawnTerminal" | "rail.createWorkstream") => {
   mounted.app.handlers[method] = () => SPAWNED;
 };
 
 describe("u9 actions", () => {
   it("u9_plus_agent_spawns_at_the_top_level_with_no_selection", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     answerWith(mounted, "agent.spawn");
 
-    fireEvent.click(screen.getByText("agent"));
+    chord("n");
 
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
   });
 
   it("u9_plus_agent_spawns_under_the_selected_group", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("g");
 
@@ -56,13 +56,13 @@ describe("u9 actions", () => {
     answerWith(mounted, "agent.spawn");
     mounted.rail.select("a");
 
-    fireEvent.click(screen.getByText("agent"));
+    chord("n");
 
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toEqual([{ cwd: "/p", prompt: null, parent: null }]));
   });
 
   it("u9_the_new_agents_row_becomes_selected_once_the_tree_has_it", async () => {
-    const tree: RailNode[] = [room("g")];
+    const tree: RailNode[] = [workstream("g")];
     const mounted = await mountRail(tree);
     mounted.app.handlers["agent.spawn"] = () => {
       tree.push(SPAWNED);
@@ -71,23 +71,23 @@ describe("u9 actions", () => {
       return SPAWNED;
     };
 
-    fireEvent.click(screen.getByText("agent"));
+    chord("n");
 
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
   });
 
   it("u9_the_webview_never_adds_a_row_the_tree_does_not_have", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     answerWith(mounted, "agent.spawn");
 
-    fireEvent.click(screen.getByText("agent"));
+    chord("n");
     await waitFor(() => expect(railCallsTo(mounted.app, "agent.spawn")).toHaveLength(1));
 
     expect([rowNames(), mounted.rail.selected()]).toEqual([["g"], null]);
   });
 
   it("u9_plus_terminal_spawns_a_terminal_under_the_selected_group", async () => {
-    const tree: RailNode[] = [room("g")];
+    const tree: RailNode[] = [workstream("g")];
     const mounted = await mountRail(tree);
     mounted.app.handlers["rail.spawnTerminal"] = () => {
       tree.push(SPAWNED);
@@ -105,7 +105,7 @@ describe("u9 actions", () => {
   });
 
   it("u9_plus_terminal_spawns_at_the_top_level_with_no_selection", async () => {
-    const tree: RailNode[] = [room("g")];
+    const tree: RailNode[] = [workstream("g")];
     const mounted = await mountRail(tree);
     mounted.app.handlers["rail.spawnTerminal"] = () => {
       tree.push(SPAWNED);
@@ -114,20 +114,20 @@ describe("u9 actions", () => {
       return SPAWNED;
     };
 
-    fireEvent.click(screen.getByText("terminal"));
+    chord("t");
 
     await waitFor(() => expect(railCallsTo(mounted.app, "rail.spawnTerminal")).toEqual([{ cwd: "/p", parent: null }]));
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh"));
   });
 
-  it("u9_plus_room_creates_a_root_room_even_with_a_selected_room", async () => {
-    const mounted = await mountRail([room("g")]);
-    answerWith(mounted, "rail.createRoom");
+  it("u9_plus_workstream_creates_a_root_workstream_even_with_a_selected_workstream", async () => {
+    const mounted = await mountRail([workstream("g")]);
+    answerWith(mounted, "rail.createWorkstream");
     mounted.rail.select("g");
 
-    fireEvent.click(screen.getByText("room"));
+    fireEvent.click(pinnedAdd());
 
-    await waitFor(() => expect(railCallsTo(mounted.app, "rail.createRoom")).toEqual([{ name: "room", parent: null }]));
+    await waitFor(() => expect(railCallsTo(mounted.app, "rail.createWorkstream")).toEqual([{ name: "workstream", parent: null }]));
   });
 
   it("u9_double_clicking_a_name_edits_it_and_enter_renames", async () => {
@@ -165,7 +165,7 @@ describe("u9 actions", () => {
   });
 
   it("u9_hovering_a_plain_group_shows_promote_which_calls_rail_promote", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     mounted.app.handlers["rail.startDoor"] = () => door("g", "idle", "i");
 
     fireEvent.mouseEnter(rowOf("g"));
@@ -175,7 +175,7 @@ describe("u9 actions", () => {
   });
 
   it("u9_promote_is_hidden_until_hover_and_never_on_an_agent", async () => {
-    await mountRail([room("g"), agent("a", "idle", "i")]);
+    await mountRail([workstream("g"), agent("a", "idle", "i")]);
     const before = screen.queryByText("start Door");
 
     fireEvent.mouseEnter(rowOf("a"));
@@ -184,12 +184,12 @@ describe("u9 actions", () => {
   });
 
   it("u9_a_failed_call_shows_one_ink_line_until_the_next_click", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     mounted.app.handlers["agent.spawn"] = () => {
       throw new RpcError(-32000, "no claude on PATH");
     };
 
-    fireEvent.click(screen.getByText("agent"));
+    chord("n");
     const shown = await screen.findByText("no claude on PATH");
     fireEvent.click(rowOf("g"));
 
@@ -198,23 +198,23 @@ describe("u9 actions", () => {
 
   it("u9_the_failure_line_sits_above_the_actions", async () => {
     const mounted = await mountRail([]);
-    mounted.app.handlers["rail.createRoom"] = () => {
+    mounted.app.handlers["rail.createWorkstream"] = () => {
       throw new RpcError(-32000, "boom");
     };
 
-    fireEvent.click(screen.getByText("room"));
+    fireEvent.click(pinnedAdd());
     const line = await screen.findByText("boom");
 
-    expect(line.compareDocumentPosition(screen.getByText("agent")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(pinnedAdd()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("u9_the_failure_line_clears_on_a_click_on_the_fold_triangle", async () => {
-    const mounted = await mountRail([room("g")]);
-    mounted.app.handlers["rail.createRoom"] = () => {
+    const mounted = await mountRail([workstream("g")]);
+    mounted.app.handlers["rail.createWorkstream"] = () => {
       throw new RpcError(-32000, "boom");
     };
 
-    fireEvent.click(screen.getByText("room"));
+    fireEvent.click(pinnedAdd());
     await screen.findByText("boom");
 
     fireEvent.click(glyphOf("g"));
@@ -223,14 +223,14 @@ describe("u9 actions", () => {
   });
 
   it("u9_the_failure_line_clears_on_a_click_on_promote", async () => {
-    const mounted = await mountRail([room("g")]);
-    mounted.app.handlers["rail.createRoom"] = () => {
+    const mounted = await mountRail([workstream("g")]);
+    mounted.app.handlers["rail.createWorkstream"] = () => {
       throw new RpcError(-32000, "boom");
     };
 
     mounted.app.handlers["rail.startDoor"] = () => door("g", "idle", "i");
 
-    fireEvent.click(screen.getByText("room"));
+    fireEvent.click(pinnedAdd());
     await screen.findByText("boom");
     fireEvent.mouseEnter(rowOf("g"));
 
@@ -241,11 +241,11 @@ describe("u9 actions", () => {
 
   it("u9_the_failure_line_clears_on_a_click_outside_the_rail", async () => {
     const mounted = await mountRail([]);
-    mounted.app.handlers["rail.createRoom"] = () => {
+    mounted.app.handlers["rail.createWorkstream"] = () => {
       throw new RpcError(-32000, "boom");
     };
 
-    fireEvent.click(screen.getByText("room"));
+    fireEvent.click(pinnedAdd());
     await screen.findByText("boom");
 
     fireEvent.click(document.body);
@@ -262,7 +262,7 @@ describe("u9 actions", () => {
   });
 
   it("u9_a_collapsed_group_can_still_be_promoted", async () => {
-    const mounted = await mountRail([room("g"), agent("a", "idle", "i", { parent: "g" })]);
+    const mounted = await mountRail([workstream("g"), agent("a", "idle", "i", { parent: "g" })]);
     mounted.app.handlers["rail.startDoor"] = () => door("g", "idle", "i");
     fireEvent.click(glyphOf("g"));
 
@@ -273,10 +273,11 @@ describe("u9 actions", () => {
   });
 
   it("u9_a_double_click_on_plus_agent_spawns_one_agent", async () => {
-    const mounted = await mountRail([]);
+    const mounted = await mountRail([workstream("g")]);
     let finish: (node: RailNode) => void = () => {};
 
     mounted.app.handlers["agent.spawn"] = () => new Promise<RailNode>((done) => (finish = done));
+    mounted.rail.select("g");
     const button = screen.getByText("agent");
 
     fireEvent.click(button);
@@ -288,15 +289,16 @@ describe("u9 actions", () => {
   });
 
   it("u9_plus_terminal_and_plus_group_are_disabled_while_a_spawn_is_pending", async () => {
-    const mounted = await mountRail([]);
+    const mounted = await mountRail([workstream("g")]);
     let finish: (node: RailNode) => void = () => {};
 
     mounted.app.handlers["rail.spawnTerminal"] = () => new Promise<RailNode>((done) => (finish = done));
+    mounted.rail.select("g");
     const terminalButton = screen.getByText("terminal");
 
     fireEvent.click(terminalButton);
 
-    expect([terminalButton, screen.getByText("room")].map((button) => button.hasAttribute("disabled"))).toEqual([
+    expect([terminalButton, pinnedAdd()].map((button) => button.hasAttribute("disabled"))).toEqual([
       true,
       true,
     ]);
@@ -304,27 +306,27 @@ describe("u9 actions", () => {
   });
 });
 
-it("u62_creates_one_root_room_selects_the_tree_row_and_starts_only_its_door", async () => {
+it("u62_creates_one_root_workstream_selects_the_tree_row_and_starts_only_its_door", async () => {
   const tree: RailNode[] = [];
   const mounted = await mountRail(tree);
-  mounted.app.handlers["rail.createRoom"] = () => room("returned-room");
-  mounted.app.handlers["rail.startDoor"] = () => door("returned-room", "working", "starting");
-  fireEvent.click(screen.getByText("room"));
-  await waitFor(() => expect(railCallsTo(mounted.app, "rail.createRoom")).toEqual([{ name: "room", parent: null }]));
+  mounted.app.handlers["rail.createWorkstream"] = () => workstream("returned-workstream");
+  mounted.app.handlers["rail.startDoor"] = () => door("returned-workstream", "working", "starting");
+  fireEvent.click(pinnedAdd());
+  await waitFor(() => expect(railCallsTo(mounted.app, "rail.createWorkstream")).toEqual([{ name: "workstream", parent: null }]));
   expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([]);
-  tree.push(room("returned-room"));
+  tree.push(workstream("returned-workstream"));
   mounted.app.emit(event({ name: "rail.changed" }));
-  await waitFor(() => expect(mounted.rail.selected()).toBe("returned-room"));
-  await waitFor(() => expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([{ id: "returned-room" }]));
+  await waitFor(() => expect(mounted.rail.selected()).toBe("returned-workstream"));
+  await waitFor(() => expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([{ id: "returned-workstream" }]));
 });
 
 
-it("u62_failed_start_retries_the_same_room_and_focuses_its_terminal", async () => {
+it("u62_failed_start_retries_the_same_workstream_and_focuses_its_terminal", async () => {
   const tree: RailNode[] = [];
   const emulators = fakeEmulators();
   const mounted = await mountRail(tree, [], () => null, () => false, { pane: emulators.factory });
-  mounted.app.handlers["rail.createRoom"] = () => {
-    const created = room("actual");
+  mounted.app.handlers["rail.createWorkstream"] = () => {
+    const created = workstream("actual");
     tree.push(created);
     mounted.app.emit(event({ name: "rail.changed" }));
 
@@ -333,7 +335,7 @@ it("u62_failed_start_retries_the_same_room_and_focuses_its_terminal", async () =
 
   mounted.app.handlers["rail.startDoor"] = () => { throw new RpcError(-32003, "launch failed"); };
 
-  fireEvent.click(screen.getByText("room"));
+  fireEvent.click(pinnedAdd());
   await waitFor(() => expect(mounted.rail.selected()).toBe("actual"));
   await waitFor(() => expect(mounted.rail.doorFailure("actual")).toBe("launch failed"));
   expect(tree).toHaveLength(1);
@@ -348,20 +350,20 @@ it("u62_failed_start_retries_the_same_room_and_focuses_its_terminal", async () =
   tree.splice(0, 1, live);
   finish!(live);
   await waitFor(() => expect(document.activeElement?.getAttribute("data-terminal")).toBe("t-actual"));
-  expect(railCallsTo(mounted.app, "rail.createRoom")).toHaveLength(1);
+  expect(railCallsTo(mounted.app, "rail.createWorkstream")).toHaveLength(1);
   expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([{id:"actual"},{id:"actual"}]);
 });
 
-it("u9_selecting_a_reopened_room_offers_start_without_launching", async () => {
-  const mounted = await mountRail([room("reopened", {attempt:"4"})]);
+it("u9_selecting_a_reopened_workstream_offers_start_without_launching", async () => {
+  const mounted = await mountRail([workstream("reopened", {attempt:"4"})]);
   mounted.rail.select("reopened");
   expect(screen.getByText("start Door")).toBeDefined();
   expect(railCallsTo(mounted.app, "rail.startDoor")).toEqual([]);
-  expect(railCallsTo(mounted.app, "rail.createRoom")).toEqual([]);
+  expect(railCallsTo(mounted.app, "rail.createWorkstream")).toEqual([]);
 });
 
 it("a24_a_pending_start_keeps_the_rail_interactive_and_the_pane_size", async () => {
-  const mounted = await mountRail([room("closed", { attempt: "2" }), room("other")]);
+  const mounted = await mountRail([workstream("closed", { attempt: "2" }), workstream("other")]);
   mounted.app.handlers["rail.startDoor"] = () => new Promise<RailNode>(() => {});
   mounted.rail.select("closed");
   const pane = document.querySelector<HTMLElement>(".pane");
@@ -376,7 +378,7 @@ it("a24_a_pending_start_keeps_the_rail_interactive_and_the_pane_size", async () 
 });
 
 it("a24_a_late_failure_shows_the_error_and_retry_door", async () => {
-  const mounted = await mountRail([room("closed", { attempt: "2" })]);
+  const mounted = await mountRail([workstream("closed", { attempt: "2" })]);
   mounted.app.handlers["rail.startDoor"] = () => { throw new RpcError(-32003, "closed: no acknowledgement within 8s"); };
 
   mounted.rail.select("closed");
@@ -392,7 +394,7 @@ it("a24_a_start_the_daemon_never_answers_fails_within_the_bound", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
   try {
-    const mounted = await mountRail([room("closed", { attempt: "2" })]);
+    const mounted = await mountRail([workstream("closed", { attempt: "2" })]);
     mounted.app.handlers["rail.startDoor"] = () => new Promise<RailNode>(() => {});
     mounted.rail.select("closed");
 
@@ -407,7 +409,7 @@ it("a24_a_start_the_daemon_never_answers_fails_within_the_bound", async () => {
 });
 
 it("a24_a_start_that_succeeds_shows_the_doors_terminal", async () => {
-  const tree: RailNode[] = [room("closed", { attempt: "2" })];
+  const tree: RailNode[] = [workstream("closed", { attempt: "2" })];
   const mounted = await mountRail(tree, [], () => null, () => false, { pane: fakeEmulators().factory });
   mounted.app.handlers["rail.startDoor"] = () => {
     const live = door("closed", "working", "starting");

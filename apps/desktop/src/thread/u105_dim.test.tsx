@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { agent, door } from "../testing/nodes";
 import { effectiveOpacity, mountThread, threadInput } from "./threadFixture";
 
-const tree = () => [door("room", "idle", "idle"), agent("calm", "working", "typing", { parent: "room" }), agent("asks", "needs-you", "asks: keep v1?", { parent: "room" })];
+const tree = () => [door("workstream", "idle", "idle"), agent("calm", "working", "typing", { parent: "workstream" }), agent("asks", "needs-you", "asks: keep v1?", { parent: "workstream" })];
 
 const row = (id: string) => document.querySelector<HTMLElement>(`[role="tree"] [data-id="${id}"]`)!;
 
@@ -23,7 +23,7 @@ describe("u105 typing dims the periphery", () => {
     fireEvent.input(threadInput(), { target: { value: "h" } });
 
     expect(effectiveOpacity(row("calm"))).toBe(0.35);
-    expect(effectiveOpacity(row("room"))).toBe(0.35);
+    expect(effectiveOpacity(row("workstream"))).toBe(0.35);
     expect(effectiveOpacity(row("asks"))).toBe(1);
     expect(effectiveOpacity(document.querySelector("[data-todo]")!)).toBe(0.35);
     expect(effectiveOpacity(document.querySelector("[aria-label=pads] [data-shelf-row]")!)).toBe(0.35);

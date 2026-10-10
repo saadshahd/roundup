@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RailNode } from "@contracts/agent/RailNode";
-import { mountRail } from "./railFixture";
+import { chord, mountRail } from "./railFixture";
 import { agent, event, terminal } from "../testing/nodes";
 
 afterEach(cleanup);
@@ -21,7 +21,7 @@ describe("u47 a spawned terminal is selected and shown", () => {
       return SPAWNED_TERMINAL;
     };
 
-    fireEvent.click(screen.getByText("terminal"));
+    chord("t");
 
     await waitFor(() => expect(mounted.rail.selected()).toBe("fresh-terminal"));
   });

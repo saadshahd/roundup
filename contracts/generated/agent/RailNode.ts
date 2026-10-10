@@ -36,12 +36,12 @@ worktree: Worktree | null,
  */
 can_resume: boolean, 
 /**
- * E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Room that is
+ * E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Workstream that is
  * no Door, a Terminal, and an Agent with no live Terminal.
  */
 channel: Channel | null, 
 /**
- * O1: the order of an Agent or a Room's Door; `None` for a Terminal. Named `work` because
+ * O1: the order of an Agent or a Workstream's Door; `None` for a Terminal. Named `work` because
  * `order` is the position among siblings.
  */
 work: Order | null, };

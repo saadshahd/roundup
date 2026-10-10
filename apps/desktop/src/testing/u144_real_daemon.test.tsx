@@ -39,20 +39,20 @@ const mount = async () => {
 };
 
 describe("u144 the harness serves the App on a real Daemon", () => {
-  it("u144_a_room_made_and_started_by_pointer_comes_from_the_daemon", async () => {
+  it("u144_a_workstream_made_and_started_by_pointer_comes_from_the_daemon", async () => {
     const { app, emulators } = await mount();
 
-    fireEvent.click(await screen.findByRole("button", { name: "start a Room" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "new Workstream" }))[0]!);
 
     const rail = await screen.findByRole("region", { name: "rail" });
 
-    await waitFor(() => expect(within(rail).getAllByText("room").length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(rail).getAllByText("workstream").length).toBeGreaterThan(0));
     await waitFor(() => expect(emulators.made.size).toBe(1), { timeout: 20_000 });
 
     const tree = JSON.stringify(await app.rpc("rail.tree", null));
     const terminals = await app.rpc("terminal.list", null);
 
-    expect([tree.includes('"room"'), terminals.length]).toEqual([true, 1]);
+    expect([tree.includes('"workstream"'), terminals.length]).toEqual([true, 1]);
     expect([...emulators.made.keys()]).toEqual(terminals.map((terminal) => terminal.id));
   }, 60_000);
 
@@ -77,7 +77,7 @@ describe("u144 the harness serves the App on a real Daemon", () => {
     const served = createServedApp(base);
     let held = false;
     const app: AppSeam = { ...served, subscribe: (onEvent) => served.subscribe((event) => (held ? undefined : onEvent(event))) };
-    const room = await served.rpc("rail.createRoom", { name: "doomed", parent: null });
+    const workstream = await served.rpc("rail.createWorkstream", { name: "doomed", parent: null });
 
     render(() => <App app={app} reducedMotion={() => false} clock={Date.now} createEmulator={fakeEmulators().factory} />);
 
@@ -88,9 +88,9 @@ describe("u144 the harness serves the App on a real Daemon", () => {
     const field = await within(rail).findByRole("textbox");
 
     held = true;
-    await served.rpc("rail.remove", { id: room.id });
+    await served.rpc("rail.remove", { id: workstream.id });
 
-    const rejected = await served.rpc("rail.rename", { id: room.id, name: "renamed" }).then(
+    const rejected = await served.rpc("rail.rename", { id: workstream.id, name: "renamed" }).then(
       () => null,
       (error: RpcError) => error,
     );

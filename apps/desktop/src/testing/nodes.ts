@@ -31,19 +31,19 @@ export const node = (id: string, over: Partial<RailNode> = {}): RailNode => ({
   worktree: null,
   can_resume: false,
   channel: null,
-  work: over.kind === "terminal" ? null : clarifying(over.kind === "room" ? "What is this Room for?" : "What should this Agent do?"),
+  work: over.kind === "terminal" ? null : clarifying(over.kind === "workstream" ? "What is this Workstream for?" : "What should this Agent do?"),
   ...over,
 });
 
 export const agent = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
   node(id, { status: { kind, label, since: NOW }, ...over });
 
-export const room = (id: string, over: Partial<RailNode> = {}): RailNode =>
-  node(id, { kind: "room", status: { kind: "done", label: "terminal gone", since: NOW }, attempt: null, status_revision: null, terminal_id: null, ...over });
+export const workstream = (id: string, over: Partial<RailNode> = {}): RailNode =>
+  node(id, { kind: "workstream", status: { kind: "done", label: "terminal gone", since: NOW }, attempt: null, status_revision: null, terminal_id: null, ...over });
 
-/** A Door as the Daemon sends it: a Room with a live Agent sitting at it. */
+/** A Door as the Daemon sends it: a Workstream with a live Agent sitting at it. */
 export const door = (id: string, kind: Kind, label: string, over: Partial<RailNode> = {}): RailNode =>
-  room(id, { attempt: "1", status_revision: "1", status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
+  workstream(id, { attempt: "1", status_revision: "1", status: { kind, label, since: NOW }, terminal_id: `t-${id}`, ...over });
 
 export const terminal = (id: string, over: Partial<RailNode> = {}): RailNode =>
   node(id, { kind: "terminal", status: null, attempt: null, status_revision: null, ...over });

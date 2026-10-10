@@ -162,7 +162,7 @@ impl Messages {
             && ctx.actor.kind != ActorKind::User
             && receiver_status
                 .as_ref()
-                .is_some_and(|node| node.kind == NodeKind::Room)
+                .is_some_and(|node| node.kind == NodeKind::Workstream)
         {
             let nodes = rail_nodes(&self.inner).await?;
             Some(hops::doors_above(&nodes, &p.to, &ctx.actor.id))
@@ -469,7 +469,7 @@ impl Messages {
     }
 
     /// `agent`'s Status for a Takeover call (B6): `NOT_FOUND` unless `agent` names an Agent node
-    /// on the Rail or a Door — never the user, a Terminal or a plain Room.
+    /// on the Rail or a Door — never the user, a Terminal or a plain Workstream.
     async fn resolve_takeover_target(&self, agent: &str) -> Result<Option<RailNode>, RpcError> {
         let nodes = rail_nodes(&self.inner).await?;
         let node = nodes
@@ -481,7 +481,7 @@ impl Messages {
 
     /// `to`'s Status, when it names an Agent or a Door; `None` when it names the user.
     /// `NOT_FOUND` when it names no Actor; `INVALID_PARAMS` when it names a Terminal or a plain
-    /// Room, neither of which can receive a Message.
+    /// Workstream, neither of which can receive a Message.
     async fn resolve_receiver(&self, to: &str) -> Result<Option<RailNode>, RpcError> {
         if to == Actor::user().id {
             return Ok(None);
@@ -1344,7 +1344,7 @@ mod tests {
             dir.path(),
             vec![
                 node("t", NodeKind::Terminal, false, None),
-                node("g", NodeKind::Room, false, None),
+                node("g", NodeKind::Workstream, false, None),
             ],
         );
 
@@ -1374,7 +1374,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let meta = node(
             "m",
-            NodeKind::Room,
+            NodeKind::Workstream,
             true,
             Some(Status {
                 kind: Kind::Idle,
@@ -2787,7 +2787,7 @@ mod tests {
     fn door(id: &str, parent: Option<&str>) -> RailNode {
         let mut door = node(
             id,
-            NodeKind::Room,
+            NodeKind::Workstream,
             true,
             Some(Status {
                 kind: Kind::Idle,

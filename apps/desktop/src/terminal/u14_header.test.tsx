@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 describe("pane empty states and error sizing", () => {
   it("u14_a_group_has_no_header", async () => {
-    const { connected, container } = await mountPane([node("g", { kind: "room", status: null, terminal_id: null })]);
+    const { connected, container } = await mountPane([node("g", { kind: "workstream", status: null, terminal_id: null })]);
 
     connected.rail.select("g");
 

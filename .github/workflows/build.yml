@@ -1,9 +1,10 @@
 name: build
 run-name: Build ready work Issues
 
-# L23: one-shot build runs. `pick` starts the fix runs open Builder PRs need and fills up to four build jobs with ready
+# L23: one-shot build runs. `pick` starts the fix runs open Builder PRs need and fills up to eight build jobs with ready
 # work Issues; each build job builds one Issue. `after` holds the write token the Builder never sees: it hands each
-# run's PR on, or strikes its Issue (L81).
+# run's PR on, or strikes its Issue (L81), then dispatches the next pick when any model did work, so a freed slot
+# fills without waiting for a merge or the hour.
 # claude-code-action rejects push events, so a merge starts the build once `check` ends on `main`. The user's or a loop
 # App's new or reopened Issue and a removed `flag:needs-user` each add work (L34), so each starts a pick.
 on:
@@ -20,7 +21,7 @@ on:
       max:
         description: Build jobs at most
         required: false
-        default: '4'
+        default: '8'
 
 permissions:
   contents: read
@@ -57,7 +58,7 @@ jobs:
       - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
-          MAX: ${{ inputs.max || '4' }}
+          MAX: ${{ inputs.max || '8' }}
         run: echo "rows=$(python3 loop/builder.py pick "$MAX")" >>"$GITHUB_OUTPUT"
 
   build:
@@ -169,6 +170,14 @@ jobs:
           for row in "$RUNNER_TEMP"/built/*.json; do
             python3 loop/builder.py built "$(jq -r .issue "$row")" "$(jq -r .slug "$row")" "$(jq -r .ran "$row")"
           done
+      # A GITHUB_TOKEN dispatch starts a workflow; a run where no model worked (a usage limit) ends the chain.
+      - if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -n "$(jq -s -r '.[] | select(.ran == true) | .issue' "$RUNNER_TEMP"/built/*.json)" ]; then
+            gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main
+          fi
 
   summary:
     needs: [pick, build, after]

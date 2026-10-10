@@ -223,7 +223,7 @@ impl Store {
             .and_then(|i| ids.get(i + 1).copied()))
     }
 
-    /// Sets the Home. The caller has checked that a Room exists on the Rail.
+    /// Sets the Home. The caller has checked that a Workstream exists on the Rail.
     pub(crate) fn set_home(&self, id: u32, home: Option<&str>) -> Result<Todo, RpcError> {
         self.get(id)?;
         self.db

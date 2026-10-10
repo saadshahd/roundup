@@ -5,7 +5,7 @@ import type { Events } from "../app/events";
 import type { AppSeam, DaemonExit } from "../app/seam";
 
 export type DecisionsState = {
-  /** The Decision the Agent (or a Room's Door) waits on; the newest when a replacement is still arriving. */
+  /** The Decision the Agent (or a Workstream's Door) waits on; the newest when a replacement is still arriving. */
   of(agent: string | null): Decision | undefined;
   /** The message of the last failed `decision.list`, until a later list succeeds. */
   listFailure(): string | null;
