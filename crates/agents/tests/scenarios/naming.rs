@@ -78,9 +78,9 @@ async fn a9_a_rename_before_the_first_prompt_wins() {
 }
 
 #[tokio::test]
-async fn a9_a_door_keeps_its_rooms_name() {
+async fn a9_a_door_keeps_its_workstreams_name() {
     let f = Fixture::running("sleep 30");
-    let team = f.room("team", None).await;
+    let team = f.workstream("team", None).await;
     f.call("rail.startDoor", json!({"id": team})).await.unwrap();
 
     f.submit(&team, "fix the build").await;

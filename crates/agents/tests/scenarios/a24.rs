@@ -1,4 +1,4 @@
-//! A24: starting a closed Room's Door returns or fails, never hangs.
+//! A24: starting a closed Workstream's Door returns or fails, never hangs.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,18 +14,26 @@ const CONVERSATION: &str = "11111111-1111-1111-1111-111111111111";
 const BOUND: Duration = Duration::from_millis(10_000);
 
 async fn closed_door(f: &Fixture) -> RailNode {
-    let room = f.room("team", None).await;
-    f.call("rail.startDoor", json!({"id": room})).await.unwrap();
-    let attempt = f.attempt(&room).await;
+    let workstream = f.workstream("team", None).await;
+    f.call("rail.startDoor", json!({"id": workstream}))
+        .await
+        .unwrap();
+    let attempt = f.attempt(&workstream).await;
     f.call(
         "agent.signal",
-        json!({"id": room, "attempt": attempt, "payload": {
+        json!({"id": workstream, "attempt": attempt, "payload": {
             "hook_event_name": "SessionStart", "session_id": CONVERSATION, "source": "startup"}}),
     )
     .await
     .unwrap();
-    f.call("agent.stop", json!({"id": room})).await.unwrap();
-    f.tree().await.into_iter().find(|n| n.id == room).unwrap()
+    f.call("agent.stop", json!({"id": workstream}))
+        .await
+        .unwrap();
+    f.tree()
+        .await
+        .into_iter()
+        .find(|n| n.id == workstream)
+        .unwrap()
 }
 
 async fn start(f: &Fixture, id: &str) -> Result<serde_json::Value, rpc::RpcError> {

@@ -265,9 +265,9 @@ async fn a22_resume_launches_with_resume_flag_and_promotes_on_ack() {
 #[tokio::test]
 async fn a22_an_id_that_is_not_an_agent_is_conflict() {
     let f = Fixture::running("sleep 30");
-    let room = f.room("r", None).await;
+    let workstream = f.workstream("r", None).await;
 
-    let err = f.resume(&room).await.unwrap_err();
+    let err = f.resume(&workstream).await.unwrap_err();
 
     assert_eq!(err.code, code::CONFLICT);
 }
@@ -539,15 +539,23 @@ async fn a22_resume_in_a_worktree_subfolder_keeps_the_saved_subfolder_not_the_wo
     assert_eq!(cwd, worktree_path.join("sub").to_string_lossy());
 }
 
-/// A23: a Room whose Door started, saved `CONVERSATION` and was stopped.
+/// A23: a Workstream whose Door started, saved `CONVERSATION` and was stopped.
 async fn exited_door(f: &Fixture) -> RailNode {
-    let room = f.room("team", None).await;
-    f.call("rail.startDoor", json!({"id": room})).await.unwrap();
-    f.session_start(&room, CONVERSATION, "startup")
+    let workstream = f.workstream("team", None).await;
+    f.call("rail.startDoor", json!({"id": workstream}))
         .await
         .unwrap();
-    f.call("agent.stop", json!({"id": room})).await.unwrap();
-    f.tree().await.into_iter().find(|n| n.id == room).unwrap()
+    f.session_start(&workstream, CONVERSATION, "startup")
+        .await
+        .unwrap();
+    f.call("agent.stop", json!({"id": workstream}))
+        .await
+        .unwrap();
+    f.tree()
+        .await
+        .into_iter()
+        .find(|n| n.id == workstream)
+        .unwrap()
 }
 
 /// The fake `claude`'s recorded argv once a launch with `--resume` has written its line.
@@ -607,9 +615,9 @@ async fn a23_a_restarted_door_resumes_its_saved_conversation() {
 #[tokio::test]
 async fn a23_a_door_with_no_saved_conversation_starts_fresh() {
     let f = Fixture::running("echo \"$@\" >> \"$(dirname \"$0\")/argv.txt\"; sleep 30");
-    let room = f.room("team", None).await;
+    let workstream = f.workstream("team", None).await;
 
-    let door = start_door(&f, &room).await.unwrap();
+    let door = start_door(&f, &workstream).await.unwrap();
 
     assert!(door.terminal_id.is_some());
     let argv = crate::common::until_file(&f.dir.path().join("argv.txt")).await;

@@ -35,7 +35,7 @@ worktree: Worktree | null,
  */
 can_resume: boolean, 
 /**
- * E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Room that is
+ * E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Workstream that is
  * no Door, a Terminal, and an Agent with no live Terminal.
  */
 channel: Channel | null, };

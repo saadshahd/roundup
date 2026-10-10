@@ -7,7 +7,7 @@ import { SCROLLBACK_LINES, createXtermEmulators, xtermOptions } from "./emulator
 import type { Emulator } from "./emulator";
 import { connectFakeProject, fakeEmulators, mountPane, output } from "./paneHarness";
 import { createScreens } from "./screens";
-import { room, info, node, terminal } from "../testing/nodes";
+import { workstream, info, node, terminal } from "../testing/nodes";
 
 const decoded = (chunks: Uint8Array[]): string[] => chunks.map((chunk) => new TextDecoder().decode(chunk));
 
@@ -170,7 +170,7 @@ describe("u34 the latest control", () => {
   });
 
   it("u34_a_selected_group_has_no_latest_control_and_creates_no_emulator", async () => {
-    const { connected, emulators } = await mountPane([room("g")]);
+    const { connected, emulators } = await mountPane([workstream("g")]);
 
     connected.rail.select("g");
 

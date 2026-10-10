@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { agent, room } from "../testing/nodes";
+import { agent, workstream } from "../testing/nodes";
 import { mountRail, railCallsTo } from "./railFixture";
 
 afterEach(cleanup);
@@ -26,7 +26,7 @@ const hold = async (key: string, held: KeyboardEventInit) => {
 
 describe("u32 a held chord spawns once", () => {
   it("u32_holding_cmd_n_spawns_one_agent_not_one_per_key_repeat", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     mounted.app.handlers["agent.spawn"] = () =>
       agent("fresh", "idle", "starting");
 
@@ -36,7 +36,7 @@ describe("u32 a held chord spawns once", () => {
   });
 
   it("u32_holding_cmd_t_spawns_one_terminal_not_one_per_key_repeat", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     mounted.app.handlers["rail.spawnTerminal"] = () =>
       agent("fresh", "idle", "starting");
 
@@ -46,7 +46,7 @@ describe("u32 a held chord spawns once", () => {
   });
 
   it("u32_a_repeat_of_shift_cmd_n_alone_opens_no_prompt_field", async () => {
-    await mountRail([room("g")]);
+    await mountRail([workstream("g")]);
 
     press("n", { metaKey: true, shiftKey: true, repeat: true });
     await Promise.resolve();
@@ -55,7 +55,7 @@ describe("u32 a held chord spawns once", () => {
   });
 
   it("u32_a_repeat_is_still_handled_by_the_webview_so_the_browser_never_sees_it", async () => {
-    await mountRail([room("g")]);
+    await mountRail([workstream("g")]);
 
     const handled = [
       press("n", { metaKey: true, repeat: true }),
@@ -67,7 +67,7 @@ describe("u32 a held chord spawns once", () => {
   });
 
   it("u32_a_new_press_after_the_repeats_spawns_again", async () => {
-    const mounted = await mountRail([room("g")]);
+    const mounted = await mountRail([workstream("g")]);
     mounted.app.handlers["agent.spawn"] = () =>
       agent("fresh", "idle", "starting");
 

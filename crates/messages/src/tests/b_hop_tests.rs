@@ -1,4 +1,4 @@
-//! B13 to B17: a question bubbles up the Rail one Door at a time and lands with the user. Rooms
+//! B13 to B17: a question bubbles up the Rail one Door at a time and lands with the user. Workstreams
 //! nest `top` > `mid` > `sub`; Agent `c` lives in `sub`, Agent `d` in `top`. The clock is fake.
 
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -21,9 +21,9 @@ struct Hops {
 }
 
 fn door(id: &str, parent: Option<&str>) -> RailNode {
-    let mut room = node(
+    let mut workstream = node(
         id,
-        NodeKind::Room,
+        NodeKind::Workstream,
         true,
         Some(Status {
             kind: Kind::Working,
@@ -31,8 +31,8 @@ fn door(id: &str, parent: Option<&str>) -> RailNode {
             since: 0,
         }),
     );
-    room.parent = parent.map(str::to_owned);
-    room
+    workstream.parent = parent.map(str::to_owned);
+    workstream
 }
 
 fn child(id: &str, parent: &str) -> RailNode {
@@ -231,7 +231,7 @@ async fn b13_a_hop_made_by_a_bound_is_touched_by_rupd_and_the_first_by_the_sende
 async fn b13_the_sender_is_never_a_hop_and_the_chain_is_read_once() {
     let dir = tempfile::tempdir().unwrap();
     let h = Hops::new(dir.path());
-    // `mid`'s Door asks `sub`: its own Room is above `sub`, so it is skipped.
+    // `mid`'s Door asks `sub`: its own Workstream is above `sub`, so it is skipped.
     h.ask("mid", "sub").await;
     h.rail.0.lock().unwrap()[2].parent = None;
     h.at(60_000).await;

@@ -8,12 +8,12 @@ const digitOf = (press: KeyboardEvent): number | null => {
   return found ? Number(found[1]) : null;
 };
 
-/** The ids of the Agent rows the Rail shows, top to bottom: a Door's row (its Room's) counts, a Terminal's does not, and a collapsed Room's Agents are not in the DOM. */
+/** The ids of the Agent rows the Rail shows, top to bottom: a Door's row (its Workstream's) counts, a Terminal's does not, and a collapsed Workstream's Agents are not in the DOM. */
 const shownAgentIds = (kinds: ReadonlyMap<string, string>): string[] =>
   [...document.querySelectorAll<HTMLElement>('[role="tree"] [role="treeitem"][data-id]')].flatMap((row) => {
     const id = row.dataset.id ?? "";
 
-    return kinds.get(id) === "agent" || kinds.get(id) === "room" ? [id] : [];
+    return kinds.get(id) === "agent" || kinds.get(id) === "workstream" ? [id] : [];
   });
 
 const focusPane = (): void => document.querySelector<HTMLElement>(".pane-screen textarea, .pane-screen [tabindex]")?.focus();

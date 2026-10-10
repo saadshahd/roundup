@@ -1,5 +1,5 @@
-//! The Rail: Rooms, Agents and Terminals as a tree in SQLite (WAL).
-//! Sibling `order` values are contiguous from 0; only Rooms hold children.
+//! The Rail: Workstreams, Agents and Terminals as a tree in SQLite (WAL).
+//! Sibling `order` values are contiguous from 0; only Workstreams hold children.
 
 use std::path::Path;
 
@@ -55,6 +55,11 @@ impl Rail {
         }
         // Terminal ids restart at 1 with the Daemon, so a stored id could name an unrelated Terminal.
         db.execute("UPDATE nodes SET terminal_id = NULL", [])?;
+        // A25: a Rail stored by an earlier Daemon holds `room` where this one writes `workstream`.
+        db.execute(
+            "UPDATE nodes SET kind = 'workstream' WHERE kind = 'room'",
+            [],
+        )?;
         Ok(Self { db })
     }
 
@@ -67,7 +72,7 @@ impl Rail {
         Ok(out)
     }
 
-    /// Append a node under `parent` (`None` is the root). Only a Room can be a parent.
+    /// Append a node under `parent` (`None` is the root). Only a Workstream can be a parent.
     pub fn insert(
         &mut self,
         kind: NodeKind,
@@ -178,7 +183,7 @@ impl Rail {
         Ok(())
     }
 
-    /// Delete `id`. Its children (only a Room, so a Door, ever has any) move to its own
+    /// Delete `id`. Its children (only a Workstream, so a Door, ever has any) move to its own
     /// parent, at its place, in order, first; one transaction, so a failed delete leaves them
     /// still under `id`.
     pub fn remove(&mut self, id: &str) -> Result<(), RpcError> {
@@ -398,7 +403,7 @@ fn add_column_if_missing(
 
 fn kind_name(kind: NodeKind) -> &'static str {
     match kind {
-        NodeKind::Room => "room",
+        NodeKind::Workstream => "workstream",
         NodeKind::Agent => "agent",
         NodeKind::Terminal => "terminal",
     }
@@ -414,7 +419,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
     let rows = query
         .query_map([], |row| {
             let kind = match row.get::<_, String>(1)?.as_str() {
-                "group" | "room" => NodeKind::Room,
+                "group" | "workstream" => NodeKind::Workstream,
                 "agent" => NodeKind::Agent,
                 _ => NodeKind::Terminal,
             };
@@ -474,8 +479,8 @@ fn descend(nodes: &[RailNode], parent: Option<&str>, out: &mut Vec<RailNode>) {
 
 fn check_parent(nodes: &[RailNode], parent: Option<&str>) -> Result<(), RpcError> {
     match parent.map(|id| find(nodes, id)).transpose()? {
-        Some(node) if node.kind != NodeKind::Room => Err(RpcError::conflict(format!(
-            "{} is not a Room: only Rooms hold children",
+        Some(node) if node.kind != NodeKind::Workstream => Err(RpcError::conflict(format!(
+            "{} is not a Workstream: only Workstreams hold children",
             node.id
         ))),
         _ => Ok(()),
@@ -523,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_legacy_plain_and_live_groups_keep_ids_order_and_children_as_rooms() {
+    fn a8_legacy_plain_and_live_groups_keep_ids_order_and_children_as_workstreams() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("agents.db");
         let db = rusqlite::Connection::open(&path).unwrap();
@@ -541,8 +546,8 @@ mod tests {
                 ("3", "child", 0)
             ]
         );
-        assert_eq!(tree[0].kind, NodeKind::Room);
-        assert_eq!(tree[1].kind, NodeKind::Room);
+        assert_eq!(tree[0].kind, NodeKind::Workstream);
+        assert_eq!(tree[1].kind, NodeKind::Workstream);
         assert_eq!(tree[2].parent.as_deref(), Some("2"));
         assert!(
             tree.iter()
@@ -558,7 +563,9 @@ mod tests {
     #[test]
     fn a7_attempt_exhaustion_does_not_wrap_or_change_the_node() {
         let (_dir, mut rail) = rail();
-        let node = rail.insert(NodeKind::Room, "room", None, None).unwrap();
+        let node = rail
+            .insert(NodeKind::Workstream, "workstream", None, None)
+            .unwrap();
         rail.db
             .execute("UPDATE nodes SET attempt = ?", [i64::MAX])
             .unwrap();
@@ -573,11 +580,11 @@ mod tests {
     #[test]
     fn a6_nothing_nests_under_an_agent_or_a_terminal() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         for kind in [NodeKind::Agent, NodeKind::Terminal] {
             let leaf = rail.insert(kind, "leaf", None, Some("1")).unwrap();
             let inserted = rail
-                .insert(NodeKind::Room, "x", Some(&leaf.id), None)
+                .insert(NodeKind::Workstream, "x", Some(&leaf.id), None)
                 .unwrap_err();
             let moved = rail.move_node(&group.id, Some(&leaf.id), 0).unwrap_err();
             assert_eq!(
@@ -591,7 +598,7 @@ mod tests {
     #[test]
     fn a6_rename_needs_the_exact_id() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         let err = rail.rename(&format!("0{}", group.id), "other").unwrap_err();
         assert_eq!(err.code, code::NOT_FOUND);
         assert_eq!(rail.tree().unwrap()[0].name, "g");
@@ -620,7 +627,11 @@ mod tests {
     fn a6_removing_a_node_closes_the_gap_among_its_siblings() {
         let (_dir, mut rail) = rail();
         let ids: Vec<_> = ["a", "b", "c"]
-            .map(|name| rail.insert(NodeKind::Room, name, None, None).unwrap().id)
+            .map(|name| {
+                rail.insert(NodeKind::Workstream, name, None, None)
+                    .unwrap()
+                    .id
+            })
             .into();
         rail.remove(&ids[1]).unwrap();
         let tree = rail.tree().unwrap();
@@ -628,16 +639,16 @@ mod tests {
         assert_eq!(rest, [("a", 0), ("c", 1)]);
     }
 
-    /// A16: moving a Room's children and deleting the Room are one transaction. A trigger
+    /// A16: moving a Workstream's children and deleting the Workstream are one transaction. A trigger
     /// that only rejects the DELETE (the UPDATEs `place` runs are untouched) tells this apart
     /// from a mutant that commits the move before deleting in a second transaction: there, the
     /// move would survive even though the delete failed.
     #[test]
     fn a16_a_groups_delete_failing_after_a_successful_move_rolls_both_back() {
         let (_dir, mut rail) = rail();
-        let group = rail.insert(NodeKind::Room, "g", None, None).unwrap();
+        let group = rail.insert(NodeKind::Workstream, "g", None, None).unwrap();
         let child = rail
-            .insert(NodeKind::Room, "child", Some(&group.id), None)
+            .insert(NodeKind::Workstream, "child", Some(&group.id), None)
             .unwrap();
         rail.db
             .execute_batch(

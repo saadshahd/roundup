@@ -96,7 +96,7 @@ async fn h13_an_agent_that_is_not_working_is_not_running_and_no_byte_is_written(
 }
 
 #[tokio::test]
-async fn h13_only_the_user_or_a_doors_own_room_may_interrupt() {
+async fn h13_only_the_user_or_a_doors_own_workstream_may_interrupt() {
     let (f, id) = working(ACKS, BOUND).await;
     let stranger = Ctx {
         actor: Actor {

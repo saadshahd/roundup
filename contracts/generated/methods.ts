@@ -1,7 +1,7 @@
 // Generated from crates/contracts/src/methods.rs. Do not edit.
 import type { Brief as agent_Brief } from "./agent/Brief";
 import type { Context as agent_Context } from "./agent/Context";
-import type { CreateRoomParams as agent_CreateRoomParams } from "./agent/CreateRoomParams";
+import type { CreateWorkstreamParams as agent_CreateWorkstreamParams } from "./agent/CreateWorkstreamParams";
 import type { Landed as agent_Landed } from "./agent/Landed";
 import type { MoveParams as agent_MoveParams } from "./agent/MoveParams";
 import type { NodeId as agent_NodeId } from "./agent/NodeId";
@@ -97,7 +97,7 @@ export type RpcMethods = {
   "decision.list": { params: null; result: decision_Decision[] };
   "decision.answer": { params: decision_AnswerParams; result: null };
   "rail.tree": { params: null; result: agent_RailNode[] };
-  "rail.createRoom": { params: agent_CreateRoomParams; result: agent_RailNode };
+  "rail.createWorkstream": { params: agent_CreateWorkstreamParams; result: agent_RailNode };
   "rail.move": { params: agent_MoveParams; result: null };
   "rail.rename": { params: agent_RenameParams; result: agent_RailNode };
   "rail.startDoor": { params: agent_NodeId; result: agent_RailNode };

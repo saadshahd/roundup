@@ -129,13 +129,13 @@ impl Daemon {
             .get(namespace)
             .ok_or_else(|| RpcError::method_not_found(method))?;
         if method == "todo.move" {
-            self.require_room(&params).await?;
+            self.require_workstream(&params).await?;
         }
         let outcome = module
             .call(&self.ctx(conn.actor.clone()), method, params)
             .await;
         if method == "todo.create" && conn.actor.kind == ActorKind::Agent {
-            return self.home_in_room(&conn.actor, outcome?).await;
+            return self.home_in_workstream(&conn.actor, outcome?).await;
         }
         if method == "rail.remove" && outcome.is_ok() {
             self.reset_orphaned_homes().await?;
@@ -143,12 +143,12 @@ impl Daemon {
         outcome
     }
 
-    /// T14: a Todo an Agent just created gets the nearest Room at or above that Agent as its Home.
-    async fn home_in_room(&self, actor: &Actor, created: Value) -> Result<Value, RpcError> {
+    /// T14: a Todo an Agent just created gets the nearest Workstream at or above that Agent as its Home.
+    async fn home_in_workstream(&self, actor: &Actor, created: Value) -> Result<Value, RpcError> {
         let nodes = self.rail().await?;
         let mut at = nodes.iter().find(|node| node.id == actor.id);
         while let Some(node) = at {
-            if node.kind == contracts::agent::NodeKind::Room {
+            if node.kind == contracts::agent::NodeKind::Workstream {
                 let module = self
                     .modules
                     .get("todo")
@@ -167,17 +167,19 @@ impl Daemon {
         Ok(created)
     }
 
-    /// T13: a `todo.move` names a Room on the Rail, or the Project root.
-    async fn require_room(&self, params: &Value) -> Result<(), RpcError> {
+    /// T13: a `todo.move` names a Workstream on the Rail, or the Project root.
+    async fn require_workstream(&self, params: &Value) -> Result<(), RpcError> {
         let contracts::todo::MoveParams { home, .. } = rpc::params(params.clone())?;
         let Some(home) = home else { return Ok(()) };
         let nodes = self.rail().await?;
         match nodes.iter().find(|node| node.id == home) {
             None => Err(RpcError::not_found(format!("rail node {home}"))),
-            Some(node) if node.kind != contracts::agent::NodeKind::Room => Err(RpcError::new(
-                code::INVALID_PARAMS,
-                format!("rail node {home} is not a Room"),
-            )),
+            Some(node) if node.kind != contracts::agent::NodeKind::Workstream => {
+                Err(RpcError::new(
+                    code::INVALID_PARAMS,
+                    format!("rail node {home} is not a Workstream"),
+                ))
+            }
             Some(_) => Ok(()),
         }
     }
@@ -595,4 +597,4 @@ mod tests {
 }
 
 #[cfg(test)]
-mod room_door;
+mod workstream_door;

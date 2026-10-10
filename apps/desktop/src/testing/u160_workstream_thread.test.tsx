@@ -22,25 +22,25 @@ afterAll(async () => {
 
 afterEach(cleanup);
 
-describe("u160 a Room's Thread holds only its own Messages on the real Daemon", () => {
-  it("u160_each_rooms_thread_holds_its_message_and_its_doors_answer_and_not_the_others", async () => {
+describe("u160 a Workstream's Thread holds only its own Messages on the real Daemon", () => {
+  it("u160_each_workstreams_thread_holds_its_message_and_its_doors_answer_and_not_the_others", async () => {
     const app: AppSeam = createServedApp(real.base);
 
     render(() => <App app={app} reducedMotion={() => false} clock={Date.now} createEmulator={fakeEmulators().factory} />);
 
     const rail = await screen.findByRole("region", { name: "rail" });
-    const rooms = async () => (await app.rpc("rail.tree", null)).filter((node) => node.kind === "room");
+    const workstreams = async () => (await app.rpc("rail.tree", null)).filter((node) => node.kind === "workstream");
     const ready = async () => expect((await app.rpc("rail.tree", null)).map((node) => node.status?.label)).not.toContain("starting");
 
-    fireEvent.click(await screen.findByRole("button", { name: "start a Room" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "new Workstream" }))[0]!);
     fireEvent.click(await within(rail).findByRole("button", { name: /start Door/ }));
     await waitFor(ready, { timeout: 30_000 });
     fireEvent.input(await screen.findByRole("textbox", { name: "message" }), { target: { value: "a" } });
     fireEvent.click(await screen.findByRole("button", { name: "send" }));
     await waitFor(async () => expect((await app.rpc("message.list", { to: null, status: null })).map((message) => message.body)).toContain("done a"), { timeout: 30_000 });
 
-    fireEvent.click(await within(rail).findByRole("button", { name: /^\s*room$/ }));
-    await waitFor(async () => expect(await rooms()).toHaveLength(2));
+    fireEvent.click(await within(rail).findByRole("button", { name: /^\s*new Workstream$/ }));
+    await waitFor(async () => expect(await workstreams()).toHaveLength(2));
     fireEvent.click(await within(rail).findByRole("button", { name: /start Door/ }));
     await waitFor(ready, { timeout: 30_000 });
     fireEvent.input(await screen.findByRole("textbox", { name: "message" }), { target: { value: "b" } });
@@ -59,7 +59,7 @@ describe("u160 a Room's Thread holds only its own Messages on the real Daemon", 
     expect(lines().join("\n")).toContain(" b");
     expect(lines().join("\n")).not.toMatch(/\b(done a|note a)\b/);
 
-    const [first] = await rooms();
+    const [first] = await workstreams();
 
     fireEvent.click(rail.querySelector(`[data-id="${first?.id}"] .name`) ?? rail);
     await waitFor(() => expect(lines().join("\n")).toContain("done a"));

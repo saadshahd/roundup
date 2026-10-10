@@ -5,7 +5,7 @@ import { Keys } from "../../keys/Keys";
 import { Pads } from "../../pads/Pads";
 import { ConnectedProjectContext, connectProject } from "../../state/connectedProject";
 import { createFakeApp } from "../../testing/fakeApp";
-import { agent, event, NOW, room } from "../../testing/nodes";
+import { agent, event, NOW, workstream } from "../../testing/nodes";
 import { todoHandlers } from "../../testing/stores";
 import type { TodoStore } from "../../testing/stores";
 import { Todos } from "../../todos/Todos";
@@ -21,7 +21,7 @@ describe("u157 a Todo created by an Agent", () => {
     const store: TodoStore = { todos: [todo(1, { creator })] };
     const app = createFakeApp();
 
-    app.handlers["rail.tree"] = () => [agent("a1", "working", "x", { name: "auth" }), room("r1", { name: "alpha", order: 1 })];
+    app.handlers["rail.tree"] = () => [agent("a1", "working", "x", { name: "auth" }), workstream("r1", { name: "alpha", order: 1 })];
     Object.assign(app.handlers, todoHandlers(store, (data) => app.emit(event(data))));
 
     const connected = await connectProject(app, { name: "p", path: "/p" }, () => true, () => NOW);

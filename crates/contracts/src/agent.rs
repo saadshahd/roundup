@@ -1,4 +1,4 @@
-//! Agents and the Rail: the tree of Rooms, Agents and Terminals.
+//! Agents and the Rail: the tree of Workstreams, Agents and Terminals.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -18,7 +18,7 @@ pub fn parse_positive_ordinal(value: &str) -> Option<i64> {
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "agent/")]
 pub enum NodeKind {
-    Room,
+    Workstream,
     Agent,
     Terminal,
 }
@@ -72,7 +72,7 @@ pub struct RailNode {
     /// A22: true only for an exited Agent or Door with saved conversation data (A21) and no
     /// start in flight. `false` for a Terminal.
     pub can_resume: bool,
-    /// E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Room that is
+    /// E6: whether the Agent's `rup mcp` has reported to the Daemon. `None` for a Workstream that is
     /// no Door, a Terminal, and an Agent with no live Terminal.
     pub channel: Option<Channel>,
 }
@@ -103,7 +103,7 @@ pub struct Brief {
     pub stdout: String,
 }
 
-/// The node an Agent sits under: a plain Room, or a Room whose Door runs.
+/// The node an Agent sits under: a plain Workstream, or a Workstream whose Door runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "agent/")]
@@ -206,7 +206,7 @@ pub struct SignalParams {
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "agent/")]
-pub struct CreateRoomParams {
+pub struct CreateWorkstreamParams {
     pub name: String,
     pub parent: Option<String>,
 }

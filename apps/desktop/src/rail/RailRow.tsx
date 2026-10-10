@@ -6,12 +6,12 @@ import { glyphOf, hasInk } from "../ink/glyph";
 import { Icon } from "../ink/Icon";
 import { KindGlyph } from "../ink/KindGlyph";
 import type { ExitState } from "../state/rail";
-import { isRoom } from "./layout";
+import { isWorkstream } from "./layout";
 import type { NodeRow } from "./layout";
 import { isUnprompted, liveLineOf, liveTitleOf } from "./liveLine";
 import { createAgentPads, PadRows, PadsControl } from "./pads/AgentPads";
 
-/** A Kind's mark, or a bare mark for a Room, which has no Kind. */
+/** A Kind's mark, or a bare mark for a Workstream, which has no Kind. */
 type Mark = { kind: Kind } | { bare: "right" | "down" };
 
 /** A Terminal has no Kind, so it borrows the marks of `working` and `done`. */
@@ -104,7 +104,7 @@ export const RailRowView = (props: {
       role="treeitem"
       aria-level={props.row.depth + 1}
       aria-selected={props.selected}
-      aria-expanded={isRoom(props.row.node) ? props.row.collapsed === null : undefined}
+      aria-expanded={isWorkstream(props.row.node) ? props.row.collapsed === null : undefined}
       data-selected={props.selected}
       data-id={props.row.node.id}
       data-kind={kind() ?? undefined}
@@ -125,7 +125,7 @@ export const RailRowView = (props: {
     >
       <p class="line">
         <Show
-          when={isRoom(props.row.node)}
+          when={isWorkstream(props.row.node)}
           fallback={<MarkView mark={mark()} />}
         >
           <button
@@ -176,7 +176,7 @@ export const RailRowView = (props: {
         <Show when={props.row.collapsed}>
           {(collapsed) => <span class="light">{collapsed().children}</span>}
         </Show>
-        <Show when={(hovered() || props.selected) && isRoom(props.row.node) && props.exit !== null}>
+        <Show when={(hovered() || props.selected) && isWorkstream(props.row.node) && props.exit !== null}>
           <button
             class="word"
             disabled={props.doorPending}

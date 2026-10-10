@@ -8,9 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use contracts::agent::{
-    Channel, ChannelEvent, CreateRoomParams, Landed, MoveParams, NodeId, NodeKind, PromptParams,
-    RailNode, RenameParams, SignalParams, SpawnParams, SpawnTerminalParams, StatusEvent,
-    WorktreeState,
+    Channel, ChannelEvent, CreateWorkstreamParams, Landed, MoveParams, NodeId, NodeKind,
+    PromptParams, RailNode, RenameParams, SignalParams, SpawnParams, SpawnTerminalParams,
+    StatusEvent, WorktreeState,
 };
 use contracts::decision::{AnswerParams, AskParams, Outcome, PermissionParams};
 use contracts::project::{ProjectSettings, Worktrees};
@@ -1230,7 +1230,7 @@ impl Shared {
     }
 }
 
-/// E6: the Channel of the live Attempt in `slot`; `None` when no program runs (a Room whose Door
+/// E6: the Channel of the live Attempt in `slot`; `None` when no program runs (a Workstream whose Door
 /// never started, an Agent with no live Terminal). An entry of an earlier Attempt reads `pending`.
 fn channel_in(
     channels: &HashMap<String, (String, Channel)>,
@@ -1540,7 +1540,7 @@ impl Agents {
         self.shared.prompt(id, text).await
     }
 
-    /// H11, H13: the user, or a Door for an Agent in its Room, may Steer or Interrupt; any other
+    /// H11, H13: the user, or a Door for an Agent in its Workstream, may Steer or Interrupt; any other
     /// caller may not.
     fn may_steer(&self, actor: &Actor, id: &str, verb: &str) -> Result<(), RpcError> {
         let allowed = match actor.kind {
@@ -1632,14 +1632,14 @@ impl Agents {
         })
     }
 
-    /// A7: start a Room's Door. A23: a Door with A21 data resumes that conversation exactly as
+    /// A7: start a Workstream's Door. A23: a Door with A21 data resumes that conversation exactly as
     /// `resume` does (so a saved conversation that cannot resume fails and never starts fresh);
     /// any other Door, its first start included, starts fresh.
     async fn start_door(&self, ctx: &Ctx, id: &str) -> Result<RailNode, RpcError> {
         let saved = {
             let rail = self.shared.rail();
-            if rail.node(id)?.kind != NodeKind::Room {
-                return Err(RpcError::conflict(format!("{id} is not a Room")));
+            if rail.node(id)?.kind != NodeKind::Workstream {
+                return Err(RpcError::conflict(format!("{id} is not a Workstream")));
             }
             rail.has_conversation(id)?
         };
@@ -1649,8 +1649,8 @@ impl Agents {
         let attempt = {
             let mut rail = self.shared.rail();
             let node = rail.node(id)?;
-            if node.kind != NodeKind::Room {
-                return Err(RpcError::conflict(format!("{id} is not a Room")));
+            if node.kind != NodeKind::Workstream {
+                return Err(RpcError::conflict(format!("{id} is not a Workstream")));
             }
             let mut runs = self.shared.runs();
             if let Some(slot) = runs.get(id) {
@@ -2061,7 +2061,7 @@ impl Agents {
         attach: bool,
     ) -> Result<terminal::Spawned, RpcError> {
         let role = match self.shared.rail().node(id)?.kind {
-            NodeKind::Room => Role::Door,
+            NodeKind::Workstream => Role::Door,
             _ => Role::Agent,
         };
         let started = attempt.to_owned();
@@ -2267,11 +2267,12 @@ impl Module for Agents {
                 reply(&())
             }
             "rail.tree" => reply(&shared.tree()?),
-            "rail.createRoom" => {
-                let CreateRoomParams { name, parent } = params(value)?;
-                let node = shared
-                    .rail()
-                    .insert(NodeKind::Room, &name, parent.as_deref(), None)?;
+            "rail.createWorkstream" => {
+                let CreateWorkstreamParams { name, parent } = params(value)?;
+                let node =
+                    shared
+                        .rail()
+                        .insert(NodeKind::Workstream, &name, parent.as_deref(), None)?;
                 ctx.emit(EventData::RailChanged);
                 reply(&shared.node(&node.id)?)
             }
@@ -2646,7 +2647,7 @@ mod tests {
     /// the swap into `Running`, then re-locks `runs` once per held Signal to apply it — the
     /// regression this test catches if the one `rail`-then-`runs` lock section is ever split:
     /// over 30 runs of that mutated binary, every run failed, the latest at trial 5536.
-    /// `TRIALS` leaves roughly 3.6x that much room, so a reintroduced bug would need to be
+    /// `TRIALS` leaves roughly 3.6x that much workstream, so a reintroduced bug would need to be
     /// dramatically harder to hit than the one measured to slip past a run.
     const TRIALS: usize = 20_000;
 
@@ -2825,7 +2826,7 @@ mod tests {
         let shared = shared_with_a_failing_kill();
         let group = shared
             .rail()
-            .insert(NodeKind::Room, "g", None, None)
+            .insert(NodeKind::Workstream, "g", None, None)
             .unwrap()
             .id;
         shared.rail().allocate_attempt(&group).unwrap();
@@ -2847,7 +2848,7 @@ mod tests {
         );
         let child = shared
             .rail()
-            .insert(NodeKind::Room, "child", Some(&group), None)
+            .insert(NodeKind::Workstream, "child", Some(&group), None)
             .unwrap()
             .id;
 

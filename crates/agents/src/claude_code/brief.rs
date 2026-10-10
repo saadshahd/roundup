@@ -9,7 +9,7 @@
 pub enum Role {
     /// Any Agent started by `agent.spawn`.
     Agent,
-    /// A Room's Door, started by `rail.startDoor`.
+    /// A Workstream's Door, started by `rail.startDoor`.
     Door,
 }
 
@@ -60,7 +60,7 @@ const TOOLS: [(&str, &str); 19] = [
 const DOOR: &str = "\
 ## Your role
 
-You are this Room's coordinating Door. Use the Todo tools to record the work and update it as it changes. \
+You are this Workstream's coordinating Door. Use the Todo tools to record the work and update it as it changes. \
 Report the outcome to the user when the work ends. \
 When the user's goal or a taste limit is unclear, ask in this Terminal and wait for the answer. \
 You cannot start other Agents or message them: \

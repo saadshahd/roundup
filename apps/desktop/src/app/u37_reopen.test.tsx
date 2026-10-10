@@ -59,8 +59,8 @@ describe("u37 reopen after the Daemon exits", () => {
 
     await waitFor(() => expect(screen.getByRole("banner").textContent).toBe("roundup   payments-api"));
 
-    for (const word of ["agent", "terminal", "room"]) {
-      expect(screen.getByRole("button", { name: word }).hasAttribute("disabled")).toBe(false);
+    for (const button of screen.getAllByRole("button", { name: "new Workstream" })) {
+      expect(button.hasAttribute("disabled")).toBe(false);
     }
   });
 

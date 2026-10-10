@@ -249,6 +249,12 @@ const editName = async (nth: number) => {
   await until(`() => Boolean(document.querySelector(".rail-row input"))`);
 };
 
+/** Selects the first Workstream, so its group ends with the inside `+ agent  + terminal` line (U162). */
+const openInside = async () => {
+  await browser.click(await pointOf(".rail-row[aria-expanded] .name", { dx: 1 }));
+  await until(`() => document.querySelector(".rail-adds") !== null`);
+};
+
 const selectAllInField = () => browser.page("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2, commands: ["selectAll"] });
 
 run("u142 the Rail selects rows, not browser text", () => {
@@ -273,22 +279,25 @@ run("u142 the Rail selects rows, not browser text", () => {
       ["from the left gap of the done summary across its label", async () => [await pointOf(".rail-fold", { dx: 1 }), await pointOf(".rail-fold", { fx: 1, dx: -2 })]],
       ["from the right gap of the done summary leftwards", async () => [await pointOf(".rail-fold", { fx: 1, dx: -2 }), await pointOf(".rail-fold button", { dx: 1 })]],
       ["from the gap between the first two add controls across the rest", async () => {
-        const first = await pointOf(".rail-actions button", { fx: 1 });
-        const second = await pointOf(".rail-actions button", { nth: 1 });
-        const last = await pointOf(".rail-actions button", { nth: 2, fx: 1, dx: -1 });
+        await openInside();
+        const first = await pointOf(".rail-adds button", { fx: 1 });
+        const second = await pointOf(".rail-adds button", { nth: 1 });
+        const last = await pointOf(".rail-adds button", { nth: 1, fx: 1, dx: -1 });
 
         return [{ x: (first.x + second.x) / 2, y: first.y }, last];
       }],
       ["from the gap between the first two add controls back across the first", async () => {
-        const first = await pointOf(".rail-actions button", { fx: 1 });
-        const second = await pointOf(".rail-actions button", { nth: 1 });
-        const start = await pointOf(".rail-actions button", { dx: 1 });
+        await openInside();
+        const first = await pointOf(".rail-adds button", { fx: 1 });
+        const second = await pointOf(".rail-adds button", { nth: 1 });
+        const start = await pointOf(".rail-adds button", { dx: 1 });
 
         return [{ x: (first.x + second.x) / 2, y: first.y }, start];
       }],
       ["from the gap between the first two add controls up through the done summary", async () => {
-        const first = await pointOf(".rail-actions button", { fx: 1 });
-        const second = await pointOf(".rail-actions button", { nth: 1 });
+        await openInside();
+        const first = await pointOf(".rail-adds button", { fx: 1 });
+        const second = await pointOf(".rail-adds button", { nth: 1 });
 
         return [{ x: (first.x + second.x) / 2, y: first.y }, await pointOf(".rail-fold", { fx: 0.5 })];
       }],
@@ -307,9 +316,10 @@ run("u142 the Rail selects rows, not browser text", () => {
 
     it(`u142_${at}_the_add_controls_and_done_summary_keep_their_accessible_names`, async () => {
       await load(size);
-      const names = await browser.eval<string[]>(`[...document.querySelectorAll(".rail-actions button, .rail-fold button")].map((button) => button.textContent.trim())`);
+      await openInside();
+      const names = await browser.eval<string[]>(`[...document.querySelectorAll(".rail-actions button, .rail-adds button, .rail-fold button")].map((button) => button.textContent.trim())`);
 
-      expect(names.filter((label) => /^\+?\s*(agent|terminal|room)$/.test(label))).toHaveLength(3);
+      expect(names.filter((label) => /^\+?\s*(agent|terminal|new Workstream)$/.test(label))).toHaveLength(3);
       expect(names.some((label) => label.endsWith("done"))).toBe(true);
     }, 30_000);
 
@@ -329,7 +339,8 @@ run("u142 the Rail selects rows, not browser text", () => {
 
     it(`u142_${at}_clicking_add_terminal_spawns_one`, async () => {
       await load(size);
-      await browser.click(await pointOf(".rail-actions button", { nth: 1, dx: 3 }));
+      await openInside();
+      await browser.click(await pointOf(".rail-adds button", { nth: 1, dx: 3 }));
       await until(`() => window.__fake.app.calls.filter((call) => call.method === "rail.spawnTerminal").length === 1`);
     }, 30_000);
 

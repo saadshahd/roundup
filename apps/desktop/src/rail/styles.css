@@ -20,6 +20,15 @@
   min-height: 28px;
 }
 
+/* U162: `+ agent  + terminal` after the last child of the resolved Workstream; no row, so no selection, drag or Live line. */
+.rail-adds {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+}
+
 .rail-row[data-selected="true"] {
   background: var(--selected);
 }

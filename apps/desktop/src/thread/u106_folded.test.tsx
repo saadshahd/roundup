@@ -5,7 +5,7 @@ import { agent, door, USER } from "../testing/nodes";
 import { message, mountThread, sent, threadInput } from "./threadFixture";
 import { event } from "../testing/nodes";
 
-const tree = () => [door("room", "idle", "idle", { name: "lead" }), agent("a", "working", "x", { parent: "room", name: "ann" }), agent("b", "idle", "x", { parent: "room", name: "bob" })];
+const tree = () => [door("workstream", "idle", "idle", { name: "lead" }), agent("a", "working", "x", { parent: "workstream", name: "ann" }), agent("b", "idle", "x", { parent: "workstream", name: "bob" })];
 
 const feedLines = () => [...document.querySelectorAll(".thread-line")].map((line) => line.textContent);
 
@@ -51,7 +51,7 @@ describe("u106 agent-to-agent Messages are one line", () => {
     const { app } = await mountThread(tree());
 
     app.emit(sent(message(5, { to: "you", body: "z".repeat(90) })));
-    app.emit(event({ name: "message.sent", data: message(6, { from: USER, to: "room", body: "q".repeat(90) }) }));
+    app.emit(event({ name: "message.sent", data: message(6, { from: USER, to: "workstream", body: "q".repeat(90) }) }));
 
     await vi.waitFor(() => expect(feedLines()).toHaveLength(2));
 

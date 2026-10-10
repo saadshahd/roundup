@@ -10,7 +10,7 @@ import type { Project } from "../app/seam";
 import { createFakeApp } from "./fakeApp";
 import { toBase64 } from "../terminal/base64";
 import type { FakeApp } from "./fakeApp";
-import { agent, room, MINUTE, door, terminal, USER } from "./nodes";
+import { agent, workstream, MINUTE, door, terminal, USER } from "./nodes";
 import { padHandlers, todoHandlers } from "./stores";
 
 const CONFLICT = -32003;
@@ -57,12 +57,12 @@ const cyclingAgents = (now: number, count: number, parentOf: (index: number) => 
     });
   });
 
-/** Rooms nested two deep, a Door with children, long names and Terminals; 40 nodes in all. */
+/** Workstreams nested two deep, a Door with children, long names and Terminals; 40 nodes in all. */
 const nestedTree = (now: number): RailNode[] => [
-  room("backend", { name: "backend" }),
-  room("auth", { name: "auth-refactor", parent: "backend" }),
+  workstream("backend", { name: "backend" }),
+  workstream("auth", { name: "auth-refactor", parent: "backend" }),
   door("payments", "working", "coordinating 3 children", {
-    name: "payments room with a very long name that overflows the rail",
+    name: "payments workstream with a very long name that overflows the rail",
     order: 1,
     status: statusAt(now, "working", "coordinating 3 children", 42),
   }),
@@ -167,12 +167,12 @@ const installDaemon = (app: FakeApp, tree: RailNode[], now: number, withShelf: b
   app.handlers["agent.spawn"] = ({ parent }) =>
     append(parent, (id, order) => agent(id, "working", "starting", { name: "agent", parent, order, status: statusAt(Date.now(), "working", "starting", 0) }));
   app.handlers["rail.spawnTerminal"] = ({ parent }) => append(parent, (id, order) => terminal(id, { name: "zsh", parent, order }));
-  app.handlers["rail.createRoom"] = ({ name, parent }) => append(parent, (id, order) => room(id, { name, parent, order }));
+  app.handlers["rail.createWorkstream"] = ({ name, parent }) => append(parent, (id, order) => workstream(id, { name, parent, order }));
   app.handlers["rail.rename"] = ({ id, name }) => changed(Object.assign(find(id), { name }));
   app.handlers["rail.startDoor"] = ({ id }) => {
     const node = find(id);
 
-    if (node.kind !== "room" || (node.terminal_id !== null && !exits.has(node.terminal_id))) throw new Error("Door is already active");
+    if (node.kind !== "workstream" || (node.terminal_id !== null && !exits.has(node.terminal_id))) throw new Error("Door is already active");
     const attempt = String(BigInt(node.attempt ?? "0") + 1n);
 
     return changed(Object.assign(node, { attempt, status_revision: "1", terminal_id: `t-${id}-${attempt}`, status: statusAt(Date.now(), "working", "starting", 0) }));
@@ -292,7 +292,7 @@ export const seedApp = (name: SeedName, now: number): Controls => {
     : name === "earlier-run"
       ? [agent("earlier-agent", "done", "finished", { name: "earlier agent", terminal_id: null, status: statusAt(now, "done", "finished", 0) })]
       : name === "door-stopped"
-      ? [door("first-room", "done", "finished", { name: "first room", status: statusAt(now, "done", "finished", 0) })]
+      ? [door("first-workstream", "done", "finished", { name: "first workstream", status: statusAt(now, "done", "finished", 0) })]
       : tree;
 
   const controls = installDaemon(app, nodes, now, name === "tree-40");

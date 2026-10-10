@@ -8,7 +8,7 @@ import { createRailDrag } from "./drag";
 import { adjacentId } from "./keys";
 import { RailMenu } from "./menu/RailMenu";
 import { createRailMenu } from "./menu/model";
-import { layoutRail } from "./layout";
+import { layoutRail, resolvedWorkstream } from "./layout";
 import type { NodeRow } from "./layout";
 import { RailRowView } from "./RailRow";
 import { SpawnPromptField } from "./SpawnPromptField";
@@ -108,7 +108,7 @@ export const Rail = () => {
 
   const [pending, setPending] = createSignal(false);
 
-  /** Runs one of the three spawn actions; a second click while the Daemon is still answering would add a second row. */
+  /** Runs one of the add actions; a second click while the Daemon is still answering would add a second row. */
   const guarded = <T,>(call: () => Promise<T>): void => {
     setPending(true);
     void attempt(call).finally(() => setPending(false));
@@ -117,12 +117,29 @@ export const Rail = () => {
   const parent = (): string | null => {
     const selected = rail.nodes.find((node) => node.id === rail.selected());
 
-    return selected?.kind === "room" ? selected.id : null;
+    return selected?.kind === "workstream" ? selected.id : null;
   };
 
-  const spawnAgentWith = (prompt: string | null) =>
+  /** U162: the Workstream whose group holds `+ agent  + terminal`: the selected Workstream, else the one above the selected row. */
+  const resolved = createMemo(() => resolvedWorkstream(rail.nodes, rail.selected()));
+
+  /** The key of the last row of the resolved Workstream's group (`null` when it is collapsed or none resolves): the inside line follows it. */
+  const addsAfter = createMemo(() => {
+    const id = resolved();
+    const all = rows();
+    const start = all.findIndex((row) => row.kind === "node" && row.node.id === id);
+    const head = all[start];
+
+    if (head?.kind !== "node" || head.collapsed !== null) return null;
+
+    const end = all.findIndex((row, index) => index > start && row.depth <= head.depth);
+
+    return { key: all[(end === -1 ? all.length : end) - 1]!.key, depth: head.depth + 1, workstream: head.node.id };
+  });
+
+  const spawnAgentWith = (prompt: string | null, under: string | null = parent()) =>
     guarded(async () => {
-      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt, parent: parent() });
+      const spawned = await app.rpc("agent.spawn", { cwd: project.path, prompt, parent: under });
 
       setWanted(spawned.id);
       setComposing(false);
@@ -130,14 +147,16 @@ export const Rail = () => {
 
   const spawnAgent = () => spawnAgentWith(null);
 
-  const spawnTerminal = () =>
+  const spawnTerminalUnder = (under: string | null) =>
     guarded(async () => {
-      const spawned = await app.rpc("rail.spawnTerminal", { cwd: project.path, parent: parent() });
+      const spawned = await app.rpc("rail.spawnTerminal", { cwd: project.path, parent: under });
 
       setWanted(spawned.id);
     });
 
-  const canSpawn = () => !pending() && !rail.roomCreating() && !rail.doorPending(rail.selected() ?? "") && daemonExit() === null;
+  const spawnTerminal = () => spawnTerminalUnder(parent());
+
+  const canSpawn = () => !pending() && !rail.workstreamCreating() && !rail.doorPending(rail.selected() ?? "") && daemonExit() === null;
 
   const attention = createMemo(() => attentionCount(rail.nodes));
 
@@ -148,7 +167,7 @@ export const Rail = () => {
   onMount(() => {
     const clear = () => {
       setFailure(null);
-      rail.clearRoomFailure();
+      rail.clearWorkstreamFailure();
       rail.clearStorageFailure();
     };
 
@@ -287,6 +306,28 @@ export const Rail = () => {
                         </div>
                       )}
                     </Show>
+                    <Show when={addsAfter()?.key === key ? addsAfter() : undefined}>
+                      {(adds) => (
+                        <div class="rail-adds" style={{ "padding-left": `${adds().depth * 2}ch` }}>
+                          <button
+                            class="word"
+                            disabled={!canSpawn()}
+                            aria-disabled={canSpawn() ? undefined : true}
+                            onClick={() => (composing() ? field()?.focus() : spawnAgentWith(null, adds().workstream))}
+                          >
+                            <Icon name="plus" /> agent
+                          </button>
+                          <button
+                            class="word"
+                            disabled={!canSpawn()}
+                            aria-disabled={canSpawn() ? undefined : true}
+                            onClick={() => spawnTerminalUnder(adds().workstream)}
+                          >
+                            <Icon name="plus" /> terminal
+                          </button>
+                        </div>
+                      )}
+                    </Show>
                   </>
                 );
               }}
@@ -307,40 +348,16 @@ export const Rail = () => {
           />
         )}
       </Show>
-      <Show when={failure() ?? rail.roomFailure() ?? rail.doorFailure(rail.selected() ?? "") ?? rail.storageFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
+      <Show when={failure() ?? rail.workstreamFailure() ?? rail.doorFailure(rail.selected() ?? "") ?? rail.storageFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
       <RailMenu menu={menu} />
       <div class="rail-actions">
         <button
           class="word"
           disabled={!canSpawn()}
           aria-disabled={canSpawn() ? undefined : true}
-          onClick={() => {
-            if (composing()) {
-              field()?.focus();
-
-              return;
-            }
-
-            spawnAgent();
-          }}
+          onClick={() => guarded(() => rail.createWorkstream())}
         >
-          <Icon name="plus" /> agent
-        </button>
-        <button
-          class="word"
-          disabled={!canSpawn()}
-          aria-disabled={canSpawn() ? undefined : true}
-          onClick={spawnTerminal}
-        >
-          <Icon name="plus" /> terminal
-        </button>
-        <button
-          class="word"
-          disabled={!canSpawn()}
-          aria-disabled={canSpawn() ? undefined : true}
-          onClick={() => guarded(() => rail.createRoom())}
-        >
-          <Icon name="plus" /> room
+          <Icon name="plus" /> new Workstream
         </button>
       </div>
     </div>

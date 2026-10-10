@@ -34,7 +34,7 @@ describe("u146 a Door answers a Thread message in the real-Daemon harness", () =
   it("u146_a_message_to_a_started_door_is_delivered_and_its_todo_shows", async () => {
     const app = mount();
 
-    fireEvent.click(await screen.findByRole("button", { name: "start a Room" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "new Workstream" }))[0]!);
 
     const rail = await screen.findByRole("region", { name: "rail" });
 

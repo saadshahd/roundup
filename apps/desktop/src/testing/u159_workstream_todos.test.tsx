@@ -22,13 +22,13 @@ afterAll(async () => {
 
 afterEach(cleanup);
 
-describe("u159 a Room's Todos are found from the Room on the real Daemon", () => {
-  it("u159_the_todo_a_door_made_is_listed_by_this_room_and_another_room_has_none", async () => {
+describe("u159 a Workstream's Todos are found from the Workstream on the real Daemon", () => {
+  it("u159_the_todo_a_door_made_is_listed_by_this_workstream_and_another_workstream_has_none", async () => {
     const app: AppSeam = createServedApp(real.base);
 
     render(() => <App app={app} reducedMotion={() => false} clock={Date.now} createEmulator={fakeEmulators().factory} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "start a Room" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "new Workstream" }))[0]!);
 
     const rail = await screen.findByRole("region", { name: "rail" });
 
@@ -40,20 +40,20 @@ describe("u159 a Room's Todos are found from the Room on the real Daemon", () =>
     fireEvent.input(input, { target: { value: "ship j4" } });
     fireEvent.click(await screen.findByRole("button", { name: "send" }));
 
-    const room = (await app.rpc("rail.tree", null)).find((node) => node.kind === "room");
+    const workstream = (await app.rpc("rail.tree", null)).find((node) => node.kind === "workstream");
 
-    await waitFor(async () => expect((await app.rpc("todo.list", null)).find((todo) => todo.title === "ship j4")?.home).toBe(room?.id), { timeout: 30_000 });
+    await waitFor(async () => expect((await app.rpc("todo.list", null)).find((todo) => todo.title === "ship j4")?.home).toBe(workstream?.id), { timeout: 30_000 });
 
     const shelf = await screen.findByRole("region", { name: "todos" });
 
-    fireEvent.click(await within(shelf).findByRole("radio", { name: "this room" }));
+    fireEvent.click(await within(shelf).findByRole("radio", { name: "this workstream" }));
     await waitFor(() => expect(shelf.querySelector("[data-shelf-row]")?.textContent).toContain("ship j4"));
 
-    fireEvent.click(await within(rail).findByRole("button", { name: /^\s*room$/ }));
-    await waitFor(async () => expect((await app.rpc("rail.tree", null)).filter((node) => node.kind === "room")).toHaveLength(2));
+    fireEvent.click(await within(rail).findByRole("button", { name: /^\s*new Workstream$/ }));
+    await waitFor(async () => expect((await app.rpc("rail.tree", null)).filter((node) => node.kind === "workstream")).toHaveLength(2));
     await waitFor(() => expect(within(shelf).getByRole("radio", { name: "all" })).toHaveProperty("checked", true));
-    fireEvent.click(within(shelf).getByRole("radio", { name: "this room" }));
+    fireEvent.click(within(shelf).getByRole("radio", { name: "this workstream" }));
 
-    expect(await within(shelf).findByText("no todos in this room")).toBeTruthy();
+    expect(await within(shelf).findByText("no todos in this workstream")).toBeTruthy();
   }, 120_000);
 });

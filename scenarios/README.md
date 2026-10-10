@@ -18,4 +18,4 @@ A scenario is the spec for a unit of work: given / when / then, in `GLOSSARY.md`
 - Inbox, Messages, Routes, Extensions and history;
 - packaging (a signed `.app`).
 
-Product roadmap: [Rooms, Doors and Sketches](../docs/wireframes.md#accepted-product-direction-rooms-doors-and-sketches); it needs scoped scenarios before dispatch.
+Product roadmap: [Workstreams, Doors and Sketches](../docs/wireframes.md#accepted-product-direction-workstreams-doors-and-sketches); it needs scoped scenarios before dispatch.

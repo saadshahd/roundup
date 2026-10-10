@@ -13,7 +13,7 @@ use super::{Inner, OPEN_BOUND, accept_receiver, binding, ended, send_status};
 /// B14: how long a live Door has to answer a hop.
 pub(crate) const HOP_BOUND_MS: i64 = 60_000;
 
-/// B13: the Doors a question follows after `door`: the Rooms above it, nearest first. The sender
+/// B13: the Doors a question follows after `door`: the Workstreams above it, nearest first. The sender
 /// is never a hop, so `origin` is left out.
 pub(crate) fn doors_above(nodes: &[RailNode], door: &str, origin: &str) -> Vec<String> {
     let parent_of = |id: &str| {
@@ -28,7 +28,7 @@ pub(crate) fn doors_above(nodes: &[RailNode], door: &str, origin: &str) -> Vec<S
         if id != origin
             && nodes
                 .iter()
-                .any(|node| node.id == id && node.kind == NodeKind::Room)
+                .any(|node| node.id == id && node.kind == NodeKind::Workstream)
         {
             above.push(id.clone());
         }

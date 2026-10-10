@@ -45,10 +45,10 @@ describe("u141 the user's own append shows the new line", () => {
     const { app } = await openShelf([padOf("auth-notes", AGENT, "a")]);
     const field = await openPad("auth-notes");
     scrolledReader(field);
-    app.handlers["pad.append"] = () => Promise.reject(new RpcError(-32000, "no room"));
+    app.handlers["pad.append"] = () => Promise.reject(new RpcError(-32000, "no workstream"));
 
     await appendLine(" more");
-    await screen.findByText(/no room/);
+    await screen.findByText(/no workstream/);
 
     expect(field.scrollTop).toBe(1082);
   });

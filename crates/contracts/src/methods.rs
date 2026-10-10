@@ -82,8 +82,8 @@ pub const METHODS: &[Method] = &[
     m("decision.answer", "decision_AnswerParams", "null"),
     m("rail.tree", "null", "agent_RailNode[]"),
     m(
-        "rail.createRoom",
-        "agent_CreateRoomParams",
+        "rail.createWorkstream",
+        "agent_CreateWorkstreamParams",
         "agent_RailNode",
     ),
     m("rail.move", "agent_MoveParams", "null"),
