@@ -97,7 +97,7 @@ def execution(*parts):
 
 
 WORKED = execution('text', 'tool_use')
-READY = ('ready-for-agent',)
+READY = ()
 IDLE_RUN = execution('text')
 
 
@@ -175,7 +175,7 @@ class Built(unittest.TestCase):
         with GitHub(notes=old + [note('<!-- strike -->\nfirst'), note('<!-- strike -->\nsecond')], labels=READY) as github:
             builder.built(1, 'U1', True, 'https://run/1')
         self.assertTrue(github.flagged())
-        self.assertIn(('api', '-X', 'DELETE', 'repos/{owner}/{repo}/issues/1/labels/ready-for-agent'), github.writes)
+        self.assertFalse(any('DELETE' in write for write in github.writes))
 
     def test_l23_an_issue_closed_by_a_person_or_after_its_build_pr_merged_or_held_by_a_dependency_records_nothing(self):
         with GitHub(state='closed', labels=READY, merged=[dict(number=7)]) as github:
@@ -199,11 +199,10 @@ class Built(unittest.TestCase):
         self.assertEqual(github.writes[0], ('issue', 'reopen', '1'))
         self.assertIn('<!-- strike -->\nThe build run https://run/1 ended without a PR.', github.bodies())
 
-    def test_l79_a_run_that_took_its_issue_off_the_queue_asks_the_user(self):
-        with GitHub() as github:
+    def test_l79_a_run_that_asked_the_user_records_no_strike(self):
+        with GitHub(labels=(builder.NEEDS_USER,)) as github:
             builder.built(1, 'U1', True, 'https://run/1')
-        self.assertTrue(github.flagged())
-        self.assertFalse(any(body.startswith('<!-- strike -->') for body in github.bodies()))
+        self.assertEqual(github.writes, [])
 
 
 class Fix(unittest.TestCase):
@@ -244,7 +243,7 @@ class Fix(unittest.TestCase):
         with GitHub(view=view, notes=attempts + strikes, labels=READY) as github:
             builder.fix_task(9, HEAD, 'check')
         self.assertTrue(github.flagged())
-        self.assertIn(('api', '-X', 'DELETE', 'repos/{owner}/{repo}/issues/5/labels/ready-for-agent'), github.writes)
+        self.assertFalse(any('DELETE' in write for write in github.writes))
 
     def test_l82_a_reject_fix_carries_the_last_verdict(self):
         verdicts = [note('VERDICT: reject\nfirst'), note('VERDICT: reject\nlatest')]

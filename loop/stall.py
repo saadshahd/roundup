@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""L94, L79: the loop notices its own stall. Work waits while no PR merged to `main` in three hours: one `loop:work`
+"""L94, L79: the loop notices its own stall. Work waits while no PR merged to `main` in three hours: one work
 Issue (Key `stall-<yyyymmdd-hh>`) lists it, hourly comments repeat it, six hours ask the user, and the first run after
 a merge closes it. Exit 4: GitHub could not be read or written."""
 import subprocess
@@ -43,10 +43,10 @@ def last_merge():
 
 
 def waiting(issues, prs):
-    """Lines for each work Issue labelled `ready-for-agent` (a stall Issue is the alarm, not work) and each open
-    same-repository `build/` PR not waiting on the user."""
+    """Lines for each open work Issue (L34) not waiting on the user (a stall Issue is the alarm, not work) and each
+    open same-repository `build/` PR not waiting on the user."""
     found = [f"Issue #{i['number']} {i['title']}" for i in issues
-             if 'ready-for-agent' in {l['name'] for l in i['labels']} and not stall_key(i)]
+             if builder.NEEDS_USER not in {l['name'] for l in i['labels']} and not stall_key(i)]
     found += [f"PR #{p['number']} {p['headRefName']}" for p in prs
               if p['headRefName'].startswith('build/') and not p['isCrossRepository']
               and builder.NEEDS_USER not in {l['name'] for l in p['labels']}]
@@ -100,7 +100,8 @@ def close(issue, merge):
 
 
 def stall(now):
-    issues = paged('repos/{owner}/{repo}/issues?state=open&labels=loop%3Awork&per_page=100')
+    issues = [i for i in paged('repos/{owner}/{repo}/issues?state=open&per_page=100')
+              if 'pull_request' not in i and orders.work_issue(i)]
     open_stalls = [i for i in issues if stall_key(i)]
     merge = last_merge()
     for issue in open_stalls:
@@ -119,8 +120,8 @@ def stall(now):
         builder.comment(number, text)
     else:
         key = 'stall-' + datetime.fromtimestamp(now, timezone.utc).strftime('%Y%m%d-%H')
-        out = builder.call('issue', 'create', '--title', f'Loop stall {key}', '--label', 'loop:work', '--label',
-                           'ready-for-agent', '--body', open_body(key, text))
+        out = builder.call('issue', 'create', '--title', f'Loop stall {key}', '--label', 'loop:work', '--body',
+                           open_body(key, text))
         number = int(out.strip().rsplit('/', 1)[-1])
     if not merge or now - merge[2] >= ASK:
         failing = [line for line in text.splitlines() if line.startswith('- ') and

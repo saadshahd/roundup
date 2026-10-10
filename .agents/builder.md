@@ -24,7 +24,7 @@ A UI Issue, or a Brief, Door or Decision Issue in the first user journey, also r
 
 A fix run starts with `gh pr ready --undo`, answers every finding or failure in the task with commits on the PR's branch, then ends with `just check`, a push and step 3.
 
-A missing prerequisite is an engineering repair: file the missing implementation as a scoped `loop:work` Issue with `ready-for-agent`, then block this Issue on it: `gh api -X POST repos/{owner}/{repo}/issues/<this>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<prerequisite> --jq .id)`. An isolated contract test does not complete a multi-scenario implementation Issue. Keep implementation within its Scope; an Architect or the user authorizes an ownership expansion. Contract approval requirements still apply.
+A missing prerequisite is an engineering repair: file the missing implementation as a scoped `loop:work` Issue, then block this Issue on it: `gh api -X POST repos/{owner}/{repo}/issues/<this>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<prerequisite> --jq .id)`. An isolated contract test does not complete a multi-scenario implementation Issue. Keep implementation within its Scope; an Architect or the user authorizes an ownership expansion. Contract approval requirements still apply.
 
 Stop only on an unresolved product decision that changes the requested outcome and that no scenario, Item or `GLOSSARY.md` entry settles. Engineering uncertainty calls for investigation, a tested repair or a scoped prerequisite Issue under the existing direction. For that unresolved question, leave a draft with `Stopped: <the question>`, its user-visible consequence and one recommended choice; the end of your run asks the user (L81).
 

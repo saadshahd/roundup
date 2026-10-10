@@ -4,7 +4,8 @@ run-name: Build ready work Issues
 # L23: one-shot build runs. `pick` starts the fix runs open Builder PRs need and fills up to four build jobs with ready
 # work Issues; each build job builds one Issue. `after` holds the write token the Builder never sees: it hands each
 # run's PR on, or strikes its Issue (L81).
-# claude-code-action rejects push events, so a merge starts the build once `check` ends on `main`.
+# claude-code-action rejects push events, so a merge starts the build once `check` ends on `main`. A collaborator's new
+# or reopened Issue, a `loop:work` vouch and a removed `flag:needs-user` each add work (L34), so each starts a pick.
 on:
   workflow_run:
     workflows: [check]
@@ -13,7 +14,7 @@ on:
   schedule:
     - cron: '17 * * * *'
   issues:
-    types: [labeled]
+    types: [opened, reopened, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       max:
@@ -32,7 +33,12 @@ defaults:
 jobs:
   # One pick at a time, so two triggers never start one Issue twice; build jobs of earlier runs keep running.
   pick:
-    if: github.event_name != 'issues' || github.event.label.name == 'ready-for-agent'
+    if: >-
+      github.event_name != 'issues' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'loop:work') ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'flag:needs-user') ||
+      (contains(fromJSON('["opened", "reopened"]'), github.event.action) &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     concurrency:
       group: build-pick

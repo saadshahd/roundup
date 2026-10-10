@@ -47,6 +47,17 @@ class Permissions(unittest.TestCase):
         self.assertNotIn(': write', job)
 
 
+class Build(unittest.TestCase):
+    def test_l23_new_work_issues_start_a_pick_without_an_intake_label(self):
+        source = (ROOT / '.github/workflows/build.yml').read_text()
+        self.assertIn('types: [opened, reopened, labeled, unlabeled]', source)
+        pick = source.split('  pick:', 1)[1].split('    runs-on:', 1)[0]
+        for text in ("github.event.label.name == 'loop:work'", "github.event.label.name == 'flag:needs-user'",
+                     '"OWNER", "MEMBER", "COLLABORATOR"'):
+            self.assertIn(text, pick)
+        self.assertNotIn('ready-for-agent', source)
+
+
 class Stall(unittest.TestCase):
     def test_l94_workflow_calls_no_model_and_holds_only_issue_writes(self):
         source = (ROOT / '.github/workflows/stall.yml').read_text()

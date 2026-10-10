@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""L34: GitHub Issues are the work queue; scenario files describe acceptance."""
+"""L34: open GitHub Issues are the work queue; scenario files describe acceptance."""
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
+NEEDS_USER = 'flag:needs-user'
+# The repository is public: only its collaborators and the loop's own Apps file work, or vouch for an Issue with
+# `loop:work`, which only collaborators can apply.
+AUTHORS = ('OWNER', 'MEMBER', 'COLLABORATOR')
+BOTS = ('claude[bot]', 'github-actions[bot]')
 
 
 def gh(*args):
@@ -22,12 +28,18 @@ def field(body, name, default=None):
     return found[0].strip()
 
 
+def work_issue(issue):
+    """Whether the Issue may run: a collaborator or a loop App filed it, or a collaborator labelled it `loop:work`."""
+    return (issue.get('author_association') in AUTHORS or (issue.get('user') or {}).get('login') in BOTS or
+            'loop:work' in {label['name'] for label in issue['labels']})
+
+
 def order(issue):
     body = issue['body'] or ''
     if not re.search(r'^Key: ', body, re.M):
         # A request filed without queue fields (a bug report): a Builder specifies it before anyone builds it.
         return dict(mode='specify', issue=issue['number'], url=issue['html_url'], ids=issue['title'], file='',
-                    slug=f'issue-{issue["number"]}', priority=50, request=True)
+                    slug=f'issue-{issue["number"]}', priority=50, request=True, respecify=False)
     key = field(body, 'Key')
     if not re.fullmatch(r'[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*', key):
         raise ValueError('invalid Key')
@@ -43,16 +55,16 @@ def order(issue):
     if mode not in ('implement', 'specify'):
         raise ValueError('invalid Mode')
     row = dict(mode=mode, issue=issue['number'], url=issue['html_url'], ids=field(body, 'Scenarios'),
-               file=match[1], slug=key, priority=priority, request=False)
-    if row['mode'] == 'implement' and not Path(row['file']).is_file():
-        raise ValueError(f"missing specification {row['file']}")
+               file=match[1], slug=key, priority=priority, request=False, respecify=False)
     headings = {name for path in Path('scenarios').glob('*.md')
                 for name in re.findall(r'^\*\*([A-Z][0-9]+)[ .]', path.read_text(), re.M)}
     names = []
     for first, last in re.findall(r'\b([A-Z][0-9]+)(?:\s*(?:–|-|to)\s*[A-Z]?([0-9]+))?\b', row['ids']):
         names.extend(first[0] + str(n) for n in range(int(first[1:]), int(last or first[1:]) + 1))
-    if not names or (row['mode'] == 'implement' and any(name not in headings for name in names)):
-        raise ValueError('acceptance scenarios are not specified on this checkout')
+    if row['mode'] == 'implement' and (not names or not Path(row['file']).is_file() or
+                                       any(name not in headings for name in names)):
+        # Its acceptance is not on this checkout: a Builder specifies it first, then the queue implements it.
+        row.update(mode='specify', respecify=True)
     return row
 
 
@@ -77,6 +89,10 @@ def classify(issues, dependencies, prs):
     for issue in issues:
         number = issue['number']
         row = dict(issue=number, url=issue['html_url'], ids=issue['title'], file='', slug='', priority=100)
+        if not work_issue(issue):
+            row.update(state='unspecified', reason='filed outside the repository; a collaborator adds loop:work to vouch for it')
+            rows.append(row)
+            continue
         try:
             row = order(issue)
             keys.setdefault(row['slug'], []).append(number)
@@ -90,8 +106,8 @@ def classify(issues, dependencies, prs):
                            if dep['state'] != 'closed' or dep.get('state_reason') != 'completed']
                 if active:
                     row.update(state='in-flight', reason=' '.join(f'#{n}' for n in active))
-                elif 'ready-for-agent' not in {label['name'] for label in issue['labels']}:
-                    row.update(state='unspecified', reason='scope or dependencies need engineering triage')
+                elif NEEDS_USER in {label['name'] for label in issue['labels']} and not row['slug'].startswith('stall-'):
+                    row.update(state='waiting', reason=f'waits on the user ({NEEDS_USER})')
                 elif number in cycles:
                     row.update(state='blocked', reason='dependency cycle; engineering must repair the graph')
                 elif blocked:
@@ -108,7 +124,7 @@ def classify(issues, dependencies, prs):
 
 
 def read_orders():
-    pages = gh('api', 'repos/{owner}/{repo}/issues?state=all&labels=loop%3Awork&per_page=100', '--paginate', '--slurp')
+    pages = gh('api', 'repos/{owner}/{repo}/issues?state=all&per_page=100', '--paginate', '--slurp')
     issues = [issue for page in pages for issue in page if 'pull_request' not in issue]
     def dependencies(issue):
         if issue['state'] == 'closed' or issue.get('issue_dependencies_summary', {}).get('total_blocked_by') == 0:
@@ -135,7 +151,7 @@ def queued(number):
 def task(number):
     """Print the Builder's task for a ready Issue; raise NotReady when another run or a person took it."""
     issue = gh('api', f'repos/{{owner}}/{{repo}}/issues/{number}')
-    if issue['state'] != 'open' or 'ready-for-agent' not in {label['name'] for label in issue['labels']}:
+    if issue['state'] != 'open' or not work_issue(issue):
         raise NotReady(f'Issue #{number} is no longer authorized for execution')
     row = order(issue)
     if not queued(number):
@@ -144,6 +160,10 @@ def task(number):
         completion = ('This Issue is a request without queue fields. Add its acceptance as scenarios, then edit this Issue '
                       'to add Key, Priority, Specification and Scenarios lines and Mode: implement, so the queue builds it '
                       'once the scenarios are on main. Never close it from this PR.')
+    elif row['respecify']:
+        completion = (f"This implementation Issue names scenarios ({row['ids']}) that {row['file']} on main does not hold. "
+                      'Add its acceptance as scenarios, then edit this Issue so its Scenarios line names their IDs and it '
+                      'keeps Mode: implement, so the queue builds it once the scenarios are on main. Never close it from this PR.')
     elif row['mode'] == 'specify':
         completion = ('Close this specification Issue only after its specification acceptance is demonstrated; implementation '
                       f'stays in its dependent Issue. Use Closes #{number} when that condition holds.')
