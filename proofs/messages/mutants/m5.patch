@@ -1,0 +1,11 @@
+--- model.bend
++++ model.bend
+@@ -243,7 +243,7 @@
+ def user_drop(+id: Nat, s: World) -> World:
+   match s:
+     case W{+q, +haf, +htk, +t, +d, +u, +tt, +rl, +n, +tk, +i, +g}:
+-      drop_pick(mem(id, haf), mem(id, htk), id, W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
++      drop_pick(True{}, mem(id, htk), id, W{q, haf, htk, t, d, u, tt, rl, n, tk, i, g})
+ 
+ def set_idle(b: Bool, s: World) -> World:
+   match s:
