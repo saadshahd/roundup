@@ -27,7 +27,9 @@ const served = async (base: string) => {
 
 /** Starts `rupd` on the fake `claude` with `env` added to its environment, as `just harness-real` does. */
 export const startRealDaemon = async (env: Record<string, string>): Promise<StartedDaemon> => {
-  const built = spawnSync("cargo", ["build", "-p", "rupd", "-p", "rup"], { cwd: REPO, stdio: "inherit" });
+  const build = () => spawnSync("cargo", ["build", "-p", "rupd", "-p", "rup"], { cwd: REPO, stdio: "inherit" });
+  // Test files build in parallel workers; the first run of a fresh toolchain can lose a rustup install race, so a second build settles it.
+  const built = build().status === 0 ? { status: 0 } : build();
 
   if (built.status !== 0) throw new Error("cargo build -p rupd -p rup failed");
 
