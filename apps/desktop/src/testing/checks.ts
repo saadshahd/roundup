@@ -112,12 +112,15 @@ const pageOf = (doc: Document): Page => {
 
 const inTerminal = (el: Element) => el.closest(".xterm, [data-terminal]") !== null;
 
+// A rule whose every selector is inside the terminal (xterm's own stylesheet) is exempt, as `inTerminal` exempts its elements.
+const terminalRule = (selectorText: string) => selectorText.split(",").every((part) => /\.xterm|\[data-terminal\]/.test(part));
+
 const colourProperties = ["color", "background-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"] as const;
 
 // D1: nothing but a Token read supplies a colour, font size, radius, shadow or duration.
 const d1 = ({ doc, elements }: Page): Measure => {
   const found = styleRulesOf(doc)
-    .filter((rule) => rule.selectorText.trim() !== ":root")
+    .filter((rule) => rule.selectorText.trim() !== ":root" && !terminalRule(rule.selectorText))
     .flatMap((rule) => lookLiterals(rule.cssText.slice(rule.cssText.indexOf("{"))).map((literal) => ({ selector: rule.selectorText, literal })));
 
   const inline = elements.flatMap((el) => lookLiterals(inlineStyleCss(`style={{${(el.getAttribute("style") ?? "").split(";").filter(Boolean).map((pair) => pair.replace(/^\s*([^:]+):\s*(.*)$/, '"$1": "$2"')).join(",")}}}`)).map((literal) => ({ selector: selectorOf(el), literal })));
