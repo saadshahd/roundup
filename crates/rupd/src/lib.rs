@@ -134,10 +134,34 @@ impl Daemon {
         let outcome = module
             .call(&self.ctx(conn.actor.clone()), method, params)
             .await;
+        if method == "todo.create" && conn.actor.kind == ActorKind::Agent {
+            return self.home_in_room(&conn.actor, outcome?).await;
+        }
         if method == "rail.remove" && outcome.is_ok() {
             self.reset_orphaned_homes().await?;
         }
         outcome
+    }
+
+    /// T14: a Todo an Agent just created gets the nearest Room above that Agent as its Home.
+    async fn home_in_room(&self, actor: &Actor, created: Value) -> Result<Value, RpcError> {
+        let nodes = self.rail().await?;
+        let mut at = nodes.iter().find(|node| node.id == actor.id);
+        while let Some(node) = at {
+            at = node
+                .parent
+                .as_ref()
+                .and_then(|parent| nodes.iter().find(|n| &n.id == parent));
+            if let Some(room) = at.filter(|n| n.kind == contracts::agent::NodeKind::Room) {
+                let id = created["id"].clone();
+                let module = &self.modules["todo"];
+                let ctx = self.ctx(Actor::daemon());
+                return module
+                    .call(&ctx, "todo.move", json!({ "id": id, "home": room.id }))
+                    .await;
+            }
+        }
+        Ok(created)
     }
 
     /// T13: a `todo.move` names a Room on the Rail, or the Project root.
