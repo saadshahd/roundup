@@ -9,11 +9,11 @@ use contracts::todo::Todo;
 use contracts::{Actor, ActorKind, Kind};
 use rpc::RpcError;
 
-/// An Agent, or a Room whose Door has run: only these have a Context.
+/// An Agent, or a Workstream whose Door has run: only these have a Context.
 fn is_agent(node: &RailNode) -> bool {
     match node.kind {
         NodeKind::Agent => true,
-        NodeKind::Room => node.attempt.is_some(),
+        NodeKind::Workstream => node.attempt.is_some(),
         NodeKind::Terminal => false,
     }
 }
@@ -97,8 +97,8 @@ fn words(context: &Context) -> String {
     let mut lines = vec![match &context.parent {
         Some(parent) => {
             let what = match parent.node {
-                ParentNode::MetaAgent => "a Room with a Door",
-                ParentNode::Group => "a Room",
+                ParentNode::MetaAgent => "a Workstream with a Door",
+                ParentNode::Group => "a Workstream",
             };
             format!("Parent: {} (id {}), {what}.", parent.name, parent.id)
         }
@@ -196,17 +196,17 @@ mod tests {
         }
     }
 
-    /// Meta-agent `m` (a Room with a Door) holding `a` and `b`; plain Group `g` holding `c`; a
+    /// Meta-agent `m` (a Workstream with a Door) holding `a` and `b`; plain Group `g` holding `c`; a
     /// sibling Door `n` beside `m`.
     fn rail() -> Vec<RailNode> {
         vec![
-            node("1", NodeKind::Room, "m", None, true),
+            node("1", NodeKind::Workstream, "m", None, true),
             node("2", NodeKind::Agent, "a", Some("1"), false),
             node("3", NodeKind::Agent, "b", Some("1"), false),
             node("4", NodeKind::Terminal, "zsh", Some("1"), false),
-            node("5", NodeKind::Room, "g", None, false),
+            node("5", NodeKind::Workstream, "g", None, false),
             node("6", NodeKind::Agent, "c", Some("5"), false),
-            node("7", NodeKind::Room, "n", None, true),
+            node("7", NodeKind::Workstream, "n", None, true),
         ]
     }
 
@@ -294,7 +294,7 @@ mod tests {
         );
         assert_eq!(
             shaped["hookSpecificOutput"]["additionalContext"],
-            "Parent: m (id 1), a Room with a Door.\n\
+            "Parent: m (id 1), a Workstream with a Door.\n\
              Ask: your Door, with message_send to \"1\".\n\
              Peer: b (id 3), idle.\n\
              Todo 1: todo 1.\n\
@@ -310,7 +310,7 @@ mod tests {
 
         assert_eq!(
             text,
-            "Parent: g (id 5), a Room.\n\
+            "Parent: g (id 5), a Workstream.\n\
              Ask: the user, with message_send to \"you\".\n\
              Peers: none.\n\
              Todos: none open."

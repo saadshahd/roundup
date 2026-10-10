@@ -1,13 +1,13 @@
 import { cleanup, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
-import { room } from "../testing/nodes";
+import { workstream } from "../testing/nodes";
 import { mountTodos, todo, todoRowOf as rowOf } from "./testHarness";
 
 afterEach(cleanup);
 
 describe("u151 the Home line of a row", () => {
   it("u151_a_row_holds_the_button_the_waits_line_and_the_home_line_and_nothing_else_at_rest", async () => {
-    await mountTodos([todo(1), todo(2), todo(3, { blocked: true, blockers: [1, 2], home: "r1" })], true, [room("r1", { name: "alpha" })]);
+    await mountTodos([todo(1), todo(2), todo(3, { blocked: true, blockers: [1, 2], home: "r1" })], true, [workstream("r1", { name: "alpha" })]);
     await screen.findByText(/todo 3/);
 
     const row = rowOf(3);

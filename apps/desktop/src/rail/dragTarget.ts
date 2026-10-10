@@ -9,7 +9,7 @@ export type Drop = { parent: string | null; index: number; depth: number };
 export const movingWith = (nodes: readonly RailNode[], dragged: string): Set<string> =>
   new Set([dragged, ...descendantsOf(nodes, dragged).map((node) => node.id)]);
 
-/** The rows a dragged row can land between: not itself or what moves with it, since a Room cannot move into its own descendant. */
+/** The rows a dragged row can land between: not itself or what moves with it, since a Workstream cannot move into its own descendant. */
 export const remainingRows = (nodes: readonly RailNode[], rows: readonly NodeRow[], dragged: string): NodeRow[] => {
   const moving = movingWith(nodes, dragged);
 
@@ -33,7 +33,7 @@ export const dropAt = (
 
   if (below && below.depth > above.depth) return firstChild;
 
-  const holds = above.node.kind === "room" && above.collapsed === null;
+  const holds = above.node.kind === "workstream" && above.collapsed === null;
   const wanted = Math.min(Math.max(depth, below?.depth ?? 0), above.depth + (holds ? 1 : 0));
 
   if (wanted > above.depth) return firstChild;

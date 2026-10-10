@@ -25,24 +25,24 @@ fn children(tree: &[RailNode], parent: Option<&str>) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn a6_new_rooms_are_appended_with_contiguous_order() {
+async fn a6_new_workstreams_are_appended_with_contiguous_order() {
     let mut f = Fixture::new();
-    let a = f.room("a", None).await;
-    f.room("b", None).await;
-    f.room("inner", Some(&a)).await;
+    let a = f.workstream("a", None).await;
+    f.workstream("b", None).await;
+    f.workstream("inner", Some(&a)).await;
     let tree = f.tree().await;
     assert_eq!(children(&tree, None), ["a:0", "b:1"]);
     assert_eq!(children(&tree, Some(&a)), ["inner:0"]);
-    assert!(tree.iter().all(|n| n.kind == NodeKind::Room));
+    assert!(tree.iter().all(|n| n.kind == NodeKind::Workstream));
     assert_eq!(f.changed(), 3);
 }
 
 #[tokio::test]
 async fn a6_move_reorders_and_keeps_orders_contiguous_from_zero() {
     let mut f = Fixture::new();
-    let a = f.room("a", None).await;
-    let b = f.room("b", None).await;
-    let c = f.room("c", None).await;
+    let a = f.workstream("a", None).await;
+    let b = f.workstream("b", None).await;
+    let c = f.workstream("c", None).await;
     f.changed();
 
     assert_eq!(f.mv(&c, None, 0).await.unwrap(), Value::Null);
@@ -59,11 +59,11 @@ async fn a6_move_reorders_and_keeps_orders_contiguous_from_zero() {
 }
 
 #[tokio::test]
-async fn a6_a_room_cannot_move_into_its_own_descendant() {
+async fn a6_a_workstream_cannot_move_into_its_own_descendant() {
     let mut f = Fixture::new();
-    let a = f.room("a", None).await;
-    let b = f.room("b", Some(&a)).await;
-    let c = f.room("c", Some(&b)).await;
+    let a = f.workstream("a", None).await;
+    let b = f.workstream("b", Some(&a)).await;
+    let c = f.workstream("c", Some(&b)).await;
     f.changed();
     for target in [&a, &b, &c] {
         let err = f.mv(&a, Some(target), 0).await.unwrap_err();
@@ -75,7 +75,7 @@ async fn a6_a_room_cannot_move_into_its_own_descendant() {
 #[tokio::test]
 async fn a6_rename_changes_the_name_and_announces_it() {
     let mut f = Fixture::new();
-    let a = f.room("a", None).await;
+    let a = f.workstream("a", None).await;
     f.changed();
     f.call("rail.rename", json!({"id": a, "name": "renamed"}))
         .await
@@ -90,7 +90,10 @@ async fn a6_unknown_nodes_are_not_found() {
     let err = f.mv("999", None, 0).await.unwrap_err();
     assert_eq!(err.code, code::NOT_FOUND);
     let err = f
-        .call("rail.createRoom", json!({"name": "x", "parent": "999"}))
+        .call(
+            "rail.createWorkstream",
+            json!({"name": "x", "parent": "999"}),
+        )
         .await
         .unwrap_err();
     assert_eq!(err.code, code::NOT_FOUND);
@@ -99,21 +102,21 @@ async fn a6_unknown_nodes_are_not_found() {
 #[tokio::test]
 async fn a6_the_tree_lists_parents_before_their_children() {
     let f = Fixture::new();
-    let a = f.room("a", None).await;
-    let b = f.room("b", None).await;
-    f.room("a1", Some(&a)).await;
-    f.room("b1", Some(&b)).await;
+    let a = f.workstream("a", None).await;
+    let b = f.workstream("b", None).await;
+    f.workstream("a1", Some(&a)).await;
+    f.workstream("b1", Some(&b)).await;
     f.mv(&b, None, 0).await.unwrap();
     let names: Vec<_> = f.tree().await.into_iter().map(|n| n.name).collect();
     assert_eq!(names, ["b", "b1", "a", "a1"]);
 }
 
 #[tokio::test]
-async fn a8_rooms_names_parents_and_order_survive_reopening() {
+async fn a8_workstreams_names_parents_and_order_survive_reopening() {
     let f = Fixture::new();
-    let a = f.room("a", None).await;
-    let b = f.room("b", None).await;
-    f.room("inner", Some(&a)).await;
+    let a = f.workstream("a", None).await;
+    let b = f.workstream("b", None).await;
+    f.workstream("inner", Some(&a)).await;
     f.mv(&b, None, 0).await.unwrap();
     let mut before = f.tree().await;
     let mut after = f.reopen().tree().await;
@@ -124,15 +127,18 @@ async fn a8_rooms_names_parents_and_order_survive_reopening() {
 }
 
 #[tokio::test]
-async fn a7_room_restart_preserves_membership_and_fences_old_signals() {
+async fn a7_workstream_restart_preserves_membership_and_fences_old_signals() {
     let f = Fixture::running("exec sleep 30");
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
-    assert_eq!(room["kind"], "room");
-    assert_eq!(room["attempt"], Value::Null);
+    let id = workstream["id"].as_str().unwrap();
+    assert_eq!(workstream["kind"], "workstream");
+    assert_eq!(workstream["attempt"], Value::Null);
     let child = f.spawn(Some(id), None).await.unwrap();
     let first = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
     assert_eq!(first["attempt"], "1");
@@ -157,7 +163,7 @@ async fn a7_room_restart_preserves_membership_and_fences_old_signals() {
             .as_deref(),
         Some(id)
     );
-    assert_eq!(tree.iter().find(|n| n.id == id).unwrap().name, "room");
+    assert_eq!(tree.iter().find(|n| n.id == id).unwrap().name, "workstream");
     for target in [id, child.id.as_str()] {
         f.call("agent.stop", json!({"id":target})).await.unwrap();
     }
@@ -166,11 +172,14 @@ async fn a7_room_restart_preserves_membership_and_fences_old_signals() {
 #[tokio::test]
 async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
     let f = Fixture::running("exec sleep 30");
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap().to_owned();
+    let id = workstream["id"].as_str().unwrap().to_owned();
     let first = f.call("rail.startDoor", json!({"id":id})).await.unwrap();
     f.call("agent.stop", json!({"id":id})).await.unwrap();
     let f = f.reopen();
@@ -221,11 +230,14 @@ async fn a8_a12_reopen_preserves_ordinal_with_reused_terminal_numbers() {
 #[tokio::test]
 async fn a7_failed_door_attempt_consumes_attempt_and_retry_keeps_children() {
     let f = Fixture::running("exec sleep 30");
-    let room = f
-        .call("rail.createRoom", json!({"name":"room","parent":null}))
+    let workstream = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
         .await
         .unwrap();
-    let id = room["id"].as_str().unwrap();
+    let id = workstream["id"].as_str().unwrap();
     let child = f.spawn(Some(id), None).await.unwrap();
     std::fs::remove_file(f.dir.path().join("rup")).unwrap();
     assert!(f.call("rail.startDoor", json!({"id":id})).await.is_err());
@@ -246,4 +258,81 @@ async fn a7_failed_door_attempt_consumes_attempt_and_retry_keeps_children() {
     assert_eq!(next["attempt"], "2");
     f.call("agent.stop", json!({"id":id})).await.unwrap();
     f.call("agent.stop", json!({"id":child.id})).await.unwrap();
+}
+
+#[tokio::test]
+async fn a25_create_workstream_returns_a_node_of_kind_workstream() {
+    let f = Fixture::new();
+    let node = f
+        .call(
+            "rail.createWorkstream",
+            json!({"name":"workstream","parent":null}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(node["kind"], "workstream");
+    assert!(
+        f.tree()
+            .await
+            .iter()
+            .all(|n| n.kind == NodeKind::Workstream)
+    );
+}
+
+#[tokio::test]
+async fn a25_the_old_method_and_kind_do_not_exist() {
+    let f = Fixture::new();
+    let err = f
+        .call("rail.createRoom", json!({"name":"room","parent":null}))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, code::METHOD_NOT_FOUND);
+    f.workstream("w", None).await;
+    let tree = serde_json::to_string(&f.tree().await).unwrap();
+    assert!(!tree.contains("\"room\""));
+}
+
+/// Writes `kind = 'room'` over every Workstream row, as an earlier Daemon stored it.
+fn store_as_room(f: &Fixture) {
+    rusqlite::Connection::open(f.dir.path().join("agents.db"))
+        .unwrap()
+        .execute(
+            "UPDATE nodes SET kind = 'room' WHERE kind = 'workstream'",
+            [],
+        )
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a25_a_stored_rail_with_kind_room_opens_as_workstreams_with_ids_and_children_intact() {
+    let f = Fixture::new();
+    let a = f.workstream("a", None).await;
+    f.workstream("inner", Some(&a)).await;
+    f.workstream("b", None).await;
+    let mut before = f.tree().await;
+    store_as_room(&f);
+    let mut after = f.reopen().tree().await;
+    for node in before.iter_mut().chain(after.iter_mut()) {
+        node.status.as_mut().unwrap().since = 0;
+    }
+    assert_eq!(after, before);
+    assert!(after.iter().all(|n| n.kind == NodeKind::Workstream));
+}
+
+#[tokio::test]
+async fn a25_the_next_write_stores_workstream() {
+    let f = Fixture::new();
+    f.workstream("a", None).await;
+    store_as_room(&f);
+    let f = f.reopen();
+    f.workstream("b", None).await;
+    let kinds: Vec<String> = rusqlite::Connection::open(f.dir.path().join("agents.db"))
+        .unwrap()
+        .prepare("SELECT kind FROM nodes")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(kinds, ["workstream", "workstream"]);
 }

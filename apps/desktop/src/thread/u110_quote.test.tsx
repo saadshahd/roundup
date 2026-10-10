@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { agent, door, terminal } from "../testing/nodes";
 import { message, mountThread, threadInput } from "./threadFixture";
 
-const tree = () => [door("room", "idle", "idle", { name: "lead" }), agent("a", "working", "x", { parent: "room", name: "ann" }), terminal("sh", { name: "shell", parent: "room" })];
+const tree = () => [door("workstream", "idle", "idle", { name: "lead" }), agent("a", "working", "x", { parent: "workstream", name: "ann" }), terminal("sh", { name: "shell", parent: "workstream" })];
 
 const quotes = () => [...document.querySelectorAll("[data-quote]")];
 
@@ -63,7 +63,7 @@ describe("u110 select-to-quote", () => {
   });
 
   it("u110_a_selection_in_the_feed_names_the_message_id", async () => {
-    await mountThread(tree(), { messages: [message(7, { to: "room", body: "hello there" })] });
+    await mountThread(tree(), { messages: [message(7, { to: "workstream", body: "hello there" })] });
     await vi.waitFor(() => expect(document.querySelector(".thread-line")).not.toBeNull());
 
     const line = document.querySelector(".thread-line")!;

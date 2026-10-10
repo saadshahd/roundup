@@ -6,4 +6,4 @@ Scenarios E1 (`scenarios/awareness.md`) and B24 (`scenarios/messages.md`); owns 
 - Ordinary Agents get the generic Brief without the Meta-agent role. Advertise only tools the real MCP list offers, and test that.
 - B24 runs on the real-Daemon, fake-Claude harness: the fake checks its Brief, starts its `rup mcp`, creates then updates a Todo over MCP; assert creator and final title and body. No direct DB or Todo RPC in place of the MCP exchange.
 - Leave a reproducible fixture for the user's native 1280×800 check; a Chromium capture is not native proof.
-- Out of scope: contracts, App UI, MCP production code, the Room rename, Message delivery, child spawning.
+- Out of scope: contracts, App UI, MCP production code, the Workstream rename, Message delivery, child spawning.

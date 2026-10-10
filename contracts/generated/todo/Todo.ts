@@ -11,6 +11,6 @@ blocked: boolean, created_at: number,
  */
 creator: Actor, 
 /**
- * The Room (a Rail id) this Todo belongs to; `None` is the Project root. A Todo from before this field reads as `None`.
+ * The Workstream (a Rail id) this Todo belongs to; `None` is the Project root. A Todo from before this field reads as `None`.
  */
 home: string | null, };

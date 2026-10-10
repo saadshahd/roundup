@@ -253,7 +253,7 @@ async fn hook_loop_ms(rupd: &Path, rup: &Path) -> io::Result<f64> {
     Ok(ms(elapsed?))
 }
 
-/// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Rooms on the Rail.
+/// One fresh Daemon on an empty Project: cold start, memory with ten login-shell Terminals, and call latencies with 10 and 40 Workstreams on the Rail.
 pub async fn one_run(rupd: &Path, rup: &Path, calls: usize) -> io::Result<Sample> {
     let dir = tempfile::tempdir()?;
     let socket = dir.path().join("rupd.sock");
@@ -301,7 +301,7 @@ pub async fn one_run(rupd: &Path, rup: &Path, calls: usize) -> io::Result<Sample
         for index in nodes..size {
             ask(
                 &client,
-                "rail.createRoom",
+                "rail.createWorkstream",
                 json!({ "name": format!("g{index}"), "parent": null }),
             )
             .await?;
