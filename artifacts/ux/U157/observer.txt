@@ -1,0 +1,88 @@
+== 1280 light
+theme dark: false
+U151 pointer parked outside .shelf: "[{\"btn\":\" #1 one\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #2 two\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #3 three\",\"waits\":\"waits on #1, #2\",\"home\":\"in project root\"}]"
+U151 text of row 3 is exactly the three parts: " #3 three |  | waits on #1, #2 |  | in project root"
+tops at rest: "[55,94,133]"
+start: "in project root"
+tops hovered, move shown: "[55,94,133]"
+tops list open: "[55,94,133]"
+offers: "[\"auth-refactor\",\"docs\"]"
+after pointer move: "in auth-refactor" active="word light todo-move "
+daemon todo 2 home: "1"
+after reload: "in auth-refactor"
+drawer offers: "[\"project root\",\"docs\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+after reload: "in project root"
+daemon todo 2 home: null
+in the run's Room: "in first-real-1280-light"
+after rename: "in renamed-room"
+after remove: "in project root"
+after remove and reload: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 1280 dark
+theme dark: true
+U151 pointer parked outside .shelf: "[{\"btn\":\" #1 one\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #2 two\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #3 three\",\"waits\":\"waits on #1, #2\",\"home\":\"in project root\"}]"
+U151 text of row 3 is exactly the three parts: " #3 three |  | waits on #1, #2 |  | in project root"
+tops at rest: "[55,94,133]"
+start: "in project root"
+tops hovered, move shown: "[55,94,133]"
+tops list open: "[55,94,133]"
+offers: "[\"auth-refactor\",\"docs\"]"
+after pointer move: "in auth-refactor" active="word light todo-move "
+daemon todo 2 home: "1"
+after reload: "in auth-refactor"
+drawer offers: "[\"project root\",\"docs\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+after reload: "in project root"
+daemon todo 2 home: null
+in the run's Room: "in first-real-1280-dark"
+after rename: "in renamed-room"
+after remove: "in project root"
+after remove and reload: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 700 light
+theme dark: false
+U151 pointer parked outside .shelf: "[{\"btn\":\" #1 one\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #2 two\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #3 three\",\"waits\":\"waits on #1, #2\",\"home\":\"in project root\"}]"
+U151 text of row 3 is exactly the three parts: " #3 three |  | waits on #1, #2 |  | in project root"
+tops at rest: "[555,594,633]"
+start: "in project root"
+tops hovered, move shown: "[555,594,633]"
+tops list open: "[555,594,633]"
+offers: "[\"auth-refactor\",\"docs\"]"
+after pointer move: "in auth-refactor" active="word light todo-move "
+daemon todo 2 home: "1"
+after reload: "in auth-refactor"
+drawer offers: "[\"project root\",\"docs\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+after reload: "in project root"
+daemon todo 2 home: null
+in the run's Room: "in first-real-700-light"
+after rename: "in renamed-room"
+after remove: "in project root"
+after remove and reload: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
+== 700 dark
+theme dark: true
+U151 pointer parked outside .shelf: "[{\"btn\":\" #1 one\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #2 two\",\"waits\":null,\"home\":\"in project root\"},{\"btn\":\" #3 three\",\"waits\":\"waits on #1, #2\",\"home\":\"in project root\"}]"
+U151 text of row 3 is exactly the three parts: " #3 three |  | waits on #1, #2 |  | in project root"
+tops at rest: "[555,594,633]"
+start: "in project root"
+tops hovered, move shown: "[555,594,633]"
+tops list open: "[555,594,633]"
+offers: "[\"auth-refactor\",\"docs\"]"
+after pointer move: "in auth-refactor" active="word light todo-move "
+daemon todo 2 home: "1"
+after reload: "in auth-refactor"
+drawer offers: "[\"project root\",\"docs\"]"
+focused offer: "project root"
+after keyboard move: "in project root" active="word light todo-move "
+after reload: "in project root"
+daemon todo 2 home: null
+in the run's Room: "in first-real-700-dark"
+after rename: "in renamed-room"
+after remove: "in project root"
+after remove and reload: "in project root"
+activeElement was body at a keyboard step: 0 (1 = yes)
