@@ -154,8 +154,8 @@ for (const list of [nested, shelf]) {
       await page.scheme("light");
       await list.setup();
       await page.call(`rows => document.querySelectorAll(rows)[0].focus()`, rows);
-      // The Shelf's rows carry `aria-pressed` for their selection; the library adds none of the rest.
-      expect(await page.call<string[]>(`rows => [...document.querySelectorAll(rows)[0].attributes].map(a => a.name + "=" + a.value).filter(a => /^aria-(roledescription|describedby|grabbed|disabled)=/.test(a))`, rows)).toEqual([]);
+      // The shared Tooltip may describe the row; Sortable adds no drag role or disabled state.
+      expect(await page.call<string[]>(`rows => [...document.querySelectorAll(rows)[0].attributes].map(a => a.name + "=" + a.value).filter(a => /^aria-(roledescription|grabbed|disabled)=/.test(a))`, rows)).toEqual([]);
       await page.press("Enter", "Enter");
       await page.until(`() => document.querySelector('[aria-label=Drawer]')?.getAttribute('data-open') === 'true'`);
       expect(await state(rows)).toMatchObject({ drawer: true, reorders: [] });

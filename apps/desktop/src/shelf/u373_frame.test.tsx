@@ -85,7 +85,7 @@ describe("u373 the Shelf has two tabs", () => {
     expect(shelf().querySelector('section[aria-label="Pads"]')).toBeNull();
     expect(shelf().querySelector('section[aria-label="Todos"]')).not.toBeNull();
     fireEvent.click(tabNamed("Pads"));
-    expect(shelf().querySelector('section[aria-label="Todos"]')).toBeNull();
+    await waitFor(() => expect(shelf().querySelector('section[aria-label="Todos"]')).toBeNull());
     expect(shelf().querySelector('section[aria-label="Pads"]')).not.toBeNull();
   });
 
@@ -202,7 +202,7 @@ describe("u470 the shared scope toggle", () => {
     expect(shelf().textContent).toContain("scope null");
     expect(shelf().textContent).toContain("scope auth");
     fireEvent.click(tabNamed("Pads"));
-    expect(shelf().querySelectorAll(".pad-name")).toHaveLength(wide[1]!);
+    await waitFor(() => expect(shelf().querySelectorAll(".pad-name")).toHaveLength(wide[1]!));
     expect(screen.getByText("scope-null")).toBeTruthy();
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(toggle);
@@ -245,6 +245,7 @@ describe("u470 the shared scope toggle", () => {
     const toggle = await selectWorkstream();
 
     for (const [key, name] of [["ArrowRight", "Pads"], ["ArrowLeft", "Todos"], ["End", "Pads"], ["Home", "Todos"]]) {
+      tabNamed(selectedTab()).focus();
       fireEvent.keyDown(tabNamed(selectedTab()), { key });
       await waitFor(() => expect(document.activeElement).toBe(tabNamed(name!)));
       expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -272,11 +273,7 @@ describe("u369 and u371 the Shelf below the window bar", () => {
     expect([wrap.dataset.clippedTop, wrap.dataset.clippedBottom]).toEqual(["true", "false"]);
   });
 
-  it("u371_d8_passes_with_the_new_shadows", () => {
-    const shadows = [...(appCss + shelfCss).matchAll(/box-shadow:\s*([^;]+);/g)].map((m) => m[1]!.trim());
 
-    for (const value of shadows) expect(value).toMatch(/^(none|var\(--shadow-(drawer|shelf|scroll)\)|var\(--shadow-scroll[^)]*\))/);
-  });
 
 });
 

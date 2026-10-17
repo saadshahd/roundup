@@ -1,8 +1,11 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
 import { mountTodos, todo, todoCallsTo } from "../todos/testHarness";
+import { askToDelete, stubDialogLayout } from "./bulkQuestionHarness";
 
 afterEach(cleanup);
+
+stubDialogLayout();
 
 it("u458_pointer_toggle_and_range_follow_visible_order", async () => {
   const { app, connected } = await mountTodos([todo(1), todo(2), todo(3), todo(4), todo(5)]);
@@ -30,7 +33,7 @@ it("u460_one_question_precedes_every_delete", async () => {
   const { app } = await mountTodos([todo(1), todo(2)]);
   fireEvent.click(await screen.findByRole("button", { name: /#1 / }), { metaKey: true });
   fireEvent.click(screen.getByRole("button", { name: /#2 / }), { metaKey: true });
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
+  await askToDelete(2);
   expect(screen.getByText("Delete 2 Todos?")).toBeTruthy();
   expect(todoCallsTo(app, "todo.delete")).toEqual([]);
   fireEvent.click(screen.getByRole("button", { name: "Keep" }));
@@ -64,6 +67,7 @@ it("u458_keys_leave_other_controls_and_reorder_unchanged", async () => {
 
   fireEvent.keyDown(screen.getByRole("checkbox", { name: "Complete todo 1" }), { key: "Enter", metaKey: true });
   expect(screen.queryByText(/selected/)).toBeNull();
+  first.focus();
   fireEvent.keyDown(first, { key: "ArrowDown", altKey: true });
   expect(todoCallsTo(app, "todo.reorder")).toHaveLength(1);
 });

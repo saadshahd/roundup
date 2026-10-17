@@ -32,7 +32,8 @@ const mountApp = async (seed: SeedName = "tree-40") => {
   const controls = seedApp(seed, Date.now());
 
   render(() => <App app={controls.app} reducedMotion={() => true} clock={Date.now} createEmulator={fakeEmulators().factory} />);
-  await screen.findByRole("tablist", { name: "Work items" });
+  await waitFor(() => expect(shelf()).not.toBeNull());
+  await within(shelf()).findByRole("tablist", { name: "Work items" });
 
   return controls;
 };
@@ -120,7 +121,7 @@ describe("u370 the chord and esc", () => {
   it("u370_leader_s_toggles_with_a_drawer_open", async () => {
     await mountApp();
     fireEvent.click(tabNamed("Pads"));
-    await screen.findByRole("button", { name: "Add Pad" });
+    await within(shelf()).findByRole("button", { name: "Add Pad" });
 
     const drawer = probe("dialog", { "aria-label": "drawer" });
 
@@ -162,9 +163,9 @@ describe("u370 the chord and esc", () => {
   it("u370_esc_does_not_close_from_a_text_field_inside", async () => {
     await mountApp();
     fireEvent.click(tabNamed("Pads"));
-    fireEvent.click(await screen.findByRole("button", { name: "Add Pad" }));
+    fireEvent.click(await within(shelf()).findByRole("button", { name: "Add Pad" }));
 
-    const field = await screen.findByLabelText("Pad name");
+    const field = await within(shelf()).findByLabelText("Pad name");
 
     fireEvent.keyDown(field, { key: "Escape" });
     expect(shelf().hidden).toBe(false);

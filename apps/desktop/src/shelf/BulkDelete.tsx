@@ -3,12 +3,14 @@ import { createContext, createEffect, createMemo, createSignal, For, on, onClean
 import type { Accessor, JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { ErrorLine } from "../ink/ErrorLine";
+import { registerKeys } from "../keys/registry";
+import { AlertDialog } from "../ui/Dialog";
 
 export const ShelfActions = createContext<{ mount: Accessor<HTMLDivElement | undefined>; open: Accessor<boolean> }>();
 
 type Target<Id> = { id: Id; label: string; owner?: string | undefined };
 
-type Question<Id> = { kind: "question" | "pending"; targets: readonly Target<Id>[]; done: boolean; returnTo: HTMLElement | null };
+type Question<Id> = { kind: "question" | "pending"; targets: readonly Target<Id>[]; done: boolean };
 
 /** U459–U460: one frozen set, one question, and a retained remainder after readback. */
 export const createBulkDelete = <Id,>(props: {
@@ -32,6 +34,10 @@ export const createBulkDelete = <Id,>(props: {
   let revision = 0;
   let deleteButton: HTMLButtonElement | undefined;
   let keep: HTMLButtonElement | undefined;
+  let barElement: HTMLDivElement | undefined;
+  let returnTo: HTMLElement | null = null;
+  let panel: HTMLDivElement | undefined;
+  registerKeys({ kind: "layer", element: () => panel, active: () => question() !== null, modal: true }, []);
 
   const reset = () => {
     revision += 1;
@@ -58,8 +64,17 @@ export const createBulkDelete = <Id,>(props: {
 
     if (targets.length === 0) return;
     const unique = [...new Map(targets.map((target) => [target.id, { ...target }])).values()];
-    setQuestion({ kind: "question", targets: unique, done, returnTo: document.activeElement instanceof HTMLElement ? document.activeElement : null });
-    queueMicrotask(() => keep?.focus());
+    returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setQuestion({ kind: "question", targets: unique, done });
+  };
+
+  /** The opener while it lives, else a Shelf control that does: a deleted row's button is gone. */
+  const focusAfter = (): HTMLElement | null => {
+    if (returnTo?.isConnected) return returnTo;
+
+    if (deleteButton?.isConnected) return deleteButton;
+
+    return host?.mount()?.closest<HTMLElement>(".shelf")?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? null;
   };
 
   const cancel = () => {
@@ -67,9 +82,6 @@ export const createBulkDelete = <Id,>(props: {
 
     if (held?.kind !== "question") return;
     setQuestion(null);
-
-    if (held.returnTo?.isConnected) held.returnTo.focus();
-    else deleteButton?.focus();
   };
 
   const confirm = async () => {
@@ -122,24 +134,17 @@ export const createBulkDelete = <Id,>(props: {
       event.preventDefault();
       event.stopPropagation();
       ask();
-    } else if (event.key === "Enter" && question()?.kind === "question" && !event.repeat) {
-      event.preventDefault();
-      void confirm();
     }
   };
 
-  createEffect(() => {
-    const frame = host?.mount()?.closest(".shelf");
+  registerKeys({ kind: "region", element: () => barElement }, [{ chords: ["Escape", "Backspace"], when: () => props.selected().length > 0, run: key }]);
 
-    if (!frame) return;
-
-    const escape = (event: Event) => {
-      if (event instanceof KeyboardEvent && event.key === "Escape" && event.target instanceof Element && !event.target.closest("input, textarea, select, [contenteditable], .todo-blocker")) key(event);
-    };
-
-    frame.addEventListener("keydown", escape);
-    onCleanup(() => frame.removeEventListener("keydown", escape));
-  });
+  // Escape cancels the selection from anywhere in the Shelf frame; a naming field or a blocker link keeps its own.
+  registerKeys({ kind: "region", element: () => host?.mount()?.closest<HTMLElement>(".shelf") ?? undefined }, [{
+    chords: ["Escape"],
+    when: (event) => props.selected().length > 0 && !(event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable], .todo-blocker")),
+    run: key,
+  }]);
 
   createEffect(() => {
     if (props.selected().length === 0 && question() === null) setFailures([]);
@@ -154,33 +159,61 @@ export const createBulkDelete = <Id,>(props: {
     return [...new Set(targets.flatMap((target) => target.owner ? [target.owner] : []))];
   });
 
-  const content = () => (
-    <Show when={question() || props.selected().length > 0 || failures().length > 0}>
-      <div class="shelf-bulk" on:keydown={key} role="group" aria-label={copy.shelfDeletion}>
-        <div class="shelf-bulk-line">
-          <Show when={question()} fallback={<>
+  const bar = () => (
+    <Show when={props.selected().length > 0 || failures().length > 0}>
+      <div class="shelf-bulk" ref={(element) => { barElement = element; }} role="group" aria-label={copy.shelfDeletion}>
+        <Show when={props.selected().length > 0}>
+          <div class="shelf-bulk-line">
             <span>{props.selected().length}{copy.selected}</span>
             <button data-button="quiet" type="button" ref={(button) => { deleteButton = button; }} onClick={() => ask()}>{copy.deleteWord}{props.selected().length}</button>
             <button data-button="quiet" type="button" onClick={() => { props.cancelSelection(); setFailures([]); }}>{copy.cancel}</button>
-          </>}>
-            {(held) => <>
-              <span>{copy.deleteWord}{held().targets.length}{held().done ? copy.doneCount : ""} {props.noun}{copy.questionMark}</span>
-              <button data-button="quiet" type="button" disabled={held().kind === "pending"} onClick={() => void confirm()}>{copy.deleteWord}{held().targets.length}</button>
-              <button data-button="quiet" type="button" disabled={held().kind === "pending"} ref={(button) => { keep = button; }} onClick={cancel}>{copy.keep}</button>
-            </>}
-          </Show>
-        </div>
-        <Show when={owners().length > 0}>
+          </div>
+        </Show>
+        <Show when={owners().length > 0 && question() === null}>
           <p>{copy.ownedBy}{owners().join(copy.comma)}{copy.agentsMayStillBeWritingDeletingDoesNot}</p>
         </Show>
-        <Show when={readFailure()}>{(message) => <><ErrorLine message={message()} /><button data-button="quiet" type="button" onClick={() => void readback?.()}>{copy.refresh}</button></>}</Show>
         <Show when={failures().length > 0}>
-          <ErrorLine message="Could not delete" />
+          <ErrorLine message={copy.couldNotDelete} />
           <For each={failures()}>{(failure) => <p>{failure.target.label}{copy.colon}{failure.message}</p>}</For>
         </Show>
       </div>
     </Show>
   );
+
+  /** The one question: a modal over the Shelf that names every frozen target and starts on `Keep`. */
+  const dialog = () => (
+    <AlertDialog.Root open={question() !== null} initialFocusEl={() => keep ?? null} finalFocusEl={focusAfter}
+      onOpenChange={(details) => { if (!details.open) cancel(); }}>
+      <Portal>
+        <AlertDialog.Positioner>
+          <AlertDialog.Content class="shelf-question" ref={(element) => { panel = element; }} onKeyDown={(press) => press.stopPropagation()}>
+            <Show when={question()}>{(held) => <>
+              <AlertDialog.Title>{copy.deleteWord}{held().targets.length}{held().done ? copy.doneCount : ""} {props.noun}{copy.questionMark}</AlertDialog.Title>
+              <AlertDialog.Description>
+                <ul class="shelf-question-targets">
+                  <For each={held().targets}>{(target) => <li>{target.label}</li>}</For>
+                </ul>
+                <Show when={owners().length > 0}>
+                  <p>{copy.ownedBy}{owners().join(copy.comma)}{copy.agentsMayStillBeWritingDeletingDoesNot}</p>
+                </Show>
+              </AlertDialog.Description>
+              <Show when={readFailure()}>{(message) => <ErrorLine message={message()} />}</Show>
+              <p class="shelf-question-words">
+                <button data-button="quiet" type="button" class="word" disabled={held().kind === "pending"} ref={(button) => { keep = button; }} onClick={cancel}>{copy.keep}</button>
+                <Show when={readFailure()} fallback={
+                  <button data-button="quiet" type="button" class="word" disabled={held().kind === "pending"} onClick={() => void confirm()}>{copy.deleteWord}{held().targets.length}</button>
+                }>
+                  <button data-button="quiet" type="button" class="word" onClick={() => void readback?.()}>{copy.refresh}</button>
+                </Show>
+              </p>
+            </>}</Show>
+          </AlertDialog.Content>
+        </AlertDialog.Positioner>
+      </Portal>
+    </AlertDialog.Root>
+  );
+
+  const content = () => <>{bar()}{dialog()}</>;
 
   const Bar = (): JSX.Element => host ? <Show when={host.mount()}>{(mount) => <Portal mount={mount()}>{content()}</Portal>}</Show> : content();
 

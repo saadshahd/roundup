@@ -2,6 +2,12 @@ type CopyValue = string | number | undefined;
 
 /** App-authored labels and prose (U471). Code terms remain keys; authored values pass through unchanged. */
 export const copy = {
+  todoDeleted: (id: number) => `#${id} was deleted`,
+  couldNotDelete: "Could not delete",
+  rowActionsFor: (id: number) => `Actions for todo ${id}`,
+  selectTodo: "Select",
+  moveUp: "Move up",
+  moveDown: "Move down",
   agentsAndTerminals: "Workstreams and Agents",
   appearHereOnePerRow: "appear here, one per row,",
   nestedByIndent: "nested by indent",

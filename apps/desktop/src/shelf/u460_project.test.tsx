@@ -6,8 +6,11 @@ import { seedApp } from "../testing/seeds";
 import { showEverythingInApp } from "../testing/showEverything";
 import { deferred } from "../pads/padsFixture";
 import { RpcError } from "../app/seam";
+import { askToDelete, confirmDeletion, stubDialogLayout } from "./bulkQuestionHarness";
 
 afterEach(() => { cleanup(); localStorage.clear(); });
+
+stubDialogLayout();
 
 it("u460_pending_delete_stays_with_its_project", async () => {
   const { app } = seedApp("tree-40", 0);
@@ -24,8 +27,9 @@ it("u460_pending_delete_stays_with_its_project", async () => {
   const held = deferred<null>();
   app.handlers["todo.delete"] = async () => { await held.promise; throw new RpcError(-32001, "old Project error"); };
 
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
+  await askToDelete(2);
+
+  await confirmDeletion();
   fireEvent.click(screen.getByRole("tab", { name: "other" }));
   held.resolve(null);
   await waitFor(() => expect(app.calls.filter((call) => call.method === "todo.delete")).toHaveLength(2));

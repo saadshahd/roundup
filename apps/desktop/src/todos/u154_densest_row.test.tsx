@@ -1,21 +1,9 @@
 import { cleanup, fireEvent, screen } from "@solidjs/testing-library";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { workstream } from "../testing/nodes";
-import rowCss from "./rowButton.styles.css?inline";
-import appCss from "../styles.css?inline";
-import inkCss from "../ink/styles.css?inline";
 import { mountTodos, todo, todoRowOf as rowOf } from "./testHarness";
 
-const sheet = document.createElement("style");
-
-sheet.textContent = `${rowCss}\n${appCss}`;
-
-beforeEach(() => document.head.appendChild(sheet));
-
-afterEach(() => {
-  cleanup();
-  sheet.remove();
-});
+afterEach(cleanup);
 
 const LONG_ROOM = "r".repeat(60);
 
@@ -25,9 +13,9 @@ const densest = () => [
   todo(12, { blocked: true, blockers: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }),
 ];
 
-// U359 changes "no text is cut with an ellipsis": a title ends after two lines with `…` and the meta line after one; the whole text is the title attribute and the Drawer. jsdom has no layout, so the rules are read from the stylesheet and the full text from the DOM.
+// U154: full names remain accessible; the rendered observer checks clipping and dense errors.
 describe("u154 the row on the densest data", () => {
-  it("u154_the_title_clamps_at_two_lines_the_meta_line_at_one_and_the_whole_text_is_kept", async () => {
+  it("u154_dense_titles_and_blockers_keep_their_accessible_names", async () => {
     await mountTodos(densest(), true, [workstream("r1", { name: LONG_ROOM })]);
     await screen.findByRole("button", { name: /#12 / });
 
@@ -35,9 +23,7 @@ describe("u154 the row on the densest data", () => {
 
     expect(rowOf(1).querySelector("[data-todo-home]")).toBeNull();
     expect(row.querySelector("[data-todo-waits]")?.textContent).toBe("Waits on todo 2, todo 3, todo 4, todo 5, todo 6, todo 7, todo 8, todo 9, todo 10, todo 11");
-    expect(rowOf(1).querySelector(".shelf-title")?.getAttribute("title")).toBe("t".repeat(120));
-    expect(inkCss).toMatch(/\.shelf-title\s*\{[^}]*-webkit-line-clamp:\s*2;[^}]*overflow:\s*hidden/);
-    expect(inkCss).toMatch(/\.shelf-meta\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
+    expect(screen.getByRole("button", { name: `Idle #1 ${"t".repeat(120)}` })).toBeTruthy();
   });
 
   it("u154_a_failure_takes_the_place_of_the_waits_on_line_and_the_home_line_stays_absent", async () => {

@@ -69,7 +69,7 @@ it("u471_previous_copy_assertions_are_preserved_todo_delete_confirmation_uses_se
 
   fireEvent.click(await drawer.findByRole("button", { name: "Delete Todo" }));
 
-  expect(drawer.getByText("Delete Todo?", { exact: false })).toBeTruthy();
+  expect(await drawer.findByText("Delete Todo?", { exact: false })).toBeTruthy();
   expect(drawer.getByRole("button", { name: "Delete" })).toBeTruthy();
   expect(drawer.getByRole("button", { name: "Keep" })).toBeTruthy();
 });

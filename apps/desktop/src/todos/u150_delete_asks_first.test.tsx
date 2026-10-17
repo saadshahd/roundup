@@ -1,3 +1,4 @@
+import { stubDialogLayout } from "../shelf/bulkQuestionHarness";
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { RpcError } from "../app/seam";
@@ -5,6 +6,8 @@ import { mountTodos, todo, todoCallsTo as callsTo } from "./testHarness";
 import { USER } from "../testing/nodes";
 
 afterEach(cleanup);
+
+stubDialogLayout();
 
 const drawer = () => screen.getByRole("complementary", { name: "Drawer" });
 
@@ -16,13 +19,17 @@ const open = async () => {
   return mounted;
 };
 
-const ask = () => fireEvent.click(within(drawer()).getByRole("button", { name: "Delete Todo" }));
+const ask = async () => {
+  fireEvent.click(within(drawer()).getByRole("button", { name: "Delete Todo" }));
+  await screen.findByRole("alertdialog");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Keep" })));
+};
 
 describe("u150 delete asks first (Todo)", () => {
   it("u150_choosing_delete_asks_in_place_and_calls_nothing", async () => {
     const { app } = await open();
 
-    ask();
+    await ask();
 
     expect([drawer().textContent?.includes("Delete Todo?"), within(drawer()).queryByText("Complete"), callsTo(app, "todo.delete")]).toEqual([true, null, []]);
   });
@@ -30,7 +37,7 @@ describe("u150 delete asks first (Todo)", () => {
   it("u150_confirming_calls_todo_delete_once_and_closes_with_no_deleted_line", async () => {
     const { app, connected } = await open();
     app.handlers["todo.delete"] = () => null;
-    ask();
+    await ask();
 
     fireEvent.click(within(drawer()).getByText("Delete"));
     app.emit({ actor: USER, name: "todo.deleted", data: { id: 5 } });
@@ -49,7 +56,7 @@ describe("u150 delete asks first (Todo)", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /#5/ }));
     await within(drawer()).findByText("Blocker");
-    ask();
+    await ask();
     fireEvent.click(within(drawer()).getByText("Delete"));
     app.emit({ actor: USER, name: "todo.deleted", data: { id: 5 } });
 
@@ -59,11 +66,12 @@ describe("u150 delete asks first (Todo)", () => {
 
   it("u150_keep_calls_nothing_and_returns_focus_to_delete", async () => {
     const { app } = await open();
-    ask();
+    await ask();
     const keep = within(drawer()).getByText("Keep");
     await waitFor(() => expect(document.activeElement).toBe(keep));
 
     fireEvent.click(keep);
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 
     await waitFor(() => expect(document.activeElement).toBe(within(drawer()).getByRole("button", { name: "Delete Todo" })));
     expect([callsTo(app, "todo.delete"), within(drawer()).queryByText("Keep")]).toEqual([[], null]);
@@ -71,9 +79,10 @@ describe("u150 delete asks first (Todo)", () => {
 
   it("u150_esc_dismisses_confirmation_and_calls_nothing", async () => {
     const { app, connected } = await open();
-    ask();
+    await ask();
 
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Keep" }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 
     expect([connected.drawer.content() === null, callsTo(app, "todo.delete")]).toEqual([false, []]);
     expect(within(drawer()).queryByText("Keep")).toBeNull();
@@ -82,11 +91,13 @@ describe("u150 delete asks first (Todo)", () => {
   it("u150_an_error_keeps_the_drawer_and_the_item", async () => {
     const { app, connected } = await open();
     app.handlers["todo.delete"] = () => Promise.reject(new RpcError(-32001, "not found"));
-    ask();
+    await ask();
 
     fireEvent.click(within(drawer()).getByText("Delete"));
 
     expect([(await within(drawer()).findByText(/not found/)).textContent, connected.drawer.content() === null]).toEqual(["not found", false]);
+    fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.getAllByRole("button", { name: /#5/ }).length).toBeGreaterThan(0);
   });
 });

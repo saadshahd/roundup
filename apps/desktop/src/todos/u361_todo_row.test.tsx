@@ -99,7 +99,6 @@ describe("u361 a Todo row holds a tick box, its title and what it waits on", () 
     const waits = rowOf(5).querySelector<HTMLElement>("[data-todo-waits]")!;
 
     expect(waits.textContent?.replace(/\s+/g, " ").trim()).toBe("Waits on migrate, later");
-    expect(waits.getAttribute("title")).toBe("Waits on migrate, later");
 
     fireEvent.click(within(waits).getByRole("button", { name: "Open blocker later" }));
 

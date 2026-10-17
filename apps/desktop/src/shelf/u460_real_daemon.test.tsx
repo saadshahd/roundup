@@ -12,6 +12,7 @@ import { startRealDaemon } from "../testing/realDaemonFixture";
 import type { StartedDaemon } from "../testing/realDaemonFixture";
 import { showEverythingInApp } from "../testing/showEverything";
 import { showShelfTab } from "../testing/shelfTabs";
+import { askToDelete, confirmDeletion, stubDialogLayout } from "./bulkQuestionHarness";
 
 let real: StartedDaemon;
 
@@ -52,6 +53,8 @@ afterAll(async () => { await real?.stop(); });
 
 afterEach(cleanup);
 
+stubDialogLayout();
+
 it("u460_bulk_todo_delete_preserves_t6_across_homes", async () => {
   const app = createServedApp(real.base);
   const one = await app.rpc("rail.createWorkstream", { name: "bulk-scope", parent: null });
@@ -64,11 +67,11 @@ it("u460_bulk_todo_delete_preserves_t6_across_homes", async () => {
   await app.rpc("todo.move", { id: dependent.id, home: other.id });
   render(() => <App app={app} reducedMotion={() => true} clock={Date.now} createEmulator={fakeEmulators().factory} />);
   fireEvent.click(await screen.findByRole("treeitem", { name: /bulk-scope/ }));
-  showShelfTab("Todos");
+  await showShelfTab("Todos");
   fireEvent.click(await screen.findByRole("button", { name: new RegExp(`#${first.id} `) }), { metaKey: true });
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`#${second.id} `) }), { metaKey: true });
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
+  await askToDelete(2);
+  await confirmDeletion();
   await waitFor(async () => {
     const rows = await app.rpc("todo.list", null);
     expect(rows.find((row) => row.id === dependent.id)?.blockers).toEqual([]);
@@ -85,10 +88,10 @@ for (const files of [false, true]) it(`u460_deleted_pad_updates_do_not_recreate_
   expect((await ownerCall(owner.id, "pad.write", name, "committed before delete")).error).toBeUndefined();
   render(() => <App app={app} reducedMotion={() => true} clock={Date.now} createEmulator={fakeEmulators().factory} />);
   await showEverythingInApp(/bulk-scope/);
-  showShelfTab("Pads");
+  await showShelfTab("Pads");
   fireEvent.click(await screen.findByRole("button", { name }), { metaKey: true });
-  fireEvent.click(screen.getByRole("button", { name: "Delete 1" }));
-  fireEvent.click(screen.getByRole("button", { name: "Delete 1" }));
+  await askToDelete(1);
+  await confirmDeletion();
   await waitFor(async () => expect((await app.rpc("pad.list", null)).some((row) => row.name === name)).toBe(false));
   expect((await ownerCall(owner.id, "pad.write", name, "after")).error?.code).toBe(-32001);
   expect((await ownerCall(owner.id, "pad.append", name, "after")).error?.code).toBe(-32001);
@@ -124,11 +127,11 @@ it("u460_bulk_todo_delete_preserves_t6_across_homes_with_a_failed_blocker", asyn
 
   render(() => <App app={failedApp} reducedMotion={() => true} clock={Date.now} createEmulator={fakeEmulators().factory} />);
   fireEvent.click(await screen.findByRole("treeitem", { name: /bulk-scope/ }));
-  showShelfTab("Todos");
+  await showShelfTab("Todos");
   fireEvent.click(await screen.findByRole("button", { name: new RegExp(`#${first.id} `) }), { metaKey: true });
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`#${second.id} `) }), { metaKey: true });
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
-  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
+  await askToDelete(2);
+  await confirmDeletion();
   await screen.findByText(/partial two .*injected unavailable connection/);
   const rows = await app.rpc("todo.list", null);
   expect(rows.find((row) => row.id === dependent.id)).toMatchObject({ blockers: [second.id], blocked: true, home: other.id });
@@ -144,7 +147,7 @@ it("u460_deleted_rows_stay_absent_after_reopening_the_project", async () => {
   expect((await app.rpc("pad.list", null)).some((pad) => pad.name.startsWith("bulk-pad-"))).toBe(false);
   render(() => <App app={app} reducedMotion={() => true} clock={Date.now} createEmulator={fakeEmulators().factory} />);
   fireEvent.click(await screen.findByRole("treeitem", { name: /bulk-scope/ }));
-  showShelfTab("Todos");
+  await showShelfTab("Todos");
   const row = await screen.findByRole("button", { name: /partial two/ });
   expect(row.getAttribute("aria-pressed")).toBe("false");
   expect(screen.queryByRole("group", { name: "Work items deletion" })).toBeNull();

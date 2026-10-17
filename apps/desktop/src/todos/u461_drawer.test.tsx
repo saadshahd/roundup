@@ -1,9 +1,12 @@
+import { stubDialogLayout } from "../shelf/bulkQuestionHarness";
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
 import { RpcError } from "../app/seam";
 import { mountTodos, todo, todoCallsTo, todoEvent } from "./testHarness";
 
 afterEach(cleanup);
+
+stubDialogLayout();
 
 const panel = () => screen.getByRole("complementary", { name: "Drawer" });
 
@@ -48,10 +51,11 @@ it("u461_completion_success_keeps_drawer_focus", async () => {
 it("u461_keep_and_escape_restore_focus", async () => {
   const { app } = await open();
   const button = within(panel()).getByRole("button", { name: "Delete Todo" });
-  fireEvent.click(button); await within(panel()).findByRole("button", { name: "Keep" });
+  fireEvent.click(button);
+  await waitFor(() => expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Keep" })));
   fireEvent.keyDown(document.activeElement!, { key: "Escape", bubbles: true });
   await waitFor(() => expect(document.activeElement).toBe(button));
-  expect(within(panel()).queryByRole("button", { name: "Keep" })).toBeNull();
+  await waitFor(() => expect(within(panel()).queryByRole("button", { name: "Keep" })).toBeNull());
   expect(todoCallsTo(app, "todo.delete")).toHaveLength(0);
 });
 

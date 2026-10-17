@@ -4,36 +4,7 @@
   min-height: var(--space-5);
   cursor: pointer;
 }
-.todo-move-wrap {
-  display: contents;
-}
-
-.todo-move {
-  min-width: var(--space-5);
-  min-height: var(--space-5);
-}
-
-.todo-homes {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.todo-home-offer {
-  min-height: var(--space-5);
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-
-.todo-homes-popover {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 1;
-  background: var(--sunken);
-  border: 1px solid var(--hairline);
-}
+.todo-move { min-width: var(--space-5); min-height: var(--space-5); }
 
 /* U359: the rows are plain on the Shelf's `--sunken` (the row's rules are in ink/styles.css); the list has no padding, so its rows share the head's left edge. No transition: the wash answers at once (D6, D7). */
 .shelf .todo-row-button {
@@ -193,4 +164,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.todo-row-actions { display: flex; flex: none; gap: var(--space-1); margin-left: var(--space-3); position: relative; z-index: 1; }
+.todo-row .row-head { min-width: 0; display: flex; align-items: center; }
+.todo-row .row-head > .todo-row-button { flex: 1; min-width: 0; }
+
+/* Keep the Menu trigger connected while Ark returns focus from its portal. */
+.todo-row .row-head > [data-button="row-action"] {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+.todo-row[data-actions-open="true"] .row-head > [data-button="row-action"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.todo-tooltip {
+  box-sizing: border-box;
+  max-width: calc(100vw - var(--space-6));
+  overflow-wrap: anywhere;
+  white-space: normal;
 }

@@ -1,3 +1,8 @@
+import ChevronUp from "lucide-solid/icons/chevron-up";
+import { Tooltip } from "../ui/Tooltip";
+import { Portal } from "solid-js/web";
+import { createNear } from "../ink/near";
+import { IconButton } from "../ui/IconButton";
 import { copy } from "../copy";
 import { createBulkDelete } from "../shelf/BulkDelete";
 import { isTodoOfRunning } from "../rail/pads/owned";
@@ -8,7 +13,6 @@ import type { JSX } from "solid-js";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Todo } from "@contracts/todo/Todo";
 import { ErrorLine } from "../ink/ErrorLine";
-import { createNear } from "../ink/near";
 import { HomeMove } from "./HomeMove";
 import { homeNameOf } from "./homes";
 import { ShelfRow } from "../ink/ShelfRow";
@@ -43,13 +47,16 @@ export type SortedRow = {
   fail: (show: (message: string | null) => void) => void;
   /** `⌥↑` and `⌥↓`. */
   key: (event: KeyboardEvent) => void;
+  step: (by: -1 | 1) => void;
 };
 
 /** One open Todo as U15 draws it, with U35's `complete` and `waits on`; `nested` is the Rail's copy (U60), which leaves `data-id` to the Agent rows. */
 export const OpenRow = (props: {
   nested?: boolean;
   pressed?: boolean;
+  selectionActive?: boolean;
   onPick?: (todo: Todo, event: MouseEvent) => void;
+  onSelect?: (todo: Todo) => void;
   onSelectionKey?: (todo: Todo, event: KeyboardEvent) => void;
   /** U153: the row whose Drawer is open. */
   selected?: boolean;
@@ -62,7 +69,7 @@ export const OpenRow = (props: {
   sorted?: SortedRow;
 }) => {
   const connected = useConnectedProject();
-  const near = props.nested || props.sorted ? createNear() : null;
+  const near = props.nested ? createNear() : null;
   const [listOpen, setListOpen] = createSignal(false);
   const waitingOn = createMemo(() => openBlockersOf(props.todo, props.known));
   const [failure, setFailure] = createSignal<string | null>(null);
@@ -96,13 +103,13 @@ export const OpenRow = (props: {
         <RowButton
           hang={false}
           label={copy.todoRow(KIND_LABEL[kindOf(props.todo)], props.todo.id, props.todo.title)}
+          tooltip={failure() === null ? props.todo.title : undefined}
           pressed={props.pressed}
+          selectionActive={props.selectionActive}
           onClick={(event) => props.onPick ? props.onPick(props.todo, event) : props.onOpen(props.todo)}
           reorderable={props.sorted !== undefined}
           onKeyDown={(event) => {
             props.onSelectionKey?.(props.todo, event);
-
-            if (event.defaultPrevented) return;
 
             props.sorted?.key(event);
           }}
@@ -111,13 +118,21 @@ export const OpenRow = (props: {
             props.sorted?.button(row);
           }}
         >
-          <span class="shelf-title" title={props.todo.title}>{props.todo.title}</span>
+          <span class="shelf-title">{props.todo.title}</span>
         </RowButton>
-        <Show when={props.nested && (near?.near() || listOpen())}>
+        <Show when={!props.nested && (props.sorted || props.onSelect)}>
+          <div class="todo-row-actions" role="group" aria-label={copy.rowActionsFor(props.todo.id)}>
+            <Show when={props.onSelect}><IconButton aria-label={copy.selectTodo} aria-pressed={props.pressed === true} onClick={() => props.onSelect?.(props.todo)}><Icon name="check" /></IconButton></Show>
+            <Show when={props.sorted}>
+              <IconButton aria-label={copy.moveUp} onClick={() => props.sorted?.step(-1)}><ChevronUp class="icon" aria-hidden="true" width={16} height={16} stroke-width={1.75} /></IconButton>
+              <IconButton aria-label={copy.moveDown} onClick={() => props.sorted?.step(1)}><Icon name="down" /></IconButton>
+            </Show>
+          </div>
+        </Show>
+        <Show when={props.nested}>
           <HomeMove
             id={props.todo.id}
             home={props.todo.home}
-            popover
             onOpenChange={setListOpen}
             choose={async (home) => {
               const message = await failureOf(() => connected.app.rpc("todo.move", { id: props.todo.id, home }));
@@ -140,6 +155,7 @@ export const OpenRow = (props: {
       </>}
       data-id={props.nested ? undefined : props.todo.id}
       data-todo={props.todo.id}
+      data-actions-open={near?.near() || listOpen() ? "true" : undefined}
       data-shelf-row={props.nested ? undefined : ""}
       data-selected={props.selected ? "true" : undefined}
       class={props.nested ? "todo-row" : "todo-row todo-inset"}
@@ -158,7 +174,7 @@ export const OpenRow = (props: {
         <p class="shelf-meta" data-todo-meta>
           <Show when={props.nested}><span data-mono>{copy.todoNumberMark}{props.todo.id}</span>{" "}</Show>
           <Show when={failure() === null && waitingOn().length > 0}>
-            <span data-todo-waits title={props.nested ? undefined : copy.waitsOnTitles(waitingOn().map((blocker) => blocker.title).join(copy.comma))}>
+            <Tooltip.Root><Tooltip.Trigger asChild={(trigger) => <span {...trigger()} data-todo-waits>
               <span>{copy.waitsOnWord}</span><span class="todo-blockers"><For each={waitingOn()}>{(blocker, index) => (
                 <>
                   <Show when={index() > 0}><span>{copy.comma}</span></Show>
@@ -167,7 +183,9 @@ export const OpenRow = (props: {
                   </button>
                 </>
               )}</For></span>
-            </span>
+            </span>} />
+              <Portal><Tooltip.Positioner><Tooltip.Content class="todo-tooltip">{copy.waitsOnTitles(waitingOn().map((blocker) => blocker.title).join(copy.comma))}</Tooltip.Content></Tooltip.Positioner></Portal>
+            </Tooltip.Root>
           </Show>
           <Show when={props.nested}>
             {" "}<span data-todo-home>{copy.in}<span data-mono>{homeNameOf(connected.rail.nodes, props.todo.home)}</span></span>
@@ -217,7 +235,7 @@ export const Todos = () => {
   const selectionKey = (todo: Todo, event: KeyboardEvent) => {
     bulk.key(event);
 
-    if (!event.defaultPrevented && !bulk.pending()) selection.key(todo.id, event);
+    if (!bulk.pending()) selection.key(todo.id, event);
   };
 
   const isEmpty = createMemo(() => todos.isLoaded() && todos.all().length === 0 && todos.failure() === null);
@@ -375,7 +393,9 @@ export const Todos = () => {
               todo={todo}
               selected={selection.selected().includes(todo.id) || selectedId() === todo.id}
               pressed={selection.selected().includes(todo.id)}
+              selectionActive={selection.selected().length > 0}
               onPick={(item, event) => !bulk.pending() && selection.click(item.id, event, () => show(item))}
+              onSelect={(item) => { if (!bulk.pending()) selection.toggle(item.id); }}
               onSelectionKey={selectionKey}
               known={todos.byId()}
               onOpen={show}
@@ -417,12 +437,14 @@ export const Todos = () => {
                     <RowButton
                       hang={false}
                       label={copy.todoRow(KIND_LABEL[kindOf(todo)], todo.id, todo.title)}
+                      tooltip={todo.title}
                       pressed={selection.selected().includes(todo.id)}
+                      selectionActive={selection.selected().length > 0}
                       ref={(row) => selection.register(todo.id, row)}
                       onKeyDown={(event) => selectionKey(todo, event)}
                       onClick={(event) => !bulk.pending() && selection.click(todo.id, event, () => show(todo))}
                     >
-                      <span class="shelf-title" title={todo.title}>{todo.title}</span>
+                      <span class="shelf-title">{todo.title}</span>
                     </RowButton>
                   }
                 />

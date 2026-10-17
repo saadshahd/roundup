@@ -142,6 +142,7 @@ export const createSortedList = (source: {
         parts.handleRef(el ?? undefined);
       },
       fail: (show) => fails.set(id, show),
+      step: (by) => step(id, by),
       key: (event) => {
         if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
 

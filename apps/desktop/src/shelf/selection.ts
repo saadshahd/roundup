@@ -74,7 +74,7 @@ export const createSelection = <Id>(ids: Accessor<readonly Id[]>, context: Acces
   };
 
   return {
-    selected, clear, click, key,
+    selected, clear, click, key, toggle,
     cancel: () => { const row = rows.get(selected()[0]!); clear(); row?.focus(); },
     replace: (values: readonly Id[]) => setSelected([...new Set(values)]),
     register: (id: Id, row: HTMLButtonElement | null) => row ? rows.set(id, row) : rows.delete(id),

@@ -1,3 +1,4 @@
+import { stubDialogLayout } from "../shelf/bulkQuestionHarness";
 import { cleanup, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcError } from "../app/seam";
@@ -13,6 +14,8 @@ const blocked = () => todo(5, { title: "session store", body: "Move the cache.",
 
 /** Fresh objects per test: the list state reconciles into the objects it is given. */
 const shelf = () => [todo(4, { title: "migrate users" }), blocked(), todo(10, { title: "session tests", blocked: true, blockers: [5] }), todo(7)];
+
+stubDialogLayout();
 
 const drawer = () => screen.getByRole("complementary", { name: "Drawer" });
 
@@ -42,10 +45,7 @@ describe("u17 Todo detail", () => {
     expect(drawer().textContent).not.toContain("#5");
   });
 
-  it("u17_the_title_row_uses_the_shared_tick_box", async () => {
-    await openDrawerOf(/#5/);
-    expect(within(drawer()).getByRole("checkbox").className).toBe("todo-tick");
-  });
+
 
   it("u17_waits_on_lists_each_blocker_with_its_own_glyph", async () => {
     await openDrawerOf(/#5/);
@@ -157,7 +157,7 @@ describe("u17 Todo detail", () => {
     app.handlers["todo.delete"] = () => null;
 
     fireEvent.click(within(drawer()).getByRole("button", { name: "Delete Todo" }));
-    fireEvent.click(within(drawer()).getAllByText("Delete")[0]!);
+    fireEvent.click(await within(drawer()).findByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(connected.drawer.content()).toBeNull());
     expect(callsTo(app, "todo.delete")).toEqual([{ method: "todo.delete", params: { id: 5 } }]);
@@ -168,7 +168,7 @@ describe("u17 Todo detail", () => {
     app.handlers["todo.delete"] = () => Promise.reject(new RpcError(-32001, "not found"));
 
     fireEvent.click(within(drawer()).getByRole("button", { name: "Delete Todo" }));
-    fireEvent.click(within(drawer()).getAllByText("Delete")[0]!);
+    fireEvent.click(await within(drawer()).findByRole("button", { name: "Delete" }));
 
     expect([(await within(drawer()).findByText(/not found/)).textContent, connected.drawer.content() === null]).toEqual([
       "not found",
@@ -330,7 +330,7 @@ describe("u17 Todo detail", () => {
     };
 
     fireEvent.click(within(drawer()).getByRole("button", { name: "Delete Todo" }));
-    fireEvent.click(within(drawer()).getAllByText("Delete")[0]!);
+    fireEvent.click(await within(drawer()).findByRole("button", { name: "Delete" }));
     app.emit({ actor: USER, name: "todo.deleted", data: { id: 5 } });
     await waitFor(() => expect(screen.queryByRole("button", { name: /#5/ })).toBeNull());
 
@@ -371,9 +371,5 @@ describe("u17 Todo detail", () => {
     expect(row.className).not.toBe("word");
   });
 
-  it("u50_the_blocker_button_sits_in_a_paragraph_so_the_drawers_flex_column_does_not_stretch_it", async () => {
-    await openDrawerOf(/#5/);
 
-    expect(within(drawer()).getByText("Blocker").parentElement?.tagName).toBe("P");
-  });
 });

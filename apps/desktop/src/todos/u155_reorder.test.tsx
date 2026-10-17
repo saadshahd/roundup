@@ -1,23 +1,10 @@
 import { cleanup, fireEvent, screen, waitFor } from "@solidjs/testing-library";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { RpcError } from "../app/seam";
 import { beforeOf } from "./beforeOf";
 import { mountTodos, todo, todoCallsTo as callsTo, todoEvent } from "./testHarness";
 
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-});
-
-/** jsdom lays nothing out: rows are 28 high, 30 apart, in document order. */
-beforeEach(() => {
-  const rowIndex = (el: HTMLElement) => [...el.parentElement!.children].indexOf(el);
-
-  vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(function (this: HTMLElement) {
-    return this.classList.contains("todo-row") ? rowIndex(this) * 30 : 0;
-  });
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(28);
-});
+afterEach(cleanup);
 
 type Mounted = Awaited<ReturnType<typeof mountTodos>>;
 
@@ -46,8 +33,11 @@ describe("u155 reorder a Todo row", () => {
     const mounted = await three();
 
     await screen.findByText(/todo 3/);
+    buttonOf(3).focus();
     fireEvent.keyDown(buttonOf(3), { key: "ArrowDown", altKey: true });
+    buttonOf(1).focus();
     fireEvent.keyDown(buttonOf(1), { key: "ArrowUp", altKey: true });
+    buttonOf(2).focus();
     fireEvent.keyDown(buttonOf(2), { key: "ArrowDown" });
     expect(callsTo(mounted.app, "todo.reorder")).toEqual([]);
   });
@@ -56,6 +46,7 @@ describe("u155 reorder a Todo row", () => {
     const mounted = await three();
 
     await screen.findByText(/todo 3/);
+    buttonOf(2).focus();
     fireEvent.keyDown(buttonOf(2), { key: "ArrowDown", altKey: true });
     await waitFor(() => expect(callsTo(mounted.app, "todo.reorder")).toEqual([{ method: "todo.reorder", params: { id: 2, before: 4 } }]));
   });
@@ -68,6 +59,7 @@ describe("u155 reorder a Todo row", () => {
     const done = await screen.findByRole("button", { name: /^Done #4 / });
 
     expect(done.getAttribute("aria-description")).toBeNull();
+    done.focus();
     fireEvent.keyDown(done, { key: "ArrowUp", altKey: true });
     expect(callsTo(mounted.app, "todo.reorder")).toEqual([]);
   });

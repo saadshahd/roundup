@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, expect, it } from "vitest";
 import { App } from "../App";
 import { seedApp } from "../testing/seeds";
@@ -12,17 +12,27 @@ const mount = async () => {
   return within(await screen.findByRole("tablist", { name: "Work items" })).getAllByRole("tab");
 };
 
-it("u465_heads_keep_tab_roles_focus_and_keys", async () => {
+// Left/Right and Home/End selection runs on real key events in u491a_browser.test.ts; Ark's selection follows focus on requestAnimationFrame, which jsdom does not order like a browser.
+it("u465_heads_keep_tab_roles_and_panel_links", async () => {
   const tabs = await mount();
 
-  for (const [key, selected] of [["ArrowLeft", 1], ["ArrowRight", 0], ["End", 1], ["Home", 0]] as const) {
-    const current = tabs.find(tab => tab.getAttribute("aria-selected") === "true")!;
-    fireEvent.keyDown(current, { key });
-    await Promise.resolve(); // Shelf.select queues focus; observing after its microtask preserves keyboard order.
-    expect(document.activeElement).toBe(tabs[selected]);
+  expect(tabs.map(tab => tab.tabIndex)).toEqual([0, -1]);
+
+  for (const selected of [0, 1] as const) {
+    tabs[selected]!.focus();
+    fireEvent.click(tabs[selected]!);
+    await waitFor(() => expect(tabs[selected]!.getAttribute("aria-selected")).toBe("true"));
+
+    const panel = await waitFor(() => {
+      const panels = [...document.querySelectorAll('.shelf [role="tabpanel"]')];
+
+      expect(panels.map(own => own.getAttribute("aria-labelledby"))).toEqual([tabs[selected]!.id]);
+
+      return panels[0]!;
+    });
+
+    expect(tabs[selected]!.getAttribute("aria-controls")).toBe(panel.id);
     expect(tabs.map(tab => tab.tabIndex)).toEqual(selected === 0 ? [0, -1] : [-1, 0]);
-    const panel = within(screen.getByRole("region", { name: "Work items" })).getByRole("tabpanel");
-    expect(panel.getAttribute("aria-labelledby")).toBe(tabs[selected]!.id);
     expect(panel.querySelector(`section[aria-label="${selected === 0 ? "Todos" : "Pads"}"]`)).not.toBeNull();
     expect(tabs[selected]!.querySelectorAll("button, [tabindex]")).toHaveLength(0);
   }

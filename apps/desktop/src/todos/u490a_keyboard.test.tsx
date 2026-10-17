@@ -55,7 +55,11 @@ describe("u490a an Agent's list orders within itself", () => {
 
     await waitFor(() => expect(ids(group)).toEqual([3, 4, 5]));
 
-    const key = (id: number, key: string) => fireEvent.keyDown(within(group).getByRole("button", { name: new RegExp(`#${id} `) }), { key, altKey: true });
+    const key = (id: number, key: string) => {
+      const row = within(group).getByRole("button", { name: new RegExp(`#${id} `) });
+      row.focus();
+      fireEvent.keyDown(row, { key, altKey: true });
+    };
 
     key(3, "ArrowUp");
     key(5, "ArrowDown");
