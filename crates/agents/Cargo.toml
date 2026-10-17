@@ -9,6 +9,7 @@ async-trait.workspace = true
 contracts = { path = "../contracts" }
 checkpoints = { path = "../checkpoints" }
 getrandom = "0.3"
+notify = "8"
 rpc = { path = "../rpc" }
 rustix = { version = "1.1.5", features = ["fs", "process"] }
 rusqlite.workspace = true

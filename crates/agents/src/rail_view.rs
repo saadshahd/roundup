@@ -114,6 +114,7 @@ impl Shared {
         node.can_resume &= exited;
         let channels = self.channels.lock().expect("channels lock");
         node.channel = channel_in(&channels, &node.id, runs.get(&node.id));
+        node.inbox = self.events.inbox.fact(&node.id);
         node.stray = self
             .strays
             .lock()

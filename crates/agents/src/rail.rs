@@ -860,6 +860,7 @@ fn load(db: &Connection) -> Result<Vec<RailNode>, RpcError> {
                 iteration: (kind == NodeKind::Workstream)
                     .then(|| row.get(13))
                     .transpose()?,
+                inbox: None,
             })
         })
         .map_err(sql)?;

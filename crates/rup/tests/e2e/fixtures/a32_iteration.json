@@ -46,7 +46,7 @@
     },
     {
       "match": {
-        "userMessage": "Status, nothing to follow: [from rupd, note] [digest]"
+        "userMessage": "from-name=\"rupd\" from-mode=\"default\">\n[digest]"
       },
       "response": {
         "content": "Status noted."

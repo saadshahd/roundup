@@ -2,6 +2,14 @@
   "fixtures": [
     {
       "match": {
+        "userMessage": "from-name=\"rupd\" from-mode=\"default\">\n[digest]"
+      },
+      "response": {
+        "content": "Status noted."
+      }
+    },
+    {
+      "match": {
         "userMessage": "[decision d1]"
       },
       "response": {

@@ -137,7 +137,7 @@ static TRUSTING: Mutex<()> = Mutex::new(());
 
 #[derive(Clone)]
 pub struct Launcher {
-    bin: String,
+    pub(super) bin: String,
     /// Claude Code's own config file, where it remembers which folders are trusted.
     claude_json: PathBuf,
     pub(super) conversation_dir: PathBuf,
@@ -149,6 +149,11 @@ pub struct Launcher {
     /// M11: the Daemon's environment already holds `ENABLE_TOOL_SEARCH`, which is the user's and left alone.
     user_tool_search: bool,
     plugins: Arc<OnceCell<Delivery>>,
+    /// The installed Claude Code's version, once `claude --version` has answered (B51).
+    pub(super) version: Arc<OnceCell<String>>,
+    /// B50: the private folder each Agent's messaging socket is made in, made at the first
+    /// launch; gone with the Launcher.
+    sockets: Arc<std::sync::OnceLock<tempfile::TempDir>>,
 }
 
 const QUESTION_FILES: [(&str, &str); 3] = [
@@ -274,6 +279,8 @@ impl Launcher {
             home,
             user_tool_search: false,
             plugins: Arc::new(OnceCell::new()),
+            version: Arc::new(OnceCell::new()),
+            sockets: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -520,6 +527,18 @@ impl Launcher {
                 argv.push(value.clone());
             }
         }
+        // B50: a note reaches the Agent over this socket; its permission mode is the one the
+        // note's sender names, so the receiver never holds the note for approval.
+        // A socket an earlier run of this Agent left behind is not the new session's to find.
+        let socket = self.socket_path(id);
+        match std::fs::remove_file(&socket) {
+            Err(err) if err.kind() != ErrorKind::NotFound => return Err(RpcError::internal(err)),
+            _ => {}
+        }
+        argv.push("--messaging-socket-path".into());
+        argv.push(socket.to_string_lossy().into_owned());
+        argv.push("--permission-mode".into());
+        argv.push(super::inbox::PERMISSION_MODE.into());
         if let Some(conversation_id) = resume {
             argv.push("--resume".into());
             argv.push(conversation_id.to_owned());
@@ -668,7 +687,7 @@ impl Launcher {
         Ok((argv, env))
     }
 
-    fn executable(&self) -> Result<PathBuf, RpcError> {
+    pub(super) fn executable(&self) -> Result<PathBuf, RpcError> {
         let path = Path::new(&self.bin);
         if path.components().count() > 1 || path.is_absolute() {
             return Ok(path.to_owned());
@@ -908,6 +927,22 @@ fn object(value: &mut Value) -> Result<&mut Map<String, Value>, &'static str> {
 
 /// An Agent id becomes a file name and a shell word, so only a node id in its one form (decimal,
 /// no sign, no leading zero) is accepted; `;` or `../` never reach a shell or a path.
+impl Launcher {
+    /// The private folder Agents' messaging sockets are made in.
+    pub(super) fn socket_dir(&self) -> &Path {
+        self.sockets
+            .get_or_init(|| socket_folder().expect("a private folder for messaging sockets"))
+            .path()
+    }
+}
+
+/// Claude Code refuses a messaging socket in a folder anyone else can reach.
+fn socket_folder() -> std::io::Result<tempfile::TempDir> {
+    let folder = tempfile::Builder::new().prefix("rup-").tempdir()?;
+    std::fs::set_permissions(folder.path(), std::fs::Permissions::from_mode(0o700))?;
+    Ok(folder)
+}
+
 fn parse_id(id: &str) -> Option<u64> {
     id.parse()
         .ok()

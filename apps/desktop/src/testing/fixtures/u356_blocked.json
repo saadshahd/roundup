@@ -186,7 +186,7 @@
     },
     {
       "match": {
-        "userMessage": "Status, nothing to follow: [from rupd, note] [digest]"
+        "userMessage": "from-name=\"rupd\" from-mode=\"default\">\n[digest]"
       },
       "response": {
         "content": "Status noted."
@@ -194,15 +194,7 @@
     },
     {
       "match": {
-        "userMessage": "<session>\nFollow this instruction: [from rupd, note]"
-      },
-      "response": {
-        "content": "{\"title\":\"Status\"}"
-      }
-    },
-    {
-      "match": {
-        "userMessage": "Follow this instruction: [from rupd, note]",
+        "userMessage": "from-name=\"rupd\" from-mode=\"default\">",
         "hasToolResult": false
       },
       "response": {
@@ -237,7 +229,7 @@
     },
     {
       "match": {
-        "userMessage": "[from rupd",
+        "userMessage": "from-name=\"rupd\" from-mode=\"default\">",
         "hasToolResult": false
       },
       "response": {

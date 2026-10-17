@@ -237,6 +237,22 @@ pub struct RailNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub iteration: Option<u32>,
+    /// B51: whether the Claude inbox a `note` is written to is usable, from the Agent's latest
+    /// check; absent before the first check and on a Terminal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub inbox: Option<Inbox>,
+}
+
+/// B51: the outcome of checking an Agent's Claude inbox: `ok`, `missing` (absent or not writable)
+/// or `mismatch` (present, in a format the adapter holds no fixture for).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "agent/")]
+pub enum Inbox {
+    Ok,
+    Missing,
+    Mismatch,
 }
 
 /// F5: one process found by name under a Door, by its pid and the command line `ps` printed.

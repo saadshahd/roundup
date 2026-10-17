@@ -114,6 +114,7 @@ impl Module for Agents {
                 };
                 // The hook blocks a dropped prompt, so no turn starts and nothing is folded.
                 if !drop {
+                    shared.events.inbox.scan(&id, &payload);
                     shared.observe(
                         ctx.actor.clone(),
                         &id,

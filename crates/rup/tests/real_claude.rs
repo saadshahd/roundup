@@ -590,11 +590,8 @@ async fn b37_real_claude_receives_d1_after_a_scripted_server_error() {
         _ => None,
     })
     .await;
-    next(&mut events, |data| match data {
-        EventData::AgentStatus(s) if s.id == door && s.status.kind == Kind::Idle => Some(()),
-        _ => None,
-    })
-    .await;
+    // B50(c): the transcript records the Digest after the turn it starts may already be over, so the
+    // door's idle edge can precede the Delivered event; the Rail poll below waits for idle instead.
     // Hold the child's Digests as well as its Decision note: otherwise needs-you can
     // start an intervening turn before tell_doors has queued the note.
     user.request("takeover.begin", json!({"agent":door}))
@@ -667,18 +664,22 @@ async fn b37_real_claude_receives_d1_after_a_scripted_server_error() {
         _ => None,
     })
     .await;
-    next(&mut events, |data| match data {
-        EventData::AgentStatus(s)
-            if s.id == door
-                && s.status.kind == Kind::Idle
-                && s.status_revision != failed.status_revision =>
-        {
-            assert_eq!(s.attempt, failed.attempt);
-            Some(())
+    // Polled, not awaited as an event: the transcript records the note after its turn may be over.
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let nodes = rail_tree(&user).await;
+            let node = nodes.iter().find(|n| n.id == door).unwrap();
+            if node.status.as_ref().unwrap().kind == Kind::Idle
+                && node.status_revision.as_deref() != Some(failed.status_revision.as_str())
+            {
+                assert_eq!(node.attempt.as_deref(), Some(failed.attempt.as_str()));
+                break;
+            }
+            tokio::task::yield_now().await;
         }
-        _ => None,
     })
-    .await;
+    .await
+    .unwrap();
     // This observer expects one failed model request; the shared success-only Drop check does not.
     let model = project.model.take().unwrap();
     let journal = model.journal();
@@ -3942,7 +3943,17 @@ async fn h21_a_message_delivered_after_the_decision_cleared_is_still_typed() {
         .unwrap();
     // B7 batches pending Messages. Put another note first so the Decision notice
     // cannot accidentally pass only because it heads the submitted prompt.
-    client
+    // B50(e): a note from the user is typed on its own, so another sender's note is the one that
+    // can be batched with the Decision notice.
+    let sender = project.client().await;
+    sender
+        .request(
+            "daemon.identify",
+            json!({"actor": {"kind": "ext", "id": "h21"}}),
+        )
+        .await
+        .unwrap();
+    sender
         .request(
             "message.send",
             json!({"to": door, "kind": "note", "body": "queued before the Decision"}),
@@ -3987,7 +3998,7 @@ async fn h21_a_message_delivered_after_the_decision_cleared_is_still_typed() {
         })
     })
     .await;
-    let queued = typed.find("queued before the Decision\n\n").unwrap();
+    let queued = typed.find("queued before the Decision").unwrap();
     assert!(queued < typed.find(&body).unwrap(), "{typed}");
 }
 

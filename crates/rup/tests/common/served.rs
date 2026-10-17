@@ -40,7 +40,7 @@ impl Served {
         let fake = dir.path().join("fake-claude");
         let fake_claude = fake_claude.replacen(
             "#!/bin/sh\n",
-            "#!/bin/sh\nif [ \"$1\" = plugin ] && [ \"$2\" = test ]; then echo 'Q11 runtime hook closure: 1 pass'; exit 0; fi\n",
+            "#!/bin/sh\nif [ \"$1\" = plugin ] && [ \"$2\" = test ]; then echo 'Q11 runtime hook closure: 1 pass'; exit 0; fi\nif [ \"$1\" = --version ]; then echo '2.1.300 (Claude Code)'; exit 0; fi\n",
             1,
         );
         std::fs::write(&fake, fake_claude).unwrap();

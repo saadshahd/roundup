@@ -17,18 +17,13 @@ fn env(prompts: &Path) -> [(&str, &str); 1] {
     [("FAKE_CLAUDE_PROMPT_LOG", prompts.to_str().unwrap())]
 }
 
-/// How many prompts the fake Terminal of the run received that hold the id line of Message `id`.
-fn pastes_of(prompts: &Path, id: u64) -> usize {
-    let line = format!("[rup messages: {id}]");
+/// How many times the fake `claude` of the run took up the inbox entry of Message `id` (B50).
+fn inbox_takes_of(prompts: &Path, id: u64) -> usize {
+    let entry = format!("rup-{id}");
     std::fs::read_to_string(prompts)
         .unwrap_or_default()
         .lines()
-        .filter(|l| {
-            serde_json::from_str::<Value>(l).unwrap()["prompt"]
-                .as_str()
-                .unwrap()
-                .contains(&line)
-        })
+        .filter(|l| serde_json::from_str::<Value>(l).unwrap()["inbox"] == entry)
         .count()
 }
 
@@ -82,7 +77,7 @@ async fn b46_thirty_idle_edges_deliver_a_pending_note_once() {
     }
     assert_eq!(delivered_events(&mut events, id).await, 1);
     assert_eq!(delivered_messages(&s.user, &s.w, id).await, 1);
-    assert_eq!(pastes_of(&prompts, id), 1);
+    assert_eq!(inbox_takes_of(&prompts, id), 1);
 }
 
 #[tokio::test]
@@ -111,7 +106,7 @@ async fn b46_a_restart_with_a_note_pending_delivers_it_once() {
         .as_u64()
         .unwrap();
     assert_eq!(status_of(&user0, id).await, "pending");
-    assert_eq!(pastes_of(&prompts, id), 0);
+    assert_eq!(inbox_takes_of(&prompts, id), 0);
 
     project.restart(&env(&prompts));
     let user = project.client().await;
@@ -123,7 +118,7 @@ async fn b46_a_restart_with_a_note_pending_delivers_it_once() {
     .await;
     assert_eq!(delivered_events(&mut events, id).await, 1);
     assert_eq!(delivered_messages(&user, &door, id).await, 1);
-    assert_eq!(pastes_of(&prompts, id), 1);
+    assert_eq!(inbox_takes_of(&prompts, id), 1);
 }
 
 #[tokio::test]
@@ -147,7 +142,7 @@ async fn b46_a_restart_with_a_note_in_flight_delivers_it_once() {
         .unwrap();
     typed(&prompts, 1).await;
     assert_eq!(status_of(&user0, id).await, "pending");
-    let before = pastes_of(&prompts, id);
+    let before = inbox_takes_of(&prompts, id);
 
     project.restart(&env(&prompts));
     let user = project.client().await;
@@ -159,7 +154,7 @@ async fn b46_a_restart_with_a_note_in_flight_delivers_it_once() {
     .await;
     assert_eq!(delivered_events(&mut events, id).await, 1);
     assert_eq!(delivered_messages(&user, &door, id).await, 1);
-    assert_eq!(pastes_of(&prompts, id) - before, 1);
+    assert_eq!(inbox_takes_of(&prompts, id) - before, 1);
 }
 
 #[tokio::test]

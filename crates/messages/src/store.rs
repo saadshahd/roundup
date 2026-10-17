@@ -639,6 +639,46 @@ impl Store {
         })
     }
 
+    /// B51: a `pending` Message not yet written to the inbox becomes `held` for `inbox`. `None`
+    /// when it is not `pending` or is in flight.
+    pub(crate) fn hold_for_inbox(&self, id: u32) -> Result<Option<Message>, RpcError> {
+        let changed = self
+            .db
+            .execute(
+                "UPDATE messages SET status = 'held', reason = 'inbox'
+                 WHERE id = ?1 AND status = 'pending'
+                   AND NOT EXISTS(SELECT 1 FROM message_flight WHERE message_id = ?1)",
+                params![id],
+            )
+            .map_err(RpcError::internal)?;
+        if changed == 0 {
+            return Ok(None);
+        }
+        self.get(id)
+    }
+
+    /// B51(d): every Message held for `inbox` to `agent` becomes `pending`, in id order, as one
+    /// write.
+    pub(crate) fn release_inbox_held(&mut self, agent: &str) -> Result<Vec<Message>, RpcError> {
+        self.atomically(|store| {
+            let ids: Vec<u32> = store
+                .db
+                .prepare(
+                    "SELECT id FROM messages
+                     WHERE to_id = ?1 AND status = 'held' AND reason = 'inbox' ORDER BY id",
+                )
+                .and_then(|mut q| q.query_map(params![agent], |r| r.get(0))?.collect())
+                .map_err(RpcError::internal)?;
+            let mut released = Vec::new();
+            for id in ids {
+                if store.release_held(id, MessageStatus::Pending, None)? {
+                    released.push(store.get(id)?.expect("just updated"));
+                }
+            }
+            Ok(released)
+        })
+    }
+
     fn list_pending_to(&self, to: &str) -> Result<Vec<Message>, RpcError> {
         self.db
             .prepare(

@@ -251,6 +251,14 @@ impl Daemon {
                 .upgrade()
                 .is_some_and(|messages| messages.confirm_prompt(id, prompt))
         }));
+        // B50: a `note` is written to the Agent's Claude inbox; its transcript confirms it.
+        opened.set_inbox(agents.clone());
+        let recording = Arc::downgrade(&opened);
+        agents.observe_inbox(Arc::new(move |id, ids| {
+            if let Some(messages) = recording.upgrade() {
+                messages.confirm_inbox(id, ids);
+            }
+        }));
         let _ = messages.set(Arc::clone(&opened));
         daemon.register(opened);
         let placement = Arc::new(agents.placement_call());

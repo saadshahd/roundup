@@ -31,6 +31,8 @@ impl Run {
         let fake = dir.path().join("claude");
         std::fs::write(&fake, r#"#!/usr/bin/env python3
 import json, os, socket, subprocess, sys, threading, time, tty
+if sys.argv[1:2] == ['--version']:
+    print('2.1.300 (Claude Code)'); sys.exit(0)
 if sys.argv[1:3] == ['plugin', 'list']:
     print('[]'); sys.exit(0)
 if sys.argv[1:3] == ['plugin', 'test']:
@@ -44,6 +46,43 @@ def hook(event, fields):
         for item in group['hooks']:
             subprocess.run(item['command'], shell=True, input=json.dumps(fields), text=True, check=True)
 hook('SessionStart', {'session_id':'00000000-0000-4000-8000-000000000006','source':'resume' if '--resume' in sys.argv else 'startup'})
+# B50: Claude Code listens on its messaging socket, lists its session with a token, records each
+# message it takes up in its transcript and takes a turn on it.
+def flag(name): return sys.argv[sys.argv.index(name) + 1]
+agent = settings['hooks']['Stop'][0]['hooks'][0]['command'].split()[-1].strip("'")
+sessions = os.path.join(os.environ.get('CLAUDE_CONFIG_DIR', os.getcwd() + '/config'), 'sessions')
+transcript = os.path.join(os.getcwd(), 'transcript-' + agent + '.jsonl')
+token = 'peer-token-' + str(os.getpid())
+os.makedirs(sessions, exist_ok=True)
+server = socket.socket(socket.AF_UNIX)
+server.bind(flag('--messaging-socket-path'))
+server.listen()
+json.dump({'pid': os.getpid(), 'messagingSocketPath': flag('--messaging-socket-path')}, open(sessions + '/%d.json' % os.getpid(), 'w'))
+json.dump({'peerToken': token}, open(sessions + '/%d.abc.key' % os.getpid(), 'w'))
+def take(conn):
+  try:
+    lines = conn.makefile()
+    if json.loads(lines.readline()).get('token') != token: return
+    seen = set()
+    for line in lines:
+        msg = json.loads(line)
+        # A msg_id taken up before is dropped, as Claude Code drops it.
+        if msg['msg_id'] in seen: continue
+        # The fixture's Claude never records a Decision note: it stays sent, not delivered.
+        if os.path.isfile('decision-notice-fixture') and '[decision ' in msg['message']['content']: continue
+        seen.add(msg['msg_id'])
+        with open('received-' + agent + '.jsonl', 'a') as out: out.write(line)
+        with open(transcript, 'a') as out: out.write(json.dumps({'type': 'user', 'origin': {'kind': 'peer', 'from': msg['from'], 'msg_id': msg['msg_id']}}) + '\n')
+        hook('PostToolUse', {'transcript_path': transcript})
+        hook('Stop', {'transcript_path': transcript})
+  except BaseException: pass
+def watch():
+  try:
+    while True:
+        conn, _ = server.accept()
+        threading.Thread(target=take, args=(conn,), daemon=True).start()
+  except BaseException: pass
+threading.Thread(target=watch, daemon=True).start()
 if '--resume' not in sys.argv:
     pending = b''
     while not pending.endswith(b'\r'):
@@ -1181,7 +1220,9 @@ async fn failed_notice(
 
 #[tokio::test]
 async fn b37_a_failed_decision_note_is_retained_or_visible_to_the_user() {
-    for failure in ["send", "full", "terminal"] {
+    // B50(e): a note never reaches the Terminal, so a Terminal refusal cannot fail one; the failure
+    // of its inbox is a hold (B51), not a drop.
+    for failure in ["send", "full"] {
         let mut run = Run::start().await;
         let door = run
             .user
@@ -2628,35 +2669,30 @@ async fn b37_a_stop_failure_door_receives_its_answered_childs_decision_note() {
         .await
         .unwrap();
     assert_eq!(stored["status"], "delivered");
-    let text = tokio::time::timeout(BOUND, async {
-        loop {
-            let screen = run
-                .user
-                .request(
-                    "terminal.read",
-                    json!({"id":door_node["terminal_id"],"after":0}),
-                )
-                .await
-                .unwrap()["text"]
-                .as_str()
-                .unwrap()
-                .to_owned();
-            // Terminal output can lag the hook event; wait for the note's actual bytes.
-            let bytes: Vec<_> = screen
-                .lines()
-                .filter_map(|line| line.trim_start().strip_prefix("BYTE:"))
-                .map(|hex| u8::from_str_radix(hex.trim(), 16).unwrap())
-                .collect();
-            let text = String::from_utf8(bytes).unwrap();
-            if text.contains(&marker) {
-                break text;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(text.matches(&marker).count(), 1, "{text}");
+    // B50: the note is one line on the Door's messaging socket, and none of it is typed.
+    let inbox =
+        std::fs::read_to_string(run.dir.path().join(format!("received-{door}.jsonl"))).unwrap();
+    assert_eq!(inbox.matches(&marker).count(), 1, "{inbox}");
+    let screen = run
+        .user
+        .request(
+            "terminal.read",
+            json!({"id":door_node["terminal_id"],"after":0}),
+        )
+        .await
+        .unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let typed: Vec<u8> = screen
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("BYTE:"))
+        .map(|hex| u8::from_str_radix(hex.trim(), 16).unwrap())
+        .collect();
+    assert!(
+        !String::from_utf8_lossy(&typed).contains(&marker),
+        "{screen}"
+    );
     run.finish().await;
 }
 

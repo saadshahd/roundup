@@ -208,12 +208,22 @@
     "issue": 1557,
     "kind": "indirect"
   },
+  "crates/agents/src/claude_code/inbox.rs": {
+    "cleanup": "No separate built-Daemon launch site.",
+    "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
+    "kind": "reference"
+  },
   "crates/agents/src/claude_code/mod.rs": {
     "cleanup": "No separate built-Daemon launch site.",
     "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
     "kind": "reference"
   },
   "crates/agents/src/schema.rs": {
+    "cleanup": "No separate built-Daemon launch site.",
+    "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
+    "kind": "reference"
+  },
+  "crates/agents/tests/inbox.rs": {
     "cleanup": "No separate built-Daemon launch site.",
     "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
     "kind": "reference"
@@ -278,6 +288,11 @@
     "kind": "reference"
   },
   "crates/messages/src/hops.rs": {
+    "cleanup": "No separate built-Daemon launch site.",
+    "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
+    "kind": "reference"
+  },
+  "crates/messages/src/inbox.rs": {
     "cleanup": "No separate built-Daemon launch site.",
     "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
     "kind": "reference"
@@ -574,6 +589,11 @@
     "sha256": "f16c6b7dad34a515d865256f2fc4981be8f0084304a60e987c8e64b52ebfb18a"
   },
   "crates/rupd/tests/b28_messages_failure.rs": {
+    "cleanup": "No separate built-Daemon launch site.",
+    "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
+    "kind": "reference"
+  },
+  "crates/rupd/tests/b50_note_inbox.rs": {
     "cleanup": "No separate built-Daemon launch site.",
     "data": "Production implementation, test caller, client or name reference; launches delegate to the owners above.",
     "kind": "reference"

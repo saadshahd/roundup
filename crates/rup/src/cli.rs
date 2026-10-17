@@ -835,6 +835,7 @@ fn code_name(code: i64) -> &'static str {
         rpc::code::NOT_RUNNING => "NOT_RUNNING",
         rpc::code::NOT_ACKED => "NOT_ACKED",
         rpc::code::EVENTS_EXPIRED => "EVENTS_EXPIRED",
+        rpc::code::INBOX_UNAVAILABLE => "INBOX_UNAVAILABLE",
         _ => "INTERNAL",
     }
 }

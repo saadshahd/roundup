@@ -99,10 +99,14 @@ fn a4_the_argv_runs_claude_with_a_per_agent_settings_file() {
     let argv = s.prepare("7").unwrap();
     assert_eq!(argv[..2], ["fake-claude", "--settings"]);
     assert_eq!(argv[3], "--mcp-config");
-    assert_eq!(argv.len(), 7);
+    assert_eq!(argv.len(), 11);
     for file in [&argv[2], &argv[4]] {
         assert!(Path::new(file).starts_with(s.dir.canonicalize().unwrap()));
     }
+    // B50: the socket a note arrives on is per Agent, and the mode is the one a note names.
+    assert_eq!(argv[7], "--messaging-socket-path");
+    assert!(argv[8].ends_with("/7.sock"), "{}", argv[8]);
+    assert_eq!(argv[9..], ["--permission-mode", "default"]);
     let other = s.prepare("8").unwrap();
     assert_ne!((&argv[2], &argv[4]), (&other[2], &other[4]));
 }
@@ -952,7 +956,7 @@ fn f2_a_door_starts_with_the_tool_allowlist_once_and_an_agent_without_it() {
     let at = door.iter().position(|arg| arg == "--tools").unwrap();
     assert_eq!(door[at + 1], "Read,Grep,Glob,ToolSearch");
     assert_eq!(door.iter().filter(|arg| *arg == "--tools").count(), 1);
-    assert_eq!(agent.len(), 7);
+    assert_eq!(agent.len(), 11);
     assert!(!agent.iter().any(|arg| arg == "--tools"));
     assert_eq!(agents::claude_code::DOOR_TOOLS, "Read,Grep,Glob,ToolSearch");
 }

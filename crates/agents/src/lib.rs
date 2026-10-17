@@ -438,7 +438,7 @@ mod worktree_wiring;
 
 use door::{Scan, scan_interval_from_env};
 use ending::{Ending, RailPublication};
-pub use events::PromptObserver;
+pub use events::{InboxObserver, PromptObserver};
 use events::{channel_deadline_from_env, channel_in, watch};
 use rail_view::{valid_explicit_order, valid_order};
 use registration::{hold, save_signal_conversation};

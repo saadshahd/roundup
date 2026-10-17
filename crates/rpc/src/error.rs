@@ -24,6 +24,8 @@ pub mod code {
     pub const NOT_ACKED: i64 = -32008;
     /// `events.subscribe` asked to resume from an Event number the log no longer keeps (D11).
     pub const EVENTS_EXPIRED: i64 = -32009;
+    /// A held `inbox` note was asked for by hand while the Agent's Claude inbox is still unusable (B51).
+    pub const INBOX_UNAVAILABLE: i64 = -32010;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

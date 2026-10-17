@@ -187,6 +187,7 @@ mod tests {
             model: None,
             effort: None,
             iteration: None,
+            inbox: None,
             work: Some(contracts::agent::Order::clarification("?")),
         }
     }

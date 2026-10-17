@@ -25,7 +25,8 @@ pub enum MessageStatus {
 }
 
 /// Why a Message is `held` (`ask-first`: waiting on the user; `takeover`: on a Takeover's end;
-/// `escalated`: on the user's answer to a bubbled-up question, B15) or `dropped`
+/// `escalated`: on the user's answer to a bubbled-up question, B15; `inbox`: on a Claude inbox
+/// that is missing or mismatched, B51) or `dropped`
 /// (`receiver gone`, B9; `not accepted`, B2; `passed`, a question's hop that was still `pending`
 /// when the next was made, B13; `merged`, a pushed digest folded into a newer one, B22).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -35,6 +36,8 @@ pub enum Reason {
     AskFirst,
     Takeover,
     Escalated,
+    /// B51: a `note` waits for its Agent's Claude inbox to pass the check.
+    Inbox,
     #[serde(rename = "receiver gone")]
     ReceiverGone,
     #[serde(rename = "not accepted")]

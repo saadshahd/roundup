@@ -34,9 +34,17 @@ It then sleeps until the Daemon stops it.
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
+import threading
 import time
+
+
+# The fake models the version probe the inbox check runs (B51).
+if sys.argv[1:2] == ["--version"]:
+    print("2.1.300 (Claude Code)")
+    sys.exit(0)
 
 
 # The fake models the vendor capability probe; real loading has its own Q11 observer.
@@ -139,6 +147,7 @@ def play_prompts():
             pass
     while hold and not os.path.exists(hold):
         time.sleep(0.02)
+    server = listen()
     sys.stdout.write("\033]0;\u2733 claude\007")  # the star title that opens H19's gate, as Claude Code sets it
     sys.stdout.flush()
     if "--resume" in sys.argv:
@@ -146,22 +155,100 @@ def play_prompts():
         hook("SessionStart", {"session_id": flag("--resume"), "source": "resume"})
     else:
         hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
-    for prompt in typed_prompts():
-        if "FAKE_CLAUDE_PROMPT_LOG" in os.environ:
+    turns = threading.Lock()
+
+    def turn(prompt, inbox=False):
+        with turns:
+            play_turn(prompt, inbox)
+
+    def play_turn(prompt, inbox):
+        if "FAKE_CLAUDE_PROMPT_LOG" in os.environ and not inbox:
             with open(os.environ["FAKE_CLAUDE_PROMPT_LOG"], "a") as log:
                 log.write(json.dumps({"resume": "--resume" in sys.argv, "prompt": prompt}) + "\n")
         gate = os.environ.get("FAKE_CLAUDE_HOLD_PROMPT")
-        while gate and "[rup messages: " in prompt and not os.path.exists(gate):
+        while gate and not inbox and "[rup messages: " in prompt and not os.path.exists(gate):
             time.sleep(0.02)
-        hook("UserPromptSubmit", {"prompt": prompt})
+        if inbox:
+            # B50: Claude Code takes a turn on another session's message with no UserPromptSubmit.
+            hook("PostToolUse", {"transcript_path": inbox})
+        else:
+            hook("UserPromptSubmit", {"prompt": prompt})
         if BLOCKED:
             # B39: the prompt is blocked, so no turn runs and no Stop follows.
             BLOCKED.clear()
             if "FAKE_CLAUDE_BLOCKED_LOG" in os.environ:
                 with open(os.environ["FAKE_CLAUDE_BLOCKED_LOG"], "a") as log:
                     log.write(json.dumps({"prompt": prompt}) + "\n")
-            continue
+            return
         hook("Stop")
+
+    threading.Thread(target=watch_inbox, args=(server, turn), daemon=True).start()
+    for prompt in typed_prompts():
+        turn(prompt)
+
+
+def listen():
+    """B50: listens on `--messaging-socket-path` and lists the session with its `peerToken`, in
+    `$CLAUDE_CONFIG_DIR/sessions`, as Claude Code does at launch."""
+    path = flag("--messaging-socket-path")
+    server = socket.socket(socket.AF_UNIX)
+    server.bind(path)
+    server.listen()
+    sessions = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "sessions")
+    os.makedirs(sessions, exist_ok=True)
+    pid = os.getpid()
+    with open(os.path.join(sessions, f"{pid}.json"), "w") as out:
+        json.dump({"pid": pid, "version": "2.1.300", "messagingSocketPath": path}, out)
+    with open(os.path.join(sessions, f"{pid}.{token()}.key"), "w") as out:
+        json.dump({"peerToken": token()}, out)
+    return server
+
+
+def token():
+    return f"fake-peer-token-{os.getpid()}"
+
+
+def watch_inbox(server, turn):
+    """B50: the notes Claude Code takes up over its socket: an `auth` line, then one line per
+    message. A line whose `msg_id` was taken up before is dropped; one whose `from-mode` is not this
+    session's permission mode is held, as Claude Code holds it for approval. A taken note is
+    recorded in the transcript with its `origin` before its turn."""
+    agent = json.load(open(flag("--settings")))["hooks"]["Stop"][0]["hooks"][0]["command"].split()[-1].strip("'")
+    transcript = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "transcript-" + agent + ".jsonl")
+    mode = flag("--permission-mode")
+    seen = set()
+
+    def take(line):
+        msg = json.loads(line)
+        if msg.get("msg_id") in seen:
+            return
+        seen.add(msg["msg_id"])
+        content = msg["message"]["content"]
+        tag = re.match(r'<cross-session-message from="[^"]*" from-name="[^"]*" from-mode="([^"]*)">\n(.*)\n</cross-session-message>$', content, re.S)
+        if tag.group(1) != mode:
+            return
+        text = tag.group(2)
+        ident = "rup-" + str(int(msg["msg_id"].rsplit("-", 1)[1], 16))
+        if "FAKE_CLAUDE_PROMPT_LOG" in os.environ:
+            with open(os.environ["FAKE_CLAUDE_PROMPT_LOG"], "a") as log:
+                log.write(json.dumps({"resume": "--resume" in sys.argv, "prompt": text, "inbox": ident}) + "\n")
+        gate = os.environ.get("FAKE_CLAUDE_HOLD_PROMPT")
+        while gate and not os.path.exists(gate):
+            time.sleep(0.02)
+        with open(transcript, "a") as out:
+            out.write(json.dumps({"type": "user", "origin": {"kind": "peer", "from": msg["from"], "msg_id": msg["msg_id"]}, "message": {"role": "user", "content": content}}) + "\n")
+        turn(text, transcript)
+
+    def serve(conn):
+        lines = conn.makefile()
+        if json.loads(lines.readline()).get("token") != token():
+            return
+        for line in lines:
+            take(line)
+
+    while True:
+        conn, _ = server.accept()
+        threading.Thread(target=serve, args=(conn,), daemon=True).start()
 
 
 def brief_report(report):

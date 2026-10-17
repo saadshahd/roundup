@@ -407,14 +407,14 @@ async fn b43_the_note_is_outside_b22s_caps() {
     assert_eq!(notes(&s.user, &s.w, "[digest]", 10).await.len(), 10);
 }
 
-/// The lines of the fake `claude`'s prompt log that carry Messages, once `least` are there.
+/// The lines of the fake `claude`'s prompt log that took up an inbox entry (B50), once `least` are there.
 pub(super) async fn typed(log: &std::path::Path, least: usize) -> Vec<Value> {
     h21_poll("the typed prompts", async || {
         let lines: Vec<Value> = std::fs::read_to_string(log)
             .unwrap_or_default()
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
-            .filter(|line| line["prompt"].as_str().unwrap().contains("[rup messages: "))
+            .filter(|line| line["inbox"].is_string())
             .collect();
         (lines.len() >= least).then_some(lines)
     })
@@ -430,7 +430,7 @@ pub(super) async fn status_of(user: &rpc::Client, id: u64) -> String {
 }
 
 #[tokio::test]
-async fn b42_the_note_is_typed_at_the_next_idle_with_the_id_line() {
+async fn b42_the_note_goes_through_the_inbox_at_the_next_idle() {
     let logs = tempfile::tempdir().unwrap();
     let prompts = logs.path().join("prompts.jsonl");
     let s = scene(&[("FAKE_CLAUDE_PROMPT_LOG", prompts.to_str().unwrap())]).await;
@@ -446,9 +446,8 @@ async fn b42_the_note_is_typed_at_the_next_idle_with_the_id_line() {
             .map(|line| line["prompt"].as_str().unwrap().to_owned())
     })
     .await;
-    assert!(prompt.contains("[wake]\nalpha is idle"), "{prompt}");
     assert!(
-        prompt.ends_with(&format!("\n\n[rup messages: {id}]")),
+        prompt.contains("[wake]") && prompt.contains("alpha is idle"),
         "{prompt}"
     );
     h21_poll("the note to be delivered", async || {
@@ -573,7 +572,7 @@ async fn b44_an_expired_log_falls_back_to_the_present_kinds() {
 }
 
 #[tokio::test]
-async fn b44_a_note_in_flight_at_the_kill_is_typed_again_not_made_again() {
+async fn b44_a_note_in_flight_at_the_kill_is_written_again_not_made_again() {
     let logs = tempfile::tempdir().unwrap();
     let hold = logs.path().join("signal");
     let prompts = logs.path().join("prompts.jsonl");

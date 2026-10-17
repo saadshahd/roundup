@@ -341,7 +341,7 @@ What `agent.context` returns for one Agent: its own Status, its parent, whom to 
 Whether one Agent's `roundup` MCP server (`rup mcp <id>`) has reported to the Daemon: `pending`, `up` or `missing`. Not the vendor's own channels feature.
 
 **Claude inbox**:
-Claude Code's own mailbox for a message from another Claude Code instance, which the adapter writes a `note` to instead of typing it (B50). The Rail fact `inbox` is `ok`, `missing` or `mismatch` (B51). Not the user's Inbox.
+Claude Code's own messaging socket for a message from another Claude Code instance, which the adapter sends a `note` over instead of typing it (B50). The Rail fact `inbox` is `ok`, `missing` or `mismatch` (B51). Not the user's Inbox.
 
 **Mcp**:
 The Project setting `mcp {on}` (`project.setMcp`, M2219): with `on` false, or the Daemon's `ROUNDUP_MCP=off`, an Agent starts with no `roundup` MCP server and its Brief names `rup` commands. Only Agents started afterward change.

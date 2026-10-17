@@ -11,11 +11,15 @@ Exists: the `Delivery` type and the `bus.route` Hook type (`contracts/hooks.ts`)
 | Status | Meaning | Leaves it by |
 |---|---|---|
 | `pending` | to be typed when the current Attempt is delivery-ready (`idle` or B37's live `error`) | typed (`delivered`), or the receiver exits (`dropped`) |
-| `held` (`ask-first`, `takeover` or `escalated`) | waits for the user, for a Takeover to end, or for unsent input to be submitted or cleared | `message.deliver`, `message.drop`, the end of a Takeover or the submit or clear of unsent input (only `takeover`), the user's answer (only `escalated`) |
+| `held` (`ask-first`, `takeover`, `escalated` or `inbox`) | waits for the user, for a Takeover to end, for unsent input to be submitted or cleared, or for the Agent's Claude inbox to pass its check | `message.deliver`, `message.drop`, the end of a Takeover or the submit or clear of unsent input (only `takeover`), the user's answer (only `escalated`), a passing check at the Agent's next `idle` (only `inbox`; `message.deliver` of it needs that check too, else `INBOX_UNAVAILABLE`) |
 | `delivered` | typed into the Terminal, or stored for the user | final |
 | `dropped` | never typed, with a reason | final |
 
 Default Route is `auto`. A Held Message never blocks a later one (B7). Delivery is exactly once (B39, B40): `delivered` is recorded when the Agent's `UserPromptSubmit` Signal confirms the prompt, and an unconfirmed prompt is typed again. `blocked` is unchanged: this series gives Routes no say in Kind (`GLOSSARY.md`, "Who decides Kind").
+
+## B50 to B52: a `note` goes to the Claude inbox socket
+
+The model's `Type(id)` effect for a `note` (a Message of kind `note` from an Actor that is not the user) is not a Terminal write: the adapter sends the note over the receiver's messaging socket (its Claude inbox), once per id, and `delivered` is recorded when Claude Code's transcript records the line's `msg_id`, in place of the `UserPromptSubmit` Signal. When the inbox check at the `idle` is `missing` or `mismatch`, the `Type` becomes a hold for `inbox` instead, outside `step`: `held` is not `pending`, so the note is neither typed nor lost, and the next passing check at an `idle` makes the held notes `pending` in id order. The laws it touches: M1 (a note is written at most once: an id already in flight is skipped, and Claude Code drops a `msg_id` it has taken up), M6 (a held `inbox` note is `held`, never silently lost) and M10 (a `pending` note at an `idle` is sent or held). `step`, `model.bend` and `LAWS.bend` are unchanged.
 
 ## B37 lifecycle-to-model mapping
 
