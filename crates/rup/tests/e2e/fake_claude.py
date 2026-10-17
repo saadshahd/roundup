@@ -139,13 +139,13 @@ def play_prompts():
             pass
     while hold and not os.path.exists(hold):
         time.sleep(0.02)
-    sys.stdout.write("\033]0;\u2733 claude\007")  # the star title that opens H19's gate, as Claude Code sets it
-    sys.stdout.flush()
     if "--resume" in sys.argv:
         # U177: a reopened Door is acknowledged by a SessionStart that names the conversation it resumed.
         hook("SessionStart", {"session_id": flag("--resume"), "source": "resume"})
     else:
         hook("SessionStart", {"session_id": "00000000-0000-4000-8000-000000000146", "source": "startup"})
+    sys.stdout.write("\033]0;\u2733 claude\007")  # the star title that opens H19's gate, after SessionStart, so an idle child already has its conversation saved
+    sys.stdout.flush()
     for prompt in typed_prompts():
         if "FAKE_CLAUDE_PROMPT_LOG" in os.environ:
             with open(os.environ["FAKE_CLAUDE_PROMPT_LOG"], "a") as log:
