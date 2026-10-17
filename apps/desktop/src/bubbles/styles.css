@@ -62,20 +62,23 @@
   right: max(0px, calc(var(--shelf-span) - var(--space-4)));
 }
 
-/* U2307c: a macOS panel bar, 28 px: close and minimise dots at the left, the name centred on the bar, a status dot after it. */
+/* U2307c, U3704: a panel bar, 28 px: the name, its status Glyph beside it, and the minimise and close dots at the trailing edge, apart from the state. */
 .bubble-header {
   flex: none;
   box-sizing: border-box;
   container-type: inline-size;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
+  gap: var(--space-2);
   height: calc(var(--space-5) + var(--space-1));
   padding-inline: var(--space-2);
   cursor: grab;
 }
 
 .bubble-controls {
+  flex: 1;
+  justify-content: flex-end;
+  padding-inline-start: var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -107,8 +110,7 @@
 }
 
 .bubble-name {
-  grid-column: 2;
-  max-width: calc(100cqw - 2 * (2 * var(--space-5) + var(--space-1) + var(--space-2)));
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -116,19 +118,8 @@
 }
 
 .bubble-state {
-  grid-column: 3;
-  justify-self: start;
-  width: var(--space-2);
-  height: var(--space-2);
-  margin-inline-start: var(--space-2);
-  border-radius: var(--radius-drawer);
-  outline: 1px solid var(--grey);
-  outline-offset: -1px;
-}
-
-.bubble-state[data-running="true"] {
-  outline-color: var(--accent);
-  background: var(--accent);
+  display: inline-flex;
+  flex: none;
 }
 
 /* The fit leaves under one cell spare; the body paints it as the Terminal's ground. FitAddon always takes xterm's 14 px scrollbar from the width, so the host is that much wider than the body, which clips it: the grid then ends within a cell of the inset. */
@@ -192,6 +183,11 @@
   align-items: center;
   gap: var(--space-1);
   min-width: var(--space-5);
+}
+
+/* U3704: the status mark rides with the name, and the close action trails it by --space-3. */
+.terminal-tab-pair > .terminal-tab {
+  margin-inline-end: var(--space-2);
 }
 
 .terminal-tab-name {

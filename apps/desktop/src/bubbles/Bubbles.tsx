@@ -11,6 +11,8 @@ import { Portal } from "solid-js/web";
 import type { TerminalInfo } from "@contracts/terminal/TerminalInfo";
 import { ErrorLine } from "../ink/ErrorLine";
 import { Icon } from "../ink/Icon";
+import { KindGlyph } from "../ink/KindGlyph";
+import type { Kind } from "@contracts/Kind";
 import { createCut, Tip } from "../ink/Tip";
 import { isWorkstream, resolvedWorkstream, siblingsOf } from "../rail/layout";
 import { useConnectedProject } from "../state/connectedProject";
@@ -40,6 +42,9 @@ const zoneBox = (place: Place, zone: Zone) => {
 
 /** U421 engineering call 1: past the 3 to 4 px a hand wobbles while it clicks. */
 const PULL_DISTANCE = 8;
+
+/** U3704: the Kind each way a Terminal can be drawn as. */
+const KIND_OF: Record<"running" | "clean" | "failed", Kind> = { running: "working", clean: "done", failed: "error" };
 
 const FALLBACK_EXTENT: Extent = { width: 800, height: 600 };
 
@@ -242,6 +247,14 @@ export const Bubbles = (props: { screens: Screens }) => {
     if (running(terminal)) return copy.running;
 
     return exit?.kind === "code" ? copy.exit(exit.code) : exit?.kind === "signal" ? copy.exitSignal : copy.exit(terminal.exit_code ?? copy.questionMark);
+  };
+
+  /** U3704: the Kind the Bubble bar draws for a Terminal: working while it runs, done after a clean exit, else error. */
+  const stateKind = (terminal: TerminalInfo): Kind => {
+    const exit = rail.terminalExit(terminal.id);
+    const ended = exit?.kind === "code" ? exit.code : exit === null ? terminal.exit_code : null;
+
+    return KIND_OF[running(terminal) ? "running" : ended === 0 ? "clean" : "failed"];
   };
 
   const close = async (id: string): Promise<void> => {
@@ -775,12 +788,12 @@ export const Bubbles = (props: { screens: Screens }) => {
                   // SAFETY: a mouse event on the header always targets an Element.
                   if (!(event.target as Element).closest("button")) setPlace(id, toggledFill(place(), extent()));
                 }}>
+                <span class="bubble-name">{nameFor(terminal()!)}</span>
+                <span class="bubble-state" data-state={stateKind(terminal()!)} role="img" aria-label={stateText(terminal()!)} data-running={running(terminal()!)}><KindGlyph kind={stateKind(terminal()!)} decorative /></span>
                 <span class="bubble-controls">
                   <IconButton data-feedback="ink" aria-label={copy.close} onClick={() => void close(id)}><span class="bubble-dot"><Icon name="x" /></span></IconButton>
                   <IconButton data-feedback="ink" aria-label={copy.minimise} onClick={() => toggleMinimised(id)}><span class="bubble-dot"><Icon name="minus" /></span></IconButton>
                 </span>
-                <span class="bubble-name">{nameFor(terminal()!)}</span>
-                <span class="bubble-state" role="img" aria-label={stateText(terminal()!)} data-running={running(terminal()!)} />
               </header>
               <div class="bubble-body" ref={mount} />
             </section>
@@ -827,7 +840,7 @@ export const Bubbles = (props: { screens: Screens }) => {
                         onClick={() => toggleMinimised(id)}
                         onDblClick={(event) => { if (event.target instanceof Element && event.target.closest(".terminal-tab-name")) setEditing(id); }}>
                         <span class="terminal-tab-name" ref={nameRef}>{name()}</span>
-                        <span id={`terminal-state-${id}`} role="img" aria-label={stateText(terminal())}>{running(terminal()) ? copy.runningMark : copy.exitedMark}</span>
+                        <span id={`terminal-state-${id}`} data-state={running(terminal()) ? "running" : "exited"} role="img" aria-label={stateText(terminal())}>{running(terminal()) ? copy.runningMark : copy.exitedMark}</span>
                       </button>
                     )}
                   </Tip>
@@ -846,7 +859,7 @@ export const Bubbles = (props: { screens: Screens }) => {
                         onMount(() => requestAnimationFrame(() => { input.focus({ preventScroll: true }); input.select(); }));
                       }} /></Editable.Area>
                     </Editable.Root>
-                    <span id={`terminal-state-${id}`} role="img" aria-label={stateText(terminal())}>{running(terminal()) ? copy.runningMark : copy.exitedMark}</span>
+                    <span id={`terminal-state-${id}`} data-state={running(terminal()) ? "running" : "exited"} role="img" aria-label={stateText(terminal())}>{running(terminal()) ? copy.runningMark : copy.exitedMark}</span>
                   </div>
                 </Show>
                 <IconButton aria-label={copy.closeTerminal(name())} onClick={() => void close(id)}><Icon name="x" /></IconButton>

@@ -59,7 +59,7 @@
   min-height: var(--space-6);
 }
 
-/* U426: transparent actions stay tabbable out of flow; near the row they claim space before the name can reach them. The line stays one row high. */
+/* U426, U3704: transparent actions stay tabbable but sit out of flow at rest, so a name has the row's whole free room; near the row they take their place in flow, a state --space-3 from the first. */
 .rail-row .row-icons {
   position: absolute;
   top: 50%;
@@ -70,6 +70,8 @@
   gap: 0;
   opacity: 0;
   pointer-events: none;
+  /* U3704: with the row's gap, a state is --space-3 from the first action. */
+  margin-inline-start: var(--space-1);
 }
 
 .rail-row[data-near="true"] .row-icons,
@@ -114,7 +116,8 @@
 /* U404: an Agent's name is regular weight; a Workstream's stays 600. */
 .rail-row .name {
   flex: 0 1 auto;
-  min-width: 0;
+  /* U3704: the same room near and at rest, so a state beside the name never moves. */
+  min-width: var(--space-4);
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 400;
@@ -139,6 +142,7 @@
 /* U403: the right side never gives way: an Ink count open, up to five Glyphs and the Agent count folded. */
 .rail-row .line > .ink-count,
 .rail-row .line > .folded-agents {
+  cursor: default;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -148,7 +152,8 @@
 }
 
 .rail-row .line > .ink-count {
-  color: var(--amber);
+  /* U3704: the count stays beside the name on a hovered or selected row; its amber Glyph marks it and its number keeps 4.5:1 on their wash. */
+  color: var(--text);
 }
 
 /* U403: the name keeps the room; the Door's Glyph and the right side follow it. */
@@ -365,7 +370,7 @@
 }
 
 /* Resting counts align with the 16 px marks inside the edge-aligned 24 px targets. */
-.rail-row .line > :is(.ink-count, .rail-pads-control, .folded-agents) {
+.rail-row .row-tail > .rail-pads-control {
   margin-right: var(--space-1);
 }
 
@@ -434,22 +439,8 @@
   display: none;
 }
 
-.rail-row[data-near="true"] .name {
-  flex: 1 1 0;
-  min-width: var(--space-4);
-}
-
-/* The group supplies its own target spacing; another gap would truncate nested names. */
-.rail-row[data-near="true"] .line {
-  gap: var(--space-1);
-}
-
-.rail-row[data-near="true"] .line > :first-child {
-  margin-right: calc(var(--rail-gap) - var(--space-1));
-}
-
-/* Secondary counts yield to controls without changing the gap before the name. */
-.rail-row[data-near="true"] .line > :is(.fill, .ink-count, .folded-agents, .rail-pads-control) {
+/* U3704: a state stays beside the name and never moves; the owned count yields its place in the slot to the actions. */
+.rail-row[data-near="true"] .row-tail > .rail-pads-control {
   display: none;
 }
 
@@ -478,10 +469,15 @@
 
 /* The trailing Glyph and controls share a group so their gaps never consume the name's room. */
 .rail-row .row-tail {
-  display: flex;
+  display: grid;
   align-items: center;
+  justify-items: end;
   flex: none;
-  gap: 0;
+}
+
+/* U3704: the owned count and the actions share one slot, so the name is cut the same with either showing and a state beside it never moves. */
+.rail-row .row-tail > * {
+  grid-area: 1 / 1;
 }
 
 @container rail (width < 220px) {
@@ -617,10 +613,6 @@
   --button-inline: var(--space-4);
 }
 
-/* The trailing Status column yields room to actions without moving the leading mark or name. */
-.rail-row .row-tail > .glyph {
-  width: var(--space-3);
-}
 /* U397: below the supported resize range the label yields, while both targets and marks retain their size. */
 @container rail (width < 220px) {
   .rail-add .rail-add-label {

@@ -130,17 +130,19 @@ export const RailRowView = (props: {
     return current !== null && hasInk(glyphOf(current)) ? glyphOf(current).tone : undefined;
   };
 
-  /** U172: the Door action takes the place of the right side, so it is whole and the right side never squeezes it. */
-  const showsAction = () => near() && workstream() && props.exit !== null;
+  /** U172, U3704: the Door action shows when the row is near; it takes no room at rest, so a name keeps the row's free room. */
+  const hasAction = () => workstream() && props.exit !== null;
 
-  const needsYouShown = () => workstream() && !showsAction() && !props.row.collapsed && props.needsYou > 0;
+  const showsAction = () => near() && hasAction();
+
+  const needsYouShown = () => workstream() && !props.row.collapsed && props.needsYou > 0;
 
   /** U521: what the row's own Tooltip says: the name a cut hides, the status label, and the counts at the row's right. The same text the row shows, unchanged. */
   const lines = (): string[] => [
     ...(cut() ? [props.row.node.name] : []),
     ...(workstream() || !props.row.node.status ? [] : [props.row.node.status.label]),
     ...(needsYouShown() ? [copy.needYou(props.needsYou)] : []),
-    ...(workstream() && !showsAction() && props.row.collapsed ? [copy.agents(props.row.collapsed.agents.length)] : []),
+    ...(workstream() && props.row.collapsed ? [copy.agents(props.row.collapsed.agents.length)] : []),
   ];
 
   // The Tooltip anchors to the row itself: the tree item's props replace the id its trigger lookup needs.
@@ -213,8 +215,28 @@ export const RailRowView = (props: {
                 onCancel={() => setEditing(false)}
               />
             </Show>
+            <Show when={workstream() ? (props.doorFailure !== null ? "error" : kind()) : null}>{(current) => <KindGlyph kind={current()} />}</Show>
+            <Show when={workstream()}>
+              <Show
+                when={props.row.collapsed}
+                fallback={
+                  <Show when={props.needsYou > 0}>
+                    <span class="ink-count" data-tone="amber" data-state="needs-you">
+                      <KindGlyph kind="needs-you" decorative /> {props.needsYou}
+                    </span>
+                  </Show>
+                }
+              >
+                {(collapsed) => (
+                  <span class="folded-agents" data-state="folded">
+                    <For each={collapsed().agents.slice(0, FOLDED_GLYPHS)}>{(each) => <KindGlyph kind={each} />}</For>
+                    <span class="light">{collapsed().agents.length}</span>
+                  </span>
+                )}
+              </Show>
+            </Show>
+            <span class="fill" aria-hidden="true" />
             <span class="row-tail">
-              <Show when={workstream() ? kind() : null}>{(current) => <KindGlyph kind={current()} />}</Show>
               <RowIcons actions={props.actions}>
                 <Show when={showsAction()}>
                   <Tip text={props.doorFailure ? copy.retryDoor : copy.startDoor}>
@@ -241,28 +263,8 @@ export const RailRowView = (props: {
                   </Tip>
                 </Show>
               </RowIcons>
+              <PadsControl pads={pads} />
             </span>
-            <span class="fill" aria-hidden="true" />
-            <Show when={workstream() && !showsAction()}>
-              <Show
-                when={props.row.collapsed}
-                fallback={
-                  <Show when={props.needsYou > 0}>
-                    <span class="ink-count" data-tone="amber">
-                      <KindGlyph kind="needs-you" decorative /> {props.needsYou}
-                    </span>
-                  </Show>
-                }
-              >
-                {(collapsed) => (
-                  <span class="folded-agents">
-                    <For each={collapsed().agents.slice(0, FOLDED_GLYPHS)}>{(each) => <KindGlyph kind={each} />}</For>
-                    <span class="light">{collapsed().agents.length}</span>
-                  </span>
-                )}
-              </Show>
-            </Show>
-            <PadsControl pads={pads} />
           </p>
         </div>
       )}
