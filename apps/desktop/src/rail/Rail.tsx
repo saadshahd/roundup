@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { writeText } from "../app/clipboard";
 import * as v from "valibot";
 import { attentionCount } from "./attention";
@@ -64,7 +65,7 @@ export const Rail = () => {
     return node !== null && clearingOf(app, connected.events, node.id, connected.drafts).phase() !== "closed" ? node : null;
   });
 
-  const [wanted, setWanted] = createSignal<string | null>(null);
+  const [wanted, setWanted] = createSignal<{ id: string; focus: ReturnType<typeof captureFocus> } | null>(null);
   /** Gates `⌘N` in the chord handler and the add-agent click below, so an open field is never dropped mid-type (U33). */
   const [composing, setComposing] = createSignal(false);
   const [editingName, setEditingName] = createSignal<string | null>(null);
@@ -128,6 +129,8 @@ export const Rail = () => {
   };
 
   const openCompose = () => {
+    captureFocus(true);
+
     if (!composing()) setTaskDestination(parent());
     setComposing(true);
   };
@@ -332,7 +335,10 @@ export const Rail = () => {
       liftedRow = null;
       setDrop(null);
 
-      if (back !== null) requestAnimationFrame(() => focusRow(back));
+      if (back !== null) {
+        const focus = captureFocus();
+        requestAnimationFrame(() => focus(() => focusRow(back)));
+      }
 
       return;
     }
@@ -376,11 +382,12 @@ export const Rail = () => {
 
   const spawnAgentWith = (prompt: string | null, under: string | null = parent()) =>
     guarded(async () => {
+      const focus = captureFocus(true);
       const params: SpawnParams = { cwd: project.path, prompt, parent: under, model: null, effort: null };
 
       const spawned = await app.rpc("agent.spawn", params);
 
-      setWanted(spawned.id);
+      setWanted({ id: spawned.id, focus });
 
       if (composing()) endCompose();
     });
@@ -453,6 +460,7 @@ export const Rail = () => {
     if (!revision) return;
     const original = rail.nodes.find((node) => node.id === originalParent);
     const door = prompt !== null && action === "note" ? snapshot.destination.recipient ?? original?.id ?? null : null;
+    const focus = captureFocus(true);
     const slow = setTimeout(() => setAsking(true), 500);
     guarded(async () => {
       let spawned: string | null = null;
@@ -467,7 +475,7 @@ export const Rail = () => {
         retained.settle(revision.revision, "acknowledged");
 
         if (latest) {
-          if (spawned !== null) setWanted(spawned);
+          if (spawned !== null) setWanted({ id: spawned, focus });
           endCompose();
         }
       } catch (error) {
@@ -515,10 +523,10 @@ export const Rail = () => {
   );
 
   createEffect(() => {
-    const id = wanted();
+    const request = wanted();
 
-    if (id !== null && rail.nodes.some((node) => node.id === id)) {
-      rail.select(id);
+    if (request !== null && rail.nodes.some((node) => node.id === request.id)) {
+      request.focus(() => rail.select(request.id));
       setWanted(null);
     }
   });

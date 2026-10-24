@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import type { JSX } from "solid-js";
 import { onCleanup } from "solid-js";
 import { ShelfRow } from "./ShelfRow";
@@ -33,8 +34,9 @@ export const EntryRow = (props: {
         // The list grows above this row when an item lands, so keep the row in view as the list's height changes.
         const list = new ResizeObserver(() => field.scrollIntoView({ block: "nearest" }));
 
+        const focus = captureFocus(true);
         queueMicrotask(() => {
-          field.focus();
+          focus(() => field.focus());
           field.scrollIntoView({ block: "nearest" });
           const section = field.closest("section");
 

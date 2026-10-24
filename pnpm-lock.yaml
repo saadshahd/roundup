@@ -121,9 +121,21 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
+      '@zag-js/dom-query':
+        specifier: 1.45.0
+        version: 1.45.0
       '@zag-js/focus-visible':
         specifier: 1.45.0
         version: 1.45.0
+      '@zag-js/menu':
+        specifier: 1.45.0
+        version: 1.45.0
+      '@zag-js/select':
+        specifier: 1.45.0
+        version: 1.45.0
+      '@zag-js/solid':
+        specifier: 1.45.0
+        version: 1.45.0(solid-js@1.9.17)
       diff:
         specifier: ^9.0.0
         version: 9.0.0

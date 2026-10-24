@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import type { ActivationSource } from "../keys/registry";
 import { batch, createSignal } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
@@ -23,7 +24,7 @@ export const createDrawer = (): DrawerState => {
   return {
     content,
     source,
-    open: (next, from = "pointer") => batch(() => { setSource(from); setContent(() => next); }),
+    open: (next, from = "pointer") => batch(() => { captureFocus(true); setSource(from); setContent(() => next); }),
     close: (from = "pointer") => batch(() => { setSource(from); setContent(null); }),
   };
 };

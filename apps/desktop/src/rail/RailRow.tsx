@@ -1,3 +1,4 @@
+import { captureFocus, queueFocus } from "../keys/focus";
 import { ReservedLine } from "../ink/ReservedLine";
 import { openOnRelease } from "../ui/contextMenu";
 import * as v from "valibot";
@@ -85,13 +86,15 @@ const NameField = (props: { node: RailNode; onCommit: (name: string) => Promise<
       aria-label={copy.name}
       aria-invalid={conflict() || current()?.status === "failed" ? true : undefined}
       value={value()}
-      ref={(field) => queueMicrotask(() => {
+      ref={(field) => {
+        captureFocus(true);
+        queueFocus(() => {
         field.focus();
         const selection = current()?.selection;
 
         if (selection) field.setSelectionRange(selection.start, selection.end, selection.direction);
         else field.select();
-      })}
+      }); }}
       onInput={(event) => edit(event.currentTarget)}
       onSelect={(event) => { if (event.currentTarget.isConnected && current()?.status === "draft") edit(event.currentTarget); }}
       onKeyDown={(key) => {

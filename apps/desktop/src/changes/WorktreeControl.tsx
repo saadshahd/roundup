@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { createCutTitle } from "../ui/cutTitle";
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -29,6 +30,7 @@ const Panel = (props: { id: string; name: string; worktree: Worktree; notes: Not
     return read?.failure === null ? read.state : null;
   };
 
+  let treeFocus = captureFocus();
   const [open, setOpen] = createSignal(false);
   const [read, setRead] = createSignal<Read>(null);
   const [version, setVersion] = createSignal(0);
@@ -82,12 +84,12 @@ const Panel = (props: { id: string; name: string; worktree: Worktree; notes: Not
   const close = () => { hide(); control()?.focus(); };
 
   let viewButton: HTMLButtonElement | undefined;
-  const openPanel = () => { props.onOpen(); setOpen(true); };
+  const openPanel = () => { treeFocus = captureFocus(true); props.onOpen(); setOpen(true); };
 
   createEffect(() => { if (props.recoveryOpen) hide(); });
 
   return (
-    <Popover.Root closeOnInteractOutside={false} open={open()} closeOnEscape onOpenChange={({ open: next }) => { if (next) openPanel(); else close(); }} positioning={{ placement: "top-end", strategy: "fixed" }}>
+    <Popover.Root initialFocus={treeFocus} closeOnInteractOutside={false} open={open()} closeOnEscape onOpenChange={({ open: next }) => { if (next) openPanel(); else close(); }} positioning={{ placement: "top-end", strategy: "fixed" }}>
       <Popover.Trigger asChild={(trigger) => (
         <button {...trigger()} ref={setControl} type="button" data-button="quiet" class="worktree-control" aria-label={props.worktree.branch} onClick={() => (open() ? close() : openPanel())}>
           <Icon name="branch" />
@@ -116,7 +118,7 @@ const Panel = (props: { id: string; name: string; worktree: Worktree; notes: Not
               )}
             </Show>
           </dl>
-          <ReservedLine message={failure()}><button type="button" data-button="quiet" onClick={() => setVersion(value => value + 1)}>{copy.retry}</button><button type="button" data-button="quiet" onClick={dismiss}>{copy.dismissFailure}</button></ReservedLine>
+          <ReservedLine message={failure()}><button type="button" data-button="quiet" onClick={() => { treeFocus = captureFocus(); treeFocus(() => {}); setVersion(value => value + 1); }}>{copy.retry}</button><button type="button" data-button="quiet" onClick={dismiss}>{copy.dismissFailure}</button></ReservedLine>
           <Show when={read()} keyed>
             {(value) => {
 
@@ -124,7 +126,7 @@ const Panel = (props: { id: string; name: string; worktree: Worktree; notes: Not
 
               if (value.changed.files.length === 0) return <p class="worktree-none">{copy.noChanges}</p>;
 
-              return <><ChangedTree root={props.worktree.path} files={value.changed.files} selected={path()} onSelect={setPath} /><button type="button" data-button="quiet" ref={element => { viewButton = element; }} disabled={!path()} onClick={() => setDiff(true)}>{copy.viewDiff}</button></>;
+              return <><ChangedTree initialFocus={treeFocus} root={props.worktree.path} files={value.changed.files} selected={path()} onSelect={setPath} /><button type="button" data-button="quiet" ref={element => { viewButton = element; }} disabled={!path()} onClick={() => setDiff(true)}>{copy.viewDiff}</button></>;
             }}
           </Show>
         <NoteBatch fallback={() => viewButton?.focus()} recover={props.recover} id={props.id} name={props.name} notes={props.notes} edit={note => { setPath(note.comparison.newPath); setEditing(note); setDiff(true); }} />

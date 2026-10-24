@@ -1,3 +1,4 @@
+import { queueFocus } from "../keys/focus";
 import { Tip } from "../ui/Tip";
 import { createCutTitle } from "../ui/cutTitle";
 import { ExitButton } from "../ui/IconButton";
@@ -116,7 +117,7 @@ export const TimelineView = (props: { home: string; name: string; back: () => vo
     props.back();
   };
 
-  return <section class="timeline-view" classList={{ "timeline-single": lanes().length === 1 }} ref={(element) => queueMicrotask(() => element.focus())} role="region" aria-label={copy.timeline} data-window-start={Math.round(axisStart())} data-window-end={Math.round(axisEnd())} data-running={running() ? "" : undefined} tabIndex={-1}
+  return <section class="timeline-view" classList={{ "timeline-single": lanes().length === 1 }} ref={(element) => queueFocus(() => element.focus())} role="region" aria-label={copy.timeline} data-window-start={Math.round(axisStart())} data-window-end={Math.round(axisEnd())} data-running={running() ? "" : undefined} tabIndex={-1}
     onKeyDown={(event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.stopPropagation();

@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { writeText } from "../app/clipboard";
 import { NativeAlert } from "../ui/NativeAlert";
 import * as v from "valibot";
@@ -29,6 +30,7 @@ import "./styles.css";
 const PadRichEditor = lazy(() => import("./PadRichEditor"));
 
 const PadBody = (props: {
+  initialFocus: ReturnType<typeof captureFocus>;
   initial: Pad;
   revision?: string;
   list?: PadList;
@@ -514,6 +516,7 @@ const PadBody = (props: {
       </ReservedLine>
       <Suspense>
         <PadRichEditor
+          initialFocus={props.initialFocus}
           text={source}
           readonly={!ownedByUser() || invalid()}
           onChange={onChange}
@@ -561,6 +564,7 @@ export const PadDrawer = (props: {
   onAcknowledged?: ((incarnation: Pad["incarnation"]) => void) | undefined;
 }) => {
   const connected = useConnectedProject();
+  const initialFocus = captureFocus();
 
   if (props.recovery !== undefined) {
     const recovery = props.recovery;
@@ -570,7 +574,7 @@ export const PadDrawer = (props: {
     const retained = connected.drafts.list().find(draft => draft.revision === recovery.revision && draft.destination.surface === "pads" && draft.destination.recipient === null);
     const original = recovery.list.loaded() && recovery.list.failure() === null ? recovery.list.pads().find(pad => pad.name === props.name && pad.incarnation === retained?.destination.object && retained?.value.originalName === pad.name) : undefined;
 
-    return original ? <PadBody initial={original} revision={recovery.revision} list={recovery.list} pads={recovery.list.pads} onLateFailure={props.onLateFailure} onFailureCleared={props.onFailureCleared} onAcknowledged={props.onAcknowledged} /> : null;
+    return original ? <PadBody initialFocus={initialFocus} initial={original} revision={recovery.revision} list={recovery.list} pads={recovery.list.pads} onLateFailure={props.onLateFailure} onFailureCleared={props.onFailureCleared} onAcknowledged={props.onAcknowledged} /> : null;
   }
 
   return (
@@ -582,6 +586,7 @@ export const PadDrawer = (props: {
     >
       {(pad) => (
         <PadBody
+          initialFocus={initialFocus}
           initial={pad}
           pads={props.pads}
           heading={props.heading}

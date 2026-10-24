@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { ReservedLine } from "../ink/ReservedLine";
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import type { Ref } from "@contracts/todo/Ref";
@@ -52,6 +53,7 @@ export const TodoRefs = (props: { id: number; saved?: () => number; onSaved?: ()
   onCleanup(() => { alive = false; latest++; });
 
   const remove = async (url: string, button: HTMLElement) => {
+    const focus = captureFocus();
     const section = button.closest<HTMLElement>(".todo-refs");
     // With no row left, the section unmounts: focus goes to the first control after it.
     const parent = section?.parentElement;
@@ -73,15 +75,17 @@ export const TodoRefs = (props: { id: number; saved?: () => number; onSaved?: ()
     const left = [...(section?.isConnected ? section.querySelectorAll<HTMLElement>(".todo-ref") : [])];
     const row = left[Math.min(at, left.length - 1)];
 
-    if (document.activeElement === document.body || !document.activeElement?.isConnected) {
-      if (row) (row.querySelector<HTMLElement>(".todo-ref-link") ?? row.querySelector<HTMLElement>("button"))?.focus();
-      else {
-        // The section unmounted: the first control among what now sits where it was.
-        const following = [...(parent?.children ?? [])].slice(index).filter((next) => next instanceof HTMLElement);
-        const control = following.flatMap((next) => [next, ...next.querySelectorAll<HTMLElement>("button,a[href]")]).find((found) => found.matches("button,a[href]"));
-        control?.focus();
+    focus(() => {
+      if (document.activeElement === document.body || !document.activeElement?.isConnected) {
+        if (row) (row.querySelector<HTMLElement>(".todo-ref-link") ?? row.querySelector<HTMLElement>("button"))?.focus();
+        else {
+          // The section unmounted: the first control among what now sits where it was.
+          const following = [...(parent?.children ?? [])].slice(index).filter((next) => next instanceof HTMLElement);
+          const control = following.flatMap((next) => [next, ...next.querySelectorAll<HTMLElement>("button,a[href]")]).find((found) => found.matches("button,a[href]"));
+          control?.focus();
+        }
       }
-    }
+    });
   };
 
   return <>

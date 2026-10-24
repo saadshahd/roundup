@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { Show } from "solid-js";
 import { ReservedLine } from "../ink/ReservedLine";
 import { copy } from "../copy";
@@ -16,6 +17,7 @@ export const createTerminalClose = (connected: ConnectedProject, shown: Accessor
     if (closing().has(id)) return;
 
     const terminal = shown().find(terminal => terminal.id === id);
+    const focus = captureFocus();
     const active = document.activeElement;
     const controlHadFocus = active instanceof Element && active.closest("[data-bubble]")?.getAttribute("data-bubble") === id;
     setClosing((ids) => new Set([...ids, id]));
@@ -25,7 +27,7 @@ export const createTerminalClose = (connected: ConnectedProject, shown: Accessor
       const accepted = await app.ask({ title: copy.closeQuestion(nameFor(terminal)), message: terminal.running ? copy.closeTerminalWarning : copy.closeTerminalOutputWarning, okLabel: copy.close, cancelLabel: copy.keep });
 
       if (!accepted) {
-        if (active instanceof HTMLElement && active.isConnected) active.focus({ preventScroll: true });
+        focus(() => { if (active instanceof HTMLElement && active.isConnected) active.focus({ preventScroll: true }); });
 
         return;
       }
@@ -35,12 +37,12 @@ export const createTerminalClose = (connected: ConnectedProject, shown: Accessor
       setRetry((prior) => prior?.id === id ? null : prior);
       clearItemFailure(terminal);
 
-      if (controlHadFocus) queueMicrotask(() => {
+      if (controlHadFocus) queueMicrotask(() => focus(() => {
         const remaining = shown();
         const nextId = remaining.find((terminal) => Number(terminal.id) > Number(id))?.id ?? remaining.at(-1)?.id;
         const control = nextId === undefined ? document.querySelector<HTMLElement>('.terminal-new') : document.querySelector<HTMLElement>(`.terminal-tab[data-bubble="${nextId}"]`);
         control?.focus();
-      });
+      }));
     } catch (thrown) {
       if (!(thrown instanceof Error)) throw thrown;
 

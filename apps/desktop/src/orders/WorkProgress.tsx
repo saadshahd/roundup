@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { ReservedLine } from "../ink/ReservedLine";
 import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js";
 import type { ContinuationAction } from "@contracts/message/ContinuationAction";
@@ -96,11 +97,14 @@ const ProgressContent = (props: { id: string }) => {
   let disposed = false;
   onCleanup(() => { disposed = true; });
 
+  let statusFocus = captureFocus();
+
   const open = (): ContinuationAction[] => loaded()?.plan.actions.filter((action) => action.decision === null) ?? [];
 
-  /** The control leaves once nothing is left to resume; focus moves to the status line it reported in. */
   createEffect(() => {
-    if (open().length === 0 && (phase() === "resumed" || phase() === "nothing")) queueMicrotask(() => { if (!disposed && document.activeElement === document.body) status?.focus(); });
+    if (open().length === 0 && (phase() === "resumed" || phase() === "nothing")) queueMicrotask(() => {
+      if (!disposed && document.activeElement === document.body && status?.isConnected) statusFocus(() => status?.focus());
+    });
   });
 
   const inspect = async (result: ResultProgress) => {
@@ -137,6 +141,8 @@ const ProgressContent = (props: { id: string }) => {
     const chosen = open();
 
     if (phase() === "pending" || daemonExit() !== null || chosen.length === 0) return;
+    const focus = captureFocus();
+    statusFocus = captureFocus();
     const identity = chosen.map((action) => action.id);
     const previous = phase();
 
@@ -181,7 +187,7 @@ const ProgressContent = (props: { id: string }) => {
     } finally {
       if (!disposed) {
         refresh();
-        queueMicrotask(() => button?.focus());
+        queueMicrotask(() => { if (!disposed && button?.isConnected) focus(() => button?.focus()); });
       }
     }
   };

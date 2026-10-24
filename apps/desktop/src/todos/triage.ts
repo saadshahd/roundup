@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { createSignal } from "solid-js";
 
 /** U3751: the mode's one flag, a webview state of the Todos tab that is never saved. */
@@ -6,7 +7,13 @@ const [on, setOn] = createSignal(false);
 /** U3753: the Todo whose Drawer comment field is asked to take focus once it exists. */
 const [commentFor, setCommentFor] = createSignal<number | null>(null);
 
-export const triage = { on, set: setOn, commentFor, askComment: setCommentFor };
+let commentFocus = captureFocus();
+
+export const triage = {
+  on, set: setOn, commentFor,
+  askComment: (id: number | null) => { if (id !== null) commentFocus = captureFocus(true); setCommentFor(id); },
+  focusComment: (move: () => void) => commentFocus(move),
+};
 
 /** The row button of an open Todo in the Shelf's list, or null once it left. */
 export const rowButtonOf = (id: number): HTMLButtonElement | null =>

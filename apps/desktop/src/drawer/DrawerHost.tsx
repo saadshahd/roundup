@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { activationSource } from "../keys/registry";
 import { registerKeys } from "../keys/registry";
 import { IconButton } from "../ui/IconButton";
@@ -31,14 +32,14 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
 
       if (open && !wasOpen) {
         savedFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        host?.querySelector<HTMLElement>(".close")?.focus({ preventScroll: true });
+        captureFocus()(() => host?.querySelector<HTMLElement>(".close")?.focus({ preventScroll: true }));
       } else if (wasOpen && !open) {
         const stayedInDrawer = host?.contains(document.activeElement) ?? false;
         const toRefocus = savedFocus;
 
         savedFocus = null;
 
-        if (stayedInDrawer && toRefocus?.isConnected) toRefocus.focus({ preventScroll: true });
+        if (stayedInDrawer && toRefocus?.isConnected) captureFocus()(() => toRefocus.focus({ preventScroll: true }));
       }
     }),
   );
@@ -83,7 +84,7 @@ export const DrawerHost = (props: { drawer: DrawerState; reducedMotion: Accessor
   registerKeys({ kind: "layer", element: panel, active: isOpen, modal: false }, [{
     chords: ["Escape"],
     when: (press) => !(press.target instanceof Element && press.target.closest('input, textarea, [contenteditable], .xterm, .pane-screen')),
-    run: () => props.drawer.close("key"),
+    run: () => { captureFocus(true); props.drawer.close("key"); },
   }]);
 
   return (

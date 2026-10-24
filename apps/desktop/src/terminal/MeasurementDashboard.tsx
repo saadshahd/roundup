@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { ExitButton } from "../ui/IconButton";
 import { createStore, reconcile } from "solid-js/store";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
@@ -175,7 +176,8 @@ export const MeasurementDashboard = (props: { home: string; name: string; back: 
     const timer = setInterval(() => void read(), 1000);
     onCleanup(() => clearInterval(timer));
   });
-  onMount(() => region?.focus());
+  const initialFocus = captureFocus();
+  onMount(() => initialFocus(() => region?.focus()));
   onCleanup(() => { closed = true; ++generation; clearTimeout(retryTimer); stop(); document.removeEventListener("visibilitychange", changedVisibility); });
 
   const rows = () => snapshot()?.rows ?? [];

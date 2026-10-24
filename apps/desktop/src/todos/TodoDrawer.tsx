@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { todoEditor } from "../drawer/editors";
 import * as v from "valibot";
 import { NativeAlert } from "../ui/NativeAlert";
@@ -30,7 +31,7 @@ const TodoLine = (props: { todo: Todo }) => (
 /** The current Todo follows list Events; TodoHistory captures and acknowledges this opening's read. */
 export const TodoDrawer = (props: {
   id: number;
-  onComment?: () => void;
+  onComment?: (focus: ReturnType<typeof captureFocus>) => void;
   todos: TodosState;
   /** Recovery uses loaded original identities and never fetches or acknowledges History. */
   recovery?: { project: string; revision: string };
@@ -103,13 +104,14 @@ export const TodoDrawer = (props: {
   let titleRow: HTMLDivElement | undefined;
 
   const toggle = () => attempt(async () => {
+    const focus = captureFocus();
     const focused = document.activeElement === titleRow?.querySelector("input");
     const reopening = props.todos.byId().get(props.id)?.done;
     await (reopening ? app.rpc("todo.reopen", { id: props.id }) : app.rpc("todo.complete", { id: props.id }));
 
     const stayed = document.activeElement === titleRow?.querySelector("input") || document.activeElement === document.body;
 
-    if (!reopening && focused && stayed) titleRow?.querySelector<HTMLElement>("p[tabindex]")?.focus();
+    if (!reopening && focused && stayed) focus(() => titleRow?.querySelector<HTMLElement>("p[tabindex]")?.focus());
   });
 
   // Picks run one after another, each from the list the previous one answered: the list state only catches up when the Event arrives.
@@ -121,7 +123,7 @@ export const TodoDrawer = (props: {
 
   // U152, U138: a keyboard step that removes the focused button hands focus to `+ blocker`, never the page body.
   let blockerButton: HTMLButtonElement | undefined;
-  let removing = false;
+  let removing: ReturnType<typeof captureFocus> | null = null;
 
   createEffect(
     on(
@@ -129,10 +131,11 @@ export const TodoDrawer = (props: {
       () => {
         if (!removing) return;
 
-        removing = false;
-        queueMicrotask(() => {
+        const focus = removing;
+        removing = null;
+        queueMicrotask(() => focus(() => {
           if (!document.activeElement || document.activeElement === document.body) blockerButton?.focus();
-        });
+        }));
       },
       { defer: true },
     ),
@@ -246,7 +249,7 @@ export const TodoDrawer = (props: {
 
   /** U152: the other blockers stay, in order. */
   const removeBlocker = (blocker: number) => {
-    removing = true;
+    removing = captureFocus();
     changeBlockers("remove", blocker);
   };
 

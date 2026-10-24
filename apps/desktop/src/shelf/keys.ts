@@ -1,3 +1,4 @@
+import { captureFocus, queueFocus } from "../keys/focus";
 import { createRoot, onCleanup } from "solid-js";
 import { chordsFor } from "../keys/chords";
 import { registerKeys } from "../keys/registry";
@@ -42,6 +43,7 @@ export const shelfKeys = (props: { frame: ShelfFrame; shelf: () => HTMLElement |
     const kept = document.activeElement;
 
     if (opening) {
+      captureFocus(true);
       returnTo = kept instanceof HTMLElement && kept !== document.body ? kept : null;
     }
 
@@ -54,7 +56,7 @@ export const shelfKeys = (props: { frame: ShelfFrame; shelf: () => HTMLElement |
       returnTo = null;
     }
 
-    if (opening) queueMicrotask(() => selectedTab()?.focus({ preventScroll: true }));
+    if (opening) queueFocus(() => selectedTab()?.focus({ preventScroll: true }));
   };
 
   const canEscape = (press: KeyboardEvent) => {

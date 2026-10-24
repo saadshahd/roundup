@@ -1,3 +1,4 @@
+import { queueFocus } from "../keys/focus";
 import { ReservedLine } from "../ink/ReservedLine";
 import { copy } from "../copy";
 import { Tabs } from "../ui/Tabs";
@@ -48,7 +49,7 @@ export const NoteForm = (props: { id: string; comparison: FileComparison; notes:
     <label>{copy.endLine}<input type="number" min="1" value={end()} onInput={event => { setEnd(event.currentTarget.value); persist(); }} /></label>
     <label class="note-field">{copy.note}<textarea value={text()} maxLength={20000} onInput={event => { setText(event.currentTarget.value); persist(); }} onSelect={() => { if (text() !== "" || restored || replacing !== undefined) persist(); }} ref={element => {
       field = element;
-      queueMicrotask(() => {
+      queueFocus(() => {
         if (!element.isConnected) return;
         element.focus();
 

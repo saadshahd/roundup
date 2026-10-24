@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { copy } from "../copy";
 
 const promptOf = (text: string): string | null => {
@@ -28,8 +29,9 @@ export const SpawnPromptField = (props: {
     class="spawn-prompt-field"
     value={props.value}
     ref={(field) => {
+    const focus = captureFocus();
       queueMicrotask(() => {
-        field.focus();
+        focus(() => field.focus());
         const selection = props.selection;
         field.setSelectionRange(selection?.start ?? field.value.length, selection?.end ?? field.value.length, selection?.direction ?? "none");
         fit(field);

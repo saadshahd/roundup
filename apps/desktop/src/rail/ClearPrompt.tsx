@@ -1,3 +1,4 @@
+import { queueFocus } from "../keys/focus";
 import { ReservedLine } from "../ink/ReservedLine";
 import { copy } from "../copy";
 import { onMount, Show } from "solid-js";
@@ -43,7 +44,7 @@ export const ClearPrompt = (props: { node: RailNode; onHide: () => void }) => {
 
     if (prompt.phase() !== "asking") return;
 
-    queueMicrotask(() => {
+    queueFocus(() => {
       if (!field?.isConnected) return;
 
       field.focus();

@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { Portal } from "solid-js/web";
 import { createEffect, on, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -59,7 +60,7 @@ const WaitFor = (props: { todos: readonly { id: number; title: string }[]; value
 };
 
 /** U3743: the dialog the owner picker's `New Workstream…` opens for Todo `target`. `Create` is the one `todo.startWorkstream` call; `done` runs after it with the Workstream made, or with `null` for Esc or `Cancel`, which call nothing. Esc or `Cancel` call nothing. */
-export const NewWorkstream = (props: { target: Accessor<number | null>; done: (id: number, made: RailNode | null) => void; returnTo: (id: number) => HTMLElement | null }) => {
+export const NewWorkstream = (props: { target: Accessor<number | null>; done: (id: number, made: RailNode | null, focus?: ReturnType<typeof captureFocus>) => void; returnTo: (id: number) => HTMLElement | null }) => {
   const connected = useConnectedProject();
   const todos = useTodoList();
 
@@ -87,6 +88,7 @@ export const NewWorkstream = (props: { target: Accessor<number | null>; done: (i
     const create = async () => {
       if (!ready()) return;
 
+      const focus = captureFocus();
       setPending(true);
       setFailure(null);
 
@@ -97,7 +99,7 @@ export const NewWorkstream = (props: { target: Accessor<number | null>; done: (i
 
       if (message !== null) return setFailure(message);
 
-      props.done(id(), made);
+      props.done(id(), made, focus);
     };
 
     return <Dialog.Root open={props.target() !== null} onOpenChange={({ open }) => { if (!open) props.done(id(), null); }} finalFocusEl={() => props.returnTo(id())}>

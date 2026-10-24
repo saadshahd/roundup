@@ -1,3 +1,4 @@
+import type { captureFocus } from "../keys/focus";
 import { For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -13,7 +14,7 @@ const NEW_WORKSTREAM = "new-workstream";
  * `target` is the row it is open for; `close` runs after every dismissal so the caller returns focus to that row.
  */
 export const OwnerPicker = <Id extends number | string>(props: {
-  target: Accessor<{ id: Id; anchor: HTMLElement } | null>;
+  target: Accessor<{ id: Id; anchor: HTMLElement; focus?: ReturnType<typeof captureFocus> } | null>;
   offers: Accessor<readonly Owner[]>;
   /** The list's accessible name for the row it is open for. */
   label: (id: Id | undefined) => string;
@@ -22,7 +23,7 @@ export const OwnerPicker = <Id extends number | string>(props: {
   newWorkstream?: (id: Id) => void;
   close: () => void;
 }) => (
-  <Menu.Root
+  <Menu.Root initialFocus={props.target()?.focus}
     lazyMount
     unmountOnExit
     open={props.target() !== null && (props.offers().length > 0 || !!props.newWorkstream)}

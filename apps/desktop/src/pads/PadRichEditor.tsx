@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { ReservedLine } from "../ink/ReservedLine";
 import { copy } from "../copy";
 import { createEffect, createSignal, createUniqueId, onCleanup, onMount } from "solid-js";
@@ -57,6 +58,7 @@ const normalHeading = (text: string) => text.replace(/^#+/, "").split(/\s+/).fil
 
 /** U147: the Pad's one surface. `readonly` is ownership (P2), never a mode; `onChange` fires on every document change the user makes, `onText` follows with the settled Markdown. */
 export default function PadRichEditor(props: {
+  initialFocus?: ReturnType<typeof captureFocus>;
   text: string;
   readonly: boolean;
   onChange: () => void;
@@ -85,6 +87,8 @@ export default function PadRichEditor(props: {
   const [failure, setFailure] = createSignal<string | null>(null);
 
   onMount(() => {
+    const focus = props.initialFocus ?? captureFocus();
+
     if (!host || !menuHost) throw new Error(copy.padEditorHostIsMissing);
 
     // SAFETY: Crepe recursively partials HTMLElement in its root type; the supported root is a real DOM element.
@@ -253,7 +257,7 @@ export default function PadRichEditor(props: {
       // ProseMirror's own focus writes its selection to the DOM first, so Chromium has no caret of its own to adopt.
       const focusEditor = () => crepe!.editor.action((ctx) => ctx.get(editorViewCtx).focus());
 
-      if (!props.readonly) focusEditor();
+      if (!props.readonly) focus(focusEditor);
 
       props.onReady({
         getText,

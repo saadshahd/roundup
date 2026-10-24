@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { createEffect, createSignal, Show, on, onCleanup, untrack } from "solid-js";
 import type { App, NativeQuestion } from "../app/seam";
 import { copy } from "../copy";
@@ -22,6 +23,7 @@ export const NativeAlert = (props: {
     if (pending || !props.open) return;
     pending = true;
     const mine = generation;
+    const focus = captureFocus();
     let repeat = false;
     setFailure(null);
 
@@ -42,13 +44,13 @@ export const NativeAlert = (props: {
 
       if (accepted) await props.onConfirm();
       else props.onCancel();
-      queueMicrotask(() => props.finalFocus()?.focus({ preventScroll: true }));
+      queueMicrotask(() => focus(() => props.finalFocus()?.focus({ preventScroll: true })));
     } catch (error) {
       if (!(error instanceof Error)) throw error;
 
       if (mine === generation && props.open) {
         setFailure(error.message);
-        queueMicrotask(() => line?.querySelector("button")?.focus());
+        queueMicrotask(() => focus(() => line?.querySelector("button")?.focus()));
       }
     } finally {
       pending = false;

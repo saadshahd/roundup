@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import type { RailState } from "../state/rail";
 import type { App, AppSeam, FileDrop } from "./seam";
 
@@ -100,7 +101,10 @@ export const createDropTargets = (
 
     cancelHold();
 
-    if (target) kept = { element: target, timer: setTimeout(() => open(target), HOLD_MS) };
+    if (target) {
+      const focus = captureFocus();
+      kept = { element: target, timer: setTimeout(() => focus(() => open(target)), HOLD_MS) };
+    }
   };
 
   const land = async (drop: FileDrop) => {

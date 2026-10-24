@@ -1,3 +1,4 @@
+import type { captureFocus } from "../keys/focus";
 import { For } from "solid-js";
 import type { Accessor } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -10,12 +11,12 @@ import type { Home } from "./homes";
  * `close` runs after every dismissal so the caller returns focus to that row.
  */
 export const HomePicker = (props: {
-  target: Accessor<{ id: number; anchor: HTMLElement } | null>;
+  target: Accessor<{ id: number; anchor: HTMLElement; focus?: ReturnType<typeof captureFocus> } | null>;
   offers: Accessor<readonly Home[]>;
   choose: (id: number, home: string | null) => void;
   close: () => void;
 }) => (
-  <Menu.Root
+  <Menu.Root initialFocus={props.target()?.focus}
     lazyMount
     unmountOnExit
     open={props.target() !== null && props.offers().length > 0}

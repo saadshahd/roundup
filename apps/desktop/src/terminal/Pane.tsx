@@ -1,3 +1,4 @@
+import { queueFocus } from "../keys/focus";
 import { appSettings } from "../settings/preferences";
 import { MeasurementDashboard } from "./MeasurementDashboard";
 import { TimelineView } from "../timeline/TimelineView";
@@ -63,7 +64,7 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     const action = view() === "timeline" ? timelineAction : dashboardAction;
 
     setView(null);
-    queueMicrotask(() => action?.focus());
+    queueFocus(() => action?.focus());
   };
 
   createEffect(on(rail.selected, () => setView(null), { defer: true }));
@@ -136,9 +137,9 @@ export const Pane = (props: { notice?: string | null; createEmulator?: EmulatorF
     }
 
     untrack(() => {
-      const size = screens.show(id, host, !rail.restored());
+      const show = (focus: boolean) => screens.resize(id, screens.show(id, host, focus));
 
-      screens.resize(id, size);
+      if (rail.restored() || !rail.terminalFocus()(() => show(true))) show(false);
     });
   });
 

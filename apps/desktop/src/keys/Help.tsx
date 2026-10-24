@@ -58,7 +58,7 @@ export const Help = () => {
       initialFocusEl={() => panel ?? null}
       finalFocusEl={() => returnTo instanceof HTMLElement && returnTo.isConnected ? returnTo : null}
       onEscapeKeyDown={(event) => event.stopImmediatePropagation()}>
-      <Dialog.Positioner><Dialog.Content class="help" aria-label={copy.help} ref={(element) => { panel = element; queueMicrotask(() => element.isConnected && element.focus({ preventScroll: true })); }}>
+      <Dialog.Positioner><Dialog.Content class="help" aria-label={copy.help} ref={(element) => { panel = element; }}>
         <For each={sections()}>{section => <section class="help-section">
           <h2>{section.title}</h2>
           <For each={section.rows}>{chord => <p class="help-line"><KeyHint keys={chord.keys}>{chord.what}</KeyHint></p>}</For>

@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { For, Show, createEffect, createMemo } from "solid-js";
 import type { RailNode } from "@contracts/agent/RailNode";
 import type { Message } from "@contracts/message/Message";
@@ -21,7 +22,7 @@ export const NoteQueue = (props: { node: RailNode; focusTerminal: () => void }) 
   const rows = createMemo(() => notes.rows(agent()));
   const ids = createMemo(() => rows().map((message) => message.id));
   let root: HTMLElement | undefined;
-  let afterRemoval: { agent: string; removed: number; next: number | null } | null = null;
+  let afterRemoval: { agent: string; removed: number; next: number | null; focus: ReturnType<typeof captureFocus> } | null = null;
 
   createEffect(() => notes.load(agent()));
 
@@ -40,14 +41,16 @@ export const NoteQueue = (props: { node: RailNode; focusTerminal: () => void }) 
 
     afterRemoval = null;
 
-    if (pending.next === null) props.focusTerminal();
-    else root?.querySelector<HTMLElement>(`[data-note="${pending.next}"] [data-remove]`)?.focus();
+    pending.focus(() => {
+      if (pending.next === null) props.focusTerminal();
+      else root?.querySelector<HTMLElement>(`[data-note="${pending.next}"] [data-remove]`)?.focus();
+    });
   });
 
   const remove = (message: Message): void => {
     const at = ids().indexOf(message.id);
 
-    afterRemoval = { agent: agent(), removed: message.id, next: ids()[at + 1] ?? null };
+    afterRemoval = { agent: agent(), removed: message.id, next: ids()[at + 1] ?? null, focus: captureFocus() };
     void notes.remove(message);
   };
 

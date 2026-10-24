@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import "./sortable.css";
 import { Accessibility, Cursor, Feedback, PointerActivationConstraints, PointerSensor, type Draggable } from "@dnd-kit/dom";
 import { effect } from "@dnd-kit/state";
@@ -273,6 +274,7 @@ const Root = <T extends ExternalTarget>(props: RootProps<T>) => {
     stopListening?.();
     stopListening = undefined;
 
+    const focus = captureFocus();
     const handle = source?.handle;
 
     if (source && handle instanceof HTMLElement) {
@@ -283,7 +285,7 @@ const Root = <T extends ExternalTarget>(props: RootProps<T>) => {
         queueMicrotask(() => {
           stopRestoringFocus?.();
 
-          if (handle.isConnected) handle.focus();
+          focus(() => { if (handle.isConnected) handle.focus(); });
         });
       });
     }

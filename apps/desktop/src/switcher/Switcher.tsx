@@ -1,3 +1,4 @@
+import { captureFocus, queueFocus } from "../keys/focus";
 import { writeText } from "../app/clipboard";
 import { ReservedLine } from "../ink/ReservedLine";
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
@@ -91,7 +92,7 @@ export const Switcher = (props: { onFailure: (message: string | null) => void; o
     const selection = input ? [input.selectionStart, input.selectionEnd, input.selectionDirection ?? "none"] as const : null;
 
     // Let removal of the pressed button finish before returning the native caret.
-    queueMicrotask(() => {
+    queueFocus(() => {
       if (!open() || !input?.isConnected) return;
       input.focus();
 
@@ -177,8 +178,11 @@ export const Switcher = (props: { onFailure: (message: string | null) => void; o
 
   createEffect(() => { if (open() && modalOutside(panel)) close(false); });
 
+  let openingFocus = captureFocus();
+
   const show = (): void => {
     if (modalOpen()) return;
+    openingFocus = captureFocus(true);
     returnTo = document.activeElement;
     setOpening({ selected: rail.selected(), actions: captureActions(returnTo) });
     props.onOpen();
@@ -197,11 +201,12 @@ export const Switcher = (props: { onFailure: (message: string | null) => void; o
     <Show when={open()}>
       <section class="switcher" ref={(element) => {
         panel = element;
+        const focus = openingFocus;
         queueMicrotask(() => {
-          input?.focus();
+          focus(() => input?.focus());
           // Restore after Ark's initial-focus frame; a dismissed opening must not touch the next field.
           requestAnimationFrame(() => requestAnimationFrame(() => {
-            if (!element.isConnected || !restoring || !open()) return;
+            if (!element.isConnected || !restoring || !open() || document.activeElement !== input) return;
 
             const selection = savedSelection;
 
@@ -210,7 +215,7 @@ export const Switcher = (props: { onFailure: (message: string | null) => void; o
           }));
         });
       }}>
-        <Combobox.Root inputValue={text()} inputRef={(element) => {
+        <Combobox.Root focusScope={() => panel} onDismiss={() => close(false)} initialFocus={openingFocus} inputValue={text()} inputRef={(element) => {
           input = element;
           // Ark also reports programmatic clears on Escape/selection; only native edits replace recovery text.
           element.addEventListener("input", () => { restoring = false; setText(element.value); retain(); });

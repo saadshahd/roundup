@@ -1,9 +1,10 @@
+import { captureFocus } from "../keys/focus";
 import { Portal } from "solid-js/web";
 import { createSlideLifetime } from "./slideLifetime";
 import { createReducedMotion } from "../app/reducedMotion";
 import { isFocusVisible, trackFocusVisible } from "@zag-js/focus-visible";
 import { Dialog as ArkDialog, useDialogContext } from "@ark-ui/solid/dialog";
-import { createContext, createEffect, createSignal, Show, on, untrack, useContext, onCleanup, onMount, type Accessor } from "solid-js";
+import { createComputed, createContext, createEffect, createSignal, Show, on, untrack, useContext, onCleanup, onMount, type Accessor } from "solid-js";
 import { modalOutside, registerKeys } from "../keys/registry";
 import "./Dialog.css";
 
@@ -47,6 +48,12 @@ export const Dialog = {
     const [element, setElement] = createSignal<HTMLElement>();
     const [local, setLocal] = createSignal(props.defaultOpen ?? false);
     const requested = () => props.open ?? local();
+    let opener: HTMLElement | null = null;
+    let finalFocus = captureFocus();
+    createComputed(on(requested, (open, previous) => {
+      if (open && !previous) opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      else if (!open && previous) finalFocus = captureFocus();
+    }));
     const lifetime = createSlideLifetime();
     // U3512d: a key-open or key-close is instant, so the last input modality decides whether a modal fades.
     onMount(() => onCleanup(trackFocusVisible()));
@@ -71,7 +78,7 @@ export const Dialog = {
     const animated = lifetime.sliding;
 
     return <Ownership.Provider value={{ open: requested, present, element, setElement, exiting: lifetime.exiting, animated, settle: lifetime.settle }}>
-      <ArkDialog.Root lazyMount {...props} unmountOnExit={false} onRequestDismiss={event => {
+      <ArkDialog.Root lazyMount {...props} finalFocusEl={() => finalFocus.target(() => props.finalFocusEl?.() ?? (opener?.isConnected ? opener : null))} unmountOnExit={false} onRequestDismiss={event => {
         props.onRequestDismiss?.(event);
 
         // A disappearing background picker is not this Dialog’s parent, even if Ark registered it earlier.

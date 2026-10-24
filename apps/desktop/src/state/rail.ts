@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { copy } from "../copy";
 import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
@@ -34,6 +35,8 @@ export type RailState = {
   workstreamFailure(): string | null;
   clearWorkstreamFailure(): void;
   selected(): string | null;
+  /** One initial Terminal focus permission, captured on selection or an explicit supervisor start. */
+  terminalFocus(): ReturnType<typeof captureFocus>;
   restored(): boolean;
   collapsed(): ReadonlySet<string>;
   toggleCollapsed(id: string): void;
@@ -61,11 +64,13 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
   const [doors, setDoors] = createStore<Record<string, { pending: boolean; observedLive: boolean; failure: { message: string; attempt: string | null } | null }>>({});
   const [terminals, setTerminals] = createSignal<readonly TerminalInfo[]>([]);
   const [selected, setSelected] = createSignal<string | null>(null);
+  const [terminalFocus, setTerminalFocus] = createSignal(captureFocus());
   const [failure, setFailure] = createSignal<string | null>(null);
   const [workstreamCreating, setWorkstreamCreating] = createSignal(false);
   const [workstreamFailure, setWorkstreamFailure] = createSignal<string | null>(null);
   /** The id `rail.createWorkstream` returned, until `rail.tree` shows its row. */
   let wantedWorkstream: string | null = null;
+  let workstreamFocus = captureFocus();
 
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [restored, setRestored] = createSignal(false);
@@ -88,6 +93,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
   const select = (id: string | null): void => {
     batch(() => {
+      setTerminalFocus(() => captureFocus(true));
       setRestored(false);
       setSelected(id !== null && model.tree.some((node) => node.id === id) ? id : null);
       reveal(selected());
@@ -137,7 +143,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
     if (wanted !== null && tree.some((node) => node.id === wanted)) {
       wantedWorkstream = null;
-      select(wanted);
+      workstreamFocus(() => select(wanted));
       setWorkstreamCreating(false);
       void startDoor(wanted);
     }
@@ -210,6 +216,11 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
   const startDoor = async (id: string): Promise<void> => {
     if (doors[id]?.pending) return;
+
+    if (selected() === id) batch(() => {
+      setTerminalFocus(() => captureFocus(true));
+      setRestored(false);
+    });
     setDoors(id, { pending: true, observedLive: false, failure: null });
 
     try {
@@ -232,6 +243,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
 
   const createWorkstream = async (): Promise<void> => {
     if (workstreamCreating()) return;
+    workstreamFocus = captureFocus(true);
     setWorkstreamCreating(true);
     setWorkstreamFailure(null);
 
@@ -289,6 +301,7 @@ export const createRailState = (app: AppSeam, events: Events, storage?: RailStor
       await latest;
     },
     selected,
+    terminalFocus,
     restored,
     collapsed,
     storageFailure,

@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import "./Combobox.css";
 import "./Select.css";
 import { Portal } from "solid-js/web";
@@ -5,7 +6,7 @@ import { Popover } from "./Popover";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import { copy } from "../copy";
 import { Combobox as ArkCombobox, createListCollection } from "@ark-ui/solid/combobox";
-import { createMemo, createSignal, createUniqueId, For, type JSX } from "solid-js";
+import { createMemo, createSignal, createUniqueId, For, onCleanup, type JSX } from "solid-js";
 
 type ComboboxItem = { value: string; label: string };
 
@@ -17,6 +18,9 @@ const Root = (props: {
   inputValue: string;
   /** Native selection/caret access; changing the query goes through `inputValue`. Focus only on explicit opening. */
   inputRef?: (input: HTMLInputElement) => void;
+  initialFocus?: ReturnType<typeof captureFocus>;
+  onDismiss?: () => void;
+  focusScope?: () => HTMLElement | undefined;
   onInput: (text: string) => void;
   onSelect: (value: string) => void;
   label: string;
@@ -25,6 +29,8 @@ const Root = (props: {
   group?: (item: ComboboxItem) => string | undefined;
   row: (item: ComboboxItem) => JSX.Element;
 }) => {
+  const dismiss = props.onDismiss ?? Popover.dismiss();
+  const contains = (target: EventTarget | null, input: HTMLElement) => target instanceof Node && (props.focusScope?.() ?? input.closest(".app-combobox"))?.contains(target) === true;
   const collection = createMemo(() => createListCollection({ items: [...props.items], itemToValue: (item) => item.value, itemToString: (item) => item.label, groupBy: (item) => props.group?.(item) ?? "" }));
 
   // Ark highlights the row under the pointer; the highlight follows typing and the arrows alone, so a pointer event's own highlight change is dropped.
@@ -35,7 +41,8 @@ const Root = (props: {
     setTimeout(() => { pointerEvent = false; });
   };
 
-  return <ArkCombobox.Root class="app-combobox" collection={collection()} open lazyMount={false} inputBehavior="none" selectionBehavior="clear" loopFocus={false} autoFocus
+  return <ArkCombobox.Root class="app-combobox" collection={collection()} open lazyMount={false} inputBehavior="none" selectionBehavior="clear" loopFocus={false} autoFocus={false}
+    onFocusOutside={event => { if (!(event.detail.target instanceof Node && props.focusScope?.()?.contains(event.detail.target))) dismiss?.(); }}
     inputValue={props.inputValue} value={[]} highlightedValue={props.highlightedValue ?? undefined}
     onHighlightChange={(details) => { if (!pointerEvent) props.onHighlightChange(details.highlightedValue); }}
     onInputValueChange={(details) => props.onInput(details.inputValue)}
@@ -45,7 +52,17 @@ const Root = (props: {
       if (value !== undefined) props.onSelect(value);
     }}>
     <ArkCombobox.Label class="app-combobox-label">{props.label}</ArkCombobox.Label>
-    <ArkCombobox.Control><ArkCombobox.Input ref={props.inputRef} class="app-combobox-input" placeholder={props.placeholder} autofocus /></ArkCombobox.Control>
+    <ArkCombobox.Control><ArkCombobox.Input ref={input => {
+      const focus = props.initialFocus ?? Popover.initialFocus() ?? captureFocus();
+      const signal = focus.signal(target => contains(target, input));
+      const cancel = () => dismiss?.();
+      signal.addEventListener("abort", cancel, { once: true });
+      onCleanup(() => signal.removeEventListener("abort", cancel));
+
+      if (signal.aborted) queueMicrotask(() => { if (input.isConnected) cancel(); });
+      props.inputRef?.(input);
+      queueMicrotask(() => focus(() => { if (input.isConnected) input.focus(); }));
+    }} class="app-combobox-input" placeholder={props.placeholder} /></ArkCombobox.Control>
     <ArkCombobox.Content class="app-combobox-list" on:pointermove={{ handleEvent: notePointer, capture: true }} on:pointerleave={{ handleEvent: notePointer, capture: true }}>
       <For each={collection().group()} fallback={<p class="app-combobox-empty">{props.empty}</p>}>
         {([group, items]) => group ? <ArkCombobox.ItemGroup>

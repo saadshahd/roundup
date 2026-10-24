@@ -1,3 +1,4 @@
+import { captureFocus } from "../keys/focus";
 import { clipboardFailure, writeText } from "../app/clipboard";
 import { createCutTitle } from "../ui/cutTitle";
 import { copy } from "../copy";
@@ -63,11 +64,12 @@ export const NoteBatch = (props: { id: string; name: string; fallback?: () => vo
         </li>}</For></ul>
       </Show>
       <Show when={props.notes.list(props.id).length > 0}><button type="button" data-button="quiet" disabled={busy()} onClick={async event => {
+        const focus = captureFocus();
         const button = event.currentTarget;
         const focused = document.activeElement === button;
         await props.notes.send(props.id);
 
-        if (focused && (document.activeElement === button || document.activeElement === document.body) && props.notes.list(props.id).length === 0) props.fallback?.();
+        if (focused && (document.activeElement === button || document.activeElement === document.body) && props.notes.list(props.id).length === 0) focus(() => props.fallback?.());
       }}>{copy.sendNotesTo(props.name)}</button></Show>
     </section>;
 };
