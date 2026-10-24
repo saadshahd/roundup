@@ -100,6 +100,48 @@ Observer failure reporting (policy): every failed attempt has its own row in the
 | R13 load-only skip | 0 | Keep the skip reason; repeat the pair; no clean R23 evidence |
 | Build or profiler command fails | Actual nonzero status | Keep command output and status; no profile attribution from that attempt |
 
+## Perf work evidence
+
+R25–R27 specify P1–P3 of the perf-process work order. R24 is reserved for the App idle-cost observer. Ownership: `crates/perf/`, `docs/perf.md` and this file; no change to loop machinery, contracts or the App. These scenarios supply acceptance, not a performance pass or a new baseline.
+
+Checks on main:
+
+1. Rule 7's 300 ms cold start, 16 ms keystroke-to-render p95, 150 MB extra RSS and 10% regression rule (`AGENTS.md`, Rules, rule 7).
+2. Committed budget validation and value pins (`crates/perf/tests/budget.rs`, `r8_the_committed_limits_are_rule_sevens_budgets`, `r8_the_committed_baselines_are_the_recorded_values`).
+3. Missing measurement refusal (`crates/perf/src/budget.rs`, `judge_all`; `scenarios/perf.md`, R7 no silent gate).
+4. Load qualification and loud skips (`scenarios/perf.md`, R13 load-aware comparison).
+5. Separate machine-class baselines and diagnosis before calibration (`scenarios/perf.md`, R16 Linux Builder regression observer; `docs/perf.md`, Class selection and Builder 9V45 diagnosis).
+
+Observer: ordinary Rust tests in `crates/perf` for coverage and baseline-evidence validation; independent review of `docs/perf.md`, the repair PR's evidence table and native Issue dependencies for policy clauses. Tests use data and repository reads, never a Daemon, browser, benchmark or timing assertion. The baseline-edit check reads the Git base and head budget versions used by the PR, rather than treating the candidate's edited value pins as evidence. A specification merge leaves implementation acceptance open.
+
+**R25 every RPC method has a perf disposition.**
+
+- Given the live `contracts::methods::METHODS` table, `crates/perf/budgets.json` and the list headed "Off the hot path" in `docs/perf.md`, then every method name occurs either in a metric's `methods` array in the budgets file or as a key with a non-empty reason in that list. The list is a fenced JSON object mapping exact method names to reasons, not prose or a frozen copy of `METHODS`. `r25_every_method_has_a_perf_disposition` reads all three sources and names every uncovered method on failure. Its first passing run accounts for every existing method, not only methods added after this rule.
+- Given a new method absent from both sources, or an off-path entry with an empty reason, then the coverage check fails; adding the method to an existing measured metric's `methods` array or supplying its off-path reason makes it pass. `r25_missing_method_or_reason_fails_coverage` asserts both failures and both repairs using in-memory inputs to the same check. Coverage is set membership against the live table, never a snapshot of today's method count or names.
+- Given a method mapped to a metric, then the metric remains an ordinary measured budget entry: adding coverage metadata creates no new metric, measurement or exemption from R7. `r7_a_budget_for_a_metric_that_was_not_measured_is_an_error` remains the proof that an unmeasured budget fails. Classifying a method off-path records why it is outside the measured hot path; it does not claim that method is fast (policy, reviewed per reason). A changed method's existing disposition is reviewed with its changed behavior (policy).
+
+**R26 a perf repair compares one observer on one host.**
+
+- Given a perf repair PR, then its body holds a table with metric and unit, before and after values, reference commits, exact observer command, host class and the physical host/run identity. Both values come from the same observer command and host class on one host; only the reference binaries or repaired code differ. Retain the reports and failed or skipped observations with their exit codes. A probe change is isolated by running old and new probes against the same binaries before attributing a difference to the repair. A different host or command supplies diagnosis, never the before/after pair (policy, reviewed against the table and retained evidence).
+- Given an edit adding, changing or removing a `baseline` value in `crates/perf/budgets.json`, then the existing committed-budget validation also requires a committed evidence file beside that baseline file. For every changed metric/class key it records the old and new baseline values (explicitly absent for an addition/removal), before and after measurements, units, reference commits, one observer command, host class, host identity, one run/session identity for the pair, and retained report paths. Values match the Git base/head budget versions; measurements and reports belong to that same host in that one observation session. `r26_baseline_edits_require_same_host_pair` exercises the validator with base/head budget inputs and evidence, including unchanged budgets needing no new pair. The committed-budget check uses that validator for the PR's actual Git base/head and committed evidence, so editing both a baseline and R8's pins cannot bypass it. Committed evidence is the chosen alternative to fetching PR prose in a Rust test; the repair PR body table is still required by policy.
+- Given a baseline edit with no pair, only one measurement, mismatched host classes, different host or run identities, a different observer command, a pair for another metric/class, values differing from the edited baseline, or an absent referenced report, then that validation fails naming the metric/class and missing or mismatched evidence. `r26_baseline_edits_require_same_host_pair` asserts each refusal and a complete matching pair's acceptance. It reads repository inputs, not a network service; a Git base or required evidence that cannot be read is an error, never an unchanged-budget pass.
+- Given a complete pair, then accepting a new baseline still requires the diagnosis, calibration, provenance and independent observations already required by R16; the pair alone authorizes no increase. `docs/perf.md` replaces its instruction to copy medians with only an explanation in the same PR, and any other sentence contradicted by these rules. No rule 7 number, R8 pin, R13 allowance or R16 diagnosis requirement changes as part of this work (policy).
+
+The existing budget-validation test target exits nonzero on every refusal below; these are test failures, not new `perf` CLI exit codes. `r26_baseline_edits_require_same_host_pair` asserts the validator's error for each row.
+
+| Failure | Exit | Required result |
+|---|---|---|
+| No evidence pair or only one measurement for an edited baseline | 101 (`cargo test`) | Name metric/class and missing pair |
+| Different host class, physical host, run/session or observer command | 101 (`cargo test`) | Name metric/class and mismatched field |
+| Pair for another metric/class, wrong old/new values or missing report | 101 (`cargo test`) | Name metric/class and mismatched or absent evidence |
+| Unreadable Git base/head or required evidence | 101 (`cargo test`) | Name the unreadable input; no pass |
+
+**R27 perf work names its execution host before code work.**
+
+- Given open perf work, then `docs/perf.md` holds a table with columns Issue, host class (`macos`, `linux-9v45` or `any`) and what runs where. Its initial rows cover the Mac work #3696 (write latency/full perf), #3550 (keystroke-to-render) and #3013 (native motion), and Linux 9V45 work #3720 (regression diagnosis/repair), #3760 (paired write-path timing/profiles), #3764 (qualified execution lifetime) and #3706 (R16 observer evidence). Link each Issue; `any` is for checks whose result does not require a particular host, never a substitute for an unavailable host. Existing same-class and same-Mac requirements still hold (policy, reviewed against each Issue's acceptance).
+- Given an Issue whose acceptance requires a host the Builder lacks, then before code work starts its Builder creates or reuses a scoped measurement Issue naming that host and the exact command, references and evidence to hand off, and a code Issue natively blocked by that measurement Issue. The host-specific observation is owned by the measurement Issue; the code Issue consumes its retained evidence. An existing measurement prerequisite is reused. Host qualification alone does not complete observations, and a host-lifetime-dependent probe runs within that qualified lifetime (policy, reviewed through the Issue bodies and GitHub blocked-by relation).
+- Given the first host table, then this work edits none of those seven Issues or their acceptance. Their Builders apply this split when the rules land, preserving existing dependencies and ownership. Unavailable hardware is an execution prerequisite, not a product decision; only an observation the user's Mac alone can produce follows the existing Mac-request rule (policy).
+
 ## Keystroke-to-render in the App (`apps/desktop`, run by `crates/perf`)
 
 **K1 opt-in.** Given a normal build, then its bundle holds no trace of the keystroke probe (the string `roundup-keystroke-probe` is absent). A build made with `VITE_ROUNDUP_PERF` carries it. The probe is chosen when the bundle is built, so a normal run pays nothing and no query or flag can switch it on.
