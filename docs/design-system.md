@@ -278,3 +278,18 @@ replies consume the same columns. Dark uses Ghostty's pinned unconfigured palett
 Light uses its shipped Tomorrow companion (sources in `scenarios/ui-terminal-type.md`).
 Default text and App controls retain D5; reference ANSI cells and program-authored
 colours have U3517c's explicit exception. No colour is brightened to meet a Check.
+
+
+## Design-system pass requirements (U130–U137)
+
+Specification policy; runtime values above remain the baseline until implementation. The acceptance in `scenarios/ui-visual.md`, heading “Design-system pass acceptance (U130–U137)”, adds duties to D4, D7, D8, D9 and D10 without removing the existing Checks.
+
+| Check | Additional requirement |
+| --- | --- |
+| D4 | Every enabled control answers a press with Token colour, opacity or scale by the first subsequent frame. A control unfilled at rest gains no hover or pressed ground. |
+| D7 | A selected, focused or dragged item row has exactly one changed cue: text colour or one selected ground; combined states reuse the cue. |
+| D8 | Rail, Todo, Pad and Terminal-tab first text uses one local inset after tree indentation; text and Glyph optical baselines agree within 1 CSS px. |
+| D9 | Stylelint rejects importance, unowned px/ms/s/colours, selectors over two compounds and child combinators; no existing-hit allowlist. Duration and reduced-motion checks remain. |
+| D10 | Floating surfaces share contact + ambient shadow layers and a 0.5 CSS px edge ring, replacing both old shadow Tokens and every consumer. App palette uses Radix light/dark scales plus the system accent. Rail and Shelf use native vibrancy, opaque under reduced transparency; centre, Terminal pixels and floating panels stay opaque. |
+
+D10’s edge ring is not a control outline or focus ring. Native material is the sole new transparency exception for Rail/Shelf. No shader or WebGL background. Terminal ANSI remains U3517’s palette. Browser captures prove web rendering only; native material and launch cost require the implementation’s Mac observation. No new Token values, App seam names or native performance claims are established by this policy merge.

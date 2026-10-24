@@ -49,3 +49,13 @@ The owner wants a native macOS App, not a web page. A UI PR that breaks one of t
 - Choosing from other items is a menu. Picking one item from a list of others (a blocker, an Agent, a Model) opens the shared `apps/desktop/src/ui/Combobox.tsx`: floating, anchored to its trigger, filtered by typing, closed by Escape with focus back on the trigger. It never expands the list inline in the page.
 - Actions sit on their row. A row's text actions sit on the baseline of the row's first line, within 1 px.
 - A modal's centre sits at the window's centre within 1 px on both axes; only `ui/Dialog.tsx` positions a modal (#3083).
+
+
+### Design-system pass taste (U130–U137)
+
+Specification policy for the implementation in `scenarios/ui-visual.md`, “Design-system pass acceptance (U130–U137)”; these extend the existing Check numbers without retiring their current clauses.
+
+- D4: an enabled control changes Token colour, opacity or scale by the first frame after a press. No new background on an unfilled control, including hover.
+- D7: selected, focused and dragged rows differ from plain by exactly one cue, text colour or one selected ground. Combined states share it; no outline, shadow, weight or geometry cue.
+- D8: Rail, Todo, Pad and Terminal-tab first text shares one row-local inset after tree indentation; name and Glyph optical baselines differ by at most 1 CSS px.
+- D9: Stylelint rejects `!important`, raw px/ms/s/colours outside `tokens.css`, selectors over two compounds and child combinators. Importance and selector rules include `tokens.css`; fix all existing hits without allowlists.
