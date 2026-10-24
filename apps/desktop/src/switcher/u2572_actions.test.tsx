@@ -5,10 +5,10 @@ import { createSignal } from "solid-js";
 import { CHORDS, LEADER } from "../keys/chords";
 import { leaderKey } from "../keys/leaderFixture";
 import { openTabs, tab } from "../header/stripFixture";
-import { agent, event, info, workstream } from "../testing/nodes";
+import { agent, info, workstream } from "../testing/nodes";
 import { field, mountSwitcher, openSwitcher, switcherKey as press } from "./switcherFixture";
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); });
 
 it("u2572a_searches_destinations_then_grouped_actions", async () => {
   await mountSwitcher("ws", [
@@ -167,19 +167,22 @@ it.each(["M", "W"])("u2572b_actions_share_key_behavior_in_the_opening_view: Bubb
   const results: unknown[] = [];
 
   for (const byAction of [false, true]) {
-    const { app } = await mountSwitcher("ops");
-    app.handlers["terminal.close"] = () => null;
-    const tab = document.querySelector<HTMLElement>('.terminal-tab[data-bubble="7"]')!;
-    fireEvent.click(tab);
+    const { app, emulators } = await mountSwitcher("ops");
+    await waitFor(() => expect(document.querySelector<HTMLElement>('.bubble[data-bubble="7"]')?.hidden).toBe(false));
+    emulators.made.get("7")!.focus();
     await waitFor(() => expect(document.activeElement?.closest("[data-bubble]")?.getAttribute("data-bubble")).toBe("7"));
 
     if (byAction) { await show(); await chooseAction(key === "M" ? "Minimise or restore the Bubble" : "Close the Bubble", "enter"); }
     else leaderKey(`Key${key}`, {}, document.activeElement!);
 
-    if (key === "W") await answerQuestion(true);
-    await waitFor(() => expect(document.querySelector<HTMLElement>('.bubble[data-bubble="7"]')?.hidden).toBe(true));
+    if (key === "W") {
+      await questionDialog();
+      await answerQuestion(true);
+      await waitFor(() => expect(document.querySelector('.bubble[data-bubble="7"]')).toBeNull());
+    } else await waitFor(() => expect(document.querySelector<HTMLElement>('.bubble[data-bubble="7"]')?.hidden).toBe(true));
     results.push(app.calls.filter((call) => call.method === "terminal.close" || call.method === "terminal.write"));
     cleanup();
+    sessionStorage.clear();
   }
 
   expect(results).toEqual(key === "W" ? [[{ method: "terminal.close", params: { id: "7" } }], [{ method: "terminal.close", params: { id: "7" } }]] : [[], []]);

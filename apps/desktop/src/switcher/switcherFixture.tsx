@@ -30,9 +30,16 @@ const TERMINALS: TerminalInfo[] = [info("7", { owner: "ops", title: "build shell
 /** The Rail, `Keys`, a Pane, its bubbles and the Switcher in one open Project; `failures` collects what the Switcher reports. */
 export const mountSwitcher = async (selected: string | null = null, tree: RailNode[] = TREE, terminals: TerminalInfo[] = TERMINALS, daemonExit: () => { code: number | null } | null = () => null) => {
   const app = createFakeApp();
+  let listed = [...terminals, ...tree.flatMap((node) => node.terminal_id ? [info(node.terminal_id)] : [])];
 
   app.handlers["rail.tree"] = () => tree;
-  app.handlers["terminal.list"] = () => [...terminals, ...tree.flatMap((node) => node.terminal_id ? [info(node.terminal_id)] : [])];
+  app.handlers["terminal.list"] = () => listed;
+  app.handlers["terminal.close"] = ({ id }) => {
+    listed = listed.filter((terminal) => terminal.id !== id);
+
+    return null;
+  };
+
   app.handlers["terminal.write"] = () => null;
   app.handlers["terminal.resize"] = () => null;
   app.handlers["terminal.snapshot"] = () => ({ cols: 100, rows: 30, after: 0, data: "" });
