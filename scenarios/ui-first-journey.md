@@ -1,5 +1,7 @@
 # UI: the first Workstream (U143)
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) replaces U143 Empty and U2571a/U2571c's automatic empty-Project composition with the Ask/Needs you landing. Workstream creation and the taught actions remain available through explicit menus/shortcuts; preserve pending, failure/retry, duplicate-start prevention and U2571b's working keys. Selected Door states are unchanged. Its empty-Project Ask and requested-surface tests replace only the former resting text/button/key-list mount assertions.
+
 Module: `apps/desktop` (the webview); U146, U166, U177, U351 and U356 also edit the fake `claude` at `crates/rup/tests/e2e/fake_claude.py`; U176 edits `crates/agents/src/name.rs`. Ids: U2571a, U2571b, U2571c, U143, U144, U145, U146, U160, U166, U167, U176, U177, U178, U187, U189, U192, U193, U195, U196, U197, U198, U199, U351, U352, U353, U354, U355, U356, U364, U366, U375, U376, U407, U417, U422, U423, U424, U425, U463, U464. Found by walking the first journey in the U26 harness: an open Project with no row says only `Select an Agent or a Terminal` and offers no first action in the centre; a Workstream whose Door is not running shows a bare `Start supervisor`, so a Door that never launched, one that stopped, one that is starting and one that failed to start look the same.
 
 **U143 the first Workstream says where it stands.** Narrows U38 and U9; changes no contract, App seam command or token. Given an open Project, then:

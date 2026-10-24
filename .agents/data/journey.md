@@ -49,3 +49,36 @@ The owner wants a native macOS App, not a web page. A UI PR that breaks one of t
 - Choosing from other items is a menu. Picking one item from a list of others (a blocker, an Agent, a Model) opens the shared `apps/desktop/src/ui/Combobox.tsx`: floating, anchored to its trigger, filtered by typing, closed by Escape with focus back on the trigger. It never expands the list inline in the page.
 - Actions sit on their row. A row's text actions sit on the baseline of the row's first line, within 1 px.
 - A modal's centre sits at the window's centre within 1 px on both axes; only `ui/Dialog.tsx` positions a modal (#3083).
+
+
+## Calm screens (#3786)
+
+At rest means actions and motion have settled, the pointer is outside rows, and menus/pickers/tooltips are closed; selection and requested panels may remain open. These owner taste lines are acceptance for U2539b in `scenarios/ui-worktree-changes.md`; this specification does not claim they are implemented. Owner taste D6 supplements the existing design-system D6 target/focus Check; it does not replace it.
+
+- **D6:** a resting header/footer item mounts only for existing changes, current native attention/error, or recovery from a current failure. Zero changed files mounts neither changes opener nor view; nonzero mounts one counted icon, opening the view on demand. Requested navigation/inspection is available without keeping its contents mounted at rest; retain the Terminal portal host and lifetime.
+- **F1:** each of the ten tasks below completes in at most three presses and has its working chord shown beside its action in the native menu bar. Count through the endpoint, including confirmation and selection.
+- **F2:** each Agent's current Kind appears in at most three resting places in the active window, including separate aggregate summaries containing that Agent. A row's glyph/label/count together is one place. Different Agents remain separate facts; hidden DOM, closed menus and vendor output are excluded.
+- **F4:** with an open Project, nothing selected and no requested surface, only Ask and Needs you mount as product content, including an empty Project. Current failure/recovery, window controls and the native menu bar remain available. Everything else opens on demand; direct Agent access and native attention continuation remain intact.
+
+### Top ten tasks
+
+Press counting: one chord, unmodified key or pointer activation is one press; `⌘K` followed by a letter is two. Text content and an exact unique target-name query are payload entry, recorded separately from navigation; every arrow, Tab, submit/confirm and menu activation counts. Do not pre-open a surface unless the Start column says it is open. Count until the acknowledged RPC or focus/selection/view endpoint, not merely until a picker opens. Each picker row below requires filtering by the exact unique authored name and Enter, no intervening navigation. More than nine possible targets must work; arbitrary targeting is not restricted to digit shortcuts. Repeat with Terminal focus where the action is App-scoped; respect modal/editor ownership.
+
+| Task | Start → endpoint | Main baseline | Required path | Presses |
+|---|---|---|---|---|
+| Ask for work | open Project, draft text supplied → one acknowledged `ask.send` | `⌘/`, Enter: 2 | `⌘/`, Enter | 2 |
+| Start an Agent | open Project, no modal → returned Agent selected, Terminal reachable | `⌘N`: 1 | `⌘N` | 1 |
+| Open a Terminal | Workstream selected → new shell Bubble focused | `⌘T`: 1 | `⌘T` | 1 |
+| Capture a Todo | open Project, title supplied → one acknowledged `todo.create` | configured quick-add, Enter: 2 | configured quick-add (initially `⇧⌘T`), Enter | 2 |
+| Reach what needs you | Project with native attention → requesting Agent Terminal focused | `⌘K`, J: 2 | `⌘K`, J | 2 |
+| Open work items | work items closed → current scope's list reachable | `⌘K`, S: 2 | `⌘K`, S | 2 |
+| Open Inbox | Inbox closed → its attention list reachable | `⌘K`, I: 2 | `⌘K`, I | 2 |
+| Hand a Todo to an Agent | Todo selected/focused → acknowledged `todo.assign` for chosen Agent | O, target click: 2; landing path below: 5 | `⌘K`, A, Enter after target query | 3 |
+| Switch Project | eight open Projects → chosen Project active, its prior selection retained | tab click: 1; no Project-switch chord | `⌘K`, P, Enter after target query | 3 |
+| Review changes | Agent selected, nonempty changed-file set → changed-file tree open | branch-control click: 1; no review chord | `⌘K`, C | 2 |
+
+Baseline: main `a284e11af`, isolated headless U26 App at 1512×950 on 2026-10-24, `tree-40`, `resources` and `tabs-8`, using the fake Daemon seam. Calls, selected rows, focused input and mounted roles establish these paths; they do not establish native menu behavior or real Daemon execution. The five-press landing assignment path is Unassigned disclosure, Todo click (opens Drawer), close Drawer (focus returns to Todo), O, target click. From an already focused Todo it is two, so “5+” is not a universal count. Text entry was separate. The `resources` seed needs a supplied `agent.changedFiles` fixture; a successful empty fixture leaves the branch opener and `No changes` panel on main. No such empty view is allowed by this specification.
+
+For `migrate-db` at the root on `tree-40`, the same needs-you fact appears in five presentations: its Rail row, backend's rollup, the Project-root count, the overview heading and its overview attention entry. The Project tab shows Error on this seed and is not a sixth needs-you presentation. At a selected Agent the root overview is absent. A settled open Inbox also counts toward the limit, including its section count and Agent entry; opening it must suppress redundant background presentations if necessary. The implementing observer must enumerate presentations by Agent and include aggregates, not count literal text occurrences or all Agents as one fact.
+
+Understand/Intervene/Review remain the journey: submit an Ask, reach its requesting Terminal, inspect the resulting changes, close the optional surfaces, reopen the Project and recover the same work. Use U2539b's real-Daemon and rendered observers before claiming completion. Keep drag (#3540) and calm Todo/Pad/Rail row behavior in their existing work orders.

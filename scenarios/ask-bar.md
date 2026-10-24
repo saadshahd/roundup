@@ -1,5 +1,7 @@
 # One Ask bar places every ask
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows U504's home composition: an open Project with nothing selected, including an empty Project, mounts Ask and Needs you only. Ask rows/history and other lists open on request. Submission, routing, @ selection, draft preservation and Escape behavior stay required. `u2539b_empty_project_can_submit_an_ask` extends the empty case; retain U504–U506 action/routing/draft proofs.
+
 Module: `crates/agents` (the Ask store, placement and delivery; the Placement call under `claude_code/`), `crates/contracts`, `crates/rupd` (registration), `contracts/generated/`, `crates/rup/tests/` (the real-Claude observers) and `apps/desktop` (U504 to U506). Ids: A39, A40, A41, A42, U504, U505, U506.
 
 Source: the user's choices of 2026-10-15, recorded on the work Issues. Terms: Workstream, Door, Agent, Steer, Work order, Order title, Status, Kind, Adapter, Model, Effort, Rail, Reach (`GLOSSARY.md`). New terms, added to `GLOSSARY.md` by the PR that builds A40: **Ask** (one message the user sends from the Ask bar), **Ask part** (the span of an Ask that one Workstream takes), **Placement** (where an Ask part goes: `routed`, `new` or `unclear`) and **Placement call** (the Adapter's one-shot call that returns an Ask's parts and their Placements). Acceptance only; work ownership and dependencies live in GitHub Issues. No implementation is claimed by this specification.

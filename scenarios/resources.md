@@ -1,5 +1,7 @@
 # Resource use: memory, CPU and disk per Agent
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows U408/U444: routine resource values mount only inside explicitly requested inspection, never as resting strip items. Sampling begins when that inspection is shown and retains the existing visibility, concurrency, formatting, selected-Agent and failure rules. The shared Terminal portal host remains mounted; the inspection's contents do not. Replace only automatic-strip assertions with `u2539b_strip_items_follow_actionable_facts`; retain formatting and sampling proofs.
+
 Module: `crates/rupd` (the sampler and the method), `crates/contracts` (the method and its types), `apps/desktop` (the strip). Terms: Agent, Worktree, Project, Resource use (`GLOSSARY.md`; this file adds Resource use). Ids: D8, U408, U444.
 
 Found by the user's report #1099: Agents can be eager and hungry, and roundup shows neither their memory and CPU nor their Worktrees' disk. Contract change (rule 4, the Contract recipe of `.agents/builder.md`): the new RPC method `project.resources`, the types `Resources` and `AgentResources`, and the term **Resource use** in `GLOSSARY.md`; no other method, event or App seam command changes, and no Token is added. The Rail draws none of it (the user's direction), and the Drawer and the Shelf are untouched.

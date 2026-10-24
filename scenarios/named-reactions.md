@@ -1,5 +1,7 @@
 # Named Project reactions
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows NR9's mounting: the named reactions list/create/detail opens on request from the Project menu, not automatically on the resting landing. Authority, inspection/stop/run, failure and draft semantics are unchanged. `u2539b_landing_opens_requested_surfaces_and_returns` proves access; retain NR9's action observers inside that requested surface.
+
 Specification for #2775; feature delivery remains in dependent implementation Issues. Baseline: `2c2a5cbf9` on `origin/main`. P13 governs this feature; P4, P6, P9, P10 and P11 also apply. The owner direction in #2775 is acceptance authority; preserve its dated quotations in every child Issue.
 
 ## Interface and ownership

@@ -1,5 +1,7 @@
 # UI
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows U38's nothing-selected composition to the Ask/Needs you landing, including an empty open Project. Empty Rail/Shelf text appears only inside those requested surfaces; first-run without a Project keeps its chooser. Preserve first-action, loading, failure and direct-Agent behavior through explicit actions; its landing observers replace only automatic empty-pane/list assertions.
+
 Module: `apps/desktop` (the webview). Ids: every `U` heading in the file.
 
 The webview in `apps/desktop`: Solid, Vite and xterm.js with the WebGL addon (ADR 0005), drawn from `docs/wireframes.md` (its corrections and decisions win over the drawings) and timed by `docs/motion.md`. It is a client of the Daemon through the App seam (`app.md`) and nothing else. Tests run in Vitest with jsdom against a fake App seam. Only one adapter file imports Tauri; it belongs to U1, and every other scenario reaches Tauri through it. The terminal emulator and the clock are injected, so no test needs a display, a GPU or real time. Exported names say Project, never folder: `folder` is the _Avoid_ word for Group. On-screen text may say folder, because the wireframes do.

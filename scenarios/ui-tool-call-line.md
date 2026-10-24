@@ -1,5 +1,7 @@
 # UI: each Agent's current tool call on the Project overview (U3780)
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows U3780b–d's mounting: tool-call lines and their expansion exist inside explicitly requested Workstream navigation, never on the resting landing. Reporting, state, identity, expansion and refusal semantics are unchanged. `u2539b_landing_opens_requested_surfaces_and_returns` proves access; retain U3780's call/state/expansion observers there.
+
 Module: tool-call observations in `crates/agents` (`claude_code/`), their Daemon delivery in `crates/rupd`, the Rust-owned contract in `crates/contracts`, and the overview in `apps/desktop/src/ask`. Ids: U3780a, U3780b, U3780c, U3780d. Terms: Project root, Workstream, Agent, Signal, Rail, Status, Token (`GLOSSARY.md`). Work Issue: #3310. Journey stage: Understand (`.agents/data/journey.md`).
 
 Source: the owner's request of 2026-10-22 (#3310), "this UX and UI good really fit and inspire our overview view" (https://www.affectui.com/components/tool-call-card), and the owner's pick: the line sits on the Project overview, one for each Agent, not in an Agent's own overview. Extends U2567a (`scenarios/ui-project-root-overview.md`); reads the same Signals as U454 (`scenarios/ui-agent-step.md`) and ADR 0006 (`docs/adr/0006-claude-code-hooks-for-state.md`). This is acceptance for implementation, not evidence that it exists.

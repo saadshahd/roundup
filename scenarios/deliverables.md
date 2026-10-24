@@ -1,5 +1,7 @@
 # Published deliverables
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows DV5's mounting: the existing Made discovery surface opens on request from the Project menu, not automatically on the resting landing. Discovery after maker/Worktree removal, scoping, recorded identity, opening/sending and refusal semantics remain required there. `u2539b_landing_opens_requested_surfaces_and_returns` proves access; retain DV5's discovery/open/failure observers.
+
 Specification for #2774; behavior below is planned, not delivered by this document. Governing policy: `PRINCIPLES.md` P12 and `scenarios/product-continuity.md` PC2 and “What they made”. Applies to the Review stage in `.agents/data/journey.md`: reopen the Project and retrieve the action's result without finding its maker's Terminal.
 
 ## Chosen mechanism and boundaries

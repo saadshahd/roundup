@@ -1,5 +1,7 @@
 # UI: the Project root overview
 
+Policy amendment — U2539b (`scenarios/ui-worktree-changes.md`, #3786) narrows U2567a–d: the resting Project root mounts Ask and Needs you only, including in an empty Project. The Workstream catalogue opens on request; attention retains its ordering, event updates and Terminal destination. U2567c selection never starts a stopped Door. Empty/loading/failed composition follows U2539b; keep failure recovery and no false all-clear before the first tree. Its landing and requested-surface tests replace only automatic catalogue/empty-screen assertions; retain event/call/destination proofs.
+
 Module: `apps/desktop/src/ask` (the overview beside the Ask bar's rows) and `apps/desktop/src/rail` (the attention helpers it reads). Ids: U2567a, U2567b, U2567c, U2567d. Terms: Project root, Workstream, Door, Agent, Rail, Status, Kind, Glyph, Ink, Ask (`GLOSSARY.md`). Work Issue: #2567. Journey stage: Understand (`.agents/data/journey.md`): the user sees which work needs them and reaches its Terminal.
 
 Source: the owner's answer of 2026-10-18, "A — Project overview" (#2567): the root shows the Ask plus a compact list of Workstreams and what needs the user; selecting one opens its real terminal. roundup complements the agent programs and never overrides or competes with their views. Narrows U504 (the Ask bar is the home screen) and U38 (the centre with nothing selected). Changes no RPC method, contract, App seam command or Token, and adds no `GLOSSARY.md` term. No implementation is claimed by this specification.
