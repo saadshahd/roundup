@@ -2,10 +2,11 @@
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rpc::RpcError;
 use serde::{Deserialize, Serialize};
+use wait_timeout::ChildExt;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub(crate) struct Object(String);
@@ -164,23 +165,17 @@ fn execute(mut command: Command, input: &[u8], timeout: Duration) -> io::Result<
             stderr.read_to_end(&mut bytes)?;
             Ok::<_, io::Error>(bytes)
         });
-        let deadline = Instant::now() + timeout;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break Ok(status),
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(1))
-                }
-                result => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break match result {
-                        Err(error) => Err(error),
-                        _ => Err(io::Error::new(
-                            io::ErrorKind::TimedOut,
-                            format!("{} second deadline exceeded", timeout.as_secs_f64()),
-                        )),
-                    };
+        let status = match child.wait_timeout(timeout) {
+            Ok(Some(status)) => Ok(status),
+            result => {
+                let _ = child.kill();
+                let _ = child.wait();
+                match result {
+                    Err(error) => Err(error),
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("{} second deadline exceeded", timeout.as_secs_f64()),
+                    )),
                 }
             }
         };
