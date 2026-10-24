@@ -4,11 +4,50 @@ Module: `proofs/` at the repository root, plus the pure `step` of `crates/messag
 
 What is known and what is not. Known: bise's own Bend proofs cover safety laws and fail on Bend 2.0.34 because its library renamed a function, so the version must be pinned; a small Bend proof (an absorbing three-state status) checks in 0.08 s and a broken one fails loudly with a non-zero exit. Not known, and this series claims nothing about it: whether Bend 2 can prove interleavings (the scheduler as an explicit choice sequence) and liveness (a measure that decreases per step, or a bounded-step statement). bise listing its own liveness law as open says bise did not prove it, not that Bend cannot. V5 is the spike that finds out; Quint is the fallback only if V5 fails (V6). Evidence: the user's notes `/tmp/bise-audit.md` and `/tmp/bend-for-loop.md` (not in the repository; V3 restates every law so the repository stands alone). Tests run without Claude, a network or a display; the checkers are pinned installs, no `sudo`, no shell file edited.
 
-**V1 the toolchains are pinned.** Given a fresh checkout, then `proofs/BEND_VERSION` holds `2.0.34` and, once V6 is needed, `proofs/QUINT_VERSION` holds the Quint version in use, and `just proofs-setup` installs each pinned version into `proofs/.tools/` (git-ignored) from a download whose checksum it checks, with `BEND_NO_TELEMETRY=1`, and fails loudly naming the tool when the version it installed is not the pinned one. A moved pin is a change to those files in a PR, never a floating `latest`. Observed by `loop/rules.sh`-style shell tests with a fake download: a matching version passes, a mismatch exits 1 naming the tool, a missing `curl` exits 1.
+**V1 the toolchains are pinned.** Given a fresh checkout, when `just proofs-setup` runs, then `proofs/setup.sh` installs Bend into git-ignored `proofs/.tools/` and makes Lean `v4.34.0` available to Bend through the exact elan toolchain `leanprover/lean4:v4.34.0`. It checks both installed versions, including on a repeated setup with Bend already present; an installed Bend alone cannot skip Lean setup. Bend runs with `BEND_NO_TELEMETRY=1`. Setup downloads may use the network; proof runs after setup need neither network, Claude nor display. Setup uses no `sudo` and edits no shell startup file.
 
-**V2 `just proofs` is the observer.** Given the layout `proofs/messages/{LAWS.bend,model.bend,PROOF.bend}` (and `proofs/messages/model.qnt` once V6 exists), when `just proofs` runs, then it prints `ALL PROOFS CHECK` from `bend` (and the Quint properties' verdict, if V6 exists) and exits 0 only if all pass; any other output, a missing file or a skipped property exits non-zero naming it. `just check` runs it. It fails on a `PROOF.bend` that holds `@unsafe` or `?TODO`, a `LAWS.bend` law with no `def Laws.<name>`, and, once V6 exists, a Quint property with no check. Tests: a temporary copy of the layout with each of those broken, and one with a law deleted from `PROOF.bend`.
+Policy: `proofs/BEND_VERSION` pins a published Bend 2 release at least `2.0.39`; `proofs/BEND_SHA256` records one verified SHA-256 for each of that release's `darwin-arm64`, `darwin-x64`, `linux-arm64` and `linux-x64` tarballs. Select the newest published Bend 2 release when preparing a pin-update PR, record the release URL and verify the four downloaded assets against the recorded checksums. Pins change through reviewed PRs, never a floating `latest` or runtime self-update. The Lean pin is explicit in the setup configuration. Once V6 is needed, `proofs/QUINT_VERSION` pins Quint too, with checksum-checked installation into `proofs/.tools/`.
 
-**V3 the laws.** `proofs/messages/LAWS.bend` states these laws over `model.bend`'s state and `step`. A Builder states a law there, or makes one stronger, only in a PR approved by a review run other than its author's (the Contract recipe of `.agents/builder.md`, rule 4); a law may only become stronger, and V7 rejects one weakened, deleted or made trivial. `spec.bend`, the predicates the laws use, follows the same rule. Source: the user's decision that Builders state laws (2026-10-10).
+Observer: `proofs/proofs.test.sh`, using fake release assets and a fake elan/Lean at the setup boundary. Existing `setup`, `run_setup` and `expect` helpers are the seam. The implementation adds cases named `v1 matching Bend and Lean install`, `v1 installed Bend still requires Lean`, and `v1 repeated setup verifies both versions`; each asserts the installed executables' reported versions or the setup calls, rather than a copied pin constant. The failure rows below each become a named `v1` case in the same script. The no-sudo, no-startup-file and release-selection requirements are policy, checked in review.
+
+| Setup failure | Exit | Diagnostic names |
+| --- | --- | --- |
+| `curl` missing for a required download | 1 | Bend or Lean and `curl` |
+| Bend asset checksum mismatch | 1 | Bend and checksum |
+| Bend asset missing its executable | 1 | Bend and executable |
+| Installed Bend differs from its pin | 1 | Bend and installed/expected versions |
+| elan missing and cannot be installed | 1 | elan |
+| Pinned Lean toolchain installation fails | 1 | Lean and toolchain |
+| Lean executable missing after setup | 1 | Lean |
+| Installed Lean differs from `v4.34.0` | 1 | Lean and installed/expected versions |
+
+**V2 `just proofs` is the observer.** Given the layout `proofs/messages/{LAWS.bend,LIB.bend,model.bend,PROOF.bend}` (and `proofs/messages/model.qnt` once V6 exists) and V1's installed tools, when `just proofs` runs, then `proofs/check.sh` first runs `"$BEND" "$dir/PROOF.bend"`, requires its `ALL PROOFS CHECK`, then runs `"$BEND" "$dir/PROOF.bend" --verdict` on that same proof. It requires the pinned Bend release's explicit successful kernel verdict and zero exit status; ordinary-check output alone cannot stand for a kernel verdict. It retains the mutation observer and, if V6 exists, every Quint property check. Only all passing steps produce the final `ALL PROOFS CHECK` and exit 0. `just check` continues to run it.
+
+Observer: `proofs/proofs.test.sh` extends its `check` fake-Bend seam with `v2 plain check precedes verdict`, `v2 verdict failure exits nonzero` (plain check prints `ALL PROOFS CHECK`, `--verdict` exits 1), `v2 verdict without pass fails` (verdict exits 0 without the kernel pass), and `v2 both checks and mutants pass`. The successful case asserts both invocations in order and the final success; the failure cases assert the diagnostic names `--verdict` and the non-zero observer exit. Existing layout-failure cases remain the assertions for missing files, unsafe proofs and absent law definitions. Every failure row below is asserted by a `v2` case in that script, except mutation failures, which retain the existing `v5` cases.
+
+| Observer failure | Exit | Diagnostic names |
+| --- | --- | --- |
+| Required proof file missing | 1 | Missing file |
+| Bend executable missing | 1 | Bend and setup command |
+| `@unsafe` or `?TODO` in proof support checked by the observer | 1 | Forbidden marker |
+| Law lacks its `def Laws.<name>` | 1 | Law |
+| Plain Bend check exits non-zero | 1 | Plain Bend check |
+| Plain Bend check lacks `ALL PROOFS CHECK` | 1 | Plain Bend check and missing result |
+| `--verdict` exits non-zero, including missing Lean or kernel build failure | 1 | `--verdict` and tool/kernel cause from Bend |
+| `--verdict` exits zero without a successful kernel verdict | 1 | `--verdict` and missing result |
+| Mutation runner missing or fails | 1 | Mutation observer and failing mutant/file |
+| Quint property missing or fails, once V6 exists | 1 | Property |
+
+Policy: the implementation PR reports the exact successful verdict text from the selected Bend release and keeps it distinct from the plain check result. Before adopting the new pin, run the complete existing proof with it and the Lean kernel; retain failure output. Measure `just proofs` before and after on the same host, recording revisions, tool versions, wall seconds, exit codes and whether the kernel build is cold or cached. Report the first kernel build separately from a cached run. The after-run must finish within the existing CI lane's limit with the verdict enabled; no timeout increase or skipped proof makes it pass. `just proofs-setup` supplies Lean in the CI lane that runs `just proofs`, without requiring an interactive shell or a preinstalled user toolchain. CI's successful run is the observer for that integration; timings and setup provenance belong in the implementation PR, not a scenario Work table.
+
+Regression checks on `main` (policy: preserve these while adding the verdict):
+
+1. `proofs/proofs.test.sh`, `v1 a mismatching version exits 1 naming the tool` and `v1 a wrong checksum exits 1`: a bad Bend install is refused.
+2. `proofs/proofs.test.sh`, `v2 @unsafe fails`, `v2 ?TODO fails`, and `v2 a law deleted from PROOF.bend fails naming it`: unchecked proofs are refused.
+3. `proofs/proofs.test.sh`, `v5 the real observer proves and rejects all eight mutants`: the real proof and every existing mutation remain checked.
+4. `justfile`, `proofs` and `lint-rust` recipes: setup precedes proof execution and the existing check path still reaches it.
+
+**V3 the laws.** Policy for a Bend pin update: `proofs/messages/LAWS.bend` stays byte-for-byte unchanged. If the new library rejects `LIB.bend`, `model.bend`, `PROOF.bend` or `spec.bend`, repair library-name compatibility while preserving every predicate, transition guard and law statement. The real observer in regression check 3 must still prove the baseline and reject every mutant; review compares the model and predicates as well as the unchanged laws. `proofs/messages/LAWS.bend` states these laws over `model.bend`'s state and `step`. A Builder states a law there, or makes one stronger, only in a PR approved by a review run other than its author's (the Contract recipe of `.agents/builder.md`, rule 4); a law may only become stronger, and V7 rejects one weakened, deleted or made trivial. `spec.bend`, the predicates the laws use, follows the same rule. Source: the user's decision that Builders state laws (2026-10-10).
 - `m1_final_and_at_most_once`: over any sequence of `send`, `idle` and `restart` events, a Message is typed at most once.
 - M2 and M3 are retired by #3563 with Message holds and Takeover, and M8 by `scenarios/remove-bubbling.md` (B3692c); no law replaces them.
 - `m5_terminal_states_are_absorbing`: `delivered` and `dropped` never change, and Message ids are unique and rise by one.
