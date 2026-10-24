@@ -324,7 +324,9 @@ def main():
     signal.signal(signal.SIGINT, interrupted)
     result = 1
     try:
-        tracer = subprocess.Popen(["sudo", "-n", "--", "env", "BPFTRACE_MAX_MAP_KEYS=4096", "BPFTRACE_PERF_RB_PAGES=64", "timeout", "--signal=INT", "--kill-after=5s", "15m", "bpftrace", "-k", "-f", "json", "-B", "line", str(HERE / "faults.bt"), str(child.pid), str(os.sysconf("SC_PAGE_SIZE"))], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        # Keep the pre-0.23 string bound: 1024-byte strings overflow the probe's
+        # tuple/printf allocations on newer bpftrace before any probe attaches.
+        tracer = subprocess.Popen(["sudo", "-n", "--", "env", "BPFTRACE_MAX_MAP_KEYS=4096", "BPFTRACE_PERF_RB_PAGES=64", "BPFTRACE_MAX_STRLEN=64", "timeout", "--signal=INT", "--kill-after=5s", "15m", "bpftrace", "-k", "-f", "json", "-B", "line", str(HERE / "faults.bt"), str(child.pid), str(os.sysconf("SC_PAGE_SIZE"))], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         readers = [threading.Thread(target=target, daemon=True) for target in (consume, stderr, announce)]
         for reader in readers:
             reader.start()

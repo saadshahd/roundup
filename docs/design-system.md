@@ -1,5 +1,8 @@
 # Design system: quiet native
 
+Motion target: U3010a–d (`scenarios/ui-motion.md`) supersede only this document's CSS-only easing, old Drawer/Todo timings, ink-only press and reduced-motion-zero clauses. Pointer press adds scale without a background; key actions stay instant; non-key reduced motion uses a 150 ms opacity fade. `docs/motion.md` carries the complete target. The implementation must update D9's observer and Token values together; this specification changes neither production Check code nor Tokens.
+
+
 How the App looks. `docs/wireframes.md` says what each screen holds and where; this file says how it is drawn. Where the two disagree on look, this file wins: it replaces the wireframes' "ink is the only colour" and "no borders" rules (the Glyph set, the visibility rule and the layout stay).
 
 The direction: a Mac app that stays out of the way. System sans for the chrome, mono only where text is code. Soft surfaces, small coloured Glyphs, nothing moves unless the user acted or an Agent finished a Todo the user can see (U3010c, U3770), or the Workstream timeline's window slides with time while an Agent it shows runs (U3768e, U3768f); no shimmer or pulse. Light and dark.
