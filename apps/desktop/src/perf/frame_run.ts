@@ -229,14 +229,19 @@ const startWorkingAgents = async (app: AppSeam, cwd: string) => {
 
 /** The workload's setup, then the cycle its actions repeat; an unknown workload is an error, never an empty run. */
 const prepare = async (app: AppSeam, workload: string, cwd: string): Promise<(index: number) => Promise<boolean>> => {
-  if (workload === "layers" || workload === "todos") {
+  if (workload === "layers" || workload === "todos" || workload === "drag") {
     // Rows to open, complete and reorder; one open Todo always stays.
     const home = await runWorkstream(app);
 
-    for (let each = 0; each < 4; each += 1) await createHomed(app, home, `seed ${each}`);
+    for (let each = 0; each < (workload === "drag" ? 40 : 4); each += 1) await createHomed(app, home, `seed ${each}`);
+
+    if (workload === "drag") clickAt('.shelf-groups [aria-expanded="false"] .shelf-group-control');
 
     // The press targets must be on screen before the sample, so a missing one is an error naming it, not a silent invalid run.
     await appears(() => document.querySelector(SHELF_ROW), "the Shelf's first Todo row");
+
+    // Native pointer input is supplied by the Mac observer, never by a synthetic event driver.
+    if (workload === "drag") return async () => true;
 
     if (workload === "layers") return layersCycle(domLayers, wallClock);
 
@@ -249,7 +254,7 @@ const prepare = async (app: AppSeam, workload: string, cwd: string): Promise<(in
     return glyphsCycle(workingGlyphs);
   }
 
-  throw new Error(`the workload ${workload} is not layers, todos or glyphs`);
+  throw new Error(`the workload ${workload} is not layers, todos, drag or glyphs`);
 };
 
 /**
@@ -289,8 +294,31 @@ export const createFrameRun = (app: AppSeam, workload: string, cwd: string) => {
 
     const cycle = await bounded(prepare(app, workload, cwd), SETUP_BOUND_MS, `the ${workload} setup`);
 
-    await report(
-      await recordFrames(
+    const controller = new AbortController();
+    const dragActions = { released: 0, cancelled: 0 };
+
+    const count = (event: Event) => {
+      if (!event.isTrusted || !document.querySelector(".sortable-source,[data-dnd-dragging]")) return;
+
+      if (event instanceof PointerEvent) dragActions.released += 1;
+      else if (event instanceof KeyboardEvent && event.key === "Escape") dragActions.cancelled += 1;
+    };
+
+    const dragCycle = async () => {
+      const before = dragActions.released + dragActions.cancelled;
+
+      await sleep(CYCLE_MS);
+
+      return dragActions.released + dragActions.cancelled > before;
+    };
+
+    if (workload === "drag") {
+      window.addEventListener("pointerup", count, { capture: true, signal: controller.signal });
+      window.addEventListener("keydown", count, { capture: true, signal: controller.signal });
+    }
+
+    try {
+      const measured = await recordFrames(
         { frame: (callback) => void requestAnimationFrame(callback), hidden: () => document.hidden, now: () => performance.now(), afterUpdate: afterUpdate, after: (ms, callback) => void setTimeout(callback, ms) },
         {
           workload,
@@ -300,9 +328,15 @@ export const createFrameRun = (app: AppSeam, workload: string, cwd: string) => {
           userAgent: navigator.userAgent,
           entryTypes: [...(PerformanceObserver.supportedEntryTypes ?? [])],
         },
-        async () => (await everyTwoSeconds(wallClock, cycle)).completed,
-      ),
-    );
+        async () => (await everyTwoSeconds(wallClock, workload === "drag" ? dragCycle : cycle)).completed,
+      );
+
+      const result = workload === "drag" ? { ...measured, dragActions } : measured;
+
+      await report(result);
+    } finally {
+      controller.abort();
+    }
   };
 
   return {

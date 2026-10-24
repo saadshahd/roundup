@@ -1,0 +1,258 @@
+{
+  "observer": "isolated headless Chromium",
+  "viewport": "1512x950",
+  "scheme": "dark",
+  "baseline": "bf7a668ef",
+  "nativeQualification": "unmeasured",
+  "states": {
+    "idle": {
+      "D1": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D10": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D11": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D12": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D13": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D14": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D16": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D2": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D3": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D4": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D5": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D6": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D7": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D8": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D9": {
+        "base": "pass",
+        "head": "pass"
+      }
+    },
+    "pad-source-slot": {
+      "D1": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D10": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D11": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D12": {
+        "base": "fail",
+        "head": "fail"
+      },
+      "D13": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D14": {
+        "base": "fail",
+        "head": "fail"
+      },
+      "D16": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D2": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D3": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D4": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D5": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D6": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D7": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D8": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D9": {
+        "base": "pass",
+        "head": "pass"
+      }
+    },
+    "rail-source-slot": {
+      "D1": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D10": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D11": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D12": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D13": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D14": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D16": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D2": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D3": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D4": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D5": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D6": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D7": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D8": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D9": {
+        "base": "pass",
+        "head": "pass"
+      }
+    },
+    "todo-source-slot": {
+      "D1": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D10": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D11": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D12": {
+        "base": "fail",
+        "head": "pass"
+      },
+      "D13": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D14": {
+        "base": "fail",
+        "head": "fail"
+      },
+      "D16": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D2": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D3": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D4": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D5": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D6": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D7": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D8": {
+        "base": "pass",
+        "head": "pass"
+      },
+      "D9": {
+        "base": "pass",
+        "head": "pass"
+      }
+    }
+  },
+  "regressions": []
+}

@@ -260,8 +260,6 @@ export const Rail = () => {
   /** One indent step (--rail-step) in pixels: how far sideways the pointer goes to change the drop's depth. */
   const [railStep, setRailStep] = createSignal(1);
 
-  const [drop, setDrop] = createSignal<{ depth: number; top: number } | null>(null);
-
   /** Whether the press that began the drag was a pointer's: a keyboard lift has no pointer to leave the Rail. */
   let pointerPressed = false;
   let pointerAt: { x: number; y: number } | null = null;
@@ -324,25 +322,13 @@ export const Rail = () => {
     });
   });
 
-  /** Where the drop line sits: at the top of the room the library opened for the dragged row, once it has moved there. */
   const placeDrop = (next: { depth: number } | null) => {
-    if (next === null) {
-      const back = liftedRow;
+    if (next !== null) return;
+    const back = liftedRow;
 
-      liftedRow = null;
-      setDrop(null);
+    liftedRow = null;
 
-      if (back !== null) requestAnimationFrame(() => focusRow(back));
-
-      return;
-    }
-
-    queueMicrotask(() => {
-      const base = container()?.getBoundingClientRect();
-      const room = container()?.querySelector("[data-dnd-placeholder]")?.getBoundingClientRect();
-
-      setDrop(base && room ? { depth: next.depth, top: room.top - base.top } : null);
-    });
+    if (back !== null) requestAnimationFrame(() => focusRow(back));
   };
 
   /** The index among all of `parent`'s other children for one counted among the shown ones: a done row folded into its `✓ n done` line is still a sibling. */
@@ -684,9 +670,6 @@ export const Rail = () => {
           )}
         </For>
       </TreeView.Tree>
-      <Show when={drop()}>
-        {(line) => <div class="drop-line" aria-hidden="true" style={{ top: `${line().top}px`, "--depth": line().depth }} />}
-      </Show>
       </Sortable.Root>
     </TreeView.Root>
     </div>

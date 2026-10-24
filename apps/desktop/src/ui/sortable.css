@@ -1,23 +1,58 @@
-/* The library's clipped live region stays offscreen without its off-scale negative margin. */
+/* Keep the library's live region clipped without its off-scale negative margin. */
 [id^="dnd-kit-announcement-"] {
   margin: 0 !important;
 }
 
-/* A plain Sortable list (rows inside a tree) draws no radius: the lifted row keeps its fill. */
-[data-dnd-dragging] {
-  background-color: var(--ground);
-  background-image: linear-gradient(var(--selected), var(--selected));
+/* The real row keeps its layout and input state; an inset edge changes no geometry. */
+.sortable-source {
+  position: relative;
 }
 
-[data-dnd-dragging]:not([data-plain] *) {
-  border-radius: var(--radius-row);
+.sortable-source::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent);
+  pointer-events: none;
 }
 
-/* The drop line is the only drop marker; the slot keeps the row space the library opens. */
-[data-dnd-placeholder] {
-  visibility: visible !important;
+.sortable-overlay {
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--ground);
+  color: var(--text);
+  padding: var(--space-2);
+  font: inherit;
 }
 
-[data-dnd-placeholder] > * {
-  visibility: hidden;
+.sortable-slot {
+  box-sizing: border-box;
+  position: relative;
+  flex-shrink: 0;
+  margin-inline-start: var(--sortable-indent, 0px);
+  pointer-events: none;
+}
+
+.sortable-slot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px dashed var(--accent);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sortable-slot:not([data-keyboard="true"]) {
+    transition: opacity var(--duration-crossfade) var(--easing-out);
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+}
+
+.sortable-slot[data-ending="true"] {
+  opacity: 0;
 }

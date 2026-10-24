@@ -419,14 +419,20 @@ p {
   border-bottom: 1px solid var(--hairline);
 }
 
-/* U348: while files are dragged, every target takes a 2 px --accent ring inside its edge, and the one under the pointer --hover; no size changes (U5, U46), nothing animates (D6). */
-.project-tab[data-drop]::after,
-.pane-body[data-drop]::after {
+/* U3800b: the one file target under the pointer (a Rail row, a Project tab, or the Terminal pane as it reports `drop-over`) takes the drop look of a Sortable slot, a dashed --accent edge inside its rectangle; other targets paint nothing, and no size changes (U5, U46). */
+.project-tab[data-drop="hover"]::after,
+.pane-body.drop-over::after,
+.rail-row[data-drop="hover"]::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 2px solid var(--accent);
+  border: 2px dashed var(--accent);
   pointer-events: none;
+}
+
+.project-tab[data-drop],
+.rail-row[data-drop] {
+  position: relative;
 }
 
 /* U430: each resource group must fit the centre or flex-end clips its start. */

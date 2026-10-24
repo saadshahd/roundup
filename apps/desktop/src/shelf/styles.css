@@ -94,7 +94,7 @@
   min-height: 100%;
 }
 
-.shelf-panel > section > :not(.reserved-line[data-overlay="true"]) ~ :not(.reserved-line[data-overlay="true"]) {
+.shelf-panel > section > :not(.reserved-line[data-overlay="true"], .todo-drag-preview) ~ :not(.reserved-line[data-overlay="true"], .todo-drag-preview) {
   margin-top: var(--space-2);
 }
 

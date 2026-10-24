@@ -872,7 +872,6 @@ export const Todos = (props: {
         <Sortable.Root class="todo-list shelf-list" plain ids={tree().map((row) => String(row.todo.id))} external={sorted.external} onDrag={(active: boolean) => { setDragging(active);
 
  if (!active) board.preview(null); }} tree={{
-          holdPlace: true,
           rows: tree().map((row) => ({ id: String(row.todo.id), parent: row.parent === null ? null : String(row.parent) })),
           get indent() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-4")) || 16; },
           nests: () => true,

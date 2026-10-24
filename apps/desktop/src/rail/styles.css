@@ -266,17 +266,8 @@
   user-select: text;
 }
 
-.rail-row[data-lifted="true"] {
-  opacity: 0.4;
-}
-
-.drop-line {
-  position: absolute;
-  left: calc(var(--space-4) + var(--depth) * var(--rail-step) + var(--rail-inset));
-  right: 0;
-  height: 2px;
-  background: var(--grey);
-  pointer-events: none;
+.rail-tree .sortable-slot {
+  margin-inline-start: calc(var(--space-4) + var(--sortable-indent, 0px) + var(--rail-inset));
 }
 
 /* Greyed, not faded: opacity would sink the Live lines under the 4.5:1 contrast U25 keeps; grayscale holds it (rail/u25_daemon_gone.test.tsx). */
@@ -691,23 +682,6 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-/* U348: while files are dragged, a Rail row takes a 2 px --accent ring inside its edge, and the one under the pointer --hover; no size changes (U5, U46), nothing animates (D6). */
-.rail-row[data-drop] {
-  position: relative;
-}
-
-.rail-row[data-drop]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 2px solid var(--accent);
-  pointer-events: none;
-}
-
-.rail-row[data-drop="hover"] {
-  background: var(--hover);
 }
 
 .rail-tree [data-dnd-dragging] {

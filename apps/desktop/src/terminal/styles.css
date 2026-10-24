@@ -92,16 +92,6 @@
   background-color: var(--terminal-background);
 }
 
-.pane-body.drop-over::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-width: 2px;
-  border-style: solid;
-  border-color: var(--accent);
-  pointer-events: none;
-}
-
 .pane-screen[hidden] {
   display: none;
 }
