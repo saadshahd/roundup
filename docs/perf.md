@@ -101,6 +101,14 @@ runner inventory returned HTTP 403 and active sibling logs HTTP 404. No resource
 R23 timing or profile was produced. #3764 remains open and #3760 stays blocked;
 remaining measurement/repair work stays under #3720.
 
+Builder [40133799182](https://github.com/saadshahd/roundup/actions/runs/40133799182)
+again reports `AMD EPYC 7763 64-Core Processor`; the unchanged standalone preflight
+exits 2. [Identity and search evidence](../crates/perf/evidence/r23-host-40133799182/README.md)
+retain the boot identity, commands and statuses. Runner inventory returned HTTP
+403 and two active Builder log requests returned HTTP 404; no reachable qualified
+lifetime was identified. No resource, timing invocation or profile was produced.
+#3764 remains open and #3760 blocked, with remaining work under #3720.
+
 For the next execution attempt, use the existing Builder facility:
 
 1. Search existing host evidence and active Actions jobs before allocating a host.

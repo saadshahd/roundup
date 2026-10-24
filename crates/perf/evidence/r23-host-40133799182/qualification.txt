@@ -1,0 +1,17 @@
+$ set -eu
+. /etc/os-release
+model=$(LC_ALL=C lscpu | sed -n 's/^Model name: *//p')
+affinity=$(sed -n 's/^Cpus_allowed_list:[[:space:]]*//p' /proc/self/status)
+if [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ] &&
+   [ "$(uname -m)" = x86_64 ] &&
+   [ "$model" = 'AMD EPYC 9V45 96-Core Processor' ] &&
+   [ "$(cat /sys/devices/system/cpu/online)" = 0-3 ] &&
+   [ "$(nproc)" = 4 ] && [ "$affinity" = 0-3 ]; then
+    printf 'R23 host identity qualified; load and measurements still required\n'
+else
+    printf 'R23 host qualification failed: model=%s; required AMD EPYC 9V45 96-Core Processor\n' "$model"
+    exit 2
+fi
+R23 host qualification failed: model=AMD EPYC 7763 64-Core Processor; required AMD EPYC 9V45 96-Core Processor
+
+exit: 2
