@@ -1,5 +1,7 @@
 # Pads use the shared controls
 
+Policy: U3787a (`scenarios/ui-mac-expectations.md`) replaces U486’s Pad-delete question/cancel clauses for reversible deletion with immediate deletion and undo. Owner permissions, dirty-draft protection, failure handling and refetch remain; irreversible actions still require native consent.
+
 Owns `apps/desktop/src/pads/`, its own entries in `apps/desktop/src/copy.ts`, and only `.pad*` rules in `apps/desktop/src/styles.css`. No other lane, `ui/`, `keys/`, `tokens.css`, manifest, lockfile, contract or App seam change belongs here (policy). Reuse the existing shared wrappers and registry; an absent capability becomes a scoped native prerequisite, never a local replacement (policy). No new primitive or editor is specified.
 
 Direction: #1639; #1629 and #1627 supply the shared controls and catalogue, #1630 the font, and #1869 implements #1608's registry. The owner's closing comment on #1852 cancels semantic Token migration and strict stylelint as lane prerequisites: keep the current Token names, with no new raw visual values (policy). This does not revive U478. Do not add visual authoring deferred by #1666 (policy).

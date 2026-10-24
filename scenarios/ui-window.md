@@ -1,5 +1,7 @@
 # App window width
 
+Policy: U3787e (`scenarios/ui-mac-expectations.md`) replaces U452’s unconditional maximization, absent-height and no-remembered-size clauses with saved size/place restoration. First launch may remain maximized; the 1280 logical-pixel minimum, U453 and window-bar behavior remain. Retire `u452_window_opens_maximized` when implementation adds the saved-bounds observers.
+
 The owner's 2026-10-12 decision in #1236 sets the supported App window width to at least 1280 px. U430 and `scenarios/ui-drawer.md` remain owned by #1109 and PR #1225; this specification changes neither. The final repository-wide absence of narrower viewport assertions includes that owner's slice once it merges.
 
 **U452 the App opens at least 1280 px wide and cannot shrink below it.** Given the App window declared in `crates/desktop/tauri.conf.json`, when its configuration is read, then:

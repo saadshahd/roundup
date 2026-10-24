@@ -1,5 +1,7 @@
 # UI: scoped shortcuts (U479 to U481) and the ⌘K leader (U2238 to U2241)
 
+Policy: U3787b (`scenarios/ui-mac-expectations.md`) adds menu-bar discoverability without widening App key ownership. U3787a adds ⌘Z for item restoration only outside editors and Terminals; their own undo remains untouched.
+
 The keyboard layer serves the Enter and Intervene stages of `.agents/data/journey.md`: opening Help must not change the user's selected Agent or place in the centre. This specification defines implementation acceptance; it claims no shipped registry.
 
 Scope (policy): `apps/desktop/src/keys/`, `apps/desktop/src/app/`, `apps/desktop/src/App.tsx` and only Help's rules in `apps/desktop/src/styles.css`. Dependency: #1629 supplies `ui/Dialog` and is completed. Its implementation did not install a shortcut library; the registry implementation adds the selected dependency and regenerated lockfile. Other directories' listeners remain their UI lanes' responsibility. No RPC, App seam command or domain model change is required.

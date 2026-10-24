@@ -1,5 +1,7 @@
 # Native confirmations and shared floating surfaces
 
+Policy: U3787a (`scenarios/ui-mac-expectations.md`) exempts reversible deletion from U3512a’s mandatory question, including idle/exited Rail items when restorable. Irreversible removal, live-process closure and stop confirmations retain the native path. Other surface clauses remain.
+
 Acceptance for #3512. Module: `apps/desktop`, plus the existing native dialog capability in `crates/desktop`. Ids: U3512a–U3512f. These are implementation obligations, not evidence that the current App passes.
 
 Journey: Enter (Capture and New Workstream), Intervene (stop/remove/close) and Review (deletion and unfinished-work recovery). Use the existing App seam and U26 harness; no new RPC is required. A native-dialog App seam addition, Token change or capability change follows the Contract recipe, with every caller changed in the same implementation PR. Policy: the implementation PR’s `Reuse:` evidence weighs the installed `@tauri-apps/plugin-dialog` first, verifies its [native dialog API](https://v2.tauri.app/reference/javascript/dialog/) and maintenance, and compares at least one other maintained candidate under rule 9; use the existing Ark wrappers for web surfaces. The native plugin is already installed and registered; its message permission must be checked rather than assuming file-chooser permission authorizes alerts.

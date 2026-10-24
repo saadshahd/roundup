@@ -1,5 +1,7 @@
 # UI: clear done and delete selected Shelf rows (U458 to U460)
 
+Policy: U3787a (`scenarios/ui-mac-expectations.md`) replaces U459/U460’s confirmation step for reversible deletion with immediate delete and undo; target freezing, scope, partial failures, readback, blockers and ownership remain. U3787c adds Home/End, typeahead and ⌘A to U458.
+
 Module: `apps/desktop` (the webview). Acceptance for #1060. Extends U15, U31 and U150; narrows U370's Esc handling while rows are selected. U2744a decides which items belong in the Shelf, including done Todos; neither selection nor deletion widens that scope. U361's tick box, U155's reorder, U362's move, U373's tabs and single-item Drawer deletion remain available.
 
 Policy: use existing `todo.delete` and `pad.delete`, with the user as Actor; no new RPC method, App seam command, Token or domain term. Implementation owns the Shelf's Todos and Pads components and their shared Shelf integration under `apps/desktop/src`, their tests and harness fixtures, and the captures below. Real-Daemon observations exercise existing T6 and P9, not a new contract.
