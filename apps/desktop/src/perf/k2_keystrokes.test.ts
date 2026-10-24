@@ -26,14 +26,14 @@ describe("k2 a sample is keydown to the render that shows its echo", () => {
     probe.written(bytes("a"), "agent");
     probe.rendered("agent");
 
-    expect(() => probe.summary(0)).toThrow("no key was echoed");
+    expect(probe.summary(0)).toMatchObject({ n: 0, p95: null });
     time.advance(4);
     probe.arrived(bytes("a"), "shell");
     probe.written(bytes("a"), "shell");
     time.advance(1);
     probe.rendered("agent");
 
-    expect(() => probe.summary(0)).toThrow("no key was echoed");
+    expect(probe.summary(0)).toMatchObject({ n: 0, p95: null });
     time.advance(12);
     probe.rendered("shell");
 
@@ -218,6 +218,21 @@ describe("k2 a sample is keydown to the render that shows its echo", () => {
       write_reply: { n: 1, p50: 4, p95: 4 },
     });
     expect(probe.summary(1)).toMatchObject({ n: 1, p50: 25 });
+  });
+
+  it("r20_a_run_without_measured_echoes_retains_its_failure_counts_in_json", async () => {
+    const probe = createKeystrokeProbe(() => 0, "a", () => "shell");
+    let typed = 0;
+
+    await typeKeys(probe, {
+      press: () => void (typed += 1), sleep: async () => {}, random: () => 0,
+      expired: () => typed >= 2,
+    }, 5);
+
+    expect(JSON.parse(JSON.stringify(probe.summary(1)))).toEqual({
+      error: "no key was echoed and rendered after the warm-up",
+      n: 0, dropped: 5, p50: null, p95: null, p99: null, max: null,
+    });
   });
 
   it("r20_a_run_out_of_time_counts_the_untyped_keys_as_dropped_and_still_reports", async () => {

@@ -4,14 +4,10 @@ export const PATIENCE_MS = 500;
 /** Keys typed and thrown away first, so the first renders (font load, glyph atlas) do not count. */
 export const WARMUP_KEYS = 100;
 
-export type Summary = {
-  n: number;
-  dropped: number;
-  p50: number;
-  p95: number;
-  p99: number;
-  max: number;
-};
+export type Summary = { n: number; dropped: number } & (
+  | { p50: number; p95: number; p99: number; max: number }
+  | { error: string; p50: null; p95: null; p99: null; max: null }
+);
 
 /** Nearest rank, the same rule as `crates/perf`. */
 const percentile = (sorted: number[], share: number): number => {
@@ -148,15 +144,22 @@ export const createKeystrokeProbe = (now: () => number, typed: string, target: (
     unsent: (count: number) => {
       unsent += count;
     },
-    /** Warm-up latency samples are excluded, but every dropped key fails R21. */
+    /** Warm-up latency samples are excluded, but every dropped key fails R21. An empty sample retains counts alongside an error and null percentiles. */
     summary: (skip: number): Summary => {
       const sorted = latencies
         .flatMap(({ key, ms }) => (key >= skip ? [ms] : []))
         .sort((a, b) => a - b);
 
+      const dropped = droppedKeys.length + unsent;
+
+      if (sorted.length === 0) return {
+        error: "no key was echoed and rendered after the warm-up",
+        n: 0, dropped, p50: null, p95: null, p99: null, max: null,
+      };
+
       return {
         n: sorted.length,
-        dropped: droppedKeys.length + unsent,
+        dropped,
         p50: percentile(sorted, 0.5),
         p95: percentile(sorted, 0.95),
         p99: percentile(sorted, 0.99),
