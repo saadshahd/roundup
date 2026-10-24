@@ -19,8 +19,8 @@ async fn titles_of(
     let mut titles = Vec::new();
     tokio::time::timeout(PATIENCE, async {
         loop {
-            match spawned.events.recv().await.unwrap() {
-                EventData::TerminalTitle(title) => titles.push(title.title),
+            match spawned.events.recv().await.unwrap().as_ref() {
+                EventData::TerminalTitle(title) => titles.push(title.title.clone()),
                 EventData::TerminalExited(_) => break,
                 _ => {}
             }

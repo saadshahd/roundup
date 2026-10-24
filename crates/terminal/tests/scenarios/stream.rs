@@ -85,7 +85,10 @@ async fn x14_output_is_isolated_from_other_terminals_and_the_bus() {
     // A's and B's exit events stay on their own receivers and the Bus.
     for events in [&mut a_events, &mut b_events] {
         loop {
-            if matches!(events.recv().await.unwrap(), EventData::TerminalExited(_)) {
+            if matches!(
+                events.recv().await.unwrap().as_ref(),
+                EventData::TerminalExited(_)
+            ) {
                 break;
             }
         }

@@ -349,7 +349,7 @@ pub(super) mod tests {
     pub(crate) struct Watched {
         pub(crate) _dir: tempfile::TempDir,
         pub(crate) shared: Arc<Shared>,
-        pub(crate) terminal: broadcast::Sender<EventData>,
+        pub(crate) terminal: broadcast::Sender<Arc<EventData>>,
         pub(crate) events: broadcast::Receiver<Event>,
         pub(crate) watcher: JoinHandle<()>,
     }
@@ -420,7 +420,7 @@ pub(super) mod tests {
         }
 
         pub(crate) fn send(&self, data: EventData) {
-            self.terminal.send(data).unwrap();
+            self.terminal.send(Arc::new(data)).unwrap();
         }
 
         pub(crate) fn star(&self) {

@@ -318,7 +318,7 @@ const PROGRAM_POLL: Duration = Duration::from_millis(50);
 pub(super) async fn exit_through_claude_code(
     terminals: &Terminals,
     terminal_id: &str,
-    exit: &mut Receiver<EventData>,
+    exit: &mut Receiver<Arc<EventData>>,
 ) -> bool {
     let presses = async {
         for _ in 0..claude_code::EXIT_PRESSES {
@@ -369,10 +369,10 @@ async fn program_ended(terminals: &Terminals, terminal_id: &str) {
 /// always the last event a Terminal sends. `Terminals` lives in an `Arc` for as long as the Daemon
 /// does, so the channel this reads never closes while this can run; `Closed` is unreachable but
 /// still has to be matched to satisfy `RecvError`.
-pub(super) async fn wait_for_exit(events: &mut Receiver<EventData>) {
+pub(super) async fn wait_for_exit(events: &mut Receiver<Arc<EventData>>) {
     loop {
         match events.recv().await {
-            Ok(EventData::TerminalExited(_)) => return,
+            Ok(event) if matches!(event.as_ref(), EventData::TerminalExited(_)) => return,
             Ok(_) | Err(RecvError::Lagged(_)) => {}
             Err(RecvError::Closed) => return,
         }
@@ -422,20 +422,20 @@ mod tests {
     #[tokio::test]
     async fn wait_for_exit_keeps_waiting_past_a_lag() {
         let (tx, mut rx) = broadcast::channel(1);
-        tx.send(EventData::TerminalTitle(TitleEvent {
+        tx.send(Arc::new(EventData::TerminalTitle(TitleEvent {
             id: "1".into(),
             title: "a".into(),
-        }))
+        })))
         .unwrap();
-        tx.send(EventData::TerminalTitle(TitleEvent {
+        tx.send(Arc::new(EventData::TerminalTitle(TitleEvent {
             id: "1".into(),
             title: "b".into(),
-        }))
+        })))
         .unwrap();
-        tx.send(EventData::TerminalExited(ExitedEvent {
+        tx.send(Arc::new(EventData::TerminalExited(ExitedEvent {
             id: "1".into(),
             code: Some(0),
-        }))
+        })))
         .unwrap();
 
         crate::ending::wait_for_exit(&mut rx).await;
@@ -450,15 +450,15 @@ mod tests {
     #[tokio::test]
     async fn wait_for_exit_keeps_waiting_past_an_ordinary_event() {
         let (tx, mut rx) = broadcast::channel(8);
-        tx.send(EventData::TerminalTitle(TitleEvent {
+        tx.send(Arc::new(EventData::TerminalTitle(TitleEvent {
             id: "1".into(),
             title: "a".into(),
-        }))
+        })))
         .unwrap();
-        tx.send(EventData::TerminalExited(ExitedEvent {
+        tx.send(Arc::new(EventData::TerminalExited(ExitedEvent {
             id: "1".into(),
             code: Some(0),
-        }))
+        })))
         .unwrap();
 
         crate::ending::wait_for_exit(&mut rx).await;

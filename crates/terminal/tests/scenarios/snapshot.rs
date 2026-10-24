@@ -224,8 +224,8 @@ async fn u104_oversized_window_keeps_titles_and_offsets_but_has_no_snapshot() {
         next += bytes.len() as u64;
     }
     loop {
-        match spawned.events.recv().await.unwrap() {
-            EventData::TerminalTitle(event) => title = Some(event.title),
+        match spawned.events.recv().await.unwrap().as_ref() {
+            EventData::TerminalTitle(event) => title = Some(event.title.clone()),
             EventData::TerminalExited(_) => break,
             _ => {}
         }

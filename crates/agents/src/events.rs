@@ -542,12 +542,12 @@ pub(super) async fn watch(
     shared: Arc<Shared>,
     id: String,
     attempt: String,
-    mut events: Receiver<EventData>,
+    mut events: Receiver<Arc<EventData>>,
 ) {
     let mut tick: Option<Instant> = None;
     loop {
         let observation = tokio::select! {
-            event = events.recv() => match event {
+            event = events.recv() => match event.map(Arc::unwrap_or_clone) {
                 Ok(EventData::TerminalTitle(title)) => Observation::Title(title.title),
                 Ok(EventData::TerminalExited(exited)) => Observation::Exit { code: exited.code },
                 // A lag loses the oldest events, never the exit: it is the last one sent.

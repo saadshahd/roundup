@@ -1181,7 +1181,7 @@ async fn a2693a_failed_resume_keeps_the_old_node() {
     f.call("agent.stop", json!({"id":node.id})).await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         while !matches!(
-            exit.recv().await.unwrap(),
+            exit.recv().await.unwrap().as_ref(),
             contracts::EventData::TerminalExited(_)
         ) {}
     })

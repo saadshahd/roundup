@@ -468,3 +468,31 @@ placeholder. No new clock-sensitive test is added.
 
 R3696c's full Mac gate, remaining startup/RSS attribution, false-fail evidence and
 separate later main pass remain open. No baseline rebase is justified here.
+
+
+### Idle Terminal event rings (#3696)
+
+The per-Terminal Tokio broadcast channel reserves 1,024 event slots at spawn,
+including for a quiet program that has printed nothing. On Linux x86_64,
+`EventData` is 88 bytes; each ring stored the complete application event enum
+inline even though Terminals publish only titles and exits. Storing
+`Arc<EventData>` in the same channel removes 80 bytes per slot, or 819,200 bytes
+across ten queues. Capacity, lag reporting, ordering and exit delivery are still
+Tokio's; no replacement channel or reduced backlog is introduced.
+
+The allocation observer
+`r3696c_ten_quiet_terminals_retain_under_800_kb` uses `stats_alloc` around ten
+real `Terminals::spawn` calls with silent `/bin/cat` programs. Before this repair
+it retained 1,311,686 heap bytes and failed the 800,000-byte cap; after it retains
+492,346 bytes and passes (819,340 bytes less in this observation).
+The programs receive no input, so screen parsers remain pending: this measures
+the queues and spawn bookkeeping separately from the existing no-process parser
+allocation observer. Each program is killed before the assertion, even on a
+budget miss. No Daemon, socket or clock assertion is involved; the observer runs
+in its own test binary so other tests do not contaminate its global allocator.
+
+This identifies avoidable retained queue memory, not the origin of every byte
+in the Mac's RSS rise. The saving is heap allocation on Linux, not a measured
+Mac RSS saving. No baseline changes or full R3696c pass are claimed. Startup,
+Rail, same-M4-Max observations, unchanged-code false-fail evidence and the
+separate later main pass remain outstanding.

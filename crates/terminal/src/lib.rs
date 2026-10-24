@@ -53,7 +53,7 @@ const OWNED_CAP: usize = 8;
 /// A freshly spawned Terminal: its id, its title and exit events, and its output from the first byte.
 pub struct Spawned {
     pub id: String,
-    pub events: broadcast::Receiver<EventData>,
+    pub events: broadcast::Receiver<Arc<EventData>>,
     pub output: OutputStream,
 }
 
@@ -146,7 +146,7 @@ struct Entry {
     /// The program's pid while it runs; gone at its exit, before `terminal.exited` is published,
     /// so a pid the OS reuses afterwards names no Terminal (H21).
     pid: Option<u32>,
-    events: broadcast::Sender<EventData>,
+    events: broadcast::Sender<Arc<EventData>>,
     /// X14: dropped when the program exits, which ends every output stream after its last byte.
     output: Option<broadcast::Sender<Chunk>>,
     handle: Option<Arc<Handle>>,
@@ -217,7 +217,7 @@ impl Shared {
     fn publish(&self, number: u64, data: EventData) {
         self.bus.emit(Actor::daemon(), data.clone());
         if let Some(entry) = self.table().get(&number) {
-            let _ = entry.events.send(data);
+            let _ = entry.events.send(Arc::new(data));
         }
     }
 
@@ -824,7 +824,7 @@ impl Terminals {
     /// A subscriber that falls too far behind gets `RecvError::Lagged` and then the newest events;
     /// it never slows the PTY reader. For output from the first byte and a guaranteed exit event,
     /// use [`Spawned::events`] instead.
-    pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<EventData>, RpcError> {
+    pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<Arc<EventData>>, RpcError> {
         let number = parse_terminal_number(id)?;
         let table = self.shared.table();
         table
